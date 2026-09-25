@@ -1386,7 +1386,11 @@ export class WebSocketControllerHandler implements WebServerHandler {
             );
         }
         const { nodeId, endpointId } = parseTargetIds(argsObject, "send_webrtc_provider_command");
-        const fields = toProviderCommandFields(command_name, payload);
+        const fields = toProviderCommandFields(
+            command_name,
+            payload,
+            `node ${formatNodeId(nodeId)} endpoint ${endpointId}`,
+        );
         if (!establishesWebRtcSession(command_name)) {
             await this.#commandHandler.invokeProvideIceCandidates({ nodeId, endpointId, fields });
             // The model gives this command no response type, so there is no payload to convert.

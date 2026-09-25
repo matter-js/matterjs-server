@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import { Logger } from "@matter/main";
 import { ClusterModel, CommandModel, MatterModel } from "@matter/main/model";
 import { parseStartStreamArgs } from "../src/camera/cameraCommands.js";
 import { PROVIDER_COMMAND_NAMES, toProviderCommandFields } from "../src/camera/webRtcProviderArguments.js";
@@ -90,6 +91,116 @@ describe("WebRTC provider arguments", () => {
             expect(managed.code).to.equal(ServerErrorCode.InvalidArguments);
             expect(raw.code).to.equal(ServerErrorCode.InvalidArguments);
             expect(raw.message).to.equal(managed.message);
+        });
+    });
+
+    describe("fields a re-offer states past their gate", () => {
+        /** The warnings the provider boundary logged while `work` ran. */
+        function logged(work: () => unknown): string[] {
+            const captured = new Array<string>();
+            const destination = Logger.destinations.default;
+            const original = destination.add;
+            destination.add = message => {
+                if (message.facility === "webRtcProviderArguments") {
+                    captured.push(message.values.map(value => String(value)).join(" "));
+                }
+                original.call(destination, message);
+            };
+            try {
+                work();
+            } finally {
+                destination.add = original;
+            }
+            return captured;
+        }
+
+        it("forwards a re-offer's stream lists as stated and says so", () => {
+            let fields: Record<string, unknown> | undefined;
+            const messages = logged(() => {
+                fields = toProviderCommandFields("ProvideOffer", {
+                    webRtcSessionId: 7,
+                    sdp: "v=0",
+                    videoStreams: [1],
+                    audioStreams: [2],
+                });
+            });
+            expect(fields).to.deep.equal({
+                webRtcSessionId: 7,
+                sdp: "v=0",
+                videoStreams: [1],
+                audioStreams: [2],
+            });
+            expect(messages).to.have.lengthOf(1);
+            expect(messages[0]).to.contain("ProvideOffer");
+            expect(messages[0]).to.contain("webRtcSessionId is 7");
+            expect(messages[0]).to.contain("videoStreams, audioStreams");
+        });
+
+        // The gated set is read from each field's conformance, not written out, so every field the
+        // cluster states for a new session is covered.
+        it("reports streamUsage on a re-offer, which no list of stream fields would carry", () => {
+            const messages = logged(() =>
+                toProviderCommandFields("ProvideOffer", { webRtcSessionId: 7, sdp: "v=0", streamUsage: 4 }),
+            );
+            expect(messages).to.have.lengthOf(1);
+            expect(messages[0]).to.contain("states streamUsage while webRtcSessionId is 7");
+        });
+
+        // The one gated field whose conformance has no fallback clause: it does not apply at all on a
+        // re-offer, and is still forwarded rather than refused.
+        it("reports metadataEnabled on a re-offer", () => {
+            let fields: Record<string, unknown> | undefined;
+            const messages = logged(() => {
+                fields = toProviderCommandFields("ProvideOffer", {
+                    webRtcSessionId: 7,
+                    sdp: "v=0",
+                    metadataEnabled: true,
+                });
+            });
+            expect(fields).to.deep.equal({ webRtcSessionId: 7, sdp: "v=0", metadataEnabled: true });
+            expect(messages).to.have.lengthOf(1);
+            expect(messages[0]).to.contain("states metadataEnabled while webRtcSessionId is 7");
+        });
+
+        // videoStreamId is optional and deprecated (`O, D`) and names no condition, so it is outside
+        // the reported set although a re-offer ignores it too. Without this the set could be "every
+        // optional field" and the tests above would not tell.
+        it("says nothing for a field whose conformance names no condition", () => {
+            const messages = logged(() =>
+                toProviderCommandFields("ProvideOffer", { webRtcSessionId: 7, sdp: "v=0", videoStreamId: 3 }),
+            );
+            expect(messages).to.deep.equal([]);
+        });
+
+        it("names the node and endpoint it was given", () => {
+            const messages = logged(() =>
+                toProviderCommandFields(
+                    "ProvideOffer",
+                    { webRtcSessionId: 7, sdp: "v=0", videoStreams: [1] },
+                    "node 0x0000000000000042 endpoint 1",
+                ),
+            );
+            expect(messages[0]).to.contain("ProvideOffer for node 0x0000000000000042 endpoint 1 states videoStreams");
+        });
+
+        it("says nothing for a first offer, whose webRtcSessionId is null", () => {
+            const messages = logged(() =>
+                toProviderCommandFields("ProvideOffer", {
+                    webRtcSessionId: null,
+                    sdp: "v=0",
+                    streamUsage: 4,
+                    videoStreams: [1],
+                }),
+            );
+            expect(messages).to.deep.equal([]);
+        });
+
+        // SolicitOffer states no WebRTCSessionID at all, so nothing there is gated on one.
+        it("says nothing for SolicitOffer", () => {
+            const messages = logged(() =>
+                toProviderCommandFields("SolicitOffer", { streamUsage: 4, videoStreams: [1] }),
+            );
+            expect(messages).to.deep.equal([]);
         });
     });
 

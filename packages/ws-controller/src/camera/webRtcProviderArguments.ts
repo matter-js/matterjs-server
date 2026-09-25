@@ -5,12 +5,15 @@
  */
 
 import type { CameraIceServer } from "@matter-server/ws-client";
-import { InternalError } from "@matter/main";
+import { InternalError, Logger } from "@matter/main";
 import type { WebRtcTransportDefinitions } from "@matter/main/clusters";
+import { Conformance } from "@matter/main/model";
 import type { CommandModel, ValueModel } from "@matter/main/model";
 import { ServerError } from "../types/WebSocketMessageTypes.js";
 import { fieldRange, ICE_SERVER_LIMITS, providerCommand } from "./cameraFieldRanges.js";
 import { isRecord, rejectUnknownKeys, toBoundedString, toRequiredNumber } from "./wireArgumentChecks.js";
+
+const logger = Logger.get("webRtcProviderArguments");
 
 /**
  * The `WebRtcTransportProvider` commands `send_webrtc_provider_command` carries a payload for.
@@ -252,6 +255,52 @@ interface FieldContract {
     readonly convert: FieldConverter;
     readonly mandatory: boolean;
     readonly nullable: boolean;
+    /**
+     * The canonical keys of the fields whose null this field's conformance is conditioned on, empty
+     * for a field whose conformance names no such condition. Read from the command's own contract
+     * only; a struct member's conformance names no sibling of the command.
+     */
+    readonly nullGates: readonly string[];
+}
+
+/**
+ * The names a conformance names as having to be null for a clause of it to apply.
+ *
+ * `ProvideOffer` states `StreamUsage` as `WebRTCSessionID == NULL, O`, `MetadataEnabled` as
+ * `METADATA & (WebRTCSessionID == NULL)` and `VideoStreams` / `AudioStreams` as
+ * `[(Rev >= v2) & (WebRTCSessionID == NULL)].d+, O` (spec § 11.5.6.3). What this reads out is which
+ * fields the cluster describes for a request whose named field is null — not whether the field may
+ * appear at all, which a trailing `otherwise` clause answers and which nothing here refuses.
+ *
+ * Only the forms that keep that meaning are descended into: the clause wrappers, `&`, and the
+ * comparison itself. Under `!` or `|` a name compared to null says the opposite or says nothing, so
+ * such an expression contributes no name rather than one this would read backwards.
+ */
+function nullComparedNames(ast: Conformance.Ast, into: Set<string>): void {
+    switch (ast.type) {
+        case Conformance.Special.Otherwise:
+            for (const clause of ast.param) nullComparedNames(clause, into);
+            return;
+        case Conformance.Special.Choice:
+            nullComparedNames(ast.param.expr, into);
+            return;
+        case Conformance.Special.OptionalIf:
+            nullComparedNames(ast.param, into);
+            return;
+        case Conformance.Operator.AND:
+            nullComparedNames(ast.param.lhs, into);
+            nullComparedNames(ast.param.rhs, into);
+            return;
+        case Conformance.Operator.EQ: {
+            const { lhs, rhs } = ast.param;
+            if (lhs.type === Conformance.Special.Name && rhs.type === Conformance.Special.Value && rhs.param === null) {
+                into.add(canonicalKey(lhs.param));
+            }
+            return;
+        }
+        default:
+            return;
+    }
 }
 
 interface FieldsContract {
@@ -288,11 +337,14 @@ function contractFor(fields: Iterable<ValueModel>, subject: string, skip?: strin
                 `${subject} states ${property} and ${clash.property}, which no wire key can tell apart`,
             );
         }
+        const nullGates = new Set<string>();
+        nullComparedNames(field.conformance.ast, nullGates);
         byKey.set(key, {
             property,
             convert: converterFor(field),
             mandatory: field.mandatory,
             nullable: field.nullable,
+            nullGates: [...nullGates],
         });
         accepted.push(property);
         if (field.mandatory) mandatory.push(property);
@@ -386,8 +438,54 @@ const PROVIDER_CONTRACTS: Readonly<Record<ProviderCommandName, FieldsContract>> 
  * `originatingEndpointId` is dropped: the server injects its own requestor endpoint downstream, so a
  * value here is overwritten and validating it would refuse a payload nothing reads.
  */
-export function toProviderCommandFields(commandName: ProviderCommandName, payload: unknown): Record<string, unknown> {
+export function toProviderCommandFields(
+    commandName: ProviderCommandName,
+    payload: unknown,
+    target?: string,
+): Record<string, unknown> {
     const subject = `${commandName} payload`;
     if (!isRecord(payload)) throw ServerError.invalidArguments(`${subject} must be an object`);
-    return toFields(PROVIDER_CONTRACTS[commandName], payload, subject);
+    const contract = PROVIDER_CONTRACTS[commandName];
+    const fields = toFields(contract, payload, subject);
+    reportFieldsPastTheirGate(commandName, contract, fields, target);
+    return fields;
+}
+
+/**
+ * Log the fields a request states although the cluster describes them for a new session only.
+ *
+ * A `ProvideOffer` naming an existing `WebRTCSessionID` is a re-offer, and the provider's Effect on
+ * Receipt runs its whole stream-selection block under `WebRTCSessionID` being null (§ 11.5.6.3), so
+ * `VideoStreams`, `AudioStreams`, `StreamUsage` and `MetadataEnabled` change nothing there.
+ *
+ * None of them is refused, and the camera is what decides: three of the four end their conformance in
+ * a clause that leaves them optional whatever the session id, so refusing those would state a rule the
+ * cluster does not. `MetadataEnabled` is the one that does not (`METADATA & (WebRTCSessionID ==
+ * NULL)`, so a re-offer states a field that does not apply) — it is still forwarded, because what a
+ * device does with a field it did not ask for is the device's answer to give. The log is the only
+ * place the mismatch is visible, since the response says nothing about a field the camera ignored.
+ */
+function reportFieldsPastTheirGate(
+    commandName: ProviderCommandName,
+    contract: FieldsContract,
+    fields: Record<string, unknown>,
+    target?: string,
+): void {
+    for (const [gateKey, gate] of contract.byKey) {
+        const gateValue = fields[gate.property];
+        if (gateValue === undefined || gateValue === null) continue;
+        const stated = new Array<string>();
+        for (const field of contract.byKey.values()) {
+            if (field.nullGates.includes(gateKey) && Object.hasOwn(fields, field.property)) {
+                stated.push(field.property);
+            }
+        }
+        if (stated.length === 0) continue;
+        const them = stated.length === 1 ? "it" : "them";
+        logger.warn(
+            `${commandName}${target === undefined ? "" : ` for ${target}`} states ${stated.join(", ")} while ` +
+                `${gate.property} is ${String(gateValue)}. The cluster describes ${them} for a request whose ` +
+                `${gate.property} is null, so the camera may ignore ${them}; this boundary does not change ${them}.`,
+        );
+    }
 }

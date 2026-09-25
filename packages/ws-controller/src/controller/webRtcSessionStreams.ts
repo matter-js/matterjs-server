@@ -71,9 +71,10 @@ const STREAM_FIELDS = [
  * a video stream and auto-selected audio, and dropping the id establishes a video-only session.
  *
  * The refusal is unconditional, which is stricter than a `ProvideOffer` re-offer: the device runs
- * that test only under `WebRTCSessionID == NULL` (§11.5.6.3). It costs a re-offer nothing, because
- * the lists carry the same condition in their own conformance and a re-offer may not state them at
- * all. What this does not do is refuse the lists on a re-offer, which stays open.
+ * that test only under `WebRTCSessionID == NULL` (§11.5.6.3). It costs a re-offer nothing it could
+ * have used, because the provider's whole stream-selection step runs under that same condition, so
+ * neither form changes the session a re-offer names. A re-offer that states the lists is not refused
+ * here — the provider boundary logs it and forwards it (`reportFieldsPastTheirGate`).
  *
  * A stated form the provider takes is sent as stated. The one rewrite is a list going to a provider
  * this server does not know to be at revision 2 — one stating revision 1, and one whose revision has
