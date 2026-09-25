@@ -171,6 +171,31 @@ describe("snapshotPolicy", () => {
             });
         });
 
+        it("keeps the encoder-using capabilities as fallbacks behind the encoder-free ones", () => {
+            // The encoder preference orders; it does not narrow. Dropping the encoder-using entries
+            // ended the ladder at the last encoder-free rung, so a device that refuses all of those
+            // fails the call with capabilities the caller's own bounds allowed never tried.
+            expect(
+                chosen(selectSnapshotCapabilities(G350, { encodersExhausted: true })).map(entry => entry.resolution),
+            ).to.deep.equal([
+                { width: 640, height: 480 },
+                { width: 1920, height: 1080 },
+            ]);
+        });
+
+        it("orders several encoder-free capabilities largest first before the encoder-using ones", () => {
+            const encoderFreeSmall = { ...G350[0], resolution: { width: 320, height: 240 } };
+            expect(
+                chosen(selectSnapshotCapabilities([encoderFreeSmall, ...G350], { encodersExhausted: true })).map(
+                    entry => entry.resolution,
+                ),
+            ).to.deep.equal([
+                { width: 640, height: 480 },
+                { width: 320, height: 240 },
+                { width: 1920, height: 1080 },
+            ]);
+        });
+
         it("keeps an encoded capability the device serves without a hardware encoder while streaming", () => {
             // requiresEncodedPixels alone does not take an encoder: filtering on it would rule out a
             // capability the camera can serve concurrently.
@@ -281,7 +306,7 @@ describe("snapshotPolicy", () => {
         it("reports nothing when the camera advertises no capabilities", () => {
             expect(selectSnapshotCapabilities([], { encodersExhausted: false })).to.deep.equal({
                 capabilities: [],
-                bestWithFreeEncoder: undefined,
+                bestWithinCallerBounds: undefined,
             });
         });
     });

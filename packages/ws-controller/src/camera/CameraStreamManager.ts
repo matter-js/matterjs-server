@@ -1811,7 +1811,7 @@ export class CameraStreamManager {
                     });
                 }
                 const candidates = selection.capabilities;
-                const bestWithFreeEncoder = selection.bestWithFreeEncoder;
+                const bestWithinCallerBounds = selection.bestWithinCallerBounds;
                 const best = candidates[0];
                 if (best === undefined) {
                     // Every narrowing step reports its own dimension above, so the list can only be empty
@@ -1838,7 +1838,7 @@ export class CameraStreamManager {
                     if (captured !== undefined) {
                         return {
                             ...captured,
-                            downgraded: isDowngradeFrom(captured.resolution, bestWithFreeEncoder),
+                            downgraded: isDowngradeFrom(captured.resolution, bestWithinCallerBounds),
                             snapshotStreamId: adopted.snapshotStreamId,
                         };
                     }
@@ -1916,7 +1916,7 @@ export class CameraStreamManager {
                 });
                 return {
                     ...captured,
-                    downgraded: isDowngradeFrom(captured.resolution, bestWithFreeEncoder),
+                    downgraded: isDowngradeFrom(captured.resolution, bestWithinCallerBounds),
                     snapshotStreamId,
                 };
             }),

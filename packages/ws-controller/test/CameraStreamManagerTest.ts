@@ -14,7 +14,7 @@ import {
     preferredVideoCodec,
     UNREPORTED_LEASE_GRACE_MS,
 } from "../src/camera/CameraStreamManager.js";
-import type { AudioEnvelope, DeviceWebRtcSession, VideoEnvelope } from "../src/camera/cameraTypes.js";
+import type { AudioEnvelope, DeviceWebRtcSession, Resolution, VideoEnvelope } from "../src/camera/cameraTypes.js";
 import { deviceStatusOf } from "../src/camera/deviceStatus.js";
 import { videoCodecLimits } from "../src/camera/sdpConstraints.js";
 import type { SdpVideoConstraints } from "../src/camera/sdpConstraints.js";
@@ -3139,6 +3139,53 @@ describe("CameraStreamManager", () => {
                 thrown = error;
             }
             expect((thrown as { code: number }).code).to.equal(UNSUPPORTED);
+        });
+
+        it("tries an encoder-using capability once the device refuses every encoder-free one", async () => {
+            // A live stream holds the camera's only encoder, so the encoder-free 640x480 capability
+            // is preferred. The device refuses it anyway — the reference count this server reads is
+            // subscription-backed and lags — and the 1920x1080 capability the caller's bounds allow
+            // is what is left. Narrowing the ladder to the encoder-free entries failed the call here.
+            const streaming: CameraState = {
+                ...STATE,
+                allocatedVideoStreams: [
+                    {
+                        videoStreamId: 1,
+                        streamUsage: LIVE_VIEW,
+                        videoCodec: H265,
+                        minResolution: { width: 640, height: 360 },
+                        maxResolution: { width: 1920, height: 1080 },
+                        minFrameRate: 1,
+                        maxFrameRate: 30,
+                        minBitRate: 800000,
+                        maxBitRate: 4000000,
+                        referenceCount: 1,
+                    },
+                ],
+            };
+            const attempted = new Array<Resolution>();
+            const { manager } = managerWith(streaming, async invoke => {
+                if (invoke.command === "snapshotStreamAllocate") {
+                    const fields = invoke.fields as { minResolution: Resolution };
+                    attempted.push(fields.minResolution);
+                    if (attempted.length === 1) throw snapshotStatusError(Status.DynamicConstraintError);
+                    return { snapshotStreamId: 3 };
+                }
+                if (invoke.command === "captureSnapshot") {
+                    return { data: new Uint8Array([1]), imageCodec: 0, resolution: { width: 1920, height: 1080 } };
+                }
+                return undefined;
+            });
+            const result = await manager.snapshot({ nodeId: NODE, endpointId: ENDPOINT });
+            expect(attempted).to.deep.equal([
+                { width: 640, height: 480 },
+                { width: 1920, height: 1080 },
+            ]);
+            expect(result.resolution).to.deep.equal({ width: 1920, height: 1080 });
+            expect(result.snapshotStreamId).to.equal(3);
+            // 1920x1080 is the largest the caller's own bounds allowed, so reaching it through the
+            // encoder rung is not a downgrade.
+            expect(result.downgraded).to.equal(false);
         });
 
         it("keeps a capability that needs no hardware encoder while a video stream is live", async () => {

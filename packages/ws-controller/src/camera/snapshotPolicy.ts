@@ -73,12 +73,13 @@ export function encodersExhausted(args: {
 /**
  * The capabilities to try, best first, or which narrowing step left none.
  *
- * `bestWithFreeEncoder` is the capability the caller's own bounds allow at its largest, before the
- * encoder preference narrows anything, so a caller can be told whether a live stream cost it picture
- * size. It is undefined only when the camera advertises no snapshot capability at all.
+ * `bestWithinCallerBounds` is the largest capability the caller's own bounds allow, whatever the
+ * encoder preference then does with the order, so a caller can be told whether it was served a
+ * smaller frame than it asked for. It is undefined only when the camera advertises no snapshot
+ * capability at all.
  */
 export type SnapshotSelection =
-    | { readonly capabilities: SnapshotCapability[]; readonly bestWithFreeEncoder: SnapshotCapability | undefined }
+    | { readonly capabilities: SnapshotCapability[]; readonly bestWithinCallerBounds: SnapshotCapability | undefined }
     | { readonly unsatisfiable: "codec" | "bounds" };
 
 /**
@@ -88,8 +89,8 @@ export type SnapshotSelection =
  * allocated for a range and the device picks a size inside it, so the stream's ceiling would report
  * a size the caller may not have been given.
  */
-export function isDowngradeFrom(chosen: Resolution, bestWithFreeEncoder: SnapshotCapability | undefined): boolean {
-    return bestWithFreeEncoder !== undefined && pixels(chosen) < pixels(bestWithFreeEncoder.resolution);
+export function isDowngradeFrom(chosen: Resolution, best: SnapshotCapability | undefined): boolean {
+    return best !== undefined && pixels(chosen) < pixels(best.resolution);
 }
 
 /**
@@ -135,9 +136,12 @@ export function findAdoptableSnapshotStream(
  *
  * The caller's codec and resolution ceiling are hard and are applied first: a ceiling that excludes
  * every capability reports `unsatisfiable` rather than handing back a snapshot larger than the caller
- * declared it can handle. The encoder preference runs last and is the one step that may be given up,
- * so wanting an encoder-free capability can never turn a request the caller's own bounds allow into a
- * failure.
+ * declared it can handle. The encoder preference runs last and is a stable partition, not a filter:
+ * with every encoder taken the encoder-free capabilities come first and the encoder-using ones follow
+ * them. Removing the latter ended the ladder at the last encoder-free rung, so a device that refused
+ * all of those failed the call while capabilities the caller's own bounds allowed had never been
+ * tried — and the device is the arbiter of whether an encoder is really free, since
+ * `encodersExhausted` reads a subscription-backed view that lags.
  */
 export function selectSnapshotCapabilities(
     capabilities: SnapshotCapability[],
@@ -162,10 +166,11 @@ export function selectSnapshotCapabilities(
     const largestFirst = (list: SnapshotCapability[]): SnapshotCapability[] =>
         [...list].sort((a, b) => pixels(b.resolution) - pixels(a.resolution));
     const preferred = largestFirst(eligible);
-    const bestWithFreeEncoder = preferred[0];
+    const bestWithinCallerBounds = preferred[0];
     if (options.encodersExhausted) {
-        const encoderFree = eligible.filter(capability => !usesHardwareEncoder(capability));
-        if (encoderFree.length > 0) return { capabilities: largestFirst(encoderFree), bestWithFreeEncoder };
+        const encoderFree = preferred.filter(capability => !usesHardwareEncoder(capability));
+        const encoderUsing = preferred.filter(capability => usesHardwareEncoder(capability));
+        return { capabilities: [...encoderFree, ...encoderUsing], bestWithinCallerBounds };
     }
-    return { capabilities: preferred, bestWithFreeEncoder };
+    return { capabilities: preferred, bestWithinCallerBounds };
 }
