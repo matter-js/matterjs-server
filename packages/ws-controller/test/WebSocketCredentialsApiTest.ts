@@ -63,6 +63,18 @@ function nextFrame(ws: WebSocket, what: string, wanted: (msg: WireFrame) => bool
     });
 }
 
+/** The whole frame, sent as written, so a message that states no `args` at all can be tested. */
+async function answerTo(h: TestHarness, frame: Record<string, unknown>): Promise<WireFrame> {
+    const ws = await h.openClient();
+    try {
+        const answer = nextFrame(ws, "response", msg => msg.message_id === frame.message_id);
+        ws.send(JSON.stringify(frame));
+        return await answer;
+    } finally {
+        ws.close();
+    }
+}
+
 type AnswerOutcome = { ok: true; frame: WireFrame } | { ok: false; error: Error };
 
 interface WireFrame {
@@ -132,6 +144,9 @@ function makeStubController(
         },
     };
 
+    /** `getAllVendors` answers a map of vendor id to the DCL entry, which the handler iterates. */
+    const stubVendors = new Map([[4631, { vendorName: "Test Vendor" }]]);
+
     const stubDiagnostics = {
         events: { batchUpdated: new Observable() },
         // Model a disabled / nothing-cached service: single-network fetch yields undefined.
@@ -162,6 +177,9 @@ function makeStubController(
     };
 
     return {
+        async getAllVendors() {
+            return stubVendors;
+        },
         get commandHandler() {
             return stubCommandHandler as unknown as InstanceType<
                 typeof import("../src/controller/ControllerCommandHandler.js").ControllerCommandHandler
@@ -1080,25 +1098,19 @@ describe("WebSocket camera command arguments", () => {
         "send_webrtc_provider_command",
     ] as const;
 
-    /** The whole frame, sent as written, so a message that states no `args` at all can be tested. */
-    async function answerTo(h: TestHarness, frame: Record<string, unknown>): Promise<WireFrame> {
-        const ws = await h.openClient();
-        try {
-            const answer = nextFrame(ws, "response", msg => msg.message_id === frame.message_id);
-            ws.send(JSON.stringify(frame));
-            return await answer;
-        } finally {
-            ws.close();
-        }
-    }
-
     for (const command of CAMERA_COMMANDS) {
+        // A missing or null `args` reaches the command as the empty argument set the dispatch
+        // substitutes, so what refuses it is the command's own required argument, still naming it.
+        const missingArgument =
+            command === "send_webrtc_provider_command" ? "requires command_name" : "numeric or bigint node_id";
+
         it(`refuses ${command} with error 8 when the message states no args`, async () => {
             const h = await createHarness();
             try {
                 const answer = await answerTo(h, { message_id: "no-args", command });
                 expect(answer.error_code).to.equal(8);
                 expect(answer.details).to.contain(command);
+                expect(answer.details).to.contain(missingArgument);
             } finally {
                 await h.close();
             }
@@ -1110,6 +1122,7 @@ describe("WebSocket camera command arguments", () => {
                 const answer = await answerTo(h, { message_id: "null-args", command, args: null });
                 expect(answer.error_code).to.equal(8);
                 expect(answer.details).to.contain(command);
+                expect(answer.details).to.contain(missingArgument);
             } finally {
                 await h.close();
             }
@@ -1129,4 +1142,133 @@ describe("WebSocket camera command arguments", () => {
             }
         });
     }
+});
+
+describe("WebSocket generic command arguments", () => {
+    // set_thread_dataset stands for every generic command that reads a required argument: it refuses
+    // its own missing argument with error 8, and reaches no device before it does.
+    const WITH_REQUIRED_ARGUMENT = "set_thread_dataset";
+
+    for (const [what, args] of [
+        ["states no args", undefined],
+        ["states args as null", null],
+    ] as const) {
+        it(`answers ${WITH_REQUIRED_ARGUMENT} that ${what} with the argument's own error 8`, async () => {
+            const h = await createHarness();
+            try {
+                const answer = await answerTo(h, {
+                    message_id: what,
+                    command: WITH_REQUIRED_ARGUMENT,
+                    ...(args === undefined ? {} : { args }),
+                });
+                expect(answer.error_code).to.equal(8);
+                // The argument's own refusal, not the frame's: a missing `args` is an empty argument
+                // set, so the command answers for the argument it did not get.
+                expect(answer.details).to.contain("set_thread_dataset requires dataset");
+            } finally {
+                await h.close();
+            }
+        });
+    }
+
+    for (const [what, args] of [
+        ["a string", "dataset=00"],
+        ["a number", 42],
+        ["an array", ["00"]],
+    ] as const) {
+        it(`refuses ${WITH_REQUIRED_ARGUMENT} with error 8 when args is ${what}`, async () => {
+            const h = await createHarness();
+            try {
+                const answer = await answerTo(h, { message_id: what, command: WITH_REQUIRED_ARGUMENT, args });
+                expect(answer.error_code).to.equal(8);
+                expect(answer.details).to.contain(WITH_REQUIRED_ARGUMENT);
+                expect(answer.details).to.contain("object of arguments");
+            } finally {
+                await h.close();
+            }
+        });
+    }
+
+    // set_loglevel takes only optional arguments and reads them by destructuring, which is what a
+    // frame stating no args used to throw on.
+    it("answers a command whose arguments are all optional and whose message states none", async () => {
+        const h = await createHarness();
+        try {
+            const before = await answerTo(h, { message_id: "levels-before", command: "get_loglevel" });
+            const answer = await answerTo(h, { message_id: "no-args-needed", command: "set_loglevel" });
+            expect(answer.error_code).to.equal(undefined);
+            // An empty argument set states no level, so both levels are left as they were.
+            expect(answer.result).to.deep.equal(before.result);
+        } finally {
+            await h.close();
+        }
+    });
+
+    // The empty argument set must not reach a default that gets written: set_default_fabric_label
+    // would otherwise rename the fabric, persist it and claim the label for this connection.
+    it("refuses a command whose required argument would otherwise be defaulted and written", async () => {
+        const h = await createHarness();
+        try {
+            const labelBefore = h.config.fabricLabel;
+            const answer = await answerTo(h, { message_id: "no-label", command: "set_default_fabric_label" });
+            expect(answer.error_code).to.equal(8);
+            expect(answer.details).to.contain("set_default_fabric_label requires label");
+            expect(h.config.fabricLabel).to.equal(labelBefore);
+            // The label is still free to claim, which a refused request must not have taken.
+            const claimed = await answerTo(h, {
+                message_id: "with-label",
+                command: "set_default_fabric_label",
+                args: { label: "Kitchen" },
+            });
+            expect(claimed.error_code).to.equal(undefined);
+            expect(h.config.fabricLabel).to.equal("Kitchen");
+        } finally {
+            await h.close();
+        }
+    });
+
+    // get_vendor_names is the other command that destructured `args` with no guard of its own.
+    it("answers get_vendor_names when the message states no args", async () => {
+        const h = await createHarness();
+        try {
+            const answer = await answerTo(h, { message_id: "vendors-no-args", command: "get_vendor_names" });
+            expect(answer.error_code).to.equal(undefined);
+            expect(answer.result).to.be.an("object");
+        } finally {
+            await h.close();
+        }
+    });
+
+    // The shape is checked before the command is looked up — there is no runtime list of commands to
+    // look one up in — so a frame wrong in both ways answers 8, not 9.
+    it("answers 8 for an unknown command whose args is not an object", async () => {
+        const h = await createHarness();
+        try {
+            const answer = await answerTo(h, { message_id: "unknown-bad-args", command: "no_such_command", args: 1 });
+            expect(answer.error_code).to.equal(8);
+        } finally {
+            await h.close();
+        }
+    });
+
+    it("answers 9 for an unknown command whose args is an object", async () => {
+        const h = await createHarness();
+        try {
+            const answer = await answerTo(h, { message_id: "unknown-ok-args", command: "no_such_command", args: {} });
+            expect(answer.error_code).to.equal(9);
+        } finally {
+            await h.close();
+        }
+    });
+
+    it("answers start_listening when the message states no args", async () => {
+        const h = await createHarness();
+        try {
+            const answer = await answerTo(h, { message_id: "listen-no-args", command: "start_listening" });
+            expect(answer.error_code).to.equal(undefined);
+            expect(answer.result).to.be.an("array");
+        } finally {
+            await h.close();
+        }
+    });
 });

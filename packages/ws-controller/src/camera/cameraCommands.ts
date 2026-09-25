@@ -123,10 +123,12 @@ interface ParsedCameraCommand {
  * keys are checked. The keys of an object nested under one — a `video` / `audio` hint, an
  * `ice_servers` entry, a resolution — are checked where that object is parsed.
  *
- * A message whose `args` is missing, null or not an object is refused here rather than reaching the
- * key check, whose `Object.keys` throws a `TypeError` on the first two and reads a string's indices
- * as argument keys on the third — a throw the WebSocket route reports as error 0. The caller's own
- * fields are handed back from this call, so no command can read one before that refusal.
+ * An `args` that is not an object is refused here rather than reaching the key check, whose
+ * `Object.keys` reads a string's indices as argument keys — a shape the WebSocket route used to
+ * answer as error 0. The caller's own fields are handed back from this call, so no command can read
+ * one before that refusal. A missing or null `args` arrives as the empty object the WebSocket
+ * dispatch substitutes for it, and is refused by the target check below, which names the same
+ * command.
  *
  * The command is named rather than its key set passed, so the set and the name in the refusal cannot
  * be paired wrongly. The set is the command's, not this function's: `node_id` and `endpoint_id` are
@@ -136,15 +138,16 @@ interface ParsedCameraCommand {
 function parseCameraCommand(args: unknown, command: CameraCommandName): ParsedCameraCommand {
     const fields = requireArgumentObject(args, command);
     rejectUnknownKeys(fields, CAMERA_ARG_KEYS[command], `${command} argument`);
-    return { target: parseTargetIds(fields, "Camera command"), fields };
+    return { target: parseTargetIds(fields, command), fields };
 }
 
 /**
  * The command's arguments as the object they have to be.
  *
- * `Object.keys` throws a `TypeError` for a missing or null `args` and reads a string's indices as
- * argument keys, and the WebSocket route reports a throw that is not a `ServerError` as error 0. So
- * every route that walks a client's argument keys asks this first.
+ * `Object.keys` reads a string's indices as argument keys and throws a `TypeError` for a missing or
+ * null one, and the WebSocket route reports a throw that is not a `ServerError` as error 0. So every
+ * route that walks a client's argument keys asks this first. The WebSocket dispatch asks it for every
+ * command, which is what leaves only the first case for a camera command to meet.
  */
 export function requireArgumentObject(args: unknown, command: string): Record<string, unknown> {
     if (!isRecord(args)) {

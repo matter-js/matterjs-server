@@ -254,7 +254,9 @@ A name is the same string in both directions, but a reported key is not always a
 | `limits.supported_stream_usages` | `camera_start_stream`'s `stream_usage`, any name but `Internal` |
 | `snapshot.capabilities[].image_codec` | `camera_snapshot`'s `codec` |
 
-Everything else the command reports is a fact about the camera rather than a value to send back. `audio.bit_depths` has no hint: `AudioStreamAllocate` takes one bit depth and the server picks it from that list. A key a hint object does not take is refused with `INVALID_ARGUMENTS` instead of being ignored, so a bound can never be dropped without the caller hearing about it. All five camera commands refuse an argument key they do not know the same way, naming the key and listing the ones they take, and all five require `args` to be an object at all: a message that leaves it out, sends `null` or sends anything else is refused with `INVALID_ARGUMENTS` naming the command. `send_webrtc_provider_command` answers the same way.
+Everything else the command reports is a fact about the camera rather than a value to send back. `audio.bit_depths` has no hint: `AudioStreamAllocate` takes one bit depth and the server picks it from that list. A key a hint object does not take is refused with `INVALID_ARGUMENTS` instead of being ignored, so a bound can never be dropped without the caller hearing about it. All five camera commands refuse an argument key they do not know the same way, naming the key and listing the ones they take. `send_webrtc_provider_command` answers the same way. That is a deliberate difference from the Python Matter Server, which ignores an argument key it does not know; it is confined to commands that server does not have.
+
+Every command, camera or not, requires `args` to be a JSON object when it states one: a string, a number, a boolean or an array is refused with `INVALID_ARGUMENTS` naming the command. Leaving `args` out, or sending `null`, means an empty argument set — a command whose arguments are all optional answers it, and one with a required argument refuses it the way it refuses that argument being absent.
 
 ### camera_get_capabilities
 
@@ -398,6 +400,7 @@ A payload key is matched to a field with case and the separators between words i
 The generic `device_command` route is not covered by this, and is not an alternative way to start a session. It serves every cluster and takes each payload in that cluster's own field names, so an ICE server sent that way uses the cluster's `URLs` spelling and a candidate its `SDPMLineIndex` — and it is a bare invoke: no originating endpoint is filled in, no singular-versus-list stream id is reconciled, and the session is not registered with the local WebRTC requestor, so no `webrtc_callback` can be routed for it.
 
 A `send_webrtc_provider_command` payload for `ProvideOffer` or `SolicitOffer` states the session's streams in one form, never both: the `videoStreams` / `audioStreams` lists of cluster revision 2, or the `videoStreamId` / `audioStreamId` they deprecate. A camera fails a command carrying both with `INVALID_COMMAND`, and the test spans both media kinds, so a payload stating both is refused with `INVALID_ARGUMENTS` rather than having one form dropped — dropping it would turn `{ videoStreams: [5], audioStreamId: null }`, which asks for auto-selected audio, into a video-only session. A list is sent as stated to a camera at cluster revision 2. To one below it, or one whose revision this server has not read yet, a single-entry list is converted to the singular id and any other length is refused rather than cut down; the refusal says which of the two cases it is. An empty list is refused at every revision, because the field takes 1 to 16 entries.
+
 
 ## JSON Utilities
 

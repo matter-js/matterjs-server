@@ -31,6 +31,12 @@ All commands follow this request format:
 }
 ```
 
+`args` may be left out, or sent as `null`, and means an empty argument set either way: a command whose
+arguments are all optional answers such a request, and a command with a required argument refuses it
+the way it refuses that argument being absent. An `args` that is anything else than a JSON object — a
+string, a number, a boolean or an array — is refused with error 8 (`InvalidArguments`) naming the
+command.
+
 Successful responses:
 ```json
 {
@@ -1379,6 +1385,23 @@ These commands are available only in the Matter.js server and not in the Python 
 
 ### Behavioral Differences
 
-- **Fabric Label**: `set_default_fabric_label` with null/empty resets to "Home" instead of clearing
+- **Fabric Label**: `set_default_fabric_label` with null or an empty label resets to "HomeAssistant" instead of clearing. The argument itself is required: a message that states no `label` is refused with error 8 rather than resetting
 - **Attribute Subscriptions**: All attributes are subscribed automatically; the `attribute_subscriptions` field is not used
 - **Test Nodes**: Use high bigint range to prevent collision with real Matter node IDs
+- **Malformed `args`**: An `args` that is not a JSON object is refused with error 8. The Python Matter
+  Server fails while decoding the frame instead, with an error its message handler does not catch, and
+  closes the connection without answering the request
+- **Unknown argument keys**: The five `camera_*` commands and `send_webrtc_provider_command` refuse an
+  argument key they do not know with error 8, listing the keys they accept. The Python Matter Server
+  ignores unknown keys (`parse_arguments` is called with `strict=False`). The difference is confined to
+  commands the Python server does not have, and it is deliberate: a request whose argument was ignored
+  gets a result nobody asked for
+- **A missing required argument**: The Python server converts each argument against the handler's type
+  hints, so a missing or mistyped one is error 8 for every command. Here each command checks its own
+  arguments: the `camera_*` commands, `send_webrtc_provider_command`, `set_thread_dataset`,
+  `set_wifi_credentials` and `set_default_fabric_label` answer error 8, while a command that hands
+  `node_id` straight to the Matter conversion — `get_node`, `interview_node`, `ping_node` and the
+  other node-targeted ones — reports a missing or non-numeric one as error 0 (`UnknownError`)
+- **Commands that read no arguments**: `server_info`, `get_all_credentials`, `get_thread_border_routers`,
+  `discover`, `get_loglevel` and `initiate_ota_upload` still require `args` to be an object when the
+  message states one, although they read nothing from it

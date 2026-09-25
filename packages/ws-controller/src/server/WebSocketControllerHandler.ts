@@ -138,6 +138,25 @@ const skipMessageContentInLogFor = [
     "open_commissioning_window",
 ];
 
+/**
+ * The arguments of one request, as the object every handler below reads by destructuring.
+ *
+ * A frame that states no `args` at all, or states `null`, carries an empty argument set: the Python
+ * Matter Server reads it that way (`parse_arguments` substitutes `{}`,
+ * `matter_server/common/helpers/api.py:53`), so a command whose arguments are all optional answers
+ * it, and one with a required argument refuses it as that argument's own error 8. Destructuring
+ * `undefined` instead throws a `TypeError` this route can only report as error 0, which is why
+ * handlers had begun writing `args ?? {}` and `args?.x` one at a time.
+ *
+ * Anything else that is not an object is refused with error 8. The reference implementation answers
+ * nothing at all there: a non-dict `args` fails while its `CommandMessage` is decoded, with an
+ * `AttributeError` (`common/helpers/util.py:156`) that its per-message `except ValueError`
+ * (`server/client_handler.py:114`) does not catch, and the connection is closed.
+ */
+function commandArguments(args: unknown, command: string): Record<string, unknown> {
+    return args === undefined || args === null ? {} : requireArgumentObject(args, command);
+}
+
 /** Normalize a requested fabric label: matter.js requires a non-empty label of 1-32 chars. */
 function normalizeFabricLabel(label: string | null): string {
     const trimmed = label?.trim();
@@ -727,11 +746,15 @@ export class WebSocketControllerHandler implements WebServerHandler {
             const request = parseBigIntAwareJson(data) as { message_id: string; command: string; args: any };
             // Deferred: matter.js calls this only at DEBUG, keeping redaction off the hot path.
             logger.debug(`[${connId}] WebSocket request`, () => redactSensitiveCommandFields(request));
-            const { args } = request;
+            let args = request.args;
             messageId = request.message_id;
             command = request.command;
-            // request is an unvalidated cast, so a frame can carry no command at all.
-            if (command !== undefined) optInToEventsFor(command);
+            // request is an unvalidated cast, so a frame can carry no command, or a command that is
+            // not a string; either falls to the switch's default and is answered as an unknown one.
+            if (typeof command === "string") {
+                optInToEventsFor(command);
+                args = commandArguments(args, command);
+            }
             let result: ResponseOf<any>;
             let enableListeners: boolean | undefined = undefined;
             switch (command) {
@@ -982,6 +1005,12 @@ export class WebSocketControllerHandler implements WebServerHandler {
         connection: WebSocketConnection,
     ): Promise<ResponseOf<"set_default_fabric_label">> {
         const { label } = args;
+        // `null` is the documented reset; an absent label is not a request to rename the fabric, and
+        // the empty argument set a frame without `args` carries would otherwise reach the default
+        // label and write it, claiming the label for this connection for the rest of the session.
+        if (label !== null && typeof label !== "string") {
+            throw ServerError.invalidArguments("set_default_fabric_label requires label to be a string or null");
+        }
         const effectiveLabel = normalizeFabricLabel(label);
         if (this.#config.fabricLabelLocked) {
             if (this.#config.fabricLabel !== effectiveLabel) {
@@ -1152,7 +1181,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
     }
 
     #handleGetNodes(args: ArgsOf<"get_nodes">): ResponseOf<"get_nodes"> {
-        const { only_available = false } = args ?? {};
+        const { only_available = false } = args;
         const nodeDetails = new Array<MatterNode>();
         // Include real nodes
         for (const node of this.#commandHandler.getNodeIds()) {
@@ -1346,6 +1375,11 @@ export class WebSocketControllerHandler implements WebServerHandler {
         const argsObject = requireArgumentObject(args, "send_webrtc_provider_command");
         rejectUnknownKeys(argsObject, SEND_PROVIDER_ARG_KEYS, "send_webrtc_provider_command argument");
         const { command_name, payload } = argsObject;
+        if (command_name === undefined) {
+            throw ServerError.invalidArguments(
+                `send_webrtc_provider_command requires command_name, one of ${PROVIDER_COMMAND_NAMES.join(", ")}`,
+            );
+        }
         if (typeof command_name !== "string" || !isProviderCommandName(command_name)) {
             throw ServerError.invalidArguments(
                 `Unsupported WebRTC provider command "${String(command_name)}"; expected one of ${PROVIDER_COMMAND_NAMES.join(", ")}`,
@@ -1508,6 +1542,9 @@ export class WebSocketControllerHandler implements WebServerHandler {
 
     async #handleSetThreadDataset(args: ArgsOf<"set_thread_dataset">): Promise<ResponseOf<"set_thread_dataset">> {
         const { dataset, id } = args;
+        if (typeof dataset !== "string") {
+            throw ServerError.invalidArguments("set_thread_dataset requires dataset to be a hex string");
+        }
         this.#assertValidDatasetHex(dataset);
         const credId = id ?? ConfigStorage.DEFAULT_CREDENTIAL_ID;
         const previousDataset = this.#config.getThreadCredentials(credId)?.dataset;
@@ -1527,8 +1564,8 @@ export class WebSocketControllerHandler implements WebServerHandler {
     async #handleGetThreadDiagnostics(
         args: ArgsOf<"get_thread_diagnostics">,
     ): Promise<ResponseOf<"get_thread_diagnostics">> {
-        if (args?.ext_pan_id === undefined) {
-            this.#controller.threadDiagnostics.refreshAllKnown({ force: args?.force });
+        if (args.ext_pan_id === undefined) {
+            this.#controller.threadDiagnostics.refreshAllKnown({ force: args.force });
             return this.#controller.threadDiagnostics.listCached().map(serializeBatch);
         }
         if (!/^[0-9a-fA-F]{16}$/.test(args.ext_pan_id)) {
@@ -1546,7 +1583,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
         // Imported test nodes are served by get_nodes, so the derived graph must include them
         // too. Attached here (not at construction) to keep the service lazily instantiated.
         this.#controller.networkTopology.addNodeSource(this.#testNodeSource);
-        if (args?.refresh === true) {
+        if (args.refresh === true) {
             return this.#controller.networkTopology.refresh();
         }
         return this.#controller.networkTopology.getTopology();
@@ -1555,7 +1592,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
     async #handleRemoveWifiCredentials(
         args: ArgsOf<"remove_wifi_credentials">,
     ): Promise<ResponseOf<"remove_wifi_credentials">> {
-        await this.#config.removeWifiCredentials(args?.id ?? ConfigStorage.DEFAULT_CREDENTIAL_ID);
+        await this.#config.removeWifiCredentials(args.id ?? ConfigStorage.DEFAULT_CREDENTIAL_ID);
         await this.#safeBroadcastServerInfo();
         return {};
     }
@@ -1563,7 +1600,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
     async #handleRemoveThreadDataset(
         args: ArgsOf<"remove_thread_dataset">,
     ): Promise<ResponseOf<"remove_thread_dataset">> {
-        const credId = args?.id ?? ConfigStorage.DEFAULT_CREDENTIAL_ID;
+        const credId = args.id ?? ConfigStorage.DEFAULT_CREDENTIAL_ID;
         const removed = this.#config.getThreadCredentials(credId);
         await this.#config.removeThreadCredentials(credId);
         this.#unregisterThreadIfUnreferenced(removed?.dataset);
