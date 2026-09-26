@@ -376,6 +376,14 @@ describe("sdpConstraints", () => {
             expect(limits.maxPixelsPerSecond).to.equal(108000 * 256);
         });
 
+        it("leaves the level as the ceiling when an fmtp value is not whole digits", () => {
+            const limits = videoCodecLimits(
+                parseSdpVideoConstraints(offerWithFmtp("H264", "profile-level-id=42e01f;max-fs=8160px")),
+                H264,
+            );
+            expect(limits.maxPixels).to.equal(3600 * 256);
+        });
+
         it("reads constraint_set3_flag on a Baseline level_idc 11 as level 1b", () => {
             // RFC 6184 §8.1: profile_idc 66/77/88 with level_idc 11 and constraint_set3_flag set is
             // level 1b, whose MaxBR is half of level 1.1's. 0x4d = Main, 0x50 sets constraint_set3.
@@ -657,12 +665,23 @@ describe("sdpConstraints", () => {
         });
 
         it("refuses a profile-level-id that is not three bytes of base16", () => {
-            const sdp = parseSdpVideoConstraints(offerWithFmtp("H264", "profile-level-id=42e0"));
-            expect(decodableVideoCodecs(sdp)).to.deep.equal({ decodable: [], unreadable: ["H264"] });
+            const short = parseSdpVideoConstraints(offerWithFmtp("H264", "profile-level-id=42e0"));
+            expect(decodableVideoCodecs(short)).to.deep.equal({ decodable: [], unreadable: ["H264"] });
+            // A fourth byte leaves the first three readable, so the length anchor is the only thing
+            // refusing this one: its third byte is 0x1f, which names level 3.1.
+            const long = parseSdpVideoConstraints(offerWithFmtp("H264", "profile-level-id=42e01f0"));
+            expect(decodableVideoCodecs(long)).to.deep.equal({ decodable: [], unreadable: ["H264"] });
         });
 
         it("refuses an H.265 level-id outside the level tables", () => {
             const sdp = parseSdpVideoConstraints(offerWithFmtp("H265", "level-id=99"));
+            expect(decodableVideoCodecs(sdp)).to.deep.equal({ decodable: [], unreadable: ["H265"] });
+        });
+
+        it("refuses a level-id that is not decimal digits, where Number would still read a level", () => {
+            // Number("93.0") is 93, a row of Table A.8, so the digit anchor is the only thing that
+            // refuses a level-id no `general_level_idc` can spell.
+            const sdp = parseSdpVideoConstraints(offerWithFmtp("H265", "level-id=93.0"));
             expect(decodableVideoCodecs(sdp)).to.deep.equal({ decodable: [], unreadable: ["H265"] });
         });
 
