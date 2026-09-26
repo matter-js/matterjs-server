@@ -17,6 +17,12 @@ describe("connection identity", () => {
         expect(new Set(tags).size).to.equal(0x10000);
     });
 
+    it("writes every log tag as four hex digits, so the column stays scannable", () => {
+        const tags = new Array<string>();
+        for (let i = 0; i < PAST_LOG_TAG_WRAP; i++) tags.push(nextConnectionLogTag());
+        expect(tags.filter(tag => !/^[0-9a-f]{4}$/.test(tag))).to.deep.equal([]);
+    });
+
     it("keeps every owner id distinct across the same span", () => {
         const owners = new Set<string>();
         for (let i = 0; i < PAST_LOG_TAG_WRAP; i++) owners.add(nextConnectionOwnerId());
