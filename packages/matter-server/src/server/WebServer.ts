@@ -63,12 +63,17 @@ export class WebServer {
 
     #startServer(server: HttpServer, host: string | undefined): Promise<void> {
         const displayHost = host ?? "0.0.0.0";
+        const isUnixSocket = host !== undefined && host.startsWith("/");
 
         return new Promise<void>((resolve, reject) => {
             let resolvedOrErrored = false;
 
-            server.listen({ host, port: this.#port }, () => {
-                logger.notice(`Webserver listening on http://${displayHost}:${this.#port}`);
+            server.listen(isUnixSocket ? { path: host } : { host, port: this.#port }, () => {
+                logger.notice(
+                    isUnixSocket
+                        ? `Webserver listening on unix socket ${host}`
+                        : `Webserver listening on http://${displayHost}:${this.#port}`,
+                );
                 if (!resolvedOrErrored) {
                     resolvedOrErrored = true;
                     resolve();

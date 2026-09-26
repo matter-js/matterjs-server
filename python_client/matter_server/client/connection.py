@@ -8,7 +8,13 @@ import pprint
 from typing import Final, cast
 from urllib.parse import urlparse, urlunparse
 
-from aiohttp import ClientSession, ClientWebSocketResponse, WSMsgType, client_exceptions
+from aiohttp import (
+    ClientSession,
+    ClientWebSocketResponse,
+    UnixConnector,
+    WSMsgType,
+    client_exceptions,
+)
 
 from matter_server.common.const import SCHEMA_VERSION
 from matter_server.common.helpers.json import json_dumps, json_loads
@@ -36,6 +42,7 @@ from .exceptions import (
 LOGGER = logging.getLogger(f"{__package__}.connection")
 VERBOSE_LOGGER = os.environ.get("MATTER_VERBOSE_LOGGING")
 SUB_WILDCARD: Final = "*"
+UNIX_PREFIX: Final = "unix://"
 
 
 class MatterClientConnection:
@@ -52,6 +59,7 @@ class MatterClientConnection:
         self.server_info: ServerInfoMessage | None = None
         self._aiohttp_session = aiohttp_session
         self._ws_client: ClientWebSocketResponse | None = None
+        self._unix_session: ClientSession | None = None
 
     @property
     def connected(self) -> bool:
@@ -66,8 +74,16 @@ class MatterClientConnection:
 
         LOGGER.debug("Trying to connect")
         try:
-            self._ws_client = await self._aiohttp_session.ws_connect(
-                self.ws_server_url,
+            session = self._aiohttp_session
+            url = self.ws_server_url
+            if url.startswith(UNIX_PREFIX):
+                self._unix_session = ClientSession(
+                    connector=UnixConnector(path=url[len(UNIX_PREFIX) :])
+                )
+                session = self._unix_session
+                url = "ws://localhost/ws"
+            self._ws_client = await session.ws_connect(
+                url,
                 heartbeat=55,
                 compress=15,
                 max_msg_size=0,
@@ -145,6 +161,9 @@ class MatterClientConnection:
         if self._ws_client is not None and not self._ws_client.closed:
             await self._ws_client.close()
         self._ws_client = None
+        if self._unix_session is not None:
+            await self._unix_session.close()
+            self._unix_session = None
 
     async def receive_message_or_raise(self) -> MessageType:
         """Receive (raw) message or raise."""
