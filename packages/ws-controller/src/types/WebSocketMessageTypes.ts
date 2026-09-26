@@ -23,6 +23,7 @@ export {
     type AttributeWriteResult,
     type BindingTarget,
     type CameraBoundField,
+    type CameraPrivacyMode,
     type CameraStreamIncompatibleBound,
     type CameraStreamKind,
     type CommandMessage,
@@ -53,7 +54,7 @@ export {
 // Re-export MatterNodeData as MatterNode for backward compatibility within ws-controller
 export type { MatterNodeData as MatterNode } from "@matter-server/ws-client";
 
-import type { CameraStreamIncompatibleBound, CameraStreamKind } from "@matter-server/ws-client";
+import type { CameraPrivacyMode, CameraStreamIncompatibleBound, CameraStreamKind } from "@matter-server/ws-client";
 
 /**
  * Error codes matching Python Matter Server for API compatibility.
@@ -96,6 +97,8 @@ export enum ServerErrorCode {
     CameraStreamInUse = 104,
     /** OHF extension: endpoint does not expose the clusters camera streaming needs. */
     CameraNotSupported = 106,
+    /** OHF extension: the camera's privacy switch forbids the session or the snapshot. */
+    CameraPrivacyMode = 107,
 }
 
 export interface CameraStreamIncompatibleDetail {
@@ -113,6 +116,14 @@ export interface CameraStreamIncompatibleDetail {
      * tracks left out) or about a command that resolves no track, such as `camera_snapshot`.
      */
     track?: "video" | "audio";
+    /**
+     * The AVSM feature the camera's `FeatureMap` does not advertise, when that is what refused, named
+     * as `camera_get_capabilities` reports the advertised ones.
+     *
+     * It tells the two `capability` cases apart that no other field does: a camera that cannot carry
+     * the track at all names the feature, while an offer that rejects the track names none.
+     */
+    feature?: string;
     /**
      * The camera's own codec names, empty when the camera is not what refused — an offer that
      * rejects a media section, or a request that asked for no track at all. Never a statement that
@@ -161,6 +172,18 @@ export interface CameraStreamInUseDetail {
  */
 export interface CameraOccupyingStreamDetail extends CameraAllocatedStreamDetail {
     kind: CameraStreamKind;
+}
+
+/**
+ * What a client learns about a call the camera's privacy switches refused.
+ *
+ * `modes` names every switch that forbids this call, and never only the one the camera answered on:
+ * the device reports one status for all of them and the spec does not say which it tested first.
+ * `deviceStatus` is that status, always present, because only a device refusal raises this error.
+ */
+export interface CameraPrivacyModeDetail {
+    modes: CameraPrivacyMode[];
+    deviceStatus: number;
 }
 
 export interface CameraResourceExhaustedDetail {
@@ -252,6 +275,7 @@ export class ServerError extends Error {
                 message: INCOMPATIBLE_MESSAGES[detail.reason],
                 reason: detail.reason,
                 ...(detail.track === undefined ? {} : { track: detail.track }),
+                ...(detail.feature === undefined ? {} : { feature: detail.feature }),
                 device: detail.device,
                 requested: detail.requested,
                 ...(detail.bound === undefined ? {} : { bound: detail.bound }),
@@ -283,6 +307,18 @@ export class ServerError extends Error {
                 message: "Stream is in use and cannot be released",
                 stream_id: detail.streamId,
                 ...(detail.referenceCount === undefined ? {} : { reference_count: detail.referenceCount }),
+            }),
+            cause,
+        );
+    }
+
+    static cameraPrivacyMode(detail: CameraPrivacyModeDetail, cause?: Error): ServerError {
+        return new ServerError(
+            ServerErrorCode.CameraPrivacyMode,
+            JSON.stringify({
+                message: "Camera privacy mode is enabled",
+                modes: detail.modes,
+                device_status: detail.deviceStatus,
             }),
             cause,
         );

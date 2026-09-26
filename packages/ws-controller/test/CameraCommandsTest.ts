@@ -728,6 +728,8 @@ describe("cameraCommands", () => {
 
     describe("toWireCapabilities", () => {
         const EMPTY_CAPABILITIES: CameraCapabilities = {
+            features: [],
+            privacy: {},
             video: { rateDistortionPoints: [], codecs: [] },
             audio: { codecs: [], sampleRates: [], bitDepths: [] },
             snapshot: { capabilities: [] },
@@ -736,8 +738,28 @@ describe("cameraCommands", () => {
             sessions: [],
         };
 
+        it("reports each privacy switch under its own wire key", () => {
+            // Each key is read straight back by a client deciding whether the camera is off, so a key
+            // wired to the wrong switch reads as the wrong camera state.
+            const wire = toWireCapabilities({
+                ...EMPTY_CAPABILITIES,
+                features: ["Audio", "Privacy"],
+                privacy: { softRecordingModeEnabled: true, softLivestreamModeEnabled: false, hardModeOn: true },
+            });
+            expect(wire.features).to.deep.equal(["Audio", "Privacy"]);
+            expect(wire.privacy.soft_recording_mode_enabled).to.equal(true);
+            expect(wire.privacy.soft_livestream_mode_enabled).to.equal(false);
+            expect(wire.privacy.hard_mode_on).to.equal(true);
+        });
+
         it("emits snake_case keys and omits absent capabilities", () => {
             const wire = toWireCapabilities(EMPTY_CAPABILITIES);
+            // A switch the camera states nothing about is left out, not reported off: absent means
+            // there is no such switch.
+            expect(wire.privacy).to.not.have.property("hard_mode_on");
+            expect(wire.privacy).to.not.have.property("soft_livestream_mode_enabled");
+            expect(wire.privacy).to.not.have.property("soft_recording_mode_enabled");
+            expect(wire.features).to.deep.equal([]);
             expect(wire.video).to.not.have.property("sensor");
             expect(wire.video).to.have.property("rate_distortion_points");
             expect(wire.limits).to.have.property("supported_stream_usages");

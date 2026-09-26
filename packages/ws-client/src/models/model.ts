@@ -560,6 +560,36 @@ export interface CameraWebRtcSession {
 }
 
 export interface CameraCapabilitiesResult {
+    /**
+     * The AVSM features this camera advertises, spelled as the spec's Feature column spells them:
+     * `Audio`, `Video`, `Snapshot`, `Privacy`, `Speaker`, `ImageControl`, `Watermark`,
+     * `OnScreenDisplay`, `LocalStorage`, `HighDynamicRange`, `NightVision`.
+     *
+     * Read this instead of the cluster's `FeatureMap`. A name missing from a list that is present is
+     * a capability the camera does not have: an audio doorbell advertises `Audio` without `Video`,
+     * and asking it for a video track fails with error 102 naming the feature.
+     *
+     * **Absent** means the camera has not reported its feature map yet, not that it advertises
+     * nothing — at least one of `Audio`, `Video` and `Snapshot` is mandatory. The server gates
+     * nothing on such a map either: the request reaches the camera and it answers for itself.
+     */
+    features?: string[];
+    /**
+     * The camera's privacy switches, which are what a camera entity's on/off state is.
+     *
+     * A key is absent when the camera states no such switch. While any of them is on, the commands
+     * it covers fail with error 107 naming it: `hard_mode_on` blocks every session and every
+     * snapshot, `soft_livestream_mode_enabled` a session of stream usage `LiveView` and every
+     * snapshot, and `soft_recording_mode_enabled` a session of stream usage `Recording` or
+     * `Analysis`. The two soft switches are writable per §11.2.7.20 and §11.2.7.21 — this API has no
+     * command for that yet, so turn one off with `write_attribute` on the AV Stream Management
+     * cluster.
+     */
+    privacy: {
+        soft_recording_mode_enabled?: boolean;
+        soft_livestream_mode_enabled?: boolean;
+        hard_mode_on?: boolean;
+    };
     video: {
         sensor?: CameraResolution;
         min_viewport?: CameraResolution;
@@ -664,6 +694,9 @@ export const CAMERA_BOUND_FIELDS = [
 
 /** The hint key an error-102 `bound` names. @see CAMERA_BOUND_FIELDS */
 export type CameraBoundField = (typeof CAMERA_BOUND_FIELDS)[number];
+
+/** One privacy switch, as `camera_get_capabilities` reports it and error 107 names it. */
+export type CameraPrivacyMode = keyof CameraCapabilitiesResult["privacy"];
 
 /** Which track a stream belongs to, as `camera_release_stream` and error 103 spell it. */
 export type CameraStreamKind = "video" | "audio" | "snapshot";
@@ -1377,6 +1410,16 @@ export const CAMERA_RESOURCE_EXHAUSTED_ERROR_CODE = 103;
 export const CAMERA_STREAM_IN_USE_ERROR_CODE = 104;
 /** OHF extension: endpoint does not expose the clusters camera streaming needs. */
 export const CAMERA_NOT_SUPPORTED_ERROR_CODE = 106;
+/**
+ * OHF extension: the camera's privacy switch forbids the call.
+ *
+ * `camera_start_stream` and `camera_snapshot` raise it; the `details` carry
+ * `{"message": string, "modes": string[], "device_status": number}`, where `modes` names the
+ * switches from `camera_get_capabilities`'s `privacy` that forbid this call. It is a device state, not
+ * a request the client can change: no other stream usage, codec or bound makes the call succeed while
+ * the switch is on, which is why it is not error 102.
+ */
+export const CAMERA_PRIVACY_MODE_ERROR_CODE = 107;
 
 /** ICD controller-side state for a node. Note: Only available with OHF Matter Server. */
 export interface IcdStateData {

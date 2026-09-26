@@ -5,6 +5,7 @@
  */
 
 import type { EndpointNumber, NodeId } from "@matter/main";
+import type { CameraAvStreamManagementClient } from "@matter/node/behaviors/camera-av-stream-management";
 
 export type StreamKind = "video" | "audio" | "snapshot";
 
@@ -157,4 +158,32 @@ export interface ResolvedStream {
     allocatedByUs: boolean;
     /** The result does not fit the envelope the server would have allocated; set only by the last ladder rung. */
     degraded?: boolean;
+}
+
+/**
+ * The AVSM `FeatureMap` (§11.2.5) as matter.js decodes it: one boolean per feature the cluster model
+ * names.
+ *
+ * Taken from the client behaviour's own feature type rather than written out here, so a feature a
+ * spec revision adds or renames is a compile error in the code that reads it by name, the same reason
+ * {@link RawCameraAvStreamManagementState} is `Pick`ed from the real state type. `Partial`, because
+ * the value is a bitmap matter.js types as partial: a flag it has not decoded reads `undefined`, not
+ * `false`, so every read here compares against `true` rather than negating.
+ */
+export type CameraFeatures = Partial<typeof CameraAvStreamManagementClient.features>;
+
+/**
+ * The camera's privacy attributes (§11.2.7.20 to §11.2.7.22).
+ *
+ * A field is absent when the camera states nothing: the two soft modes are gated on the `PRIV`
+ * feature and `HardPrivacyModeOn` is optional on its own, so absence is "this camera has no such
+ * switch" and never "the switch is off".
+ */
+export interface CameraPrivacyState {
+    /** SoftRecordingPrivacyModeEnabled: blocks a session of stream usage Recording or Analysis. */
+    softRecordingModeEnabled?: boolean;
+    /** SoftLivestreamPrivacyModeEnabled: blocks a session of stream usage LiveView, and every snapshot. */
+    softLivestreamModeEnabled?: boolean;
+    /** HardPrivacyModeOn: the physical switch, which blocks every session and every snapshot. */
+    hardModeOn?: boolean;
 }

@@ -468,7 +468,18 @@ export function parseReleaseStreamArgs(args: unknown): ParsedReleaseStreamArgs {
 }
 
 export function toWireCapabilities(capabilities: CameraCapabilities): CameraCapabilitiesResult {
+    const privacy = capabilities.privacy;
     return {
+        ...(capabilities.features === undefined ? {} : { features: capabilities.features }),
+        privacy: {
+            ...(privacy.softRecordingModeEnabled === undefined
+                ? {}
+                : { soft_recording_mode_enabled: privacy.softRecordingModeEnabled }),
+            ...(privacy.softLivestreamModeEnabled === undefined
+                ? {}
+                : { soft_livestream_mode_enabled: privacy.softLivestreamModeEnabled }),
+            ...(privacy.hardModeOn === undefined ? {} : { hard_mode_on: privacy.hardModeOn }),
+        },
         video: {
             ...(capabilities.video.sensor === undefined ? {} : { sensor: capabilities.video.sensor }),
             ...(capabilities.video.minViewport === undefined ? {} : { min_viewport: capabilities.video.minViewport }),

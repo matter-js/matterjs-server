@@ -10,13 +10,19 @@ import { CameraAvStreamManagement } from "@matter/main/clusters/camera-av-stream
 import { WebRtcTransportDefinitions } from "@matter/main/clusters/web-rtc-transport-definitions";
 import { Status } from "@matter/main/types";
 import { deviceForgotSession, invokeEndSession } from "../controller/webRtcSessionTracking.js";
-import { ServerError, type CameraOccupyingStreamDetail } from "../types/WebSocketMessageTypes.js";
+import {
+    ServerError,
+    type CameraOccupyingStreamDetail,
+    type CameraPrivacyMode,
+} from "../types/WebSocketMessageTypes.js";
 import { DEVICE_CLEANUP_BUDGET_MS, withCleanupBudget } from "../util/deviceCleanupBudget.js";
 import type {
     AllocatedAudioStream,
     AllocatedSnapshotStream,
     AllocatedVideoStream,
     AudioEnvelope,
+    CameraFeatures,
+    CameraPrivacyState,
     DeviceWebRtcSession,
     LeaseStatement,
     ManagedSession,
@@ -26,6 +32,7 @@ import type {
     StreamLease,
     VideoEnvelope,
 } from "./cameraTypes.js";
+import { lacksFeature, sessionPrivacyModes, snapshotPrivacyModes, statedFeatureNames } from "./devicePolicy.js";
 import { deviceStatusOf } from "./deviceStatus.js";
 import { decodableVideoCodecs, mediaRefusal, parseSdpVideoConstraints, videoCodecLimits } from "./sdpConstraints.js";
 import type { MediaRefusal, SdpVideoConstraints, SelectedVideoCodecLimits } from "./sdpConstraints.js";
@@ -51,7 +58,14 @@ import {
     videoCallerBounds,
 } from "./streamPolicy.js";
 import type { AudioCallerBounds, AudioHints, RateDistortionPoint, TrackRequest, VideoHints } from "./streamPolicy.js";
-import { audioCodecName, imageCodecName, knownVideoCodecs, streamUsageName, videoCodecName } from "./wireNames.js";
+import {
+    audioCodecName,
+    featureName,
+    imageCodecName,
+    knownVideoCodecs,
+    streamUsageName,
+    videoCodecName,
+} from "./wireNames.js";
 
 const logger = Logger.get("CameraStreamManager");
 
@@ -362,8 +376,15 @@ function deallocateCall(kind: StreamKind, streamId: number): { command: string; 
     }
 }
 
-/** The AVSM attributes the policy needs, as matter.js reports them through `stateOf`. */
+/**
+ * The AVSM state the policy needs: the attributes as matter.js reports them through `stateOf`, and
+ * the feature map, which is a global attribute and comes from `globalsOf` beside them.
+ */
 export interface CameraState {
+    /** The cluster's `FeatureMap`, which says which kinds of stream this camera has at all. */
+    features: CameraFeatures;
+    /** The privacy switches, which say whether it will serve any of them right now. */
+    privacy: CameraPrivacyState;
     maxConcurrentEncoders?: number;
     maxEncodedPixelRate?: number;
     /** MaxNetworkBandwidth (§11.2.7.12), bits per second; the bit-rate ceiling the camera states. */
@@ -424,6 +445,14 @@ export interface CameraDeviceIo {
 }
 
 export interface CameraCapabilities {
+    /**
+     * The features the camera advertises, or absent when it has not stated its feature map.
+     *
+     * Absent is not an empty set: a client may read a present list as the complete set of what this
+     * camera can do, and an absent one as the camera not having answered yet.
+     */
+    features?: string[];
+    privacy: CameraPrivacyState;
     video: {
         sensor?: Resolution;
         maxFps?: number;
@@ -793,6 +822,46 @@ export class CameraStreamManager {
         return this.requireState(nodeId, endpointId);
     }
 
+    /**
+     * The typed privacy refusal behind a device `INVALID_IN_STATE`, or `error` unchanged.
+     *
+     * The camera's own answer decides, never the state this server has read: `INVALID_IN_STATE` is
+     * what the provider (§11.5.6.1.10, §11.5.6.3.12) and `CaptureSnapshot` (§11.2.8.13.3) answer for a
+     * privacy switch, and also what they answer for several things that have nothing to do with
+     * privacy — a `turns:` ICE server on a camera whose UTCTime is null, among others — so the
+     * reported switches are what tells the cases apart. Nothing is checked ahead of the invoke for
+     * the reason `releaseStream` checks no reference count: the switches are read from a
+     * subscription-backed view that can lag in either direction, and a refusal decided on a stale
+     * "on" leaves no path that reaches the device, while a stale "off" costs only this mapping. The
+     * read is repeated here rather than taken from the state the call started with, because a report
+     * that arrived in the meantime is what makes the answer nameable at all.
+     */
+    protected async privacyFailure(
+        nodeId: NodeId,
+        endpointId: EndpointNumber,
+        error: unknown,
+        modesOf: (privacy: CameraPrivacyState) => CameraPrivacyMode[],
+    ): Promise<unknown> {
+        if (error instanceof ServerError) return error;
+        const status = deviceStatusOf(error);
+        if (status !== Status.InvalidInState) return error;
+        let state: CameraState | undefined;
+        try {
+            state = await this.io.readCameraState(nodeId, endpointId);
+        } catch (readError) {
+            // The device's own refusal is the answer; a read that fails on the way to explaining it
+            // must not be reported in its place.
+            logger.debug(`Node ${nodeId} endpoint ${endpointId}: privacy state unreadable: ${readError}`);
+            return error;
+        }
+        const modes = state === undefined ? new Array<CameraPrivacyMode>() : modesOf(state.privacy);
+        if (modes.length === 0) return error;
+        return ServerError.cameraPrivacyMode(
+            { modes, deviceStatus: status },
+            error instanceof Error ? error : undefined,
+        );
+    }
+
     async getCapabilities(nodeId: NodeId, endpointId: EndpointNumber): Promise<CameraCapabilities> {
         const state = await this.requireState(nodeId, endpointId);
         const sessions = (await this.#io.readWebRtcSessions(nodeId, endpointId)) ?? new Array<DeviceWebRtcSession>();
@@ -804,7 +873,10 @@ export class CameraStreamManager {
             if (!codecs.includes(point.codec)) codecs.push(point.codec);
         }
 
+        const features = statedFeatureNames(state.features);
         return {
+            ...(features === undefined ? {} : { features }),
+            privacy: state.privacy,
             video: {
                 sensor:
                     state.videoSensorParams === undefined
@@ -1147,16 +1219,22 @@ export class CameraStreamManager {
             };
         }
         const microphone = state.microphoneCapabilities;
+        const lacksAudio = lacksFeature(state.features, "audio");
         if (
+            lacksAudio ||
             microphone === undefined ||
             microphone.supportedCodecs.length === 0 ||
             microphone.supportedSampleRates.length === 0 ||
             microphone.supportedBitDepths.length === 0
         ) {
+            // The feature is read beside the attribute for two reasons: the refusal can name it, and
+            // a camera that reports MicrophoneCapabilities without advertising the feature is refused
+            // here rather than at an `AudioStreamAllocate` that is not in its AcceptedCommandList.
             return {
                 unavailable: ServerError.cameraStreamIncompatible({
                     reason: "capability",
                     track: "audio",
+                    ...(lacksAudio ? { feature: featureName("audio") } : {}),
                     device: new Array<string>(),
                     requested: requestedCodecs,
                 }),
@@ -1391,6 +1469,41 @@ export class CameraStreamManager {
         );
     }
 
+    /**
+     * The `SolicitOffer` / `ProvideOffer` that establishes the session.
+     *
+     * Separate from the rest of {@link #establishSession} only so the device's refusal has one place
+     * to be read: a privacy switch is the one refusal here whose reason this server can name.
+     */
+    async #invokeEstablishingOffer(
+        args: StartStreamArgs,
+        video: ResolvedStream | undefined,
+        audio: ResolvedStream | undefined,
+    ): Promise<unknown> {
+        const { nodeId, endpointId, streamUsage } = args;
+        try {
+            return await this.io.invoke({
+                nodeId,
+                endpointId,
+                cluster: "webrtcProvider",
+                command: args.sdp === undefined ? "solicitOffer" : "provideOffer",
+                fields: {
+                    ...(args.sdp === undefined ? {} : { sdp: args.sdp }),
+                    streamUsage,
+                    ...(video === undefined ? {} : { videoStreams: [video.streamId] }),
+                    ...(audio === undefined ? {} : { audioStreams: [audio.streamId] }),
+                    ...(args.iceServers === undefined ? {} : { iceServers: args.iceServers }),
+                    ...(args.iceTransportPolicy === undefined ? {} : { iceTransportPolicy: args.iceTransportPolicy }),
+                    metadataEnabled: args.metadataEnabled === true,
+                },
+            });
+        } catch (error) {
+            throw await this.privacyFailure(nodeId, endpointId, error, privacy =>
+                sessionPrivacyModes(privacy, streamUsage),
+            );
+        }
+    }
+
     async startStream(args: StartStreamArgs): Promise<StartStreamResult> {
         const { nodeId, endpointId } = args;
         const sdp = args.sdp === undefined ? undefined : parseSdpVideoConstraints(args.sdp);
@@ -1460,6 +1573,18 @@ export class CameraStreamManager {
                         requested: videoHints?.codecs ?? new Array<string>(),
                     }),
                 };
+            } else if (lacksFeature(state.features, "video")) {
+                // No ladder rung recovers from this: `VideoStreamAllocate` is not in such a camera's
+                // AcceptedCommandList at all, so it answers UnsupportedCommand to every narrowing.
+                outcome = {
+                    unavailable: ServerError.cameraStreamIncompatible({
+                        reason: "capability",
+                        track: "video",
+                        feature: featureName("video"),
+                        device: new Array<string>(),
+                        requested: videoHints?.codecs ?? new Array<string>(),
+                    }),
+                };
             } else {
                 const codecs = state.rateDistortionTradeOffPoints.map(point => point.codec);
                 const codec = preferredVideoCodec(codecs, sdp, videoHints?.codecs);
@@ -1504,21 +1629,7 @@ export class CameraStreamManager {
             });
         }
 
-        const response = await this.io.invoke({
-            nodeId,
-            endpointId,
-            cluster: "webrtcProvider",
-            command: args.sdp === undefined ? "solicitOffer" : "provideOffer",
-            fields: {
-                ...(args.sdp === undefined ? {} : { sdp: args.sdp }),
-                streamUsage,
-                ...(video === undefined ? {} : { videoStreams: [video.streamId] }),
-                ...(audio === undefined ? {} : { audioStreams: [audio.streamId] }),
-                ...(args.iceServers === undefined ? {} : { iceServers: args.iceServers }),
-                ...(args.iceTransportPolicy === undefined ? {} : { iceTransportPolicy: args.iceTransportPolicy }),
-                metadataEnabled: args.metadataEnabled === true,
-            },
-        });
+        const response = await this.#invokeEstablishingOffer(args, video, audio);
 
         const webRtcSessionId =
             typeof response === "object" && response !== null && "webRtcSessionId" in response
@@ -1801,6 +1912,17 @@ export class CameraStreamManager {
         return this.withEndpointLock(nodeId, endpointId, () =>
             this.withAllocationScope(async scope => {
                 const state = await this.requireState(nodeId, endpointId);
+                if (lacksFeature(state.features, "snapshot")) {
+                    // Ahead of the empty-list refusal below, which usually answers first because
+                    // SnapshotCapabilities is gated on the feature: a camera that reports the list
+                    // anyway has no `SnapshotStreamAllocate` in its AcceptedCommandList either.
+                    throw ServerError.cameraStreamIncompatible({
+                        reason: "capability",
+                        feature: featureName("snapshot"),
+                        device: new Array<string>(),
+                        requested: args.codec === undefined ? new Array<string>() : [imageCodecName(args.codec)],
+                    });
+                }
                 const selection = selectSnapshotCapabilities(state.snapshotCapabilities, {
                     encodersExhausted: encodersExhausted({
                         maxConcurrentEncoders: state.maxConcurrentEncoders,
@@ -1990,7 +2112,9 @@ export class CameraStreamManager {
         } catch (error) {
             if (error instanceof ServerError) throw error;
             const status = deviceStatusOf(error);
-            if (ladderReaction(status) === "rethrow") throw error;
+            if (ladderReaction(status) === "rethrow") {
+                throw await this.privacyFailure(nodeId, endpointId, error, snapshotPrivacyModes);
+            }
             throw this.snapshotFailure(args.state, status, args.deviceCodecs, args.requestedCodecs);
         }
     }

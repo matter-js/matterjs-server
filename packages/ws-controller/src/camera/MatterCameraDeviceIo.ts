@@ -14,7 +14,7 @@ import type { ControllerCommandHandler } from "../controller/ControllerCommandHa
 import { resolveWebRtcSessionStreams } from "../controller/webRtcSessionStreams.js";
 import { dropWebRtcSessionTracking, invokeEndSession } from "../controller/webRtcSessionTracking.js";
 import type { CameraDeviceIo, CameraState } from "./CameraStreamManager.js";
-import type { DeviceWebRtcSession, Resolution } from "./cameraTypes.js";
+import type { CameraFeatures, DeviceWebRtcSession, Resolution } from "./cameraTypes.js";
 
 function toResolution(resolution: { width: number; height: number }): Resolution {
     return { width: resolution.width, height: resolution.height };
@@ -37,7 +37,6 @@ export type RawCameraAvStreamManagementState = Pick<
     | "maxEncodedPixelRate"
     | "maxNetworkBandwidth"
     | "videoSensorParams"
-    | "hdrModeEnabled"
     | "minViewportResolution"
     | "rateDistortionTradeOffPoints"
     | "snapshotCapabilities"
@@ -48,17 +47,27 @@ export type RawCameraAvStreamManagementState = Pick<
     | "allocatedSnapshotStreams"
     | "microphoneCapabilities"
     | "twoWayTalkSupport"
+    | "softRecordingPrivacyModeEnabled"
+    | "softLivestreamPrivacyModeEnabled"
+    | "hardPrivacyModeOn"
 >;
 
 /**
- * Translate matter.js's typed client state into {@link CameraState}.
+ * Translate matter.js's typed client state and the cluster's feature map into {@link CameraState}.
  *
- * VideoSensorParams carries no HDR-capability flag itself; `hdrModeEnabled` is a HighDynamicRange
- * feature-gated attribute, present only when the endpoint supports that feature, so its presence is
- * `hdrCapable`.
+ * The feature map is a global attribute, which `stateOf` leaves out of its shape, so it is passed in
+ * from `globalsOf` rather than read here. It is what says whether this camera can carry video, audio
+ * or snapshots at all, and `hdrCapable` is read from it too: deriving that from `hdrModeEnabled`'s
+ * presence could not tell a camera without the feature from one whose attribute had not arrived.
  */
-export function toCameraState(state: RawCameraAvStreamManagementState): CameraState {
+export function toCameraState(state: RawCameraAvStreamManagementState, features: CameraFeatures): CameraState {
     return {
+        features,
+        privacy: {
+            softRecordingModeEnabled: state.softRecordingPrivacyModeEnabled,
+            softLivestreamModeEnabled: state.softLivestreamPrivacyModeEnabled,
+            hardModeOn: state.hardPrivacyModeOn,
+        },
         maxConcurrentEncoders: state.maxConcurrentEncoders,
         maxEncodedPixelRate: state.maxEncodedPixelRate,
         maxNetworkBandwidth: state.maxNetworkBandwidth,
@@ -70,7 +79,7 @@ export function toCameraState(state: RawCameraAvStreamManagementState): CameraSt
                       sensorHeight: state.videoSensorParams.sensorHeight,
                       maxFps: state.videoSensorParams.maxFps,
                       maxHdrFps: state.videoSensorParams.maxHdrfps,
-                      hdrCapable: state.hdrModeEnabled !== undefined,
+                      hdrCapable: features.highDynamicRange,
                   },
         minViewportResolution:
             state.minViewportResolution === undefined ? undefined : toResolution(state.minViewportResolution),
@@ -154,7 +163,10 @@ export class MatterCameraDeviceIo implements CameraDeviceIo {
         if (endpoint === undefined || !endpoint.behaviors.has(CameraAvStreamManagementClient)) {
             return undefined;
         }
-        return toCameraState(endpoint.stateOf(CameraAvStreamManagementClient));
+        return toCameraState(
+            endpoint.stateOf(CameraAvStreamManagementClient),
+            endpoint.globalsOf(CameraAvStreamManagementClient).featureMap,
+        );
     }
 
     /**

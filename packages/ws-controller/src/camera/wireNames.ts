@@ -6,6 +6,7 @@
 
 import { CameraAvStreamManagement } from "@matter/main/clusters/camera-av-stream-management";
 import { StreamUsage } from "@matter/main/types";
+import type { CameraFeatures } from "./cameraTypes.js";
 
 /**
  * Wire spelling of the camera cluster enums, so what `camera_get_capabilities` reports can be sent
@@ -100,4 +101,48 @@ export function streamUsageByName(name: string): number | undefined {
 
 export function twoWayTalkSupportName(support: number): string {
     return wireName(TWO_WAY_TALK_SUPPORT_NAMES, support);
+}
+
+/**
+ * The spec's Feature title for each flag of {@link CameraFeatures}, and its place in the FeatureMap.
+ *
+ * The titles are the model's own (`CameraAvStreamManagement.Feature`), so none is reconstructed here:
+ * a title starting with an acronym would not survive being rebuilt from the camelized flag name.
+ * matter.js names each flag by uncapitalizing that title, which is the one transform this map is
+ * built on, and the declaration order is the bit order the spec's table has.
+ */
+const FEATURE_TITLES = new Map<string, { title: string; bit: number }>(
+    Object.values(CameraAvStreamManagement.Feature).map((title, bit) => [
+        `${title.charAt(0).toLowerCase()}${title.slice(1)}`,
+        { title, bit },
+    ]),
+);
+
+/**
+ * The features the camera advertises, spelled as the spec's Feature column spells them.
+ *
+ * Which features are advertised is read from the feature map alone, so a flag the model no longer
+ * names is still reported — under its own flag name, and last — rather than dropped, since a list
+ * narrowed to nothing would read as a camera that advertises nothing. The order is the spec's bit
+ * order. The spec's short codes (`ADO`, `VDO`, `SNP`, `PRIV`) are not in the model and are not used on
+ * the wire.
+ */
+export function advertisedFeatureNames(features: CameraFeatures): string[] {
+    const advertised = new Array<{ name: string; bit: number }>();
+    for (const [flag, supported] of Object.entries(features)) {
+        if (supported !== true) continue;
+        const known = FEATURE_TITLES.get(flag);
+        advertised.push({ name: known?.title ?? flag, bit: known?.bit ?? Number.MAX_SAFE_INTEGER });
+    }
+    return advertised.sort((left, right) => left.bit - right.bit).map(entry => entry.name);
+}
+
+/**
+ * One feature's reported name, for the error that says a camera does not advertise it.
+ *
+ * The parameter is the model's own flag name, so a refusal cannot name a feature the report never
+ * lists.
+ */
+export function featureName(feature: keyof CameraFeatures): string {
+    return FEATURE_TITLES.get(feature)?.title ?? feature;
 }

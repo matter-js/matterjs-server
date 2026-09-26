@@ -69,6 +69,8 @@ function keysOf(payload: unknown, into = new Set<string>()): Set<string> {
 }
 
 const CAPABILITIES: CameraCapabilities = {
+    features: ["Audio", "Video", "Snapshot", "Privacy"],
+    privacy: { softRecordingModeEnabled: false, softLivestreamModeEnabled: true, hardModeOn: false },
     video: {
         sensor: { width: 3840, height: 2160 },
         maxFps: 30,
@@ -199,9 +201,11 @@ function errorPayloads(): unknown[] {
         ServerError.cameraStreamIncompatible({
             reason: "capability",
             track: "audio",
+            feature: "Audio",
             device: new Array<string>(),
             requested: new Array<string>(),
         }),
+        ServerError.cameraPrivacyMode({ modes: ["hard_mode_on"], deviceStatus: 0xcb }),
         ServerError.cameraResourceExhausted({
             allocated: [{ kind: "video", streamId: 1, referenceCount: 1 }],
             maxConcurrentEncoders: 1,
@@ -232,6 +236,10 @@ const CAPABILITY_TO_HINT = [
  * fails the totality check below until it is either mapped or listed here.
  */
 const CAPABILITY_WITHOUT_HINT: Record<string, string> = {
+    features: "what the camera can do at all; a name missing from it is refused, not requested",
+    "privacy.soft_recording_mode_enabled": "a switch on the camera; this API has no command to write one",
+    "privacy.soft_livestream_mode_enabled": "as privacy.soft_recording_mode_enabled",
+    "privacy.hard_mode_on": "the physical switch, which nothing but a person at the camera changes",
     "video.sensor": "sensor size; a caller states a resolution range instead",
     "video.min_viewport": "the floor the server derives from; not a caller value",
     "video.max_fps": "read as a ceiling for max_frame_rate, not sent back verbatim",

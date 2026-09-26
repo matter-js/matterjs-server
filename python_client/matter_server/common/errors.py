@@ -158,6 +158,17 @@ class CameraNotSupported(MatterError):
     error_code = 106
 
 
+class CameraPrivacyMode(MatterError):
+    """Raised while a camera privacy switch forbids the session or the snapshot.
+
+    The details name the switches from ``camera_get_capabilities``' ``privacy``. It is a
+    device state rather than a request the client can change, which is why it is not
+    ``CameraStreamIncompatible``.
+    """
+
+    error_code = 107
+
+
 def exception_from_error_code(error_code: int) -> type[MatterError]:
     """Return correct Exception class from error_code."""
     return ERROR_MAP.get(error_code, MatterError)

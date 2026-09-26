@@ -7,19 +7,26 @@
 import { EndpointNumber, Logger, NodeId } from "@matter/main";
 import { CameraAvStreamManagement } from "@matter/main/clusters/camera-av-stream-management";
 import { WebRtcTransportProvider } from "@matter/main/clusters/web-rtc-transport-provider";
-import { Status, StatusResponseError } from "@matter/main/types";
+import { Status, StatusResponseError, StreamUsage } from "@matter/main/types";
 import type { CameraDeviceIo, CameraState } from "../src/camera/CameraStreamManager.js";
 import {
     CameraStreamManager,
     preferredVideoCodec,
     UNREPORTED_LEASE_GRACE_MS,
 } from "../src/camera/CameraStreamManager.js";
-import type { AudioEnvelope, DeviceWebRtcSession, Resolution, VideoEnvelope } from "../src/camera/cameraTypes.js";
+import type {
+    AudioEnvelope,
+    CameraFeatures,
+    DeviceWebRtcSession,
+    Resolution,
+    VideoEnvelope,
+} from "../src/camera/cameraTypes.js";
 import { deviceStatusOf } from "../src/camera/deviceStatus.js";
 import { videoCodecLimits } from "../src/camera/sdpConstraints.js";
 import type { SdpVideoConstraints } from "../src/camera/sdpConstraints.js";
 import { ServerError, ServerErrorCode } from "../src/types/WebSocketMessageTypes.js";
 import { DEVICE_CLEANUP_BUDGET_MS } from "../src/util/deviceCleanupBudget.js";
+import { cameraFeatures } from "./cameraFixtures.js";
 
 /** ResolvedStream.envelope is a union; a result from resolveVideoStream is always the video shape. */
 function requireVideoEnvelope(envelope: VideoEnvelope | AudioEnvelope): VideoEnvelope {
@@ -39,6 +46,8 @@ export const H265 = 1;
 export const LIVE_VIEW = 3;
 
 export const STATE: CameraState = {
+    features: cameraFeatures("audio", "video", "snapshot", "highDynamicRange"),
+    privacy: {},
     maxConcurrentEncoders: 1,
     maxEncodedPixelRate: 248832000,
     videoSensorParams: { sensorWidth: 2560, sensorHeight: 1440, maxFps: 30, maxHdrFps: 15, hdrCapable: true },
@@ -5259,5 +5268,556 @@ describe("CameraStreamManager device cleanup budget", () => {
         } finally {
             MockTime.disable();
         }
+    });
+
+    describe("device features and privacy", () => {
+        /** A camera that advertises Audio and nothing else: an audio doorbell or an intercom. */
+        const AUDIO_ONLY_STATE: CameraState = {
+            ...STATE,
+            features: cameraFeatures("audio"),
+            videoSensorParams: undefined,
+            rateDistortionTradeOffPoints: [],
+            snapshotCapabilities: [],
+        };
+
+        function audioOnlyManager() {
+            return managerWith(AUDIO_ONLY_STATE, async invoke => {
+                if (invoke.command === "audioStreamAllocate") return { audioStreamId: 4 };
+                if (invoke.command === "provideOffer") return { webRtcSessionId: 42 };
+                return undefined;
+            });
+        }
+
+        /** A camera that refuses the establishing offer the way a privacy switch makes it refuse. */
+        function refusingManager(state: CameraState, status = Status.InvalidInState) {
+            return managerWith(state, async invoke => {
+                if (invoke.command === "videoStreamAllocate") return { videoStreamId: 9 };
+                if (invoke.command === "audioStreamAllocate") return { audioStreamId: 4 };
+                if (invoke.command === "provideOffer" || invoke.command === "solicitOffer") throw statusError(status);
+                return undefined;
+            });
+        }
+
+        it("reports the advertised features in the spec's bit order", async () => {
+            // The flags are written in the reverse of the spec's order, so the order in the report is
+            // the model's and not the order the read bitmap happens to carry its keys in.
+            const features: CameraFeatures = {
+                nightVision: true,
+                onScreenDisplay: true,
+                privacy: true,
+                audio: true,
+            };
+            const capabilities = await managerWith({ ...STATE, features }).manager.getCapabilities(NODE, ENDPOINT);
+            expect(capabilities.features).to.deep.equal(["Audio", "Privacy", "OnScreenDisplay", "NightVision"]);
+        });
+
+        it("reports each privacy switch the camera states, and omits one it does not", async () => {
+            const state: CameraState = {
+                ...STATE,
+                features: cameraFeatures("video", "privacy"),
+                privacy: { softRecordingModeEnabled: false, softLivestreamModeEnabled: true },
+            };
+            const capabilities = await managerWith(state).manager.getCapabilities(NODE, ENDPOINT);
+            expect(capabilities.privacy.softLivestreamModeEnabled).to.equal(true);
+            expect(capabilities.privacy.softRecordingModeEnabled).to.equal(false);
+            // Absent is not "off": HardPrivacyModeOn is optional, and a camera without the physical
+            // switch states nothing about it.
+            expect(capabilities.privacy.hardModeOn).to.equal(undefined);
+        });
+
+        it("serves capabilities while every switch is on, because that is how a client learns it", async () => {
+            const state: CameraState = {
+                ...STATE,
+                features: cameraFeatures("video", "privacy"),
+                privacy: { hardModeOn: true, softLivestreamModeEnabled: true, softRecordingModeEnabled: true },
+            };
+            const capabilities = await managerWith(state).manager.getCapabilities(NODE, ENDPOINT);
+            expect(capabilities.privacy.hardModeOn).to.equal(true);
+            expect(capabilities.features).to.contain("Privacy");
+        });
+
+        it("opens an audio-only session on a camera with no Video feature when video was left to it", async () => {
+            // The offer carries a live video section, so nothing but the feature map says the camera
+            // cannot serve it. VideoStreamAllocate is not in such a camera's AcceptedCommandList and
+            // answers UnsupportedCommand, which no ladder rung recovers from.
+            const { manager, invokes } = audioOnlyManager();
+
+            const session = await manager.startStream({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                connectionId: "conn-1",
+                streamUsage: LIVE_VIEW,
+                sdp: VIDEO_AND_AUDIO_OFFER,
+            });
+
+            expect(session.video).to.equal(undefined);
+            expect(session.audio?.streamId).to.equal(4);
+            expect(invokes.some(invoke => invoke.command === "videoStreamAllocate")).to.equal(false);
+            const offer = invokes.find(invoke => invoke.command === "provideOffer");
+            expect(offer?.fields.videoStreams).to.equal(undefined);
+            expect(offer?.fields.audioStreams).to.deep.equal([4]);
+        });
+
+        it("names the missing feature when the caller demanded video from such a camera", async () => {
+            const { manager, invokes } = audioOnlyManager();
+            let thrown: unknown;
+            try {
+                await manager.startStream({
+                    nodeId: NODE,
+                    endpointId: ENDPOINT,
+                    connectionId: "conn-1",
+                    streamUsage: LIVE_VIEW,
+                    sdp: VIDEO_AND_AUDIO_OFFER,
+                    video: {},
+                });
+            } catch (error) {
+                thrown = error;
+            }
+
+            expect((thrown as ServerError).code).to.equal(ServerErrorCode.CameraStreamIncompatible);
+            const detail = JSON.parse((thrown as ServerError).message);
+            expect(detail.reason).to.equal("capability");
+            expect(detail.track).to.equal("video");
+            // The fact that distinguishes this from a peer that rejected the section, which names no
+            // feature: no codec, bound or offer the caller could send instead makes it work.
+            expect(detail.feature).to.equal("Video");
+            expect(invokes.some(invoke => invoke.command === "videoStreamAllocate")).to.equal(false);
+            expect(invokes.some(invoke => invoke.command === "provideOffer")).to.equal(false);
+        });
+
+        it("names the missing feature when the caller demanded audio from a camera with no Audio feature", async () => {
+            const state: CameraState = {
+                ...STATE,
+                features: cameraFeatures("video"),
+                microphoneCapabilities: undefined,
+            };
+            const { manager } = managerWith(state, async invoke => {
+                if (invoke.command === "videoStreamAllocate") return { videoStreamId: 9 };
+                if (invoke.command === "provideOffer") return { webRtcSessionId: 42 };
+                return undefined;
+            });
+            let thrown: unknown;
+            try {
+                await manager.startStream({
+                    nodeId: NODE,
+                    endpointId: ENDPOINT,
+                    connectionId: "conn-1",
+                    streamUsage: LIVE_VIEW,
+                    sdp: VIDEO_AND_AUDIO_OFFER,
+                    audio: {},
+                });
+            } catch (error) {
+                thrown = error;
+            }
+            const detail = JSON.parse((thrown as ServerError).message);
+            expect(detail.reason).to.equal("capability");
+            expect(detail.track).to.equal("audio");
+            expect(detail.feature).to.equal("Audio");
+        });
+
+        it("refuses audio on a camera that reports a microphone without advertising the feature", async () => {
+            // The attribute is gated on the feature, so this camera contradicts itself — and its
+            // AudioStreamAllocate is not in its AcceptedCommandList either. The feature is read beside
+            // the attribute so the refusal happens here rather than at the allocate.
+            const state: CameraState = { ...STATE, features: cameraFeatures("video") };
+            const { manager, invokes } = managerWith(state, async invoke => {
+                if (invoke.command === "videoStreamAllocate") return { videoStreamId: 9 };
+                if (invoke.command === "provideOffer") return { webRtcSessionId: 42 };
+                return undefined;
+            });
+            let thrown: unknown;
+            try {
+                await manager.startStream({
+                    nodeId: NODE,
+                    endpointId: ENDPOINT,
+                    connectionId: "conn-1",
+                    streamUsage: LIVE_VIEW,
+                    sdp: VIDEO_AND_AUDIO_OFFER,
+                    audio: { codecs: ["OPUS"] },
+                });
+            } catch (error) {
+                thrown = error;
+            }
+            const detail = JSON.parse((thrown as ServerError).message);
+            expect(detail.track).to.equal("audio");
+            expect(detail.feature).to.equal("Audio");
+            expect(invokes.some(invoke => invoke.command === "audioStreamAllocate")).to.equal(false);
+        });
+
+        it("names the missing feature when a camera with no Snapshot feature is asked for a frame", async () => {
+            const state: CameraState = { ...STATE, features: cameraFeatures("video"), snapshotCapabilities: [] };
+            let thrown: unknown;
+            try {
+                await managerWith(state).manager.snapshot({ nodeId: NODE, endpointId: ENDPOINT });
+            } catch (error) {
+                thrown = error;
+            }
+            const detail = JSON.parse((thrown as ServerError).message);
+            expect(detail.reason).to.equal("capability");
+            expect(detail.feature).to.equal("Snapshot");
+        });
+
+        it("refuses a snapshot on a camera that lists capabilities without advertising the feature", async () => {
+            // SnapshotCapabilities is gated on the feature, so this camera contradicts itself and its
+            // SnapshotStreamAllocate is not in its AcceptedCommandList. Without the gate the request
+            // walks the whole capability ladder and the device's UnsupportedCommand reaches the client
+            // untyped.
+            const state: CameraState = { ...STATE, features: cameraFeatures("video") };
+            const { manager, invokes } = managerWith(state, async invoke => {
+                if (invoke.command === "snapshotStreamAllocate") return { snapshotStreamId: 3 };
+                return undefined;
+            });
+            let thrown: unknown;
+            try {
+                await manager.snapshot({ nodeId: NODE, endpointId: ENDPOINT });
+            } catch (error) {
+                thrown = error;
+            }
+            const detail = JSON.parse((thrown as ServerError).message);
+            expect(detail.feature).to.equal("Snapshot");
+            expect(invokes.some(invoke => invoke.command === "snapshotStreamAllocate")).to.equal(false);
+        });
+
+        it("does not gate a track on a feature map the camera has not stated", async () => {
+            // matter.js fills the feature map from the device's own report and it reads all-false
+            // until that arrives. At least one of Audio, Video and Snapshot is mandatory (§11.2.5),
+            // so none of the three is "not stated yet": gating on it would strand a real camera in an
+            // audio-only session, which is worse than the UnsupportedCommand the gate prevents.
+            const unstated: CameraState = { ...STATE, features: cameraFeatures("highDynamicRange") };
+            const { manager, invokes } = managerWith(unstated, async invoke => {
+                if (invoke.command === "videoStreamAllocate") return { videoStreamId: 9 };
+                if (invoke.command === "audioStreamAllocate") return { audioStreamId: 4 };
+                if (invoke.command === "provideOffer") return { webRtcSessionId: 42 };
+                return undefined;
+            });
+
+            const session = await manager.startStream({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                connectionId: "conn-1",
+                streamUsage: LIVE_VIEW,
+                sdp: VIDEO_AND_AUDIO_OFFER,
+                video: {},
+                audio: {},
+            });
+
+            expect(session.video?.streamId).to.equal(9);
+            expect(session.audio?.streamId).to.equal(4);
+            expect(invokes.some(invoke => invoke.command === "videoStreamAllocate")).to.equal(true);
+        });
+
+        it("reports no feature list at all when the camera has not stated its feature map", async () => {
+            // A list is the complete set the camera advertises, so one that cannot be complete is not
+            // reported: an empty or partial list would be read as a camera that has no video.
+            const unstated: CameraState = { ...STATE, features: cameraFeatures("highDynamicRange") };
+            const capabilities = await managerWith(unstated).manager.getCapabilities(NODE, ENDPOINT);
+            expect(capabilities.features).to.equal(undefined);
+        });
+
+        it("reports the hard privacy switch as the reason the camera refused the session", async () => {
+            const state: CameraState = {
+                ...STATE,
+                features: cameraFeatures("audio", "video", "privacy"),
+                privacy: { hardModeOn: true, softLivestreamModeEnabled: false, softRecordingModeEnabled: false },
+            };
+            const { manager, invokes } = refusingManager(state);
+            let thrown: unknown;
+            try {
+                await manager.startStream({
+                    nodeId: NODE,
+                    endpointId: ENDPOINT,
+                    connectionId: "conn-1",
+                    streamUsage: LIVE_VIEW,
+                    sdp: VIDEO_OFFER,
+                    video: {},
+                });
+            } catch (error) {
+                thrown = error;
+            }
+
+            expect((thrown as ServerError).code).to.equal(ServerErrorCode.CameraPrivacyMode);
+            const detail = JSON.parse((thrown as ServerError).message);
+            expect(detail.modes).to.deep.equal(["hard_mode_on"]);
+            expect(detail.device_status).to.equal(Status.InvalidInState);
+            // The stream allocated for the refused session goes back; the switch turning off must not
+            // leave an encoder held by a session that never existed.
+            expect(invokes.some(invoke => invoke.command === "videoStreamDeallocate")).to.equal(true);
+        });
+
+        it("reports the soft livestream switch for a LiveView session", async () => {
+            const state: CameraState = {
+                ...STATE,
+                features: cameraFeatures("audio", "video", "privacy"),
+                privacy: { softLivestreamModeEnabled: true, softRecordingModeEnabled: false, hardModeOn: false },
+            };
+            let thrown: unknown;
+            try {
+                await refusingManager(state).manager.startStream({
+                    nodeId: NODE,
+                    endpointId: ENDPOINT,
+                    connectionId: "conn-1",
+                    streamUsage: LIVE_VIEW,
+                    sdp: VIDEO_OFFER,
+                    video: {},
+                });
+            } catch (error) {
+                thrown = error;
+            }
+            expect((thrown as ServerError).code).to.equal(ServerErrorCode.CameraPrivacyMode);
+            expect(JSON.parse((thrown as ServerError).message).modes).to.deep.equal(["soft_livestream_mode_enabled"]);
+        });
+
+        it("does not blame the livestream switch for a Recording session it does not cover", async () => {
+            // The switch covers LiveView only (§11.2.7.21). Reporting it for another usage would name
+            // a switch that is not what the camera refused on.
+            const state: CameraState = {
+                ...STATE,
+                features: cameraFeatures("audio", "video", "privacy"),
+                privacy: { softLivestreamModeEnabled: true, softRecordingModeEnabled: false, hardModeOn: false },
+            };
+            let thrown: unknown;
+            try {
+                await refusingManager(state).manager.startStream({
+                    nodeId: NODE,
+                    endpointId: ENDPOINT,
+                    connectionId: "conn-1",
+                    streamUsage: StreamUsage.Recording,
+                    sdp: VIDEO_OFFER,
+                    video: {},
+                });
+            } catch (error) {
+                thrown = error;
+            }
+            expect(thrown).to.not.be.instanceOf(ServerError);
+            expect(deviceStatusOf(thrown)).to.equal(Status.InvalidInState);
+        });
+
+        it("reports the soft recording switch for a Recording session", async () => {
+            const state: CameraState = {
+                ...STATE,
+                features: cameraFeatures("audio", "video", "privacy"),
+                privacy: { softRecordingModeEnabled: true, softLivestreamModeEnabled: false, hardModeOn: false },
+            };
+            let thrown: unknown;
+            try {
+                await refusingManager(state).manager.startStream({
+                    nodeId: NODE,
+                    endpointId: ENDPOINT,
+                    connectionId: "conn-1",
+                    streamUsage: StreamUsage.Recording,
+                    sdp: VIDEO_OFFER,
+                    video: {},
+                });
+            } catch (error) {
+                thrown = error;
+            }
+            expect((thrown as ServerError).code).to.equal(ServerErrorCode.CameraPrivacyMode);
+            expect(JSON.parse((thrown as ServerError).message).modes).to.deep.equal(["soft_recording_mode_enabled"]);
+        });
+
+        it("does not blame the recording switch for a LiveView session it does not cover", async () => {
+            // The camera answers INVALID_IN_STATE for several things that are not privacy at all — a
+            // `turns:` ICE server on a camera whose UTCTime is null, among others. A switch that does
+            // not cover this usage is not an explanation, and claiming it would be a false one.
+            const state: CameraState = {
+                ...STATE,
+                features: cameraFeatures("audio", "video", "privacy"),
+                privacy: { softRecordingModeEnabled: true, softLivestreamModeEnabled: false, hardModeOn: false },
+            };
+            let thrown: unknown;
+            try {
+                await refusingManager(state).manager.startStream({
+                    nodeId: NODE,
+                    endpointId: ENDPOINT,
+                    connectionId: "conn-1",
+                    streamUsage: LIVE_VIEW,
+                    sdp: VIDEO_OFFER,
+                    video: {},
+                });
+            } catch (error) {
+                thrown = error;
+            }
+            expect(thrown).to.not.be.instanceOf(ServerError);
+            expect(deviceStatusOf(thrown)).to.equal(Status.InvalidInState);
+        });
+
+        it("leaves an INVALID_IN_STATE no switch explains as the device's own error", async () => {
+            const state: CameraState = { ...STATE, features: cameraFeatures("audio", "video", "privacy"), privacy: {} };
+            let thrown: unknown;
+            try {
+                await refusingManager(state).manager.startStream({
+                    nodeId: NODE,
+                    endpointId: ENDPOINT,
+                    connectionId: "conn-1",
+                    streamUsage: LIVE_VIEW,
+                    sdp: VIDEO_OFFER,
+                    video: {},
+                });
+            } catch (error) {
+                thrown = error;
+            }
+            expect(thrown).to.not.be.instanceOf(ServerError);
+        });
+
+        it("keeps a typed failure raised under the offer, even one wrapping the device's own status", async () => {
+            const state: CameraState = {
+                ...STATE,
+                features: cameraFeatures("audio", "video", "privacy"),
+                privacy: { hardModeOn: true },
+            };
+            const { manager } = managerWith(state, async invoke => {
+                if (invoke.command === "videoStreamAllocate") return { videoStreamId: 9 };
+                // Wrapping a device INVALID_IN_STATE is the case the guard exists for: `deviceStatusOf`
+                // walks the cause chain, so an error that already says what happened would otherwise be
+                // replaced by a privacy explanation it never claimed.
+                if (invoke.command === "provideOffer") {
+                    throw ServerError.sdkStackError(
+                        "provider relay failed",
+                        StatusResponseError.create(Status.InvalidInState),
+                    );
+                }
+                return undefined;
+            });
+            let thrown: unknown;
+            try {
+                await manager.startStream({
+                    nodeId: NODE,
+                    endpointId: ENDPOINT,
+                    connectionId: "conn-1",
+                    streamUsage: LIVE_VIEW,
+                    sdp: VIDEO_OFFER,
+                    video: {},
+                });
+            } catch (error) {
+                thrown = error;
+            }
+            expect((thrown as ServerError).code).to.equal(ServerErrorCode.SDKStackError);
+        });
+
+        it("keeps the device's refusal when the endpoint no longer reports the camera behaviour", async () => {
+            const privacyState: CameraState = {
+                ...STATE,
+                features: cameraFeatures("audio", "video", "privacy"),
+                privacy: { hardModeOn: true },
+            };
+            let refused = false;
+            const io: CameraDeviceIo = {
+                readCameraState: async () => (refused ? undefined : privacyState),
+                readWebRtcSessions: async () => new Array<DeviceWebRtcSession>(),
+                missingCameraClusters: async () => new Array<number>(),
+                invoke: async args => {
+                    if (args.command === "videoStreamAllocate") return { videoStreamId: 9 };
+                    if (args.command === "provideOffer") {
+                        refused = true;
+                        throw statusError(Status.InvalidInState);
+                    }
+                    return undefined;
+                },
+            };
+            let thrown: unknown;
+            try {
+                await new CameraStreamManager(io).startStream({
+                    nodeId: NODE,
+                    endpointId: ENDPOINT,
+                    connectionId: "conn-1",
+                    streamUsage: LIVE_VIEW,
+                    sdp: VIDEO_OFFER,
+                    video: {},
+                });
+            } catch (error) {
+                thrown = error;
+            }
+            expect(thrown).to.not.be.instanceOf(ServerError);
+            expect(deviceStatusOf(thrown)).to.equal(Status.InvalidInState);
+        });
+
+        it("keeps the device's refusal when the state read that would explain it fails", async () => {
+            // The node can go away between the refused offer and the read that would name the switch.
+            // The camera's own answer is the one to report; an unrelated read failure in its place
+            // would tell the client nothing about what happened.
+            const privacyState: CameraState = {
+                ...STATE,
+                features: cameraFeatures("audio", "video", "privacy"),
+                privacy: { hardModeOn: true },
+            };
+            let refused = false;
+            const io: CameraDeviceIo = {
+                readCameraState: async () => {
+                    if (refused) throw new Error("node is gone");
+                    return privacyState;
+                },
+                readWebRtcSessions: async () => new Array<DeviceWebRtcSession>(),
+                missingCameraClusters: async () => new Array<number>(),
+                invoke: async args => {
+                    if (args.command === "videoStreamAllocate") return { videoStreamId: 9 };
+                    if (args.command === "provideOffer") {
+                        refused = true;
+                        throw statusError(Status.InvalidInState);
+                    }
+                    return undefined;
+                },
+            };
+            let thrown: unknown;
+            try {
+                await new CameraStreamManager(io).startStream({
+                    nodeId: NODE,
+                    endpointId: ENDPOINT,
+                    connectionId: "conn-1",
+                    streamUsage: LIVE_VIEW,
+                    sdp: VIDEO_OFFER,
+                    video: {},
+                });
+            } catch (error) {
+                thrown = error;
+            }
+            expect(deviceStatusOf(thrown)).to.equal(Status.InvalidInState);
+            expect((thrown as Error).message).to.not.contain("node is gone");
+        });
+
+        it("reports a privacy switch as the reason a snapshot was refused", async () => {
+            const state: CameraState = {
+                ...STATE,
+                features: cameraFeatures("snapshot", "privacy"),
+                privacy: { hardModeOn: false, softLivestreamModeEnabled: true, softRecordingModeEnabled: false },
+            };
+            const { manager } = managerWith(state, async invoke => {
+                if (invoke.command === "snapshotStreamAllocate") return { snapshotStreamId: 3 };
+                if (invoke.command === "captureSnapshot") throw statusError(Status.InvalidInState);
+                return undefined;
+            });
+            let thrown: unknown;
+            try {
+                await manager.snapshot({ nodeId: NODE, endpointId: ENDPOINT });
+            } catch (error) {
+                thrown = error;
+            }
+            expect((thrown as ServerError).code).to.equal(ServerErrorCode.CameraPrivacyMode);
+            const detail = JSON.parse((thrown as ServerError).message);
+            expect(detail.modes).to.deep.equal(["soft_livestream_mode_enabled"]);
+            expect(detail.device_status).to.equal(Status.InvalidInState);
+        });
+
+        it("does not blame a snapshot on the recording switch, which carries no snapshot", async () => {
+            // §11.2.8.13.3 tests the hard switch and the livestream one; a snapshot has no stream
+            // usage for the recording switch to apply to.
+            const state: CameraState = {
+                ...STATE,
+                features: cameraFeatures("snapshot", "privacy"),
+                privacy: { hardModeOn: false, softLivestreamModeEnabled: false, softRecordingModeEnabled: true },
+            };
+            const { manager } = managerWith(state, async invoke => {
+                if (invoke.command === "snapshotStreamAllocate") return { snapshotStreamId: 3 };
+                if (invoke.command === "captureSnapshot") throw statusError(Status.InvalidInState);
+                return undefined;
+            });
+            let thrown: unknown;
+            try {
+                await manager.snapshot({ nodeId: NODE, endpointId: ENDPOINT });
+            } catch (error) {
+                thrown = error;
+            }
+            expect(thrown).to.not.be.instanceOf(ServerError);
+            expect(deviceStatusOf(thrown)).to.equal(Status.InvalidInState);
+        });
     });
 });

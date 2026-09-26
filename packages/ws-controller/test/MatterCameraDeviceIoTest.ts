@@ -14,6 +14,7 @@ import { deviceStatusOf } from "../src/camera/deviceStatus.js";
 import type { RawCameraAvStreamManagementState } from "../src/camera/MatterCameraDeviceIo.js";
 import { MatterCameraDeviceIo, toCameraState } from "../src/camera/MatterCameraDeviceIo.js";
 import type { ControllerCommandHandler } from "../src/controller/ControllerCommandHandler.js";
+import { cameraFeatures } from "./cameraFixtures.js";
 
 const MINIMAL_STATE: RawCameraAvStreamManagementState = {
     supportedStreamUsages: [3],
@@ -21,9 +22,12 @@ const MINIMAL_STATE: RawCameraAvStreamManagementState = {
     maxNetworkBandwidth: 8000000,
 };
 
+/** The features every test below reads unless it is about the feature map itself. */
+const FEATURES = cameraFeatures("audio", "video", "snapshot");
+
 describe("toCameraState", () => {
     it("defaults every feature-gated list to empty when the source omits it", () => {
-        const state = toCameraState(MINIMAL_STATE);
+        const state = toCameraState(MINIMAL_STATE, FEATURES);
         expect(state.rateDistortionTradeOffPoints).to.deep.equal([]);
         expect(state.snapshotCapabilities).to.deep.equal([]);
         expect(state.allocatedVideoStreams).to.deep.equal([]);
@@ -35,17 +39,25 @@ describe("toCameraState", () => {
 
     it("copies supportedStreamUsages/streamUsagePriorities into plain mutable arrays", () => {
         const source: readonly number[] = [1, 2, 3];
-        const state = toCameraState({ ...MINIMAL_STATE, supportedStreamUsages: source, streamUsagePriorities: source });
+        const state = toCameraState(
+            { ...MINIMAL_STATE, supportedStreamUsages: source, streamUsagePriorities: source },
+            FEATURES,
+        );
         expect(state.supportedStreamUsages).to.deep.equal([1, 2, 3]);
         expect(state.supportedStreamUsages).to.not.equal(source);
     });
 
-    it("renames maxHdrfps to maxHdrFps and derives hdrCapable from hdrModeEnabled's presence", () => {
-        const state = toCameraState({
-            ...MINIMAL_STATE,
-            videoSensorParams: { sensorWidth: 2560, sensorHeight: 1440, maxFps: 30, maxHdrfps: 15 },
-            hdrModeEnabled: true,
-        });
+    // HDRModeEnabled has no test of its own because it is no longer read, which is the point: it is
+    // the switch and not the capability, so a camera with the feature and HDR switched off still
+    // reports hdrCapable.
+    it("renames maxHdrfps to maxHdrFps and reads hdrCapable from the feature map", () => {
+        const state = toCameraState(
+            {
+                ...MINIMAL_STATE,
+                videoSensorParams: { sensorWidth: 2560, sensorHeight: 1440, maxFps: 30, maxHdrfps: 15 },
+            },
+            cameraFeatures("highDynamicRange"),
+        );
         expect(state.videoSensorParams).to.deep.equal({
             sensorWidth: 2560,
             sensorHeight: 1440,
@@ -56,90 +68,130 @@ describe("toCameraState", () => {
     });
 
     it("carries videoSensorParams through without maxHdrfps when the device omits it", () => {
-        const state = toCameraState({
-            ...MINIMAL_STATE,
-            videoSensorParams: { sensorWidth: 1920, sensorHeight: 1080, maxFps: 30 },
-        });
+        const state = toCameraState(
+            {
+                ...MINIMAL_STATE,
+                videoSensorParams: { sensorWidth: 1920, sensorHeight: 1080, maxFps: 30 },
+            },
+            FEATURES,
+        );
         expect(state.videoSensorParams?.maxHdrFps).to.equal(undefined);
     });
 
     it("reports hdrCapable false when the device has no HighDynamicRange feature", () => {
-        const state = toCameraState({
-            ...MINIMAL_STATE,
-            videoSensorParams: { sensorWidth: 1920, sensorHeight: 1080, maxFps: 30 },
-        });
+        const state = toCameraState(
+            {
+                ...MINIMAL_STATE,
+                videoSensorParams: { sensorWidth: 1920, sensorHeight: 1080, maxFps: 30 },
+            },
+            FEATURES,
+        );
         expect(state.videoSensorParams?.hdrCapable).to.equal(false);
     });
 
-    it("reports hdrCapable true when the device has the feature although HDR is switched off", () => {
-        const state = toCameraState({
-            ...MINIMAL_STATE,
-            videoSensorParams: { sensorWidth: 1920, sensorHeight: 1080, maxFps: 30 },
-            hdrModeEnabled: false,
+    it("reports the feature map and the privacy attributes as the device states them", () => {
+        const features = cameraFeatures("audio", "privacy");
+        const state = toCameraState(
+            {
+                ...MINIMAL_STATE,
+                softRecordingPrivacyModeEnabled: false,
+                softLivestreamPrivacyModeEnabled: true,
+                hardPrivacyModeOn: false,
+            },
+            features,
+        );
+        expect(state.features).to.equal(features);
+        expect(state.privacy).to.deep.equal({
+            softRecordingModeEnabled: false,
+            softLivestreamModeEnabled: true,
+            hardModeOn: false,
         });
-        expect(state.videoSensorParams?.hdrCapable).to.equal(true);
+    });
+
+    it("leaves a privacy switch the camera does not state absent rather than reporting it off", () => {
+        const state = toCameraState(MINIMAL_STATE, cameraFeatures());
+        expect(state.privacy).to.deep.equal({
+            softRecordingModeEnabled: undefined,
+            softLivestreamModeEnabled: undefined,
+            hardModeOn: undefined,
+        });
+        expect(state.privacy.hardModeOn).to.equal(undefined);
     });
 
     it("maps rateDistortionTradeOffPoints field names one-to-one", () => {
-        const state = toCameraState({
-            ...MINIMAL_STATE,
-            rateDistortionTradeOffPoints: [{ codec: 1, resolution: { width: 1920, height: 1080 }, minBitRate: 800000 }],
-        });
+        const state = toCameraState(
+            {
+                ...MINIMAL_STATE,
+                rateDistortionTradeOffPoints: [
+                    { codec: 1, resolution: { width: 1920, height: 1080 }, minBitRate: 800000 },
+                ],
+            },
+            FEATURES,
+        );
         expect(state.rateDistortionTradeOffPoints).to.deep.equal([
             { codec: 1, resolution: { width: 1920, height: 1080 }, minBitRate: 800000 },
         ]);
     });
 
     it("defaults requiresHardwareEncoder to false when the device omits it", () => {
-        const state = toCameraState({
-            ...MINIMAL_STATE,
-            snapshotCapabilities: [
-                {
-                    resolution: { width: 640, height: 480 },
-                    maxFrameRate: 1,
-                    imageCodec: 0,
-                    requiresEncodedPixels: false,
-                },
-            ],
-        });
+        const state = toCameraState(
+            {
+                ...MINIMAL_STATE,
+                snapshotCapabilities: [
+                    {
+                        resolution: { width: 640, height: 480 },
+                        maxFrameRate: 1,
+                        imageCodec: 0,
+                        requiresEncodedPixels: false,
+                    },
+                ],
+            },
+            FEATURES,
+        );
         expect(state.snapshotCapabilities[0]?.requiresHardwareEncoder).to.equal(false);
     });
 
     it("carries a stated requiresHardwareEncoder through unchanged", () => {
-        const state = toCameraState({
-            ...MINIMAL_STATE,
-            snapshotCapabilities: [
-                {
-                    resolution: { width: 640, height: 480 },
-                    maxFrameRate: 1,
-                    imageCodec: 0,
-                    requiresEncodedPixels: true,
-                    requiresHardwareEncoder: true,
-                },
-            ],
-        });
+        const state = toCameraState(
+            {
+                ...MINIMAL_STATE,
+                snapshotCapabilities: [
+                    {
+                        resolution: { width: 640, height: 480 },
+                        maxFrameRate: 1,
+                        imageCodec: 0,
+                        requiresEncodedPixels: true,
+                        requiresHardwareEncoder: true,
+                    },
+                ],
+            },
+            FEATURES,
+        );
         expect(state.snapshotCapabilities[0]?.requiresHardwareEncoder).to.equal(true);
     });
 
     it("maps an allocated video stream field-for-field", () => {
-        const state = toCameraState({
-            ...MINIMAL_STATE,
-            allocatedVideoStreams: [
-                {
-                    videoStreamId: 1,
-                    streamUsage: 3,
-                    videoCodec: 1,
-                    minResolution: { width: 640, height: 360 },
-                    maxResolution: { width: 1920, height: 1080 },
-                    minFrameRate: 1,
-                    maxFrameRate: 30,
-                    minBitRate: 100000,
-                    maxBitRate: 8000000,
-                    keyFrameInterval: 2000,
-                    referenceCount: 2,
-                },
-            ],
-        });
+        const state = toCameraState(
+            {
+                ...MINIMAL_STATE,
+                allocatedVideoStreams: [
+                    {
+                        videoStreamId: 1,
+                        streamUsage: 3,
+                        videoCodec: 1,
+                        minResolution: { width: 640, height: 360 },
+                        maxResolution: { width: 1920, height: 1080 },
+                        minFrameRate: 1,
+                        maxFrameRate: 30,
+                        minBitRate: 100000,
+                        maxBitRate: 8000000,
+                        keyFrameInterval: 2000,
+                        referenceCount: 2,
+                    },
+                ],
+            },
+            FEATURES,
+        );
         expect(state.allocatedVideoStreams).to.deep.equal([
             {
                 videoStreamId: 1,
@@ -157,21 +209,24 @@ describe("toCameraState", () => {
     });
 
     it("maps an allocated audio stream field-for-field", () => {
-        const state = toCameraState({
-            ...MINIMAL_STATE,
-            allocatedAudioStreams: [
-                {
-                    audioStreamId: 2,
-                    streamUsage: 3,
-                    audioCodec: 0,
-                    channelCount: 1,
-                    sampleRate: 48000,
-                    bitRate: 64000,
-                    bitDepth: 16,
-                    referenceCount: 1,
-                },
-            ],
-        });
+        const state = toCameraState(
+            {
+                ...MINIMAL_STATE,
+                allocatedAudioStreams: [
+                    {
+                        audioStreamId: 2,
+                        streamUsage: 3,
+                        audioCodec: 0,
+                        channelCount: 1,
+                        sampleRate: 48000,
+                        bitRate: 64000,
+                        bitDepth: 16,
+                        referenceCount: 1,
+                    },
+                ],
+            },
+            FEATURES,
+        );
         expect(state.allocatedAudioStreams).to.deep.equal([
             {
                 audioStreamId: 2,
@@ -187,22 +242,25 @@ describe("toCameraState", () => {
     });
 
     it("keeps an allocated snapshot stream's independent min and max resolution", () => {
-        const state = toCameraState({
-            ...MINIMAL_STATE,
-            allocatedSnapshotStreams: [
-                {
-                    snapshotStreamId: 3,
-                    imageCodec: 0,
-                    frameRate: 1,
-                    minResolution: { width: 640, height: 480 },
-                    maxResolution: { width: 1920, height: 1080 },
-                    quality: 100,
-                    encodedPixels: false,
-                    hardwareEncoder: false,
-                    referenceCount: 0,
-                },
-            ],
-        });
+        const state = toCameraState(
+            {
+                ...MINIMAL_STATE,
+                allocatedSnapshotStreams: [
+                    {
+                        snapshotStreamId: 3,
+                        imageCodec: 0,
+                        frameRate: 1,
+                        minResolution: { width: 640, height: 480 },
+                        maxResolution: { width: 1920, height: 1080 },
+                        quality: 100,
+                        encodedPixels: false,
+                        hardwareEncoder: false,
+                        referenceCount: 0,
+                    },
+                ],
+            },
+            FEATURES,
+        );
         expect(state.allocatedSnapshotStreams).to.deep.equal([
             {
                 snapshotStreamId: 3,
@@ -217,15 +275,18 @@ describe("toCameraState", () => {
 
     it("copies microphoneCapabilities' list fields into plain mutable arrays", () => {
         const codecs: readonly number[] = [0, 1];
-        const state = toCameraState({
-            ...MINIMAL_STATE,
-            microphoneCapabilities: {
-                supportedCodecs: codecs,
-                maxNumberOfChannels: 2,
-                supportedSampleRates: [48000],
-                supportedBitDepths: [16],
+        const state = toCameraState(
+            {
+                ...MINIMAL_STATE,
+                microphoneCapabilities: {
+                    supportedCodecs: codecs,
+                    maxNumberOfChannels: 2,
+                    supportedSampleRates: [48000],
+                    supportedBitDepths: [16],
+                },
             },
-        });
+            FEATURES,
+        );
         expect(state.microphoneCapabilities).to.deep.equal({
             supportedCodecs: [0, 1],
             maxNumberOfChannels: 2,
@@ -236,13 +297,16 @@ describe("toCameraState", () => {
     });
 
     it("carries twoWayTalkSupport and scalar limits through unchanged", () => {
-        const state = toCameraState({
-            ...MINIMAL_STATE,
-            maxConcurrentEncoders: 1,
-            maxEncodedPixelRate: 248832000,
-            maxNetworkBandwidth: 4000000,
-            twoWayTalkSupport: 2,
-        });
+        const state = toCameraState(
+            {
+                ...MINIMAL_STATE,
+                maxConcurrentEncoders: 1,
+                maxEncodedPixelRate: 248832000,
+                maxNetworkBandwidth: 4000000,
+                twoWayTalkSupport: 2,
+            },
+            FEATURES,
+        );
         expect(state.maxConcurrentEncoders).to.equal(1);
         expect(state.maxEncodedPixelRate).to.equal(248832000);
         expect(state.maxNetworkBandwidth).to.equal(4000000);
