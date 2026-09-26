@@ -11,6 +11,7 @@ import {
     Crypto,
     DclBehavior,
     Duration,
+    EndpointNumber,
     Environment,
     FabricId,
     GlobalFabricId,
@@ -39,7 +40,10 @@ import { CommissioningController } from "@project-chip/matter.js";
 import { createReadStream } from "node:fs";
 import { Readable } from "node:stream";
 import { pathToFileURL } from "node:url";
+import { CameraStreamManager } from "../camera/CameraStreamManager.js";
+import { MatterCameraDeviceIo } from "../camera/MatterCameraDeviceIo.js";
 import { ConfigStorage } from "../server/ConfigStorage.js";
+import { ServerError } from "../types/WebSocketMessageTypes.js";
 import { ControllerCommandHandler } from "./ControllerCommandHandler.js";
 import { LegacyDataInjector, LegacyServerData } from "./LegacyDataInjector.js";
 import { NetworkTopologyService } from "./NetworkTopologyService.js";
@@ -233,6 +237,7 @@ export class MatterController {
     readonly #credentials = new ThreadCredentialsRegistry();
     readonly #threadDiagnostics: ThreadDiagnosticsService;
     #networkTopology?: NetworkTopologyService;
+    #cameraStreams?: CameraStreamManager;
     #webRtcRequestor?: Endpoint<typeof CameraControllerDevice>;
     #services: SharedEnvironmentServices;
 
@@ -421,7 +426,7 @@ export class MatterController {
 
     get commandHandler() {
         if (this.#controllerInstance === undefined) {
-            throw new Error("Controller not initialized");
+            throw ServerError.sdkStackError("Controller is not initialized");
         }
         if (this.#commandHandler === undefined) {
             this.#commandHandler = new ControllerCommandHandler(this.#controllerInstance, {
@@ -534,6 +539,48 @@ export class MatterController {
         return this.#networkTopology;
     }
 
+    /**
+     * Lazily-constructed camera stream manager. Created on first access, wired to the command
+     * handler's device I/O. Reused across connections and endpoints.
+     */
+    get cameraStreams(): CameraStreamManager {
+        if (this.#cameraStreams === undefined) {
+            if (this.#stopped) {
+                throw ServerError.sdkStackError("Controller is stopped");
+            }
+            const manager = new CameraStreamManager(new MatterCameraDeviceIo(this.commandHandler));
+            // A peer-initiated End leaves the device with no session and us with an entry naming it.
+            this.commandHandler.events.webRtcCallback.on(data => {
+                if (data.event_type !== "end") return;
+                try {
+                    manager.forgetSession(
+                        NodeId(data.node_id),
+                        EndpointNumber(data.endpoint_id),
+                        data.webrtc_session_id,
+                    );
+                } catch (error) {
+                    // No observer on this shared Observable may throw: matter.js rethrows an observer
+                    // error out of emit, which denies the event to every observer behind this one and
+                    // fails the camera's own End invoke.
+                    logger.warn("Failed to drop the camera session a peer ended:", error);
+                }
+            });
+            this.#cameraStreams = manager;
+        }
+        return this.#cameraStreams;
+    }
+
+    /**
+     * The camera stream manager if a command has already constructed it, without triggering lazy
+     * construction or the stopped-controller throw. For cleanup paths (a closing WS connection) that
+     * run for every connection regardless of whether it ever used the camera subsystem: touching the
+     * `cameraStreams` getter there would construct the manager on every disconnect, and throw on every
+     * one of them once the controller is stopped.
+     */
+    get cameraStreamsIfCreated(): CameraStreamManager | undefined {
+        return this.#cameraStreams;
+    }
+
     #registerStoredThreadCredentials(): void {
         for (const entry of this.#config.listThreadCredentials()) {
             registerThreadCredentialsFromHex(this.#credentials, entry.dataset, `stored:${entry.id}`);
@@ -567,7 +614,7 @@ export class MatterController {
      */
     async vendorInfoService() {
         if (this.#controllerInstance === undefined) {
-            throw new Error("Controller not initialized");
+            throw ServerError.sdkStackError("Controller is not initialized");
         }
         const service = await this.#controllerInstance.node.act(agent => agent.get(DclBehavior).vendorInfoService);
         await service.construction;
@@ -580,7 +627,7 @@ export class MatterController {
      */
     async certificateService() {
         if (this.#controllerInstance === undefined) {
-            throw new Error("Controller not initialized");
+            throw ServerError.sdkStackError("Controller is not initialized");
         }
         const service = await this.#controllerInstance.node.act(agent => agent.get(DclBehavior).certificateService);
         await service.construction;
@@ -593,7 +640,7 @@ export class MatterController {
      */
     async otaUpdateService() {
         if (this.#controllerInstance === undefined) {
-            throw new Error("Controller not initialized");
+            throw ServerError.sdkStackError("Controller is not initialized");
         }
         const service = await this.#controllerInstance.node.act(agent => agent.get(DclBehavior).otaUpdateService);
         await service.construction;
@@ -660,6 +707,11 @@ export class MatterController {
             await this.#threadDiagnostics.stop();
             await this.#borderRouterRegistry.stop();
         }
+        // Before the command handler closes the underlying connections: a session still open at
+        // shutdown otherwise pins its streams at a non-zero reference count forever.
+        await this.#cameraStreams
+            ?.stopAll()
+            .catch(err => logger.warn("Failed to release camera sessions on stop", err));
         await this.#commandHandler?.close(); // This closes also the controller instance if started
         await this.#services.close();
     }
@@ -670,7 +722,7 @@ export class MatterController {
      */
     async #enableTestOtaImages() {
         if (this.#controllerInstance === undefined) {
-            throw new Error("Controller not initialized");
+            throw ServerError.sdkStackError("Controller is not initialized");
         }
         await this.#controllerInstance.otaProvider.setStateOf(SoftwareUpdateManager, {
             allowTestOtaImages: true,

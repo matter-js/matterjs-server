@@ -22,6 +22,9 @@ export {
     type AttributesData,
     type AttributeWriteResult,
     type BindingTarget,
+    type CameraBoundField,
+    type CameraStreamIncompatibleBound,
+    type CameraStreamKind,
     type CommandMessage,
     type CommissionableNodeData,
     type CommissioningParameters,
@@ -49,6 +52,8 @@ export {
 
 // Re-export MatterNodeData as MatterNode for backward compatibility within ws-controller
 export type { MatterNodeData as MatterNode } from "@matter-server/ws-client";
+
+import type { CameraStreamIncompatibleBound, CameraStreamKind } from "@matter-server/ws-client";
 
 /**
  * Error codes matching Python Matter Server for API compatibility.
@@ -83,6 +88,85 @@ export enum ServerErrorCode {
     IcdMultiAdmin = 100,
     /** OHF extension (not python-matter-server): OTA firmware image upload failed (corrupt file / store failure). */
     OtaUploadError = 101,
+    /** OHF extension: no codec or range both sides can serve, or the camera states no such capability. */
+    CameraStreamIncompatible = 102,
+    /** OHF extension: the camera refused the allocation for lack of capacity. */
+    CameraResourceExhausted = 103,
+    /** OHF extension: stream release refused because the device still references the stream. */
+    CameraStreamInUse = 104,
+    /** OHF extension: endpoint does not expose the clusters camera streaming needs. */
+    CameraNotSupported = 106,
+}
+
+export interface CameraStreamIncompatibleDetail {
+    /**
+     * Which dimension could not be met, so a client knows what to change: `codec` a codec list,
+     * `bounds` a resolution / frame-rate / bit-rate bound, `capability` nothing about the request
+     * itself — the camera states no capability of the kind it needs, or the offer refuses the track
+     * — and `level` the offer's own `a=fmtp` level, which the client changes in the SDP it sends
+     * rather than in any argument of the command.
+     */
+    reason: "codec" | "bounds" | "capability" | "level";
+    /**
+     * Which `camera_start_stream` track the failure is about, so a caller learns which of its two
+     * statements could not be met. Absent when the failure is about the request as a whole (both
+     * tracks left out) or about a command that resolves no track, such as `camera_snapshot`.
+     */
+    track?: "video" | "audio";
+    /**
+     * The camera's own codec names, empty when the camera is not what refused — an offer that
+     * rejects a media section, or a request that asked for no track at all. Never a statement that
+     * the camera supports nothing.
+     */
+    device: string[];
+    requested: string[];
+    /**
+     * The single caller bound that could not be met, when the server decided that before asking the
+     * device. `field` is typed to the wire vocabulary so a hint key can only be reported in the
+     * spelling `camera_start_stream` accepts it back in.
+     */
+    bound?: CameraStreamIncompatibleBound;
+    /** Matter status code the device answered with, when a device rejection produced this. */
+    deviceStatus?: number;
+}
+
+const INCOMPATIBLE_MESSAGES: Record<CameraStreamIncompatibleDetail["reason"], string> = {
+    codec: "No codec supported by both the camera and the caller",
+    bounds: "Camera cannot serve the requested stream parameters",
+    capability: "No capability for this request on the camera or in the offer",
+    level: "Offer states a codec level this server cannot bound a stream by",
+};
+
+export interface CameraAllocatedStreamDetail {
+    streamId: number;
+    referenceCount: number;
+}
+
+/**
+ * What a client learns about a release the camera refused with `INVALID_IN_STATE`.
+ *
+ * `referenceCount` is the count the server last read, and is absent when that cached count is zero:
+ * the camera's answer carries no count of its own, so there is nothing else to report.
+ */
+export interface CameraStreamInUseDetail {
+    streamId: number;
+    referenceCount?: number;
+}
+
+/**
+ * A stream that holds capacity the refused request needed.
+ *
+ * `kind` is on the entry because the list is not always the kind the request asked for: a refused
+ * snapshot allocation reports the video streams, which are what hold the camera's encoders.
+ */
+export interface CameraOccupyingStreamDetail extends CameraAllocatedStreamDetail {
+    kind: CameraStreamKind;
+}
+
+export interface CameraResourceExhaustedDetail {
+    allocated: CameraOccupyingStreamDetail[];
+    maxConcurrentEncoders?: number;
+    maxEncodedPixelRate?: number;
 }
 
 /**
@@ -157,6 +241,59 @@ export class ServerError extends Error {
             JSON.stringify({
                 message: "Peer has administrators from other vendors that may not support LIT",
                 admin_vendor_ids: adminVendorIds,
+            }),
+        );
+    }
+
+    static cameraStreamIncompatible(detail: CameraStreamIncompatibleDetail): ServerError {
+        return new ServerError(
+            ServerErrorCode.CameraStreamIncompatible,
+            JSON.stringify({
+                message: INCOMPATIBLE_MESSAGES[detail.reason],
+                reason: detail.reason,
+                ...(detail.track === undefined ? {} : { track: detail.track }),
+                device: detail.device,
+                requested: detail.requested,
+                ...(detail.bound === undefined ? {} : { bound: detail.bound }),
+                ...(detail.deviceStatus === undefined ? {} : { device_status: detail.deviceStatus }),
+            }),
+        );
+    }
+
+    static cameraResourceExhausted(detail: CameraResourceExhaustedDetail): ServerError {
+        return new ServerError(
+            ServerErrorCode.CameraResourceExhausted,
+            JSON.stringify({
+                message: "Camera has no capacity for this stream",
+                allocated: detail.allocated.map(entry => ({
+                    kind: entry.kind,
+                    stream_id: entry.streamId,
+                    reference_count: entry.referenceCount,
+                })),
+                max_concurrent_encoders: detail.maxConcurrentEncoders,
+                max_encoded_pixel_rate: detail.maxEncodedPixelRate,
+            }),
+        );
+    }
+
+    static cameraStreamInUse(detail: CameraStreamInUseDetail, cause?: Error): ServerError {
+        return new ServerError(
+            ServerErrorCode.CameraStreamInUse,
+            JSON.stringify({
+                message: "Stream is in use and cannot be released",
+                stream_id: detail.streamId,
+                ...(detail.referenceCount === undefined ? {} : { reference_count: detail.referenceCount }),
+            }),
+            cause,
+        );
+    }
+
+    static cameraNotSupported(detail: { missingClusters: number[] }): ServerError {
+        return new ServerError(
+            ServerErrorCode.CameraNotSupported,
+            JSON.stringify({
+                message: "Endpoint does not support camera streaming",
+                missing_clusters: detail.missingClusters,
             }),
         );
     }

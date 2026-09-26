@@ -44,9 +44,7 @@ import {
     OperationalCredentials,
     TimeSynchronization,
 } from "@matter/main/clusters";
-import { WebRtcTransportDefinitions } from "@matter/main/clusters/web-rtc-transport-definitions";
 import { WebRtcTransportProvider } from "@matter/main/clusters/web-rtc-transport-provider";
-import { ClusterRevision } from "@matter/main/model";
 import { DeviceAttestationCheck, Invoke, PeerAddress, Read, Specifier, PeerSet } from "@matter/main/protocol";
 import {
     AttributeId,
@@ -63,11 +61,13 @@ import {
     VendorId,
 } from "@matter/main/types";
 import { Endpoint } from "@matter/node";
+import { WebRtcTransportProviderClient } from "@matter/node/behaviors/web-rtc-transport-provider";
 import { WebRtcTransportRequestorServer } from "@matter/node/behaviors/web-rtc-transport-requestor";
 import { CameraControllerDevice } from "@matter/node/devices/camera-controller";
 import { CommissioningController, NodeCommissioningOptions } from "@project-chip/matter.js";
 import type { DecodedAttributeReportValue, DecodedEventReportValue } from "@project-chip/matter.js/cluster";
 import { NodeStates, PairedNode } from "@project-chip/matter.js/device";
+import type { SessionEstablishingCommandName } from "../camera/webRtcProviderArguments.js";
 import { ClusterMap, ClusterMapEntry, GlobalAttributes } from "../model/ModelMapper.js";
 import {
     buildAttributePath,
@@ -112,9 +112,9 @@ import { pushNodeTime, TimeSyncInvokers } from "./timeSyncCommands.js";
 import { SyncTrigger, TIME_FAILURE_EVENT_ID, TIME_SYNC_CLUSTER_ID, TimeSyncManager } from "./TimeSyncManager.js";
 import { attachWebRtcCallbackBridge } from "./WebRtcCallbackBridge.js";
 import {
-    isTrackableWebRtcSession,
-    resolveWebRtcSessionStreams,
-    selectWebRtcStreamFields,
+    establishWebRtcProviderSession,
+    tracksSessionOf,
+    type WebRtcProviderSessionIo,
 } from "./webRtcSessionStreams.js";
 
 const logger = Logger.get("ControllerCommandHandler");
@@ -368,146 +368,153 @@ export class ControllerCommandHandler {
         return this.#controller.node.endpoints.for("camera-controller") as Endpoint<typeof CameraControllerDevice>;
     }
 
-    /** `originatingEndpointId` is server-injected; any client-supplied value in `payload` is overwritten. */
-    async sendWebRtcProviderCommand(args: {
+    /**
+     * Invoke ProvideOffer/SolicitOffer and track the resulting session in the local requestor.
+     *
+     * `fields` must already be in matter.js's own field-name convention (the injected
+     * `originatingEndpointId` overwrites any value already present). The decision logic — what makes a
+     * session trackable, when to tear one down — lives in {@link establishWebRtcProviderSession} so it
+     * can be unit-tested without a live node; this method supplies the real device I/O.
+     */
+    async #establishWebRtcProviderSession(args: {
         nodeId: NodeId;
         endpointId: EndpointNumber;
         commandName: "ProvideOffer" | "SolicitOffer";
-        payload: Record<string, unknown>;
+        fields: Record<string, unknown>;
     }): Promise<WebRtcTransportProvider.ProvideOfferResponse | WebRtcTransportProvider.SolicitOfferResponse> {
-        const { nodeId, endpointId, commandName, payload } = args;
-
-        if (commandName !== "ProvideOffer" && commandName !== "SolicitOffer") {
-            throw ServerError.invalidArguments(
-                `Unsupported WebRTC provider command "${commandName}"; expected ProvideOffer or SolicitOffer`,
-            );
-        }
+        const { nodeId, endpointId, commandName, fields } = args;
 
         const requestorEndpoint = this.#cameraControllerEndpoint();
         const originatingEndpointId = EndpointNumber(requestorEndpoint.number);
         const fabricIndex = this.#controller.fabric.fabricIndex;
-
         const node = this.#nodes.get(nodeId);
 
-        const command = commandName === "ProvideOffer" ? "provideOffer" : "solicitOffer";
-
-        // `payload` arrives using the Python Matter Server wire convention (e.g. `webRtcSessionID`,
-        // see python_client/chip/clusters/cluster_defs), which does not match matter.js's own
-        // camelCase property names (e.g. `webRtcSessionId`). Route it through the same model-based
-        // conversion used for regular invokes so field names and value types (nullables, bytes,
-        // epochs, ...) line up with what matter.js expects.
-        const providerClusterEntry = ClusterMap[WebRtcTransportProvider.id];
-        const commandModel = providerClusterEntry?.commands[command.toLowerCase()];
-        const convertedPayload =
-            providerClusterEntry !== undefined && commandModel !== undefined
-                ? (convertCommandDataToMatter(payload, commandModel, providerClusterEntry.model) as Record<
-                      string,
-                      unknown
-                  >)
-                : payload;
-
-        const fields: Record<string, unknown> = {
-            ...convertedPayload,
-            originatingEndpointId,
-        };
-
-        const clusterRevision =
-            this.#nodes.attributeCache.get(nodeId)?.[
-                `${endpointId}/${WebRtcTransportProvider.id}/${ClusterRevision.id}`
-            ];
-        selectWebRtcStreamFields(fields, clusterRevision);
-
-        const response = (await this.#invokeCommand(node.node, {
-            endpoint: endpointId,
-            cluster: WebRtcTransportProvider,
-            command,
-            fields,
-        })) as WebRtcTransportProvider.ProvideOfferResponse | WebRtcTransportProvider.SolicitOfferResponse | undefined;
-
-        if (response === undefined || typeof response.webRtcSessionId !== "number") {
-            throw ServerError.sdkStackError(
-                `${commandName} did not return a WebRTCSessionID for node ${this.formatNode(nodeId)}`,
-            );
-        }
-
-        const streamUsage = convertedPayload.streamUsage;
-        const metadataEnabled = convertedPayload.metadataEnabled === true;
-
-        const videoStreams = resolveWebRtcSessionStreams(
-            fields.videoStreams,
-            fields.videoStreamId,
-            response.videoStreamId,
-        );
-        const audioStreams = resolveWebRtcSessionStreams(
-            fields.audioStreams,
-            fields.audioStreamId,
-            response.audioStreamId,
-        );
-
-        // An untrackable session (no stream usage, or no stream — e.g. an auto-select/deferred
-        // SolicitOffer whose provider reports no stream id yet) cannot be stored in the requestor's
-        // CurrentSessions, so we could never route the peer's follow-up signaling for it. Rather than
-        // return a session id that will silently never deliver media, tear the just-created device
-        // session down and fail the command. Deferred/auto-select is thus unsupported for now; the
-        // dashboard never hits this (it always requests a concrete stream usage + id).
-        if (!isTrackableWebRtcSession(streamUsage, videoStreams, audioStreams)) {
-            logger.warn(
-                `Tearing down untrackable WebRTC session id=${response.webRtcSessionId} for node ${this.formatNode(
-                    nodeId,
-                )}: request lacks a stream usage or any video/audio stream, so signaling cannot be routed for it`,
-            );
-            try {
-                await this.#invokeCommand(node.node, {
+        const io: WebRtcProviderSessionIo = {
+            invoke: (command, invokeFields) =>
+                this.#invokeCommand(node.node, {
                     endpoint: endpointId,
                     cluster: WebRtcTransportProvider,
-                    command: "endSession",
-                    fields: {
-                        webRtcSessionId: response.webRtcSessionId,
-                        reason: WebRtcTransportDefinitions.WebRtcEndReason.OutOfResources,
-                    },
+                    command,
+                    fields: invokeFields,
+                }),
+            upsertSession: async session => {
+                await requestorEndpoint.act(agent => {
+                    agent.get(WebRtcTransportRequestorServer).upsertSession(session);
                 });
-            } catch (err) {
-                logger.warn(
-                    `EndSession cleanup for untrackable WebRTC session id=${response.webRtcSessionId} failed: ${
-                        err instanceof Error ? err.message : String(err)
-                    }`,
-                );
-            }
-            throw ServerError.sdkStackError(
-                `${commandName} for node ${this.formatNode(nodeId)} produced a session with no stream usage or ` +
-                    `video/audio stream; deferred/auto-select streaming is not supported`,
-            );
-        }
-
-        const session: WebRtcTransportDefinitions.WebRtcSession = {
-            id: response.webRtcSessionId,
-            peerNodeId: nodeId,
-            peerEndpointId: endpointId,
-            streamUsage: streamUsage as WebRtcTransportDefinitions.WebRtcSession["streamUsage"],
-            metadataEnabled,
-            videoStreams,
-            audioStreams,
-            fabricIndex,
+            },
         };
 
-        logger.info(
-            `upserting WebRTC session id=${session.id} peerNodeId=${nodeId} peerEndpointId=${endpointId} fabricIndex=${fabricIndex} streamUsage=${streamUsage} originatingEndpointId=${originatingEndpointId}`,
-        );
-        await requestorEndpoint.act(agent => {
-            agent.get(WebRtcTransportRequestorServer).upsertSession(session);
+        const response = await establishWebRtcProviderSession(io, {
+            commandName,
+            fields,
+            nodeId,
+            endpointId,
+            originatingEndpointId,
+            fabricIndex,
+            clusterRevision: this.#webRtcProviderClusterRevision(nodeId, endpointId),
+            formatNode: id => this.formatNode(id),
         });
-
         return response;
+    }
+
+    /**
+     * The one entry to a WebRTC provider session, for the camera subsystem and for the raw WebSocket
+     * route alike. `fields` is already in matter.js's own convention: a wire payload is converted by
+     * `toProviderCommandFields` at the WebSocket boundary, where `camera_start_stream`'s arguments are
+     * parsed too, so no wire shape reaches this class.
+     */
+    async invokeWebRtcProviderCommand(args: {
+        nodeId: NodeId;
+        endpointId: EndpointNumber;
+        commandName: SessionEstablishingCommandName;
+        fields: Record<string, unknown>;
+    }): Promise<WebRtcTransportProvider.ProvideOfferResponse | WebRtcTransportProvider.SolicitOfferResponse> {
+        return this.#establishWebRtcProviderSession(args);
+    }
+
+    /**
+     * Trickle ICE candidates into a session the camera already holds.
+     *
+     * A plain invoke, deliberately apart from {@link invokeWebRtcProviderCommand}: it creates nothing
+     * to track, carries no originating endpoint, and the model gives the command no response type.
+     * A session id is not checked against local records first — the camera holds the session and
+     * answers for an id it cannot resolve to one of its own.
+     */
+    async invokeProvideIceCandidates(args: {
+        nodeId: NodeId;
+        endpointId: EndpointNumber;
+        fields: Record<string, unknown>;
+    }): Promise<void> {
+        await this.#invokeCommand(this.#nodes.get(args.nodeId).node, {
+            endpoint: args.endpointId,
+            cluster: WebRtcTransportProvider,
+            command: "provideIceCandidates",
+            fields: args.fields,
+        });
+    }
+
+    /**
+     * This server's own node id on the fabric — the `PeerNodeID` a camera stores for a session
+     * established with this server (§11.4.5.5), and what its `EndSession` peer check compares
+     * against (§11.5.6.7.3).
+     */
+    get localNodeId(): NodeId {
+        return this.#controller.fabric.nodeId;
+    }
+
+    /** @throws ServerError if node not found */
+    getNode(nodeId: NodeId): PairedNode {
+        return this.#nodes.get(nodeId);
+    }
+
+    /**
+     * WebRtcTransportProvider ClusterRevision, as the endpoint's own cluster structure states it.
+     *
+     * The attribute cache is filled by the node's attribute reports, so it answers `undefined` until
+     * one has carried this attribute, and the first `ProvideOffer` after a restart would then be
+     * down-converted to the deprecated singular stream ids against a revision-2 camera. The global
+     * attribute state is part of what the client structure is built from, so it is known as soon as
+     * the endpoint exposes the behaviour. Still `undefined`-checked by the consumer: for a client
+     * cluster the globals are populated from the device, and nothing guarantees a read has completed.
+     */
+    #webRtcProviderClusterRevision(nodeId: NodeId, endpointId: EndpointNumber): number | undefined {
+        const endpoint = this.#nodes.get(nodeId).node.endpoints.for(endpointId);
+        if (endpoint === undefined || !endpoint.behaviors.has(WebRtcTransportProviderClient)) return undefined;
+        return endpoint.globalsOf(WebRtcTransportProviderClient).clusterRevision;
+    }
+
+    /** Narrow, typed invoke exposed for device I/O implementations outside this class (e.g. camera streaming). */
+    async invokeCommand<const C extends Specifier.ClusterLike>(
+        node: ClientNode,
+        request: Invoke.ConcreteCommandRequest<C>,
+        options?: Omit<Invoke.Definition, "commands">,
+    ) {
+        return this.#invokeCommand(node, request, options);
     }
 
     /**
      * Drop a WebRTC session from the local requestor's CurrentSessions tracking. Call when the session
      * is ended locally (e.g. the client invokes EndSession on the provider); peer-initiated ends are
-     * already removed by the requestor's own End handler. No-op if the id is not tracked.
+     * already removed by the requestor's own End handler.
+     *
+     * `nodeId` and `endpointId` are what the id was issued by: the entry is dropped only when it is
+     * that camera's, so ending a session on one camera cannot untrack another camera's session
+     * carrying the same id. No-op if the id is untracked or held by a different peer.
      */
-    async removeTrackedWebRtcSession(webRtcSessionId: number): Promise<void> {
+    async removeTrackedWebRtcSession(
+        webRtcSessionId: number,
+        nodeId: NodeId,
+        endpointId: EndpointNumber,
+    ): Promise<void> {
         await this.#cameraControllerEndpoint().act(agent => {
-            agent.get(WebRtcTransportRequestorServer).removeSession(webRtcSessionId);
+            const requestor = agent.get(WebRtcTransportRequestorServer);
+            if (!tracksSessionOf(requestor.state.currentSessions, webRtcSessionId, nodeId, endpointId)) {
+                logger.debug(
+                    `WebRTC session ${webRtcSessionId} is not tracked for node ${this.formatNode(nodeId)} endpoint ${endpointId}; local tracking left unchanged`,
+                );
+                return;
+            }
+            requestor.removeSession(webRtcSessionId);
         });
     }
 

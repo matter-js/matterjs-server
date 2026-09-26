@@ -134,6 +134,30 @@ class OtaUploadError(MatterError):
     error_code = 101
 
 
+class CameraStreamIncompatible(MatterError):
+    """Raised when no codec or resolution range suits both the camera and the caller."""
+
+    error_code = 102
+
+
+class CameraResourceExhausted(MatterError):
+    """Raised when the camera refused the allocation for lack of capacity."""
+
+    error_code = 103
+
+
+class CameraStreamInUse(MatterError):
+    """Raised when stream release is refused because the device still references the stream."""
+
+    error_code = 104
+
+
+class CameraNotSupported(MatterError):
+    """Raised when an endpoint does not expose the clusters camera streaming needs."""
+
+    error_code = 106
+
+
 def exception_from_error_code(error_code: int) -> type[MatterError]:
     """Return correct Exception class from error_code."""
     return ERROR_MAP.get(error_code, MatterError)

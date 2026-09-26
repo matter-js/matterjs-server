@@ -20,6 +20,7 @@ import { WebRtcTransportRequestorServer } from "@matter/node/behaviors/web-rtc-t
 import { CameraControllerDevice } from "@matter/node/devices/camera-controller";
 import { StreamUsage } from "@matter/types";
 import { WebRtcTransportDefinitions } from "@matter/types/clusters/web-rtc-transport-definitions";
+import { toProviderCommandFields } from "../src/camera/webRtcProviderArguments.js";
 import { attachWebRtcCallbackBridge } from "../src/controller/WebRtcCallbackBridge.js";
 
 type WebRtcSession = WebRtcTransportDefinitions.WebRtcSession;
@@ -89,7 +90,7 @@ describe("WebRtcCallbackBridge", () => {
             server.events.offer.emit(session, {
                 webRtcSessionId: session.id,
                 sdp: "v=0\nm=video",
-                iceServers: [{ urLs: ["stun:stun.example:3478"] }],
+                iceServers: [{ urLs: ["stun:stun.example:3478"], username: "u", credential: "p", caid: 7 }],
                 iceTransportPolicy: "all",
             });
         });
@@ -103,7 +104,7 @@ describe("WebRtcCallbackBridge", () => {
             fabric_index: session.fabricIndex,
             data: {
                 sdp: "v=0\nm=video",
-                ice_servers: [{ urLs: ["stun:stun.example:3478"] }],
+                ice_servers: [{ urls: ["stun:stun.example:3478"], username: "u", credential: "p", caid: 7 }],
                 ice_transport_policy: "all",
             },
         });
@@ -173,6 +174,33 @@ describe("WebRtcCallbackBridge", () => {
             fabric_index: session.fabricIndex,
             data: { reason: WebRtcTransportDefinitions.WebRtcEndReason.UserHangup },
         });
+    });
+
+    it("a candidate this event reports is what ProvideIceCandidates takes back", async () => {
+        const session = makeSession();
+        const candidates: WebRtcTransportDefinitions.IceCandidate[] = [
+            { candidate: "candidate:1 1 udp 2113937151 1.2.3.4 54321 typ host", sdpMid: "0", sdpmLineIndex: 0 },
+            { candidate: "candidate:2 1 udp 2113937151 5.6.7.8 12345 typ host", sdpMid: null, sdpmLineIndex: null },
+        ];
+        await cameraEndpoint!.act(agent => {
+            const server = agent.get(WebRtcTransportRequestorServer);
+            server.upsertSession(session);
+            server.events.iceCandidates.emit(session, candidates);
+        });
+
+        const event = recorded[0];
+        if (event.event_type !== "ice_candidates" || event.data === null) {
+            throw new Error(`expected an ice_candidates event with data, got ${JSON.stringify(event)}`);
+        }
+        // The payload a client echoes back is the event's own, spelled as the event spelled it, and
+        // the ids are the ones the wire reports. Nothing here is written in the cluster's spelling,
+        // so the round trip is what is asserted rather than the conversion restating itself.
+        const fields = toProviderCommandFields("ProvideIceCandidates", {
+            webrtc_session_id: event.webrtc_session_id,
+            ice_candidates: event.data.ice_candidates,
+        });
+
+        expect(fields).to.deep.equal({ webRtcSessionId: session.id, iceCandidates: candidates });
     });
 
     it("session identifying fields are taken from the session, not the request payload", async () => {

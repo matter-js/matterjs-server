@@ -69,6 +69,11 @@ class APICommand(str, Enum):
     UNREGISTER_ICD = "unregister_icd"
     GET_NETWORK_TOPOLOGY = "get_network_topology"
     INITIATE_OTA_UPLOAD = "initiate_ota_upload"
+    CAMERA_GET_CAPABILITIES = "camera_get_capabilities"  # schema 14+
+    CAMERA_START_STREAM = "camera_start_stream"  # schema 14+
+    CAMERA_STOP_STREAM = "camera_stop_stream"  # schema 14+
+    CAMERA_SNAPSHOT = "camera_snapshot"  # schema 14+
+    CAMERA_RELEASE_STREAM = "camera_release_stream"  # schema 14+
 
 
 EventCallBackType = Callable[[EventType, Any], None]

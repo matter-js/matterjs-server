@@ -5,7 +5,7 @@
  */
 
 import { parseBigIntAwareJson, toBigIntAwareJson } from "./json-utils.js";
-import { redactSensitiveCommandFields } from "./logging-redaction.js";
+import { redactIncomingMessage, redactSensitiveCommandFields } from "./logging-redaction.js";
 import { CommandMessage, ServerInfoMessage } from "./models/model.js";
 
 /**
@@ -77,7 +77,7 @@ export class Connection {
             this.socket.onmessage = (event: { data: unknown }) => {
                 const dataStr = typeof event.data === "string" ? event.data : String(event.data);
                 const data = parseBigIntAwareJson(dataStr);
-                console.debug("WebSocket OnMessage", data);
+                console.debug("WebSocket OnMessage", redactIncomingMessage(data));
                 if (!this.serverInfo) {
                     this.serverInfo = data as ServerInfoMessage;
                     resolve();
