@@ -872,6 +872,12 @@ export interface CommissioningParameters {
     setup_pin_code: number;
     setup_manual_code: string;
     setup_qr_code: string;
+    /** Long (12-bit) discriminator the device advertises while the window is open. */
+    discriminator?: number;
+    vendor_id?: number;
+    product_id?: number;
+    /** Seconds the window stays open. */
+    commissioning_timeout?: number;
 }
 
 export interface CommissionableNodeData {
