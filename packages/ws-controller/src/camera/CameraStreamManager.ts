@@ -189,9 +189,9 @@ export function preferredVideoCodec(
     if (offered !== undefined) {
         const narrowed = candidates.filter(codec => offered.decodable.includes(videoCodecName(codec)));
         if (narrowed.length === 0 && candidates.some(codec => offered.unreadable.includes(videoCodecName(codec)))) {
-            // The peer and the camera do have a codec in common; what is missing is a level this
-            // server can bound the stream by, and reporting that as "no codec in common" would send
-            // the client to change a codec list that is not the problem.
+            // The peer and the camera do have a codec in common; what is missing is a decode ceiling
+            // this server can bound the stream by, and reporting that as "no codec in common" would
+            // send the client to change a codec list that is not the problem.
             throw ServerError.cameraStreamIncompatible({
                 reason: "level",
                 track: "video",

@@ -103,8 +103,8 @@ export interface CameraStreamIncompatibleDetail {
      * Which dimension could not be met, so a client knows what to change: `codec` a codec list,
      * `bounds` a resolution / frame-rate / bit-rate bound, `capability` nothing about the request
      * itself — the camera states no capability of the kind it needs, or the offer refuses the track
-     * — and `level` the offer's own `a=fmtp` level, which the client changes in the SDP it sends
-     * rather than in any argument of the command.
+     * — and `level` a decode ceiling the offer's own `a=fmtp` record states and this server cannot
+     * read, which the client changes in the SDP it sends rather than in any argument of the command.
      */
     reason: "codec" | "bounds" | "capability" | "level";
     /**

@@ -94,15 +94,16 @@ export interface SdpVideoConstraints {
     /** Per-codec fmtp limits, keyed by upper-cased codec name. A codec absent here stated none. */
     limitsByCodec: ReadonlyMap<string, VideoCodecLimits>;
     /**
-     * Video codecs the offer states a level for that this server cannot map to a decode ceiling.
+     * Video codecs whose stated decode ceiling this server cannot read — a level it cannot map to
+     * the codec's level tables, or a capability parameter whose value is not a whole number.
      *
-     * Such a codec is not one this server may select: a level bounds the frame size and the
-     * processing rate the peer can decode, so a level it cannot read is a ceiling it cannot honour,
+     * Such a codec is not one this server may select: the ceiling bounds the frame size and the
+     * processing rate the peer can decode, so one it cannot read is a ceiling it cannot honour,
      * and handing the peer a stream past it produces no picture at all. It is kept here rather than
      * dropped from the section's codec list, because a list narrowed to empty reads as "the peer
      * stated no codec", which is the opposite statement — the unconstrained one.
      */
-    unreadableLevelCodecs: ReadonlySet<string>;
+    unreadableCeilingCodecs: ReadonlySet<string>;
 }
 
 /**
@@ -162,13 +163,43 @@ function fmtpValue(params: string, key: string): string | undefined {
 }
 
 /**
- * {@link fmtpValue} read as a whole number, or none when the list does not state the key or states
- * it as something other than digits.
+ * What an `a=fmtp` parameter list says about one numeric key.
+ *
+ * A value that is not a whole number is its own state and never `absent`: the peer stated a ceiling
+ * in a spelling this server cannot read, and reading that as no statement at all raises the ceiling
+ * instead of holding it, which is the one direction a decode bound may not move in.
  */
-function fmtpNumber(params: string, key: string): number | undefined {
+type FmtpReading =
+    | { readonly state: "absent" }
+    | { readonly state: "read"; readonly value: number }
+    | { readonly state: "unreadable"; readonly value: string };
+
+const FMTP_ABSENT: FmtpReading = { state: "absent" };
+
+function fmtpNumber(params: string, key: string): FmtpReading {
     const value = fmtpValue(params, key);
-    return value !== undefined && /^\d+$/.test(value) ? Number(value) : undefined;
+    if (value === undefined) return FMTP_ABSENT;
+    if (!/^\d+$/.test(value)) return { state: "unreadable", value };
+    return { state: "read", value: Number(value) };
 }
+
+/** The number a reading states, or none for every state that states no number. */
+function statedNumber(reading: FmtpReading): number | undefined {
+    return reading.state === "read" ? reading.value : undefined;
+}
+
+/** The first parameter of a record whose value this server cannot read, or none when it can read them all. */
+function unreadableParameter(
+    readings: Readonly<Record<string, FmtpReading>>,
+): { readonly name: string; readonly value: string } | undefined {
+    for (const [name, reading] of Object.entries(readings)) {
+        if (reading.state === "unreadable") return { name, value: reading.value };
+    }
+    return undefined;
+}
+
+/** Both payload formats spell the bit-rate capability this way, in units of 1000 bits per second. */
+const MAX_BIT_RATE_PARAMETER = "max-br";
 
 /**
  * How one codec spells the `a=fmtp` parameters this server reads, and how to read its level.
@@ -307,7 +338,7 @@ function disposition(sections: MediaSections): MediaDisposition {
  * must refuse, or none when the offer stated no codec list to narrow by.
  *
  * The one read path for the split, so the codec a stream is requested in and the codec whose limits
- * bound it cannot come from different rules. A codec whose level could not be read is reported
+ * bound it cannot come from different rules. A codec whose ceiling could not be read is reported
  * rather than quietly dropped: it is what tells the caller why a list the peer did state narrowed to
  * nothing, and "no codec in common" would be an untrue answer to that.
  */
@@ -317,8 +348,8 @@ export function decodableVideoCodecs(
     const offered = receivableCodecs(sdp.video);
     if (offered === undefined) return undefined;
     return {
-        decodable: offered.filter(name => !sdp.unreadableLevelCodecs.has(name)),
-        unreadable: offered.filter(name => sdp.unreadableLevelCodecs.has(name)),
+        decodable: offered.filter(name => !sdp.unreadableCeilingCodecs.has(name)),
+        unreadable: offered.filter(name => sdp.unreadableCeilingCodecs.has(name)),
     };
 }
 
@@ -346,7 +377,7 @@ export function videoCodecLimits(sdp: SdpVideoConstraints | undefined, codec: nu
  */
 export function parseSdpVideoConstraints(sdp: string): SdpVideoConstraints {
     const limitsByCodec = new Map<string, VideoCodecLimits>();
-    const unreadableLevelCodecs = new Set<string>();
+    const unreadableCeilingCodecs = new Set<string>();
     const videoSections: MediaSections = { receiving: false, refused: false, codecs: new Array<string>() };
     const audioSections: MediaSections = { receiving: false, refused: false, codecs: new Array<string>() };
     let wantsTalkback = false;
@@ -363,7 +394,7 @@ export function parseSdpVideoConstraints(sdp: string): SdpVideoConstraints {
             audio: { state: "absent" },
             wantsTalkback: false,
             limitsByCodec,
-            unreadableLevelCodecs,
+            unreadableCeilingCodecs,
         };
     }
 
@@ -408,22 +439,47 @@ export function parseSdpVideoConstraints(sdp: string): SdpVideoConstraints {
                 if (level.state === "unreadable") {
                     // Reading this as "no limit" is what the hard-bound rule forbids: the peer
                     // stated a decode ceiling and the server would allocate past it.
-                    unreadableLevelCodecs.add(codec);
+                    unreadableCeilingCodecs.add(codec);
                     logger.notice(
                         `Offer states ${codec} ${level.parameter}=${level.value}, which is no level this server can bound a stream by; ${codec} is not selectable for it`,
                     );
                     continue;
                 }
                 const stated = level.state === "read" ? level.limits : undefined;
-                const frameSize = fmtpNumber(entry.config, parameters.maxFrameSize);
-                const sampleRate = fmtpNumber(entry.config, parameters.maxSampleRate);
-                const frameRate = fmtpNumber(entry.config, parameters.maxFrameRate);
-                const bitRate = fmtpNumber(entry.config, "max-br");
-                const maxPixels = frameSize === undefined ? stated?.maxPixels : frameSize * parameters.pixelsPerUnit;
+                const readings = {
+                    [parameters.maxFrameSize]: fmtpNumber(entry.config, parameters.maxFrameSize),
+                    [parameters.maxSampleRate]: fmtpNumber(entry.config, parameters.maxSampleRate),
+                    [parameters.maxFrameRate]: fmtpNumber(entry.config, parameters.maxFrameRate),
+                    [MAX_BIT_RATE_PARAMETER]: fmtpNumber(entry.config, MAX_BIT_RATE_PARAMETER),
+                };
+                const unreadable = unreadableParameter(readings);
+                if (unreadable !== undefined) {
+                    // A value this server cannot read is not a ceiling it can hold the codec to, and
+                    // there is nothing to fall back to: an explicit parameter states a capability at
+                    // or above the level's, so the level it stands beside is not the peer's ceiling
+                    // any more, and where no level stands beside it, falling back is no bound at all.
+                    unreadableCeilingCodecs.add(codec);
+                    logger.notice(
+                        `Offer states ${codec} ${unreadable.name}=${unreadable.value}, which is no decode ceiling this server can read; ${codec} is not selectable for it`,
+                    );
+                    continue;
+                }
+                // Read by the parameter's own name, never by position: every reading has the same
+                // type, so an order the list and the reads disagree on would swap a frame size into
+                // the frame-rate ceiling with nothing to catch it.
+                const frameSizeUnits = statedNumber(readings[parameters.maxFrameSize]);
+                const sampleRateUnits = statedNumber(readings[parameters.maxSampleRate]);
+                const frameRateUnits = statedNumber(readings[parameters.maxFrameRate]);
+                const bitRateUnits = statedNumber(readings[MAX_BIT_RATE_PARAMETER]);
+                const maxPixels =
+                    frameSizeUnits === undefined ? stated?.maxPixels : frameSizeUnits * parameters.pixelsPerUnit;
                 const maxPixelsPerSecond =
-                    sampleRate === undefined ? stated?.maxPixelsPerSecond : sampleRate * parameters.pixelsPerUnit;
-                const maxBitRate = bitRate === undefined ? stated?.maxBitRate : bitRate * BITS_PER_KILOBIT;
-                const maxFrameRate = frameRate === undefined ? undefined : frameRate * parameters.frameRatePerUnit;
+                    sampleRateUnits === undefined
+                        ? stated?.maxPixelsPerSecond
+                        : sampleRateUnits * parameters.pixelsPerUnit;
+                const maxBitRate = bitRateUnits === undefined ? stated?.maxBitRate : bitRateUnits * BITS_PER_KILOBIT;
+                const maxFrameRate =
+                    frameRateUnits === undefined ? undefined : frameRateUnits * parameters.frameRatePerUnit;
                 tighten(limitsByCodec, codec, {
                     ...(maxPixels === undefined ? {} : { maxPixels }),
                     ...(maxPixelsPerSecond === undefined ? {} : { maxPixelsPerSecond }),
@@ -439,6 +495,6 @@ export function parseSdpVideoConstraints(sdp: string): SdpVideoConstraints {
         audio: disposition(audioSections),
         wantsTalkback,
         limitsByCodec,
-        unreadableLevelCodecs,
+        unreadableCeilingCodecs,
     };
 }

@@ -1227,7 +1227,7 @@ describe("CameraStreamManager", () => {
                         audio: { state: "receiving" as const, codecs: ["AAC"] },
                         wantsTalkback: false,
                         limitsByCodec: new Map(),
-                        unreadableLevelCodecs: new Set<string>(),
+                        unreadableCeilingCodecs: new Set<string>(),
                     },
                     audio: { codecs: ["OPUS"] },
                 });
@@ -1252,7 +1252,7 @@ describe("CameraStreamManager", () => {
                     audio: { state: "receiving" as const, codecs: ["AAC"] },
                     wantsTalkback: false,
                     limitsByCodec: new Map(),
-                    unreadableLevelCodecs: new Set<string>(),
+                    unreadableCeilingCodecs: new Set<string>(),
                 },
             });
             expect(resolved).to.equal(undefined);
@@ -1272,7 +1272,7 @@ describe("CameraStreamManager", () => {
                     audio: { state: "receiving" as const },
                     wantsTalkback: false,
                     limitsByCodec: new Map(),
-                    unreadableLevelCodecs: new Set<string>(),
+                    unreadableCeilingCodecs: new Set<string>(),
                 },
                 audio: { bitRate: 32000 },
             });
@@ -4434,7 +4434,7 @@ describe("CameraStreamManager reuse before the device has reported", () => {
                     audio: { state: "absent" as const },
                     wantsTalkback: false,
                     limitsByCodec: new Map([["H265", { maxPixels: 1280 * 720 }]]),
-                    unreadableLevelCodecs: new Set<string>(),
+                    unreadableCeilingCodecs: new Set<string>(),
                 },
             });
         } catch (error) {
@@ -4805,7 +4805,7 @@ describe("preferredVideoCodec", () => {
             audio: { state: "absent" as const },
             wantsTalkback: false,
             limitsByCodec: new Map(),
-            unreadableLevelCodecs: new Set<string>(),
+            unreadableCeilingCodecs: new Set<string>(),
         };
         const failure = incompatible(() => preferredVideoCodec([H265], offer, undefined));
         expect(failure.code).to.equal(ServerErrorCode.CameraStreamIncompatible);
@@ -4822,7 +4822,7 @@ describe("preferredVideoCodec", () => {
             audio: { state: "absent" as const },
             wantsTalkback: false,
             limitsByCodec: new Map(),
-            unreadableLevelCodecs: new Set(["H264"]),
+            unreadableCeilingCodecs: new Set(["H264"]),
         };
         const failure = incompatible(() => preferredVideoCodec([H264], offer, undefined));
         expect(failure.code).to.equal(ServerErrorCode.CameraStreamIncompatible);
@@ -4839,7 +4839,7 @@ describe("preferredVideoCodec", () => {
             audio: { state: "absent" as const },
             wantsTalkback: false,
             limitsByCodec: new Map(),
-            unreadableLevelCodecs: new Set(["H264"]),
+            unreadableCeilingCodecs: new Set(["H264"]),
         };
         expect(preferredVideoCodec([H264, H265], offer, undefined)).to.equal(H265);
     });
@@ -4854,7 +4854,7 @@ describe("preferredVideoCodec", () => {
             audio: { state: "absent" as const },
             wantsTalkback: false,
             limitsByCodec: new Map(),
-            unreadableLevelCodecs: new Set(["H264"]),
+            unreadableCeilingCodecs: new Set(["H264"]),
         };
         const failure = incompatible(() => preferredVideoCodec([H265], offer, undefined));
         expect(failure.payload.reason).to.equal("codec");
@@ -4869,7 +4869,7 @@ describe("preferredVideoCodec", () => {
             audio: { state: "absent" as const },
             wantsTalkback: false,
             limitsByCodec: new Map(),
-            unreadableLevelCodecs: new Set<string>(),
+            unreadableCeilingCodecs: new Set<string>(),
         };
         const failure = incompatible(() => preferredVideoCodec([H264, H265], offer, ["H265"]));
         expect(failure.payload.device).to.deep.equal(["H264"]);
@@ -4881,7 +4881,7 @@ describe("preferredVideoCodec", () => {
             audio: { state: "absent" as const },
             wantsTalkback: false,
             limitsByCodec: new Map(),
-            unreadableLevelCodecs: new Set<string>(),
+            unreadableCeilingCodecs: new Set<string>(),
         };
         expect(preferredVideoCodec([H264, H265], offer, ["H264"])).to.equal(H264);
     });
@@ -4904,7 +4904,7 @@ describe("preferredVideoCodec", () => {
             audio: { state: "absent" as const },
             wantsTalkback: false,
             limitsByCodec: new Map(),
-            unreadableLevelCodecs: new Set<string>(),
+            unreadableCeilingCodecs: new Set<string>(),
         };
         expect(preferredVideoCodec([H265], offer, undefined)).to.equal(H265);
     });

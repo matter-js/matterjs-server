@@ -376,12 +376,24 @@ describe("sdpConstraints", () => {
             expect(limits.maxPixelsPerSecond).to.equal(108000 * 256);
         });
 
-        it("leaves the level as the ceiling when an fmtp value is not whole digits", () => {
-            const limits = videoCodecLimits(
-                parseSdpVideoConstraints(offerWithFmtp("H264", "profile-level-id=42e01f;max-fs=8160px")),
-                H264,
-            );
-            expect(limits.maxPixels).to.equal(3600 * 256);
+        it("refuses the codec when an fmtp capability value is not whole digits", () => {
+            // The parameter overrides the level, so the level is not a ceiling the peer still states.
+            const sdp = parseSdpVideoConstraints(offerWithFmtp("H264", "profile-level-id=42e01f;max-fs=8160px"));
+            expect(decodableVideoCodecs(sdp)).to.deep.equal({ decodable: [], unreadable: ["H264"] });
+            expect(videoCodecLimits(sdp, H264).maxPixels).to.equal(undefined);
+        });
+
+        it("refuses the codec when a malformed fmtp value stands beside no level at all", () => {
+            // The direction that matters: reading the value as no statement leaves the codec
+            // unbounded, which is what a decode ceiling may never become.
+            const sdp = parseSdpVideoConstraints(offerWithFmtp("H264", "max-fs=8160px"));
+            expect(decodableVideoCodecs(sdp)).to.deep.equal({ decodable: [], unreadable: ["H264"] });
+            expect(videoCodecLimits(sdp, H264).maxPixels).to.equal(undefined);
+        });
+
+        it("refuses the codec for a malformed max-br, which no level states for H.265", () => {
+            const sdp = parseSdpVideoConstraints(offerWithFmtp("H265", "level-id=93;max-br=1e6"));
+            expect(decodableVideoCodecs(sdp)).to.deep.equal({ decodable: [], unreadable: ["H265"] });
         });
 
         it("reads constraint_set3_flag on a Baseline level_idc 11 as level 1b", () => {
