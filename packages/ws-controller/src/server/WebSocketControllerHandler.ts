@@ -23,9 +23,11 @@ import { ControllerCommissioningFlowOptions, OperationalDataset } from "@matter/
 import { EndpointNumber, QrPairingCodeCodec } from "@matter/main/types";
 import { NodeStates } from "@project-chip/matter.js/device";
 import { WebSocketServer } from "ws";
+import type { CameraSignallingCommandName } from "../camera/cameraCommands.js";
 import {
     parseCapabilitiesArgs,
     parseReleaseStreamArgs,
+    parseSignallingArgs,
     parseSnapshotArgs,
     parseStartStreamArgs,
     parseStopStreamArgs,
@@ -108,9 +110,15 @@ const THREAD_DIAGNOSTICS_OPT_IN_COMMANDS = new Set(["get_thread_diagnostics", "g
 // thread-diagnostics opt-in: pre-schema-13 clients never subscribed, so they must not receive it.
 const NETWORK_TOPOLOGY_OPT_IN_COMMANDS = new Set(["get_network_topology"]);
 
-// Both can produce an offer/answer exchange; the answer and ICE candidates arrive on the
-// webrtc_callback event channel regardless of which command started the session.
-const WEBRTC_OPT_IN_COMMANDS = new Set(["send_webrtc_provider_command", "camera_start_stream"]);
+// Every command that can produce an inbound signalling event opts the connection in: the camera's
+// offer, answer, candidates and end arrive on the webrtc_callback channel whichever command started
+// the session.
+const WEBRTC_OPT_IN_COMMANDS = new Set([
+    "send_webrtc_provider_command",
+    "camera_start_stream",
+    "camera_provide_answer",
+    "camera_provide_ice_candidates",
+]);
 
 /**
  * The arguments `send_webrtc_provider_command` takes. Its `payload` refuses a key naming no field,
@@ -608,6 +616,17 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 if (this.#closed || this.#shuttingDown || !optIns.webRtc) return;
                 // WebRTC signaling is control-plane: never coalesced or dropped, so send reliably.
                 try {
+                    // Branded here, not left to the lookup: the registry's key is a template string
+                    // today, so a plain number matches it by coincidence, and a key that compared the
+                    // id itself would then match nothing.
+                    const owners = this.#controller.cameraStreamsIfCreated?.signallingOwners(
+                        NodeId(data.node_id),
+                        EndpointNumber(data.endpoint_id),
+                        data.webrtc_session_id,
+                    );
+                    // No record means no owner, and withholding such a session's signalling would
+                    // strand a session nothing else can complete.
+                    if (owners !== undefined && !owners.has(ownerId)) return;
                     connection.sendReliable(toBigIntAwareJson({ event: "webrtc_callback", data }));
                 } catch (err) {
                     logger.error(`[${connId}] Failed to send webrtc_callback`, err);
@@ -821,6 +840,10 @@ export class WebSocketControllerHandler implements WebServerHandler {
                     break;
                 case "camera_release_stream":
                     result = await this.#handleCameraReleaseStream(args);
+                    break;
+                case "camera_provide_answer":
+                case "camera_provide_ice_candidates":
+                    result = await this.#handleCameraSignallingCommand(args, command);
                     break;
                 case "write_attribute":
                     result = await this.#handleWriteAttribute(args);
@@ -1392,8 +1415,13 @@ export class WebSocketControllerHandler implements WebServerHandler {
             `node ${formatNodeId(nodeId)} endpoint ${endpointId}`,
         );
         if (!establishesWebRtcSession(command_name)) {
-            await this.#commandHandler.invokeProvideIceCandidates({ nodeId, endpointId, fields });
-            // The model gives this command no response type, so there is no payload to convert.
+            await this.#commandHandler.invokeWebRtcSignallingCommand({
+                nodeId,
+                endpointId,
+                commandName: command_name,
+                fields,
+            });
+            // The model gives these commands no response type, so there is no payload to convert.
             return null;
         }
         const response = await this.#commandHandler.invokeWebRtcProviderCommand({
@@ -1405,6 +1433,32 @@ export class WebSocketControllerHandler implements WebServerHandler {
         // Convert the matter.js response to WebSocket format the same way #handleDeviceCommand
         // does for generic invokes (bytes, epochs, bitmaps, struct member filtering).
         return this.#convertCommandDataToWebSocket(WebRtcTransportProvider.id, command_name, response);
+    }
+
+    /**
+     * Signal into a WebRTC session in the camera API's own argument style.
+     *
+     * The client states the target and the session id the way every other camera command takes them,
+     * and the command's own argument — the `sdp`, or the `ice_candidates` a `webrtc_callback` event
+     * just reported — in the spelling the wire documents. They reach the camera through the one
+     * boundary that converts a wire payload into provider arguments, so nothing here knows a cluster
+     * field name and no second conversion exists to drift from it.
+     *
+     * Answers `null`: the cluster defines no response payload for either command.
+     */
+    async #handleCameraSignallingCommand(
+        args: unknown,
+        command: CameraSignallingCommandName,
+    ): Promise<ResponseOf<CameraSignallingCommandName>> {
+        const { nodeId, endpointId, commandName, payload } = parseSignallingArgs(args, command);
+        const fields = toProviderCommandFields(
+            commandName,
+            payload,
+            `node ${formatNodeId(nodeId)} endpoint ${endpointId}`,
+            command,
+        );
+        await this.#commandHandler.invokeWebRtcSignallingCommand({ nodeId, endpointId, commandName, fields });
+        return null;
     }
 
     async #handleCameraGetCapabilities(args: unknown): Promise<ResponseOf<"camera_get_capabilities">> {

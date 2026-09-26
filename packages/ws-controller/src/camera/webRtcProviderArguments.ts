@@ -16,13 +16,24 @@ import { isRecord, rejectUnknownKeys, toBoundedString, toRequiredNumber } from "
 const logger = Logger.get("webRtcProviderArguments");
 
 /**
- * The `WebRtcTransportProvider` commands `send_webrtc_provider_command` carries a payload for.
+ * The `WebRtcTransportProvider` commands this boundary converts a payload for.
  *
- * `ProvideOffer` and `SolicitOffer` establish a session; `ProvideIceCandidates` signals for one that
- * exists. The command is on this list because a client needs a checked route for it, not because the
- * server tracks anything for it — {@link establishesWebRtcSession} is what tells the two apart.
+ * `ProvideOffer` and `SolicitOffer` establish a session; `ProvideAnswer` and `ProvideIceCandidates`
+ * signal for one that exists. A command is on this list because a client needs a checked route for
+ * it, not because the server tracks anything for it — {@link establishesWebRtcSession} is what tells
+ * the two groups apart. `EndSession` is deliberately absent: `camera_stop_stream` owns it, because
+ * one session gets one `EndSession` and the records this server holds go with it.
+ *
+ * All four are reachable through `send_webrtc_provider_command`, which names the command in its
+ * request. The two signalling ones are also what `camera_provide_answer` and
+ * `camera_provide_ice_candidates` send, each naming one.
  */
-export const PROVIDER_COMMAND_NAMES = ["ProvideOffer", "SolicitOffer", "ProvideIceCandidates"] as const;
+export const PROVIDER_COMMAND_NAMES = [
+    "ProvideOffer",
+    "SolicitOffer",
+    "ProvideAnswer",
+    "ProvideIceCandidates",
+] as const;
 
 export type ProviderCommandName = (typeof PROVIDER_COMMAND_NAMES)[number];
 
@@ -34,6 +45,14 @@ export function isProviderCommandName(value: string): value is ProviderCommandNa
 
 /** The commands that create a session, as against signaling for one the camera already holds. */
 export type SessionEstablishingCommandName = "ProvideOffer" | "SolicitOffer";
+
+/**
+ * The commands that signal into a session the camera already holds.
+ *
+ * Neither carries an `OriginatingEndpointID`, neither states a stream, and the cluster gives neither
+ * a response payload, so they share one invoke path and one `null` answer.
+ */
+export type SignallingCommandName = Exclude<ProviderCommandName, SessionEstablishingCommandName>;
 
 const SESSION_ESTABLISHING: ReadonlySet<string> = new Set<SessionEstablishingCommandName>([
     "ProvideOffer",
@@ -424,6 +443,7 @@ function contractForCommand(name: ProviderCommandName): FieldsContract {
 const PROVIDER_CONTRACTS: Readonly<Record<ProviderCommandName, FieldsContract>> = {
     ProvideOffer: contractForCommand("ProvideOffer"),
     SolicitOffer: contractForCommand("SolicitOffer"),
+    ProvideAnswer: contractForCommand("ProvideAnswer"),
     ProvideIceCandidates: contractForCommand("ProvideIceCandidates"),
 };
 
@@ -437,13 +457,18 @@ const PROVIDER_CONTRACTS: Readonly<Record<ProviderCommandName, FieldsContract>> 
  *
  * `originatingEndpointId` is dropped: the server injects its own requestor endpoint downstream, so a
  * value here is overwritten and validating it would refuse a payload nothing reads.
+ *
+ * `subject` names what a refusal is about. A camera command passes its own name, so a client that
+ * never wrote a cluster command name is not refused in one; `send_webrtc_provider_command`, whose
+ * caller did name the command, leaves it out and gets the command's own payload named.
  */
 export function toProviderCommandFields(
     commandName: ProviderCommandName,
     payload: unknown,
     target?: string,
+    subjectName?: string,
 ): Record<string, unknown> {
-    const subject = `${commandName} payload`;
+    const subject = subjectName ?? `${commandName} payload`;
     if (!isRecord(payload)) throw ServerError.invalidArguments(`${subject} must be an object`);
     const contract = PROVIDER_CONTRACTS[commandName];
     const fields = toFields(contract, payload, subject);

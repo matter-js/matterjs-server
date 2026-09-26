@@ -79,6 +79,32 @@ export class CameraSessionRegistry {
         record?.markSettled();
     }
 
+    /**
+     * Which connections may receive the signalling of one session, or none when this server holds no
+     * record naming an owner.
+     *
+     * A tracked session names exactly one connection, and nothing else names any. `undefined` is not
+     * "no connection": it is this server having no record of the session, which is what a session the
+     * raw provider route opened is, and what one whose entry has already been dropped is. What a
+     * caller does with that is the caller's to decide.
+     *
+     * A registration still in flight is deliberately not consulted. It would name the establishing
+     * connection for *every* id this registry does not know, which withholds another client's own
+     * signalling for as long as any `camera_start_stream` runs on that camera. What it would buy is
+     * one narrow window: `WebRtcTransportRequestorServer` answers `NotFound` for every signalling
+     * command naming a session it has not stored, `Offer` included, so an event can only arrive for a
+     * session already registered with the local requestor, and the window is the one between that
+     * registration and this entry. An event in it is broadcast, like any session with no record.
+     */
+    signallingOwners(
+        nodeId: NodeId,
+        endpointId: EndpointNumber,
+        webRtcSessionId: number,
+    ): ReadonlySet<string> | undefined {
+        const session = this.get(nodeId, endpointId, webRtcSessionId);
+        return session === undefined ? undefined : new Set([session.connectionId]);
+    }
+
     get(nodeId: NodeId, endpointId: EndpointNumber, webRtcSessionId: number): ManagedSession | undefined {
         return this.#sessions.get(this.#key(nodeId, endpointId, webRtcSessionId));
     }
@@ -120,7 +146,8 @@ export class CameraSessionRegistry {
         for (const session of this.#sessions.values()) {
             if (matches(session)) claimed.push(session);
         }
-        const inFlight: Promise<void>[] = claimed.map(session => this.#release(session, release).then(() => undefined));
+        const inFlight = new Array<Promise<void>>();
+        for (const session of claimed) inFlight.push(this.#release(session, release).then(() => undefined));
         for (const [pending, record] of this.#pending) {
             if (!matches(pending)) continue;
             record.claimed = true;

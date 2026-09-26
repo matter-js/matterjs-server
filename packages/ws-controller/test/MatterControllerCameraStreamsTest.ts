@@ -102,6 +102,11 @@ describe("MatterController.cameraStreamsIfCreated", () => {
             fabric_index: 1,
             data: { reason: 0 },
         });
+        // Not during the emit: every WebSocket connection resolves the session's owning connection
+        // from its own observer of this same event, and the entry is what names it. A drop inside the
+        // emit hands the end of one connection's session to every observer registered behind this one.
+        expect(forgotten).to.deep.equal([]);
+        await Promise.resolve();
         expect(forgotten).to.deep.equal(["5/1/7"]);
 
         await controller.stop();
@@ -109,7 +114,8 @@ describe("MatterController.cameraStreamsIfCreated", () => {
 
     it("keeps the shared callback emitting when one carries an endpoint id out of range", async () => {
         // The emit is shared with every WebSocket connection's signaling observer, and matter.js
-        // rethrows an observer error, which aborts the rest of the emit.
+        // rethrows an observer error, which aborts the rest of the emit. The id conversion runs after
+        // the emit, so such a callback cannot abort it; the failed drop is logged and nothing else.
         const controller = await MatterController.create(freshEnv(), config, {});
         const manager = controller.cameraStreams;
         const forgotten = new Array<number>();
@@ -132,6 +138,7 @@ describe("MatterController.cameraStreamsIfCreated", () => {
         });
 
         expect(reached).to.deep.equal(["end"]);
+        await Promise.resolve();
         expect(forgotten).to.deep.equal([]);
 
         await controller.stop();

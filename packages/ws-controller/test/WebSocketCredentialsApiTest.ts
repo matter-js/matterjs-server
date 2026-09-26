@@ -27,6 +27,8 @@ interface StubCameraStreams {
     releaseConnection(connectionId: string): Promise<void>;
     startStream?(args: { connectionId: string }): Promise<unknown>;
     forgetSession?(nodeId: bigint, endpointId: number, webRtcSessionId: number): boolean;
+    /** Which connections may receive a session's signalling; absent means the manager holds no record. */
+    signallingOwners?(nodeId: bigint, endpointId: number, webRtcSessionId: number): ReadonlySet<string> | undefined;
 }
 
 /** The command-handler behaviour a test needs to vary; everything else is fixed in the stub. */
@@ -34,7 +36,7 @@ interface StubCommandHandlerOverrides {
     handleInvoke?(): Promise<unknown>;
     removeTrackedWebRtcSession?(webRtcSessionId: number, nodeId: bigint, endpointId: number): Promise<void>;
     invokeWebRtcProviderCommand?(args: { commandName: string; fields: Record<string, unknown> }): Promise<unknown>;
-    invokeProvideIceCandidates?(args: { fields: Record<string, unknown> }): Promise<void>;
+    invokeWebRtcSignallingCommand?(args: { commandName: string; fields: Record<string, unknown> }): Promise<void>;
 }
 
 /** Well under the 2000 ms per-test timeout, so a frame that never comes fails as this error. */
@@ -91,7 +93,13 @@ function makeStubController(
     cameraStreams?: StubCameraStreams,
     commandHandler?: StubCommandHandlerOverrides,
 ) {
-    const stubCameraStreams: StubCameraStreams = cameraStreams ?? { async releaseConnection() {} };
+    // The routing lookup is a method on the real manager, so every stub answers it: an unowned
+    // session is what the WebSocket route reads as "send to every opted-in connection".
+    const stubCameraStreams: StubCameraStreams = {
+        async releaseConnection() {},
+        signallingOwners: () => undefined,
+        ...cameraStreams,
+    };
 
     const stubEvents = {
         started: new AsyncObservable(),
@@ -120,8 +128,8 @@ function makeStubController(
             (async () => {
                 throw new Error("no WebRTC provider stubbed");
             }),
-        invokeProvideIceCandidates:
-            commandHandler?.invokeProvideIceCandidates ??
+        invokeWebRtcSignallingCommand:
+            commandHandler?.invokeWebRtcSignallingCommand ??
             (async () => {
                 throw new Error("no WebRTC provider stubbed");
             }),
@@ -433,7 +441,7 @@ describe("WebSocket Credentials API", () => {
             if (msg.event !== undefined) events.push(msg.event);
         });
 
-        const cb = { webrtc_session_id: 1, event_type: "end", data: null };
+        const cb = { webrtc_session_id: 1, node_id: 1, endpoint_id: 1, event_type: "end", data: null };
 
         // A connection that never touched WebRTC must not receive another session's callbacks.
         h.emitWebRtcCallback(cb);
@@ -481,7 +489,7 @@ describe("WebSocket Credentials API", () => {
             if (msg.event !== undefined) events.push(msg.event);
         });
 
-        const cb = { webrtc_session_id: 1, event_type: "end", data: null };
+        const cb = { webrtc_session_id: 1, node_id: 1, endpoint_id: 1, event_type: "end", data: null };
 
         // Issuing the command opts this connection in (even though the stub controller errors on it).
         await new Promise<void>((resolve, reject) => {
@@ -550,7 +558,13 @@ describe("WebSocket Credentials API", () => {
 
             ws.send(JSON.stringify({ message_id: "req-in-flight", command, args }));
             await atDevice;
-            h.emitWebRtcCallback({ webrtc_session_id: 1, event_type: "answer", data: null });
+            h.emitWebRtcCallback({
+                webrtc_session_id: 1,
+                node_id: 1,
+                endpoint_id: 1,
+                event_type: "answer",
+                data: null,
+            });
             await callback;
 
             releaseDevice();
@@ -640,7 +654,7 @@ describe("WebSocket Credentials API", () => {
         let established = false;
         await h.close();
         h = await createHarness(undefined, {
-            async invokeProvideIceCandidates(args) {
+            async invokeWebRtcSignallingCommand(args) {
                 seen = args.fields;
             },
             async invokeWebRtcProviderCommand() {
@@ -665,6 +679,100 @@ describe("WebSocket Credentials API", () => {
         // The session-establishing path would look for a session id in a response that carries none.
         expect(established).to.equal(false);
         expect(result).to.equal(null);
+    });
+
+    it("relays ProvideAnswer on the raw route and answers null", async () => {
+        // The answer to a SolicitOffer used to be reachable only through device_command in the
+        // cluster's own field names, which is not a route for signalling a session.
+        let seen: { commandName: string; fields: Record<string, unknown> } | undefined;
+        await h.close();
+        h = await createHarness(undefined, {
+            async invokeWebRtcSignallingCommand(args) {
+                seen = { commandName: args.commandName, fields: args.fields };
+            },
+        });
+        const result = await h.handle("send_webrtc_provider_command", {
+            node_id: 1,
+            endpoint_id: 1,
+            command_name: "ProvideAnswer",
+            payload: { webrtc_session_id: 4, sdp: "v=0" },
+        });
+        expect(seen).to.deep.equal({ commandName: "ProvideAnswer", fields: { webRtcSessionId: 4, sdp: "v=0" } });
+        expect(result).to.equal(null);
+    });
+
+    it("sends the SDP answer for a managed session through camera_provide_answer", async () => {
+        let seen: { commandName: string; fields: Record<string, unknown> } | undefined;
+        await h.close();
+        h = await createHarness(undefined, {
+            async invokeWebRtcSignallingCommand(args) {
+                seen = { commandName: args.commandName, fields: args.fields };
+            },
+        });
+        // Every argument in the camera API's own style: the session id as camera_start_stream
+        // answered it, and no cluster field name anywhere.
+        const result = await h.handle("camera_provide_answer", {
+            node_id: 1,
+            endpoint_id: 1,
+            webrtc_session_id: 4,
+            sdp: "v=0",
+        });
+        expect(seen).to.deep.equal({ commandName: "ProvideAnswer", fields: { webRtcSessionId: 4, sdp: "v=0" } });
+        expect(result).to.equal(null);
+    });
+
+    it("sends candidates for a managed session through camera_provide_ice_candidates", async () => {
+        let seen: { commandName: string; fields: Record<string, unknown> } | undefined;
+        await h.close();
+        h = await createHarness(undefined, {
+            async invokeWebRtcSignallingCommand(args) {
+                seen = { commandName: args.commandName, fields: args.fields };
+            },
+        });
+        const result = await h.handle("camera_provide_ice_candidates", {
+            node_id: 1,
+            endpoint_id: 1,
+            webrtc_session_id: 4,
+            // As a webrtc_callback ice_candidates event reports them.
+            ice_candidates: [{ candidate: "candidate:1", sdpMid: "0", sdpMLineIndex: 0 }],
+        });
+        expect(seen).to.deep.equal({
+            commandName: "ProvideIceCandidates",
+            fields: {
+                webRtcSessionId: 4,
+                iceCandidates: [{ candidate: "candidate:1", sdpMid: "0", sdpmLineIndex: 0 }],
+            },
+        });
+        expect(result).to.equal(null);
+    });
+
+    it("names the camera command a signalling refusal is about", async () => {
+        // The client named no cluster command, so it is not told about one.
+        let thrown: unknown;
+        try {
+            await h.handle("camera_provide_answer", { node_id: 1, endpoint_id: 1, sdp: "v=0" });
+        } catch (error) {
+            thrown = error;
+        }
+        expect((thrown as Error).message).to.contain("camera_provide_answer requires webRtcSessionId");
+    });
+
+    it("refuses a camera_provide_ice_candidates argument it does not take", async () => {
+        let thrown: unknown;
+        try {
+            await h.handle("camera_provide_ice_candidates", {
+                node_id: 1,
+                endpoint_id: 1,
+                webrtc_session_id: 4,
+                ice_candidates: [{ candidate: "candidate:1", sdpMid: "0", sdpMLineIndex: 0 }],
+                stream_usage: "LiveView",
+            });
+        } catch (error) {
+            thrown = error;
+        }
+        expect((thrown as Error).message).to.contain(
+            "unknown camera_provide_ice_candidates argument key: stream_usage",
+        );
     });
 
     it("refuses a send_webrtc_provider_command argument it does not take", async () => {
@@ -1087,6 +1195,122 @@ describe("WebSocket camera session cleanup on disconnect", () => {
     });
 });
 
+describe("WebSocket camera signalling routing", () => {
+    it("delivers each connection only the signalling of the session it owns", async () => {
+        const ownerBySession = new Map<number, string>();
+        let nextSessionId = 1;
+        const h = await createHarness({
+            async releaseConnection() {},
+            async startStream(args: { connectionId: string }) {
+                const webRtcSessionId = nextSessionId++;
+                ownerBySession.set(webRtcSessionId, args.connectionId);
+                return { webRtcSessionId, mode: "solicit_offer" };
+            },
+            // What the real manager answers: the connection whose camera_start_stream established the
+            // session, and nothing for a session it holds no record of.
+            signallingOwners(nodeId, _endpointId, webRtcSessionId) {
+                // The route owes the manager a branded NodeId; the registry's own key would match a
+                // plain number by coincidence, so nothing else pins that.
+                if (typeof nodeId !== "bigint") return undefined;
+                const owner = ownerBySession.get(webRtcSessionId);
+                return owner === undefined ? undefined : new Set([owner]);
+            },
+        });
+        const started = { node_id: 1, endpoint_id: 1, stream_usage: "LiveView" };
+        try {
+            const first = await h.openClient();
+            const second = await h.openClient();
+            try {
+                const seenByFirst = new Array<number>();
+                const seenBySecond = new Array<number>();
+                const collect = (ws: WebSocket, into: number[]) =>
+                    ws.on("message", raw => {
+                        const msg = JSON.parse(raw.toString()) as {
+                            event?: string;
+                            data?: { webrtc_session_id?: number };
+                        };
+                        if (msg.event === "webrtc_callback" && msg.data?.webrtc_session_id !== undefined) {
+                            into.push(msg.data.webrtc_session_id);
+                        }
+                    });
+                collect(first, seenByFirst);
+                collect(second, seenBySecond);
+
+                // Two sessions on the same camera, one per connection: with one connection the filter
+                // cannot be told from no filter at all.
+                const ours = await h.sendOn<{ webrtc_session_id: number }>(first, "camera_start_stream", started);
+                const theirs = await h.sendOn<{ webrtc_session_id: number }>(second, "camera_start_stream", started);
+                expect(ours.webrtc_session_id).to.not.equal(theirs.webrtc_session_id);
+
+                const UNOWNED_SESSION = 99;
+                for (const webrtc_session_id of [ours.webrtc_session_id, theirs.webrtc_session_id, UNOWNED_SESSION]) {
+                    h.emitWebRtcCallback({
+                        webrtc_session_id,
+                        node_id: 1,
+                        endpoint_id: 1,
+                        event_type: "answer",
+                        data: null,
+                    });
+                }
+                await new Promise(resolve => setTimeout(resolve, 100));
+
+                expect(seenByFirst).to.deep.equal([ours.webrtc_session_id, UNOWNED_SESSION]);
+                expect(seenBySecond).to.deep.equal([theirs.webrtc_session_id, UNOWNED_SESSION]);
+            } finally {
+                first.close();
+                second.close();
+            }
+        } finally {
+            await h.close();
+        }
+    });
+});
+
+describe("WebSocket webrtc_callback opt-in", () => {
+    const SIGNALLING_ARGS = {
+        camera_provide_answer: { webrtc_session_id: 4, sdp: "v=0" },
+        camera_provide_ice_candidates: {
+            webrtc_session_id: 4,
+            ice_candidates: [{ candidate: "candidate:1", sdpMid: "0", sdpMLineIndex: 0 }],
+        },
+    };
+
+    for (const command of ["camera_provide_answer", "camera_provide_ice_candidates"] as const) {
+        it(`opts the connection in to webrtc_callback when it issues ${command}`, async () => {
+            // A client that only signals for a session still needs the camera's half of it.
+            const h = await createHarness();
+            try {
+                const ws = await h.openClient();
+                try {
+                    const events = new Array<string>();
+                    ws.on("message", raw => {
+                        const msg = JSON.parse(raw.toString()) as { event?: string };
+                        if (msg.event !== undefined) events.push(msg.event);
+                    });
+                    // The stub throws for every provider invoke, so the command errors; the opt-in is
+                    // applied before the dispatch and does not depend on the outcome.
+                    await h
+                        .sendOn(ws, command, { node_id: 1, endpoint_id: 1, ...SIGNALLING_ARGS[command] })
+                        .catch(() => undefined);
+                    h.emitWebRtcCallback({
+                        webrtc_session_id: 4,
+                        node_id: 1,
+                        endpoint_id: 1,
+                        event_type: "answer",
+                        data: null,
+                    });
+                    await new Promise(resolve => setTimeout(resolve, 50));
+                    expect(events).to.include("webrtc_callback");
+                } finally {
+                    ws.close();
+                }
+            } finally {
+                await h.close();
+            }
+        });
+    }
+});
+
 describe("WebSocket camera command arguments", () => {
     const CAMERA_COMMANDS = [
         "camera_get_capabilities",
@@ -1094,7 +1318,9 @@ describe("WebSocket camera command arguments", () => {
         "camera_stop_stream",
         "camera_snapshot",
         "camera_release_stream",
-        // Not one of the five, but the same route family and the same argument walk.
+        "camera_provide_answer",
+        "camera_provide_ice_candidates",
+        // Not one of the camera commands, but the same route family and the same argument walk.
         "send_webrtc_provider_command",
     ] as const;
 

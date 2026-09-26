@@ -1676,6 +1676,19 @@ export class CameraStreamManager {
     }
 
     /**
+     * Which WebSocket connections may receive one session's WebRTC signalling.
+     *
+     * @see CameraSessionRegistry.signallingOwners for what an absent answer means.
+     */
+    signallingOwners(
+        nodeId: NodeId,
+        endpointId: EndpointNumber,
+        webRtcSessionId: number,
+    ): ReadonlySet<string> | undefined {
+        return this.#sessions.signallingOwners(nodeId, endpointId, webRtcSessionId);
+    }
+
+    /**
      * End every session a closing connection owned.
      *
      * The device only decrements ReferenceCount on EndSession, so a session left open pins its

@@ -14,6 +14,7 @@ import {
     CAMERA_ARG_KEYS,
     parseCapabilitiesArgs,
     parseReleaseStreamArgs,
+    parseSignallingArgs,
     parseSnapshotArgs,
     parseStartStreamArgs,
     parseStopStreamArgs,
@@ -533,7 +534,22 @@ describe("camera wire contract", () => {
                     args: { kind: "video", stream_id: 1 },
                     accepted: ["node_id", "endpoint_id", "kind", "stream_id"],
                 },
+                {
+                    command: "camera_provide_answer",
+                    parse: args => parseSignallingArgs(args, "camera_provide_answer"),
+                    args: { webrtc_session_id: 1, sdp: "v=0" },
+                    accepted: ["node_id", "endpoint_id", "webrtc_session_id", "sdp"],
+                },
+                {
+                    command: "camera_provide_ice_candidates",
+                    parse: args => parseSignallingArgs(args, "camera_provide_ice_candidates"),
+                    args: { webrtc_session_id: 1, ice_candidates: [{ candidate: "candidate:1" }] },
+                    accepted: ["node_id", "endpoint_id", "webrtc_session_id", "ice_candidates"],
+                },
             ];
+            // Every command the table pairs with a key set is a route here, so a command added there
+            // cannot skip this check.
+            expect(routes.map(route => route.command).sort()).to.deep.equal(Object.keys(CAMERA_ARG_KEYS).sort());
             for (const { command, parse, args, accepted: expected } of routes) {
                 const valid = { node_id: 1, endpoint_id: 1, ...args };
                 // Parses without the extra key, so the refusal below is the key and not the payload.

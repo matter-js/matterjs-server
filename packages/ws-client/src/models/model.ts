@@ -336,7 +336,7 @@ export interface NetworkTopology {
 export type WebRtcEventType = "offer" | "answer" | "ice_candidates" | "end";
 
 /** The `WebRTCTransportProvider` commands `send_webrtc_provider_command` relays. */
-export type WebRtcProviderCommandName = "ProvideOffer" | "SolicitOffer" | "ProvideIceCandidates";
+export type WebRtcProviderCommandName = "ProvideOffer" | "SolicitOffer" | "ProvideAnswer" | "ProvideIceCandidates";
 
 /**
  * One ICE candidate, in the W3C `RTCIceCandidateInit` spelling the wire uses in both directions.
@@ -854,8 +854,13 @@ export interface APICommands {
         response: unknown;
     };
     /**
-     * `ProvideOffer` and `SolicitOffer` establish a session and answer with its id;
-     * `ProvideIceCandidates` signals for one that exists and answers `null`.
+     * `ProvideOffer` and `SolicitOffer` establish a session and answer with its id; `ProvideAnswer`
+     * and `ProvideIceCandidates` signal for one that exists and answer `null`.
+     *
+     * For a client that allocates its own streams. A client that opened its session with
+     * `camera_start_stream` drives it to completion with `camera_provide_answer`,
+     * `camera_provide_ice_candidates` and `camera_stop_stream`, which take the same arguments as the
+     * rest of the camera API and need no cluster field name.
      */
     send_webrtc_provider_command: {
         requestArgs: {
@@ -910,6 +915,41 @@ export interface APICommands {
     camera_stop_stream: {
         requestArgs: { node_id: number | bigint; endpoint_id: number; webrtc_session_id: number };
         response: { ended: boolean };
+    };
+    /**
+     * Sends the SDP answer for a session the camera is waiting on, as `ProvideAnswer`.
+     *
+     * The other half of `camera_start_stream` with no `sdp`: the camera writes the offer and delivers
+     * it as a `webrtc_callback` `offer` event, and this is what the answer to it goes back on. Answers
+     * `null`, because the cluster defines no response payload for the command. The session id does not
+     * have to be one this server established in its current run — the camera resolves it, and answers
+     * `NOT_FOUND` for an id that is not one of its own on this fabric.
+     */
+    camera_provide_answer: {
+        requestArgs: {
+            node_id: number | bigint;
+            endpoint_id: number;
+            webrtc_session_id: number;
+            sdp: string;
+        };
+        response: null;
+    };
+    /**
+     * Trickles ICE candidates into an existing session, as `ProvideIceCandidates`.
+     *
+     * An entry is the `WebRtcIceCandidate` a `webrtc_callback` `ice_candidates` event reports, so a
+     * candidate from that event goes back unchanged. Answers `null`, as the cluster states no response
+     * payload. Without it a camera learns its peer's addresses from the initial SDP alone.
+     */
+    camera_provide_ice_candidates: {
+        requestArgs: {
+            node_id: number | bigint;
+            endpoint_id: number;
+            webrtc_session_id: number;
+            /** At least one entry; `ProvideIceCandidates.ICECandidates` states the bound. */
+            ice_candidates: WebRtcIceCandidate[];
+        };
+        response: null;
     };
     camera_snapshot: {
         requestArgs: {
@@ -1155,6 +1195,15 @@ export interface APIEvents {
     network_topology_updated: {
         data: NetworkTopology;
     };
+    /**
+     * The camera's half of a WebRTC session's signalling.
+     *
+     * Reaches only a connection that has issued a WebRTC command, and among those only the one that
+     * owns the session: a session opened by `camera_start_stream` goes to the connection that opened
+     * it, for every event type. A session the server holds no record of — one opened on the raw
+     * `send_webrtc_provider_command` route, or one whose record is already dropped — goes to every
+     * such connection, since nothing names an owner for it.
+     */
     webrtc_callback: {
         data: WebRtcCallbackData;
     };

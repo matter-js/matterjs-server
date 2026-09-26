@@ -16,7 +16,11 @@ export {
     PROVIDER_COMMAND_NAMES,
     toProviderCommandFields,
 } from "./camera/webRtcProviderArguments.js";
-export type { ProviderCommandName, SessionEstablishingCommandName } from "./camera/webRtcProviderArguments.js";
+export type {
+    ProviderCommandName,
+    SessionEstablishingCommandName,
+    SignallingCommandName,
+} from "./camera/webRtcProviderArguments.js";
 
 // Export controller components
 export { WebRtcTransportRequestorServer } from "@matter/node/behaviors/web-rtc-transport-requestor";

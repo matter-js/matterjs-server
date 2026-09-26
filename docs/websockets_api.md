@@ -796,9 +796,11 @@ A LIT peer re-registers automatically once subscribed.
 
 ### Camera Streaming (schema 14+)
 
-Five commands cover a Matter camera's stream lifecycle. The server computes the `VideoStreamAllocate` envelope, reuses or allocates streams, walks the device's rejections and tracks the WebRTC session, so a client does not have to. The raw `send_webrtc_provider_command` / `device_command` path keeps working for a client doing its own allocation.
+Seven commands cover a Matter camera's stream lifecycle. The server computes the `VideoStreamAllocate` envelope, reuses or allocates streams, walks the device's rejections and tracks the WebRTC session, so a client does not have to. The raw `send_webrtc_provider_command` / `device_command` path keeps working for a client doing its own allocation.
 
-All five require the message's `args` to be an object, and refuse a message that leaves it out, sends `null`, or sends anything else with error 8 naming the command. All five refuse an argument key they do not know with error 8, rather than dropping it: a dropped key would answer a request the client did not make. The refusal names the key and lists the ones the command takes. All five also check their target: `node_id` is an integer (a number or a bigint) and `endpoint_id` an integer 0 to 65534, the range an endpoint number encodes in, and neither is passed on to matter.js unchecked.
+A session opened with `camera_start_stream` is driven to its end with these commands alone: `camera_provide_answer` and `camera_provide_ice_candidates` carry the client's half of the signalling, `camera_stop_stream` ends it. Every one of them takes `node_id`, `endpoint_id` and `webrtc_session_id` in the spelling the rest of this API uses, so a client never has to reach for a cluster field name or the raw route in the middle of a session.
+
+All seven require the message's `args` to be an object, and refuse a message that leaves it out, sends `null`, or sends anything else with error 8 naming the command. All seven refuse an argument key they do not know with error 8, rather than dropping it: a dropped key would answer a request the client did not make. The refusal names the key and lists the ones the command takes. All seven also check their target: `node_id` is an integer (a number or a bigint) and `endpoint_id` an integer 0 to 65534, the range an endpoint number encodes in, and neither is passed on to matter.js unchecked.
 
 Every codec on these commands is a **name**, not a number: `H264`, `H265`, `H266`, `AV1` (video), `OPUS`, `AAC` (audio), `JPEG`, `HEIC` (snapshot). Stream usages are names too: `Internal`, `Recording`, `Analysis`, `LiveView`, and so is `two_way_talk_support` (`NotSupported`, `HalfDuplex`, `FullDuplex`). All these names are matched case-insensitively. The codec set is open: a codec the cluster enum does not define is reported as its decimal digits and accepted back in that spelling. The stream usages are closed only for requests, not for reports: `camera_start_stream` takes only the four names above and refuses `Internal`, which marks a stream the device keeps for itself, but `camera_get_capabilities` still reports a usage the enum does not define as its decimal digits, and a stream carrying it cannot be requested back. `two_way_talk_support` is reported the same way — a value the enum does not define comes back as its decimal digits — and has no request side at all: talkback is asked for in the SDP offer, not by a hint. An audio section whose direction is `a=sendrecv` or `a=sendonly` asks for it, and so does one stating no direction at all, which is `sendrecv` (RFC 4566 §6). `a=sendonly` asks for talkback and refuses the camera's audio in one statement, so such a section gets no audio stream. An `sdp` that carries no section of a kind at all refuses that kind as well: the answer carries exactly the m-lines of the offer it answers (RFC 3264 §6), so there is nothing for such a track to be sent in. Without `sdp` the camera writes the offer itself and no kind is refused.
 
@@ -940,7 +942,49 @@ Response: `{ webrtc_session_id, mode, video, audio }`. `mode` is `"provide_offer
 | `allocated_by_server` | both | This server allocated the stream in its current run. False for a stream it adopted, which `camera_release_stream` can free just the same |
 | `degraded` | video, optional | Present and `true` when the stream does not fit the range the server computed, though it stays inside every bound the caller stated. Absent otherwise |
 
-Answer SDP and ICE candidates keep arriving on the `webrtc_callback` event.
+The camera's half of the signalling arrives on the `webrtc_callback` event, which for a session opened this way reaches the connection that opened it and no other. `mode` says which half the client owes next: after `"provide_offer"` the camera answers with an `answer` event and the client only trickles candidates, while after `"solicit_offer"` the camera sends an `offer` event and the client owes the SDP answer, through `camera_provide_answer`.
+
+**camera_provide_answer** - Answer the offer a camera sent
+
+```json
+{
+  "message_id": "1",
+  "command": "camera_provide_answer",
+  "args": {
+    "node_id": 1,
+    "endpoint_id": 1,
+    "webrtc_session_id": 3,
+    "sdp": "v=0\r\n..."
+  }
+}
+```
+
+The other half of a `camera_start_stream` that stated no `sdp`: the camera writes the offer, delivers it as a `webrtc_callback` `offer` event, and this is the route the answer to it goes back on. `webrtc_session_id` is the id that event carries, which is the one `camera_start_stream` answered with.
+
+Both arguments are required, and both are checked against the cluster's own `ProvideAnswer` definition before the camera is asked: the id against the range its field encodes in — a uint16, so 0 to 65535 — and the `sdp` for being a string, which that field states no length for. A missing one is error 8 naming `camera_provide_answer`.
+
+Response: `null`. The cluster defines no response payload for `ProvideAnswer`, so there is nothing to report but the absence of an error. A session id the camera cannot resolve to one of its own comes back as the camera's own error.
+
+The id does not have to be one this server established in its current run, for the same reason `camera_stop_stream`'s does not: the camera holds the session and decides, and it answers `NOT_FOUND` for anything that is not its own session with this server on this fabric. Nor does the sending connection have to be the one that opened the session; what a connection's ownership decides is which `webrtc_callback` events it receives, not which commands it may send.
+
+**camera_provide_ice_candidates** - Trickle ICE candidates into a session
+
+```json
+{
+  "message_id": "1",
+  "command": "camera_provide_ice_candidates",
+  "args": {
+    "node_id": 1,
+    "endpoint_id": 1,
+    "webrtc_session_id": 3,
+    "ice_candidates": [{ "candidate": "candidate:1 1 UDP 2130706431 192.0.2.1 50000 typ host", "sdpMid": "0", "sdpMLineIndex": 0 }]
+  }
+}
+```
+
+An entry is `{ candidate, sdpMid, sdpMLineIndex }`, the W3C `RTCIceCandidateInit` spelling a `webrtc_callback` `ice_candidates` event reports, so a candidate read from that event goes back unchanged. `sdpMid` and `sdpMLineIndex` are stated on every entry and may be `null`; the list takes at least one entry, the floor `ProvideIceCandidates`' own field states. Without trickled candidates a camera learns its peer's addresses from the initial SDP alone, which is the difference between a session that connects through a relay after the first round and one that does not connect at all.
+
+Response: `null`, as for `camera_provide_answer`, and for the same reason.
 
 **camera_stop_stream** - End the WebRTC session, keep the allocation
 
@@ -1004,7 +1048,7 @@ Response: `{ data, codec, resolution, downgraded, stream_id }`. `data` is base64
 
 Response: `{ "released": true }`. Fails with 104 while a listener still references the stream.
 
-**send_webrtc_provider_command** - Send `ProvideOffer`, `SolicitOffer` or `ProvideIceCandidates` yourself
+**send_webrtc_provider_command** - Send `ProvideOffer`, `SolicitOffer`, `ProvideAnswer` or `ProvideIceCandidates` yourself
 
 ```json
 {
@@ -1025,9 +1069,11 @@ Response: `{ "released": true }`. Fails with 104 while a listener still referenc
 }
 ```
 
-For a client that allocates its own streams, and for the trickled ICE candidates of any session, whichever command opened it. `command_name` is `ProvideOffer`, `SolicitOffer` or `ProvideIceCandidates`; no other provider command is reachable this way.
+For a client that allocates its own streams, and for the signalling of any session, whichever command opened it. `command_name` is `ProvideOffer`, `SolicitOffer`, `ProvideAnswer` or `ProvideIceCandidates`; no other provider command is reachable this way. `EndSession` is not: `camera_stop_stream` owns it, because one session gets one `EndSession` and the local records this server holds for it go with that invoke.
 
-`ProvideOffer` and `SolicitOffer` establish a session: the server fills in the originating endpoint, reconciles the stream fields against the camera's cluster revision and registers the session with its local WebRTC requestor, and the response carries the camera's answer. `ProvideIceCandidates` signals for a session the camera already holds — it establishes nothing, and the response is `null`, because the cluster defines no response payload for the command. An id the camera cannot resolve to one of its own sessions comes back as the camera's own error.
+`ProvideOffer` and `SolicitOffer` establish a session: the server fills in the originating endpoint, reconciles the stream fields against the camera's cluster revision and registers the session with its local WebRTC requestor, and the response carries the camera's answer. `ProvideAnswer` and `ProvideIceCandidates` signal for a session the camera already holds — they establish nothing, and the response is `null`, because the cluster defines no response payload for either. An id the camera cannot resolve to one of its own sessions comes back as the camera's own error.
+
+A client that opened its session with `camera_start_stream` does not need this command for either of them: `camera_provide_answer` and `camera_provide_ice_candidates` send the same two commands with the same checks, in this API's own argument style.
 
 An `ice_candidates` entry is `{ candidate, sdpMid, sdpMLineIndex }`, the W3C `RTCIceCandidateInit` spelling the `webrtc_callback` `ice_candidates` event reports, so a candidate read from that event is sent back unchanged. `sdpMid` and `sdpMLineIndex` are stated on every entry and may be `null`; the list takes at least one entry.
 
@@ -1039,7 +1085,7 @@ Every field is checked against the cluster's own definition before the camera is
 
 A form the camera takes is sent as stated. The one conversion is a list going to a camera whose WebRTC Provider does not state cluster revision 2, or whose revision this server has not read yet — the same position, since a list such a camera does not understand is dropped on receipt and the session comes up with streams nobody chose. Such a provider carries a single id per media kind: a one-entry list says exactly what the singular id says and is converted, while any other length is refused with error 8 instead of being cut down to its first entry, and the refusal says whether the camera stated a revision below 2 or none has been read. An empty list is refused at every revision, because the field takes 1 to 16 entries.
 
-Any other top-level argument beside `node_id`, `endpoint_id`, `command_name` and `payload` is refused with error 8 as well, for the reason the payload's own keys are, and so is a message whose `args` is missing, `null` or not an object at all. `node_id` and `endpoint_id` are checked the way the five camera commands check them, so a fractional `node_id` is error 8 rather than an uncaught conversion failure.
+Any other top-level argument beside `node_id`, `endpoint_id`, `command_name` and `payload` is refused with error 8 as well, for the reason the payload's own keys are, and so is a message whose `args` is missing, `null` or not an object at all. `node_id` and `endpoint_id` are checked the way the camera commands check them, so a fractional `node_id` is error 8 rather than an uncaught conversion failure.
 
 Payloads that reached the camera before and are refused now: one carrying a key the command does not state, one stating the same field twice under two spellings, one omitting a mandatory field, one that is not an object at all, and an ICE server spelled in the cluster's `URLs` rather than `urls`.
 
@@ -1284,6 +1330,56 @@ coalesced, plus a slow periodic refresh so sleepy-device drift is eventually ref
 **Delivered only to connections that have issued `get_network_topology`** during their lifetime, so
 pre-schema-13 clients never receive it.
 
+**webrtc_callback** *(schema 12+)* - A camera signalled for a WebRTC session
+
+The camera's half of the WebRTC signalling: its offer, its answer, its ICE candidates and its end of
+the session, each carrying `event_type`, `webrtc_session_id`, `node_id`, `endpoint_id`, `fabric_index`
+and a per-type `data`, which is `null` on a callback that carried no payload.
+
+```json
+{
+  "event": "webrtc_callback",
+  "data": {
+    "event_type": "offer",
+    "webrtc_session_id": 3,
+    "node_id": 1,
+    "endpoint_id": 1,
+    "fabric_index": 1,
+    "data": {
+      "sdp": "v=0\r\n...",
+      "ice_servers": [{ "urls": ["stun:stun.example.org:3478"] }],
+      "ice_transport_policy": "all"
+    }
+  }
+}
+```
+
+| `event_type` | `data` |
+|---|---|
+| `offer` | `{ sdp, ice_servers?, ice_transport_policy? }`. Answer it with `camera_provide_answer` |
+| `answer` | `{ sdp }` |
+| `ice_candidates` | `{ ice_candidates: [{ candidate, sdpMid, sdpMLineIndex }] }`. Send yours with `camera_provide_ice_candidates` |
+| `end` | `{ reason }`, the cluster's `WebRTCEndReasonEnum` as a number |
+
+**Delivered only to connections that have issued a WebRTC command** — `camera_start_stream`,
+`camera_provide_answer`, `camera_provide_ice_candidates` or `send_webrtc_provider_command` — during
+their lifetime, so a client that never asked for a session never receives an event type it does not
+know.
+
+Among those connections it is **routed to the one that owns the session**: a session opened by
+`camera_start_stream` reaches the connection that opened it and no other, for every event type,
+including the camera's `end`.
+
+A session this server holds no record of reaches every opted-in connection instead: nothing names an
+owner for it, and withholding the signalling would strand a session no client could complete. Three
+cases reach that. A session opened on the raw `send_webrtc_provider_command` route registers nothing
+with the camera subsystem, so its signalling is broadcast — including to a client driving a managed
+session on the same camera. An event for a session whose record has already been dropped is broadcast
+too. So is an event that arrives in the window between the server registering a session with its local
+WebRTC requestor and recording it — the requestor answers `NOT_FOUND` for every signalling command
+naming a session it has not registered, the camera's offer included, so nothing arrives before that
+registration.
+
 ## Attribute Path Format
 
 Attribute paths use the format: `endpoint/cluster/attribute`
@@ -1345,7 +1441,7 @@ Error codes match the [Python Matter Server](https://github.com/home-assistant-l
 | 102 | CameraStreamIncompatible | OHF extension. No codec or stream range suits both the camera and the caller. `details` is a JSON string: `{"message": string, "reason": "codec" \| "bounds" \| "capability" \| "level", "track"?: "video" \| "audio", "device": string[], "requested": string[], "bound"?: {"field": string, "requested": string, "limit": string}, "device_status"?: number}`. `track` names which `camera_start_stream` track the failure is about, and is absent when the failure is about the request as a whole or about a command that resolves no track. `codec` means the codec lists do not overlap and `bounds` that the requested range cannot be served; both can be fixed by asking for something else. `level` means the camera and the peer do share a codec, but for every shared one the `a=fmtp` record states a decode ceiling the server cannot read — a level outside the codec's level tables, or a capability parameter whose value is not a whole number — so no ceiling could be held against the stream; `requested` names the offered codecs whose ceiling could not be read, and the fix is in the offer's SDP, not in any argument of the command. `capability` covers two different cases, which `track` tells apart. First, a track the caller asked for cannot exist: the camera states no capability of that kind, or the offer rejects that media section — no different request can succeed. `track` is `"video"` or `"audio"` there, and `requested` carries the caller's own codec list for that track, which is empty when it stated none. Second, a `camera_start_stream` request left both tracks out: `video: false` with `audio: false`, or one track declined while the other was left to the server and could not be resolved. That case carries no `track`, reports `device` and `requested` both empty, and is fixed by asking for at least one track. `device`/`requested` are codec names otherwise — `requested` is the codec the request resolved to, which is the caller's own choice when it stated one. `bound` names the single caller bound the server ruled out before asking the device, and only `camera_start_stream` reports it; a `camera_snapshot` ceiling that excludes every capability answers `reason: "bounds"` without it. `bound.field` is the hint key in the spelling `camera_start_stream` takes it back in: `min_resolution`, `min_frame_rate` or `min_bit_rate` under `video`, `sample_rate` or `channel_count` under `audio`. `bound.requested` is the value the caller stated and `bound.limit` what it ran into — the ceiling in force after every narrowing, or the set of values the device lists when it answers with a set, such as for `sample_rate`. An offer's `a=fmtp` limits narrow only the codec that stated them, so the same offer can produce a different `bound.limit` for a different codec. `device_status` is the Matter status a device rejection answered with. A caller that asks for audio and gets none can also see error 103 (capacity), error 7 (`SDKStackError`, the device answered with no stream id), or error 0 (`UnknownError`, an unrecognized device status) instead of this code |
 | 103 | CameraResourceExhausted | OHF extension. The camera refused the allocation for lack of capacity — it answered `ResourceExhausted` and the allocation ladder found nothing else to try. `ResourceExhausted` is all the camera states; which resource ran out is not part of it, so the message names none. `details` is a JSON string: `{"message": string, "allocated": [{"kind": "video" \| "audio" \| "snapshot", "stream_id": number, "reference_count": number}], "max_concurrent_encoders"?: number, "max_encoded_pixel_rate"?: number}`; the two limits are the camera's own attributes, reported whatever kind was refused and only when the camera states them. `allocated` lists the streams that hold the capacity, which is not always the kind that was asked for: a refused snapshot reports the video streams, because a referenced video stream is what holds an encoder, while a refused audio allocation reports the audio streams |
 | 104 | CameraStreamInUse | OHF extension. `camera_release_stream` targeted a stream a listener still references. `details` is a JSON string: `{"message": string, "stream_id": number, "reference_count"?: number}`. The refusal is always the camera's own `INVALID_IN_STATE`; `reference_count` is the count the server last read, present only when that cached count is above zero. Every other outcome about the stream is the camera's answer forwarded |
-| 106 | CameraNotSupported | OHF extension. `camera_start_stream` requires both the AV Stream Management cluster and the WebRTC Provider cluster, and raises this when either is missing. `camera_get_capabilities`, `camera_snapshot` and `camera_release_stream` check only the AV Stream Management cluster, so a camera missing just the WebRTC Provider cluster still answers those three normally. `details` is a JSON string: `{"message": string, "missing_clusters": number[]}`; `missing_clusters` names the cluster ids that are absent, so one entry means the other cluster is there |
+| 106 | CameraNotSupported | OHF extension. `camera_start_stream` requires both the AV Stream Management cluster and the WebRTC Provider cluster, and raises this when either is missing. `camera_get_capabilities`, `camera_snapshot` and `camera_release_stream` check only the AV Stream Management cluster, so a camera missing just the WebRTC Provider cluster still answers those three normally. `camera_provide_answer` and `camera_provide_ice_candidates` check neither and never raise this code: they invoke a provider command on a session the camera already holds, so an endpoint without the WebRTC Provider cluster fails exactly as it does for the same command sent through `send_webrtc_provider_command`, which is the invoke path both routes share. `details` is a JSON string: `{"message": string, "missing_clusters": number[]}`; `missing_clusters` names the cluster ids that are absent, so one entry means the other cluster is there |
 
 ## Python Matter Server Compatibility
 
@@ -1371,9 +1467,11 @@ These commands are available only in the Matter.js server and not in the Python 
 | `resync_icd` | Drop the local ICD registration and reconnect |
 | `get_network_topology` | Return the Thread/Wi-Fi network as a graph (schema 13+) |
 | `initiate_ota_upload` | Reserve an id for the `POST /ota-upload/<upload_id>` HTTP endpoint (schema 13+) |
-| `send_webrtc_provider_command` | Send `ProvideOffer` or `SolicitOffer` to a camera endpoint yourself (schema 12+) |
+| `send_webrtc_provider_command` | Send `ProvideOffer`, `SolicitOffer`, `ProvideAnswer` or `ProvideIceCandidates` to a camera endpoint yourself (schema 12+) |
 | `camera_get_capabilities` | Report a camera endpoint's stated capabilities and current stream allocations (schema 14+) |
 | `camera_start_stream` | Allocate or reuse a video/audio stream and open a WebRTC session on it (schema 14+) |
+| `camera_provide_answer` | Answer the offer a camera sent for a session, as `ProvideAnswer` (schema 14+) |
+| `camera_provide_ice_candidates` | Trickle ICE candidates into a session, as `ProvideIceCandidates` (schema 14+) |
 | `camera_stop_stream` | End a WebRTC session started that way, keeping the stream allocation (schema 14+) |
 | `camera_snapshot` | Capture one still frame from a camera endpoint (schema 14+) |
 | `camera_release_stream` | Deallocate a stream nothing references (schema 14+) |
@@ -1393,7 +1491,7 @@ These commands are available only in the Matter.js server and not in the Python 
 - **Malformed `args`**: An `args` that is not a JSON object is refused with error 8. The Python Matter
   Server fails while decoding the frame instead, with an error its message handler does not catch, and
   closes the connection without answering the request
-- **Unknown argument keys**: The five `camera_*` commands and `send_webrtc_provider_command` refuse an
+- **Unknown argument keys**: The `camera_*` commands and `send_webrtc_provider_command` refuse an
   argument key they do not know with error 8, listing the keys they accept. The Python Matter Server
   ignores unknown keys (`parse_arguments` is called with `strict=False`). The difference is confined to
   commands the Python server does not have, and it is deliberate: a request whose argument was ignored

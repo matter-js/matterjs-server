@@ -7,6 +7,7 @@
 import { Logger } from "@matter/main";
 import { ClusterModel, CommandModel, MatterModel } from "@matter/main/model";
 import { parseStartStreamArgs } from "../src/camera/cameraCommands.js";
+import type { ProviderCommandName } from "../src/camera/webRtcProviderArguments.js";
 import { PROVIDER_COMMAND_NAMES, toProviderCommandFields } from "../src/camera/webRtcProviderArguments.js";
 import { ServerError, ServerErrorCode } from "../src/types/WebSocketMessageTypes.js";
 import { ENDPOINT, LIVE_VIEW, managerWith, NODE, STATE, VIDEO_OFFER } from "./CameraStreamManagerTest.js";
@@ -229,8 +230,9 @@ describe("WebRTC provider arguments", () => {
                     "videoStreams",
                     "audioStreams",
                 ],
+                ProvideAnswer: ["webRtcSessionId", "sdp"],
                 ProvideIceCandidates: ["webRtcSessionId", "iceCandidates"],
-            };
+            } satisfies Record<ProviderCommandName, string[]>;
             for (const command of PROVIDER_COMMAND_NAMES) {
                 const message = refusal(() => toProviderCommandFields(command, { notAField: 1 })).message;
                 const accepted = message.slice(message.indexOf("Accepted: ") + "Accepted: ".length).split(", ");

@@ -1857,6 +1857,55 @@ describe("CameraStreamManager", () => {
             expect(invokes.some(invoke => invoke.command === "solicitOffer")).to.equal(true);
         });
 
+        it("names the establishing connection as the signalling owner of a tracked session", async () => {
+            const { manager } = allocatingManager();
+            const session = await manager.startStream({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                connectionId: "conn-1",
+                streamUsage: LIVE_VIEW,
+                sdp: VIDEO_OFFER,
+                video: {},
+                audio: false,
+            });
+            expect([...(manager.signallingOwners(NODE, ENDPOINT, session.webRtcSessionId) ?? [])]).to.deep.equal([
+                "conn-1",
+            ]);
+            // A session on the same camera that this server holds no record of names no owner, which
+            // is what the WebSocket route reads as "every opted-in connection".
+            expect(manager.signallingOwners(NODE, ENDPOINT, session.webRtcSessionId + 1)).to.equal(undefined);
+        });
+
+        it("names no owner while a session is being established on that camera", async () => {
+            // A session being established is not an owner of every id the registry does not know:
+            // naming it would withhold a raw-route client's own signalling for as long as any
+            // camera_start_stream runs on the camera. What such a rule would buy is one window, since
+            // WebRtcTransportRequestorServer answers NotFound for signalling naming a session it has
+            // not stored — Offer included — so an event can only arrive for a session already
+            // registered with the local requestor.
+            let ownersWhileEstablishing: ReadonlySet<string> | undefined;
+            const { manager } = managerWith(STATE, async invoke => {
+                if (invoke.command === "videoStreamAllocate") return { videoStreamId: 9 };
+                if (invoke.command === "solicitOffer") {
+                    ownersWhileEstablishing = manager.signallingOwners(NODE, ENDPOINT, 42);
+                    return { webRtcSessionId: 42 };
+                }
+                return undefined;
+            });
+            const session = await manager.startStream({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                connectionId: "conn-7",
+                streamUsage: LIVE_VIEW,
+                video: {},
+                audio: false,
+            });
+            expect(ownersWhileEstablishing).to.equal(undefined);
+            expect([...(manager.signallingOwners(NODE, ENDPOINT, session.webRtcSessionId) ?? [])]).to.deep.equal([
+                "conn-7",
+            ]);
+        });
+
         it("references the resolved stream ids in the provider offer", async () => {
             const { manager, invokes } = allocatingManager();
             const session = await manager.startStream({

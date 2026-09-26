@@ -24,6 +24,7 @@ import type { FieldRange } from "./cameraFieldRanges.js";
 import type { CameraCapabilities, SnapshotResult, StartStreamResult } from "./CameraStreamManager.js";
 import type { AudioEnvelope, Resolution, ResolvedStream, StreamKind, VideoEnvelope } from "./cameraTypes.js";
 import type { AudioHints, VideoHints } from "./streamPolicy.js";
+import type { SignallingCommandName } from "./webRtcProviderArguments.js";
 import { toIceServers } from "./webRtcProviderArguments.js";
 import {
     isInRange,
@@ -133,7 +134,7 @@ interface ParsedCameraCommand {
  * The command is named rather than its key set passed, so the set and the name in the refusal cannot
  * be paired wrongly. The set is the command's, not this function's: `node_id` and `endpoint_id` are
  * all it reads, so a key it does not know is the command's own argument. Checking it here is what
- * puts the refusal on every route, since every one of the five parses its target.
+ * puts the refusal on every route, since every one of them parses its target.
  */
 function parseCameraCommand(args: unknown, command: CameraCommandName): ParsedCameraCommand {
     const fields = requireArgumentObject(args, command);
@@ -159,7 +160,7 @@ export function requireArgumentObject(args: unknown, command: string): Record<st
 /**
  * The node and endpoint a command names, checked before matter.js is asked to brand them.
  *
- * Shared by the five camera commands and by `send_webrtc_provider_command`, so the one wire shape
+ * Shared by every camera command and by `send_webrtc_provider_command`, so the one wire shape
  * both take is answered the same way on either route.
  */
 export function parseTargetIds(fields: Record<string, unknown>, subject: string): ParsedCameraTarget {
@@ -241,6 +242,22 @@ const STOP_STREAM_ARG_KEY_SET: Record<keyof Required<ArgsOf<"camera_stop_stream"
     webrtc_session_id: true,
 };
 
+/** The keys `camera_provide_answer` takes. @see VIDEO_HINT_KEY_SET */
+const PROVIDE_ANSWER_ARG_KEY_SET: Record<keyof Required<ArgsOf<"camera_provide_answer">>, true> = {
+    node_id: true,
+    endpoint_id: true,
+    webrtc_session_id: true,
+    sdp: true,
+};
+
+/** The keys `camera_provide_ice_candidates` takes. @see VIDEO_HINT_KEY_SET */
+const PROVIDE_ICE_CANDIDATES_ARG_KEY_SET: Record<keyof Required<ArgsOf<"camera_provide_ice_candidates">>, true> = {
+    node_id: true,
+    endpoint_id: true,
+    webrtc_session_id: true,
+    ice_candidates: true,
+};
+
 /** The keys `camera_release_stream` takes. @see VIDEO_HINT_KEY_SET */
 const RELEASE_STREAM_ARG_KEY_SET: Record<keyof Required<ArgsOf<"camera_release_stream">>, true> = {
     node_id: true,
@@ -259,9 +276,40 @@ export const CAMERA_ARG_KEYS = {
     camera_stop_stream: Object.keys(STOP_STREAM_ARG_KEY_SET),
     camera_snapshot: Object.keys(SNAPSHOT_ARG_KEY_SET),
     camera_release_stream: Object.keys(RELEASE_STREAM_ARG_KEY_SET),
+    camera_provide_answer: Object.keys(PROVIDE_ANSWER_ARG_KEY_SET),
+    camera_provide_ice_candidates: Object.keys(PROVIDE_ICE_CANDIDATES_ARG_KEY_SET),
 } satisfies Record<string, readonly string[]>;
 
 export type CameraCommandName = keyof typeof CAMERA_ARG_KEYS;
+
+/**
+ * Which provider command each camera signalling command sends, and the target it sends it to.
+ *
+ * The payload is the caller's own fields minus the two that name the target, so the session id and
+ * the command's own argument reach {@link toProviderCommandFields} in the spelling the client wrote
+ * them in. Nothing is converted here: one boundary turns a wire payload into provider arguments, and
+ * a second copy of that conversion is what this command exists to avoid.
+ */
+export interface ParsedSignallingArgs extends ParsedCameraTarget {
+    commandName: SignallingCommandName;
+    payload: Record<string, unknown>;
+}
+
+/** The camera commands that signal into a session rather than establishing or ending one. */
+export type CameraSignallingCommandName = "camera_provide_answer" | "camera_provide_ice_candidates";
+
+const SIGNALLING_PROVIDER_COMMANDS: Record<CameraSignallingCommandName, SignallingCommandName> = {
+    camera_provide_answer: "ProvideAnswer",
+    camera_provide_ice_candidates: "ProvideIceCandidates",
+};
+
+export function parseSignallingArgs(args: unknown, command: CameraSignallingCommandName): ParsedSignallingArgs {
+    const { target, fields } = parseCameraCommand(args, command);
+    const payload = { ...fields };
+    delete payload.node_id;
+    delete payload.endpoint_id;
+    return { ...target, commandName: SIGNALLING_PROVIDER_COMMANDS[command], payload };
+}
 
 export function parseCapabilitiesArgs(args: unknown): ParsedCameraTarget {
     return parseCameraCommand(args, "camera_get_capabilities").target;
