@@ -131,21 +131,56 @@ function normalize(key: string): string {
     return key.toLowerCase().replaceAll("_", "");
 }
 
-/** What a rule answers for a member it has nothing to say about, so the walk descends into it. */
+/** What a rule answers for something it has nothing to say about, so the walk goes on past it. */
 const DESCEND = Symbol("descend");
 
-/**
- * What one member of an object logs as: its masked form, or {@link DESCEND}.
- *
- * The rule is what differs between the two entry points, and the walk is what they share: the depth
- * bound, the array handling and the `__proto__`-safe copy are written once and cannot drift.
- */
+/** What one member of an object logs as, decided by its name and the names beside it. */
 type MemberRule = (key: string, value: unknown, keys: readonly string[]) => unknown;
+
+/** What one value logs as wherever it sits: a member, an array entry, or the message itself. */
+type ValueRule = (value: unknown) => unknown;
+
+/**
+ * What one walk masks, and what it answers past its depth bound.
+ *
+ * The rules are what differ between the two entry points; the walk is what they share, so the depth
+ * bound, the array handling and the `__proto__`-safe copy are written once and cannot drift. A member
+ * is offered to {@link MemberRule} first and to {@link ValueRule} only if that descends, which is what
+ * keeps an `sdp` out of a rule on length.
+ */
+interface LogRules {
+    member: MemberRule;
+    value: ValueRule;
+    beyondDepth: BeyondDepth;
+}
 
 /** Every masking this module does to a request's `args`. */
 function commandMember(key: string, value: unknown, keys: readonly string[]): unknown {
     if (SENSITIVE_FIELDS.has(normalize(key))) return "[redacted]";
     return webRtcMember(key, value, keys);
+}
+
+/** For a walk that judges nothing by the value alone. */
+function keepAnyValue(): unknown {
+    return DESCEND;
+}
+
+/**
+ * Where a string stops being a value a reader takes in and becomes bulk.
+ *
+ * A `camera_snapshot` response carries the whole frame as base64, tens to hundreds of kilobytes of it,
+ * which buries every other line of the log; the server keeps it out of its own by naming the command,
+ * and a browser console is a worse place for image data still. The bound sits above every value in
+ * this API a reader reads as text — a setup code, a QR payload, a Thread dataset, an attribute's
+ * octstr — and an offer, which can pass it, is answered by {@link webRtcMember} first and keeps its
+ * lines however long it is.
+ */
+const MAX_LOGGED_STRING_LENGTH = 1024;
+
+/** A string past {@link MAX_LOGGED_STRING_LENGTH} logged as its length, and everything else as it is. */
+function bulkValue(value: unknown): unknown {
+    if (typeof value !== "string" || value.length <= MAX_LOGGED_STRING_LENGTH) return DESCEND;
+    return `[${value.length} chars omitted]`;
 }
 
 /**
@@ -181,14 +216,16 @@ function define(result: Record<string, unknown>, key: string, value: unknown): v
  * Returning the input unchanged is what lets the caller keep the original message, and it is how
  * each level tells its parent whether anything below it was masked.
  */
-function redactValue(value: unknown, depth: number, rule: MemberRule, beyondDepth: BeyondDepth): unknown {
+function redactValue(value: unknown, depth: number, rules: LogRules): unknown {
+    const byValue = rules.value(value);
+    if (byValue !== DESCEND) return byValue;
     if (typeof value !== "object" || value === null) return value;
-    if (depth >= MAX_DEPTH) return beyondDepth === "mask" ? "[redacted]" : value;
+    if (depth >= MAX_DEPTH) return rules.beyondDepth === "mask" ? "[redacted]" : value;
 
     if (Array.isArray(value)) {
         let masked = false;
         const entries = value.map(entry => {
-            const redacted = redactValue(entry, depth + 1, rule, beyondDepth);
+            const redacted = redactValue(entry, depth + 1, rules);
             masked ||= redacted !== entry;
             return redacted;
         });
@@ -200,42 +237,53 @@ function redactValue(value: unknown, depth: number, rule: MemberRule, beyondDept
     const entries = Object.entries(value);
     const keys = entries.map(([key]) => key);
     for (const [key, entry] of entries) {
-        const ruled = rule(key, entry, keys);
-        const redacted = ruled === DESCEND ? redactValue(entry, depth + 1, rule, beyondDepth) : ruled;
+        const ruled = rules.member(key, entry, keys);
+        const redacted = ruled === DESCEND ? redactValue(entry, depth + 1, rules) : ruled;
         masked ||= redacted !== entry;
         define(result, key, redacted);
     }
     return masked ? result : value;
 }
 
+/** A request's `args`: the field-name list, the WebRTC secrets, and a caller's structure bounded. */
+const COMMAND_RULES: LogRules = { member: commandMember, value: keepAnyValue, beyondDepth: "mask" };
+
+/** An incoming message: the WebRTC secrets, and bulk content stated by its length. */
+const INCOMING_RULES: LogRules = { member: webRtcMember, value: bulkValue, beyondDepth: "keep" };
+
 /**
  * The message as it may be logged: `message` itself when it carries no secret, otherwise a copy with
  * the sensitive fields under `args` masked.
  *
  * The field names are explicit lists rather than a heuristic, and everything else reaches the log
- * unchanged, because a request the log cannot show is a request nobody can debug. They are matched
- * at any depth under `args`: the shapes that carry a secret differ per command — a `device_command`
- * payload object, a list of ICE servers — and a redactor pinned to one of them masks nothing in the
- * next.
+ * unchanged, because a request the log cannot show is a request nobody can debug. That includes a
+ * string of any length: an argument nobody logs is an argument nobody can diagnose, and the one bulk
+ * argument this API takes — an `import_test_node` dump — is the whole record of what was refused. They
+ * are matched at any depth under `args`: the shapes that carry a secret differ per command — a
+ * `device_command` payload object, a list of ICE servers — and a redactor pinned to one of them masks
+ * nothing in the next.
  */
 export function redactSensitiveCommandFields(message: unknown): unknown {
     if (typeof message !== "object" || message === null || !("args" in message)) return message;
-    const redacted = redactValue(message.args, 0, commandMember, "mask");
+    const redacted = redactValue(message.args, 0, COMMAND_RULES);
     if (redacted === message.args) return message;
 
     return { ...message, args: redacted };
 }
 
 /**
- * `message` with every WebRTC session secret under it masked, or `message` itself when it carries
- * none.
+ * `message` as a client may log it — WebRTC session secrets masked and bulk content stated by its
+ * length — or `message` itself when it carries neither.
  *
  * For what a client logs on the way in, where {@link redactSensitiveCommandFields} does not apply:
  * that walks a request's `args` and masks a list of field names judged against request arguments
  * alone, and several of those names mean something harmless in a response. A `webrtc_callback` offer
- * carries the camera's own ICE credentials, in the SDP and in `ice_servers`, and those are matched by
- * shape, which holds whichever way the message travels.
+ * carries the camera's own ICE credentials, in the SDP and in `ice_servers`, and a `camera_snapshot`
+ * response carries the frame. Both are judged by shape, which is the only thing there is to judge by
+ * here: a response states its `message_id` and nothing else about the request, so a rule keyed on the
+ * command would mean handing the log the pending-command map the client keeps for its promises — and
+ * a list of command names kept in step with the server's.
  */
-export function redactWebRtcSecrets(message: unknown): unknown {
-    return redactValue(message, 0, webRtcMember, "keep");
+export function redactIncomingMessage(message: unknown): unknown {
+    return redactValue(message, 0, INCOMING_RULES);
 }

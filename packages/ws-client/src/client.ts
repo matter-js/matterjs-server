@@ -6,7 +6,7 @@
 
 import { Connection, WebSocketFactory } from "./connection.js";
 import { CommandTimeoutError, ConnectionClosedError, InvalidServerVersion, ServerCommandError } from "./exceptions.js";
-import { redactWebRtcSecrets } from "./logging-redaction.js";
+import { redactIncomingMessage } from "./logging-redaction.js";
 import {
     AccessControlEntry,
     AllCredentialsSummary,
@@ -723,11 +723,11 @@ export class MatterClient {
             return;
         }
 
-        console.warn("Received message with unknown format", msg);
+        console.warn("Received message with unknown format", redactIncomingMessage(msg));
     }
 
     private _handleEventMessage(event: EventMessage) {
-        console.debug("Incoming event", redactWebRtcSecrets(event));
+        console.debug("Incoming event", redactIncomingMessage(event));
 
         // Allow subclasses to hook into raw events (for testing)
         this.onRawEvent(event);

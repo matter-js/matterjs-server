@@ -518,6 +518,63 @@ describe("ws-client", () => {
                     expect(line).to.not.contain("uNgu3ss4ble-turn");
                 }
             });
+
+            it("keeps a snapshot frame out of the console and the rest of the response in it", async () => {
+                const frame = `${"Zm9vYmFy".repeat(400)}ZnJhbWUtYnl0ZXMtZG8tbm90LWxvZw==`;
+                server.onCommand("camera_snapshot", () => ({
+                    data: frame,
+                    codec: "JPEG",
+                    resolution: { width: 640, height: 480 },
+                    downgraded: false,
+                    stream_id: 3,
+                }));
+                await client.connect();
+
+                const logged = new Array<string>();
+                const debug = console.debug;
+                console.debug = (...args: unknown[]) => {
+                    logged.push(args.map(arg => JSON.stringify(arg)).join(" "));
+                };
+                let result;
+                try {
+                    result = await client.sendCommand("camera_snapshot", 0, { node_id: 5, endpoint_id: 1 });
+                } finally {
+                    console.debug = debug;
+                }
+
+                // The caller still gets the frame; only the log is without it.
+                expect(result.data).to.equal(frame);
+                for (const line of logged) {
+                    expect(line).to.not.contain("ZnJhbWUtYnl0ZXMtZG8tbm90LWxvZw");
+                }
+                const frameLine = logged.find(line => line.includes("JPEG"));
+                expect(frameLine).to.contain(`[${frame.length} chars omitted]`);
+                expect(frameLine).to.contain('"width":640');
+                expect(frameLine).to.contain('"height":480');
+                expect(frameLine).to.contain('"stream_id":3');
+            });
+
+            // A guard against over-redaction; green on the unmodified baseline too.
+            it("logs a short data field of another command in full", async () => {
+                server.onCommand("read_attribute", () => ({ data: "1/6/0", node_id: 5 }));
+                await client.connect();
+
+                const logged = new Array<string>();
+                const debug = console.debug;
+                console.debug = (...args: unknown[]) => {
+                    logged.push(args.map(arg => JSON.stringify(arg)).join(" "));
+                };
+                try {
+                    await client.sendCommand("read_attribute", 0, {
+                        node_id: 5,
+                        attribute_path: "1/6/0",
+                    });
+                } finally {
+                    console.debug = debug;
+                }
+
+                expect(logged.some(line => line.includes('"data":"1/6/0"'))).to.be.true;
+            });
         });
 
         describe("raw message handling", () => {

@@ -200,6 +200,16 @@ client.addEventListener("connection_lost", () => {
 });
 ```
 
+### Debug Logging
+
+Every message is written to `console.debug`: the outgoing command from `Connection.sendMessage`, the incoming frame from `Connection.onmessage`, and an event a second time from `MatterClient`, which also writes a frame of no known shape to `console.warn`. What such a line may carry is decided by shape wherever it can be, because a response states its `message_id` and not the command it answers.
+
+Secrets are masked. Outgoing arguments lose a setup code or passcode, a Wi-Fi passphrase, a Thread operational dataset and symmetric key material, matched by field name at any depth under `args`. That name list is applied to outgoing arguments alone: it was judged against request arguments, and several of its names mean something harmless in a response. The rules that hold in either direction are matched by shape. An ICE server's `username` and `credential` are masked when the object also states a URL member, and the `a=ice-ufrag` and `a=ice-pwd` values inside an `sdp` are masked wherever the SDP appears — a `webrtc_callback` offer carries the camera's own. Nothing else in an offer is touched: the DTLS fingerprint, the codecs and the directions are what a failed session is read from.
+
+Bulk content arriving is stated by its length. In an incoming frame or event, a string longer than 1024 characters is logged as `[<n> chars omitted]` wherever it sits — under a field name, or as a bare array entry, which is the shape `attribute_updated` reports a value in — so a `camera_snapshot` response's base64 frame does not bury the console, while the `codec`, `resolution`, `downgraded` and `stream_id` beside it are logged as sent. An `sdp` is answered by the masking rule first and so keeps its lines however long it is. Two things are outside the rule: an outgoing argument, which is logged whatever its length because it is the record of what the caller asked for, and a string nested more than eight levels deep in an incoming message, which the walk does not reach.
+
+`redactSensitiveCommandFields` and `redactIncomingMessage` are exported for a consumer that does its own logging.
+
 ### Other Exports
 
 ```typescript

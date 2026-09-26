@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { redactWebRtcSecrets, redactSensitiveCommandFields } from "../src/logging-redaction.js";
+import { redactIncomingMessage, redactSensitiveCommandFields } from "../src/logging-redaction.js";
 
 /** The redacted message's `args.payload`, which is what every masking case asserts against. */
 function redactedPayload(message: unknown): Record<string, unknown> {
@@ -33,6 +33,15 @@ const OFFER = [
     "a=rtpmap:96 H264/90000",
     "a=fmtp:96 max-fs=8160",
     "a=sendrecv",
+].join("\r\n");
+
+/** Past the bulk bound, with a marker that cannot land in a logged line by coincidence. */
+const BULK_STRING = `${"Zm9vYmFy".repeat(200)}ZnJhbWUtYnl0ZXMtZG8tbm90LWxvZw==`;
+
+/** An offer past the bulk bound, which the SDP rule has to answer ahead of it. */
+const LONG_OFFER = [
+    OFFER,
+    ...Array.from({ length: 60 }, (_unused, index) => `a=rtpmap:${100 + index} H264/90000`),
 ].join("\r\n");
 
 describe("redactSensitiveCommandFields", () => {
@@ -314,15 +323,22 @@ describe("redactSensitiveCommandFields", () => {
         expect(args.sdp).to.not.contain(ICE_UFRAG);
         expect(args.sdp).to.not.contain(ICE_PWD);
     });
+
+    it("logs a bulk argument in full, however long it is", () => {
+        // An argument is the record of what the caller asked for; an `import_test_node` dump is the
+        // whole record of a refused import. The length rule is the incoming path's alone.
+        const message = { message_id: "1", command: "import_test_node", args: { dump: BULK_STRING } };
+        expect(redactSensitiveCommandFields(message)).to.equal(message);
+    });
 });
 
-describe("redactWebRtcSecrets", () => {
+describe("redactIncomingMessage", () => {
     it("masks the ICE credentials in a webrtc_callback offer and keeps the rest of the event", () => {
         const event = {
             event: "webrtc_callback",
             data: { type: "offer", node_id: 5, session_id: 7, sdp: OFFER },
         };
-        const redacted = redactWebRtcSecrets(event) as { event: string; data: { session_id: number; sdp: string } };
+        const redacted = redactIncomingMessage(event) as { event: string; data: { session_id: number; sdp: string } };
         expect(redacted.data.sdp).to.not.contain(ICE_UFRAG);
         expect(redacted.data.sdp).to.contain(`a=fingerprint:sha-256 ${FINGERPRINT}`);
         expect(redacted.event).to.equal("webrtc_callback");
@@ -339,7 +355,7 @@ describe("redactWebRtcSecrets", () => {
                 ice_servers: [{ urls: ["turn:turn.example.org:3478"], username: "camera", credential: SECRET }],
             },
         };
-        const { data } = redactWebRtcSecrets(event) as { data: { ice_servers: Array<Record<string, unknown>> } };
+        const { data } = redactIncomingMessage(event) as { data: { ice_servers: Array<Record<string, unknown>> } };
         expect(data.ice_servers[0]).to.deep.equal({
             urls: ["turn:turn.example.org:3478"],
             username: "[redacted]",
@@ -351,14 +367,61 @@ describe("redactWebRtcSecrets", () => {
         // The name list is judged against request arguments; a response's `credentials` is a
         // `{ credentialType, credentialIndex }` list and is worth reading in the log.
         const message = { message_id: "1", result: { credentials: [{ credentialType: 1, credentialIndex: 3 }] } };
-        expect(redactWebRtcSecrets(message)).to.equal(message);
+        expect(redactIncomingMessage(message)).to.equal(message);
+    });
+
+    it("states a snapshot frame by its length and keeps every field beside it", () => {
+        const message = {
+            message_id: "1",
+            result: {
+                data: BULK_STRING,
+                codec: "JPEG",
+                resolution: { width: 640, height: 480 },
+                stream_id: 3,
+                downgraded: false,
+            },
+        };
+        const { result } = redactIncomingMessage(message) as { result: Record<string, unknown> };
+        expect(result.data).to.equal(`[${BULK_STRING.length} chars omitted]`);
+        expect(JSON.stringify(result)).to.not.contain("ZnJhbWUtYnl0ZXMtZG8tbm90LWxvZw");
+        expect(result.codec).to.equal("JPEG");
+        expect(result.resolution).to.deep.equal({ width: 640, height: 480 });
+        expect(result.stream_id).to.equal(3);
+        expect(result.downgraded).to.equal(false);
+        expect(message.result.data).to.equal(BULK_STRING);
+    });
+
+    it("keeps a data field that is not bulk, whichever command answered with it", () => {
+        // A guard against over-redaction; green on the unmodified baseline too.
+        const message = { message_id: "1", result: { data: "1/6/0", node_id: 5 } };
+        expect(redactIncomingMessage(message)).to.equal(message);
+    });
+
+    it("states a bulk array entry by its length, where no field name names it", () => {
+        // `attribute_updated` reports `[node_id, path, value]`, so the value has no member name of its
+        // own and only the walk itself can reach it.
+        const event = { event: "attribute_updated", data: [5, "1/1111/0", BULK_STRING] };
+        const { data } = redactIncomingMessage(event) as { data: [number, string, string] };
+        expect(data[2]).to.equal(`[${BULK_STRING.length} chars omitted]`);
+        expect(data[1]).to.equal("1/1111/0");
+        expect(event.data[2]).to.equal(BULK_STRING);
+    });
+
+    it("keeps an offer past the bulk bound whole but for its credentials", () => {
+        expect(LONG_OFFER.length).to.be.greaterThan(1024);
+        const event = { event: "webrtc_callback", data: { type: "offer", sdp: LONG_OFFER } };
+        const { data } = redactIncomingMessage(event) as { data: { sdp: string } };
+        expect(data.sdp).to.not.contain(ICE_UFRAG);
+        expect(data.sdp).to.contain("m=video 9 UDP/TLS/RTP/SAVPF 96");
+        expect(data.sdp).to.contain(`a=fingerprint:sha-256 ${FINGERPRINT}`);
+        expect(data.sdp).to.contain("a=rtpmap:159 H264/90000");
     });
 
     it("returns a message carrying no sdp unchanged, however deep it is", () => {
         let nested: Record<string, unknown> = { value: 1 };
         for (let level = 0; level < 12; level++) nested = { nested };
         const message = { message_id: "1", result: nested };
-        expect(redactWebRtcSecrets(message)).to.equal(message);
-        expect(JSON.stringify(redactWebRtcSecrets(message))).to.not.contain("[redacted]");
+        expect(redactIncomingMessage(message)).to.equal(message);
+        expect(JSON.stringify(redactIncomingMessage(message))).to.not.contain("[redacted]");
     });
 });
