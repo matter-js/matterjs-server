@@ -88,6 +88,11 @@ export type OpenCommissioningWindowRequest = {
 export type OpenCommissioningWindowResponse = {
     manualCode: string;
     qrCode: string;
+    passcode: number;
+    discriminator: number;
+    vendorId: number;
+    productId: number;
+    commissioningTimeout: number;
 };
 
 import type { AttributesData, MatterNodeData } from "@matter-server/ws-client";

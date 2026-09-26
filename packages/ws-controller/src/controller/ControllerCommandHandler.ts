@@ -1719,10 +1719,16 @@ export class ControllerCommandHandler {
         if (timeout !== undefined && (!Number.isFinite(timeout) || timeout <= 0)) {
             throw ServerError.invalidArguments(`Commissioning window timeout must be a positive number of seconds`);
         }
-        const { manualPairingCode, qrPairingCode } = await node.openEnhancedCommissioningWindow(
-            timeout === undefined ? undefined : Seconds(timeout),
-        );
-        return { manualCode: manualPairingCode, qrCode: qrPairingCode };
+        const window = await node.openEnhancedCommissioningWindow(timeout === undefined ? undefined : Seconds(timeout));
+        return {
+            manualCode: window.manualPairingCode,
+            qrCode: window.qrPairingCode,
+            passcode: window.passcode,
+            discriminator: window.discriminator,
+            vendorId: window.vendorId,
+            productId: window.productId,
+            commissioningTimeout: Seconds.of(window.commissioningTimeout),
+        };
     }
 
     async getFabrics(nodeId: NodeId) {

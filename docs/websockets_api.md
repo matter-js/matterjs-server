@@ -344,14 +344,18 @@ Open a commissioning window to allow another controller to commission a device a
 }
 ```
 
-Response includes pairing codes:
+Response includes pairing codes and, *(Matter.js only)*, the window's structured fields, so a client can hand the window to another ecosystem without decoding the QR code. `discriminator` is the long (12-bit) discriminator the device advertises while the window is open, `commissioning_timeout` is the window duration in seconds. The `discriminator` request argument is ignored; a random discriminator is used:
 ```json
 {
   "message_id": "1",
   "result": {
     "setup_pin_code": 12345678,
     "setup_manual_code": "35325335079",
-    "setup_qr_code": "MT:Y.ABCDEFG123456789"
+    "setup_qr_code": "MT:Y.ABCDEFG123456789",
+    "discriminator": 3840,
+    "vendor_id": 65521,
+    "product_id": 32768,
+    "commissioning_timeout": 300
   }
 }
 ```
