@@ -15,7 +15,7 @@ import type {
     CameraResolution,
     CameraVideoHints,
 } from "@matter-server/ws-client";
-import { Bytes, EndpointNumber, NodeId } from "@matter/main";
+import { Bytes, EndpointNumber, NodeId, UINT64_MAX } from "@matter/main";
 import type { WebRtcTransportDefinitions } from "@matter/main/clusters";
 import { StreamUsage } from "@matter/main/types";
 import { ServerError } from "../types/WebSocketMessageTypes.js";
@@ -162,16 +162,30 @@ export function requireArgumentObject(args: unknown, command: string): Record<st
  *
  * Shared by every camera command and by `send_webrtc_provider_command`, so the one wire shape
  * both take is answered the same way on either route.
+ *
+ * `NodeId()` is `BigInt(v)` and validates nothing, so every bound a node id has is this one's to
+ * apply: a value outside the datatype's width would be branded and reach a node lookup, which
+ * answers `NODE_NOT_EXISTS` for it — a target this server could never hold reported as one it does
+ * not happen to hold.
+ *
+ * @see Matter Core spec § 2.5.5 — a Node ID is a 64-bit number.
  */
 export function parseTargetIds(fields: Record<string, unknown>, subject: string): ParsedCameraTarget {
     const { node_id: nodeId, endpoint_id: endpointId } = fields;
     if (typeof nodeId !== "number" && typeof nodeId !== "bigint") {
         throw ServerError.invalidArguments(`${subject} requires a numeric or bigint node_id`);
     }
-    // NodeId(v) is BigInt(v); a non-integer number reaches that conversion and throws an
-    // uncaught RangeError instead of this typed error.
-    if (typeof nodeId === "number" && !Number.isInteger(nodeId)) {
-        throw ServerError.invalidArguments(`${subject} requires a numeric node_id to be an integer`);
+    // Past the safe range a double no longer holds every integer, so a number there cannot be trusted
+    // to be the one the client wrote: 9.007199254740993e15 arrives as ...992. parseBigIntAwareJson
+    // reads a plain integer literal that large as a bigint, so what reaches here as a number is an
+    // exponent-form literal.
+    if (typeof nodeId === "number" && !Number.isSafeInteger(nodeId)) {
+        throw ServerError.invalidArguments(
+            `${subject} requires a numeric node_id to be an integer no greater than ${Number.MAX_SAFE_INTEGER}; state a larger node id as a bigint`,
+        );
+    }
+    if (nodeId < 0 || nodeId > UINT64_MAX) {
+        throw ServerError.invalidArguments(`${subject} requires node_id to be between 0 and ${UINT64_MAX}`);
     }
     if (typeof endpointId !== "number" || !Number.isInteger(endpointId) || endpointId < 0 || endpointId > 0xfffe) {
         throw ServerError.invalidArguments(`${subject} requires endpoint_id to be an integer between 0 and 0xFFFE`);

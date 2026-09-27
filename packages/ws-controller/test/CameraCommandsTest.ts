@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { EndpointNumber, NodeId } from "@matter/main";
+import { EndpointNumber, NodeId, UINT64_MAX } from "@matter/main";
 import { CameraAvStreamManagement } from "@matter/main/clusters/camera-av-stream-management";
 import { StreamUsage } from "@matter/main/types";
 import {
@@ -52,6 +52,43 @@ describe("cameraCommands", () => {
                 }
                 expect((thrown as ServerError).code).to.equal(ServerErrorCode.InvalidArguments);
             }
+        });
+
+        function expectRefusedNodeId(nodeId: unknown): void {
+            let thrown: unknown;
+            try {
+                parseCapabilitiesArgs({ node_id: nodeId, endpoint_id: 1 });
+            } catch (error) {
+                thrown = error;
+            }
+            expect(thrown).to.be.instanceOf(ServerError);
+            expect((thrown as ServerError).code).to.equal(ServerErrorCode.InvalidArguments);
+        }
+
+        it("rejects a negative node id of either type instead of branding it", () => {
+            // NodeId(-1) brands a negative bigint, which reaches the node lookup and is answered as a
+            // node that does not exist rather than as an argument no node id could ever be.
+            expectRefusedNodeId(-1);
+            expectRefusedNodeId(-1n);
+        });
+
+        it("rejects a bigint node id wider than the 64 bits a node id has", () => {
+            expectRefusedNodeId(UINT64_MAX + 1n);
+        });
+
+        it("accepts the widest node id the datatype holds", () => {
+            expect(parseCapabilitiesArgs({ node_id: UINT64_MAX, endpoint_id: 1 }).nodeId).to.equal(UINT64_MAX);
+        });
+
+        it("rejects a numeric node id past the safe range, which names a different node than the client sent", () => {
+            expect(Number.isInteger(9.1e15)).to.equal(true);
+            expectRefusedNodeId(9.1e15);
+        });
+
+        it("accepts the widest node id a number states exactly", () => {
+            expect(parseCapabilitiesArgs({ node_id: Number.MAX_SAFE_INTEGER, endpoint_id: 1 }).nodeId).to.equal(
+                BigInt(Number.MAX_SAFE_INTEGER),
+            );
         });
 
         it("rejects a non-integer endpoint id", () => {

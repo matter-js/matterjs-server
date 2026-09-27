@@ -302,7 +302,7 @@ const caps = await client.sendCommand("camera_get_capabilities", 0, {
 });
 ```
 
-All seven camera commands check their target: `node_id` is an integer (a number or a bigint) and `endpoint_id` an integer 0 to 65534, the range an endpoint number encodes in; anything else is refused with `INVALID_ARGUMENTS`.
+All seven camera commands check their target: `node_id` is an integer 0 to 18446744073709551615 — the 64 bits a node id is — sent as a number or a bigint, and `endpoint_id` an integer 0 to 65534; anything else is refused with `INVALID_ARGUMENTS`. A `node_id` that arrives as a number must also be no greater than `Number.MAX_SAFE_INTEGER`, because past that a double no longer holds every integer, so the value cannot be trusted to name the node the caller meant. A plain integer literal above that is read as a bigint, so only a number in exponent form gets that far; send a node id above the safe range as a bigint, which this client's JSON handling does for you.
 
 ### camera_start_stream
 
