@@ -1492,8 +1492,15 @@ export class WebSocketControllerHandler implements WebServerHandler {
     }
 
     async #handleCameraSnapshot(args: unknown): Promise<ResponseOf<"camera_snapshot">> {
-        const { nodeId, endpointId, maxResolution, codec } = parseSnapshotArgs(args);
-        const result = await this.#controller.cameraStreams.snapshot({ nodeId, endpointId, maxResolution, codec });
+        const { nodeId, endpointId, maxResolution, codec, watermarkEnabled, osdEnabled } = parseSnapshotArgs(args);
+        const result = await this.#controller.cameraStreams.snapshot({
+            nodeId,
+            endpointId,
+            maxResolution,
+            codec,
+            watermarkEnabled,
+            osdEnabled,
+        });
         const wire = toWireSnapshotResult(result);
         // The response is in skipMessageContentInLogFor because it carries the frame, which would
         // take what the server chose out of the log with it.

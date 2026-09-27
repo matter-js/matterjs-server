@@ -10,6 +10,7 @@ import type {
     AudioEnvelope,
     VideoEnvelope,
 } from "../src/camera/cameraTypes.js";
+import type { OverlayBounds } from "../src/camera/overlayPolicy.js";
 import { parseSdpVideoConstraints, videoCodecLimits } from "../src/camera/sdpConstraints.js";
 import {
     budgetVideoEnvelope,
@@ -22,11 +23,17 @@ import {
     satisfiesVideoCallerBounds,
     videoCallerBounds,
 } from "../src/camera/streamPolicy.js";
-import type { AudioSelection, VideoEnvelopeArgs } from "../src/camera/streamPolicy.js";
+import type { AudioSelection, VideoEnvelopeArgs, VideoSelection } from "../src/camera/streamPolicy.js";
+import { NO_OVERLAYS } from "./cameraFixtures.js";
+
+/** `computeVideoEnvelope` with no overlay asked for, which is what most cases are about. */
+function videoSelection(args: Omit<VideoEnvelopeArgs, "overlays"> & { overlays?: OverlayBounds }): VideoSelection {
+    return computeVideoEnvelope({ overlays: {}, ...args });
+}
 
 /** The envelope a video selection carries, failing the test when the caller's bounds were unsatisfiable. */
-function videoEnvelope(args: VideoEnvelopeArgs): VideoEnvelope {
-    const selection = computeVideoEnvelope(args);
+function videoEnvelope(args: Omit<VideoEnvelopeArgs, "overlays"> & { overlays?: OverlayBounds }): VideoEnvelope {
+    const selection = videoSelection(args);
     if ("unsatisfiable" in selection) {
         throw new Error(`unsatisfiable: ${selection.field} ${selection.requested} against ${selection.limit}`);
     }
@@ -250,7 +257,7 @@ describe("streamPolicy", () => {
             // Clamping the floor down reports success while delivering a stream the caller said was
             // too thin to be useful.
             expect(
-                computeVideoEnvelope({
+                videoSelection({
                     capabilities: CAPABILITIES,
                     limits: { codec: H265 },
                     hints: { minBitRate: 50000000 },
@@ -265,7 +272,7 @@ describe("streamPolicy", () => {
 
         it("fails a caller minResolution the sensor cannot reach instead of lowering it", () => {
             expect(
-                computeVideoEnvelope({
+                videoSelection({
                     capabilities: { ...CAPABILITIES, sensor: { width: 1280, height: 720 } },
                     limits: { codec: H265 },
                     hints: { minResolution: { width: 1920, height: 1080 } },
@@ -280,7 +287,7 @@ describe("streamPolicy", () => {
 
         it("fails a caller minFrameRate above the sensor's maximum instead of lowering it", () => {
             expect(
-                computeVideoEnvelope({
+                videoSelection({
                     capabilities: CAPABILITIES,
                     limits: { codec: H265 },
                     hints: { minFrameRate: 60 },
@@ -294,7 +301,7 @@ describe("streamPolicy", () => {
         });
 
         it("fails a caller floor the caller's own ceiling excludes", () => {
-            const selection = computeVideoEnvelope({
+            const selection = videoSelection({
                 capabilities: CAPABILITIES,
                 limits: { codec: H265 },
                 hints: { minFrameRate: 25, maxFrameRate: 15 },
@@ -449,7 +456,7 @@ describe("streamPolicy", () => {
             // nothing wrong with it. Clamping it per dimension instead would return 1440x1080, which
             // is not the floor the caller asked for.
             expect(
-                computeVideoEnvelope({
+                videoSelection({
                     capabilities: CAPABILITIES,
                     limits: { codec: H265 },
                     hints: {
@@ -508,6 +515,7 @@ describe("streamPolicy", () => {
             minBitRate: 800000,
             maxBitRate: 4000000,
             keyFrameInterval: 2000,
+            overlays: {},
         };
 
         function stream(
@@ -522,10 +530,12 @@ describe("streamPolicy", () => {
                 minBitRate: number;
                 maxBitRate: number;
                 referenceCount: number;
+                overlays: Required<OverlayBounds>;
             }> = {},
         ) {
             return {
                 videoStreamId: 1,
+                overlays: NO_OVERLAYS,
                 streamUsage: LIVE_VIEW,
                 videoCodec: H265,
                 minResolution: { width: 1920, height: 1080 },
@@ -596,6 +606,20 @@ describe("streamPolicy", () => {
             expect(findReusableVideoStream([stream({ minFrameRate: 1 })], request, LIVE_VIEW_H265)).to.equal(undefined);
         });
 
+        it("refuses a stream whose overlays are not the ones the envelope asked for", () => {
+            // The envelope carries what the server resolved, so the reuse rung requires it even where
+            // the caller stated nothing: an unstated overlay resolves to false, not to "either will do".
+            const watermarked = stream({ overlays: { watermarkEnabled: true, osdEnabled: false } });
+            const asked = { ...REQUEST, overlays: { watermarkEnabled: false, osdEnabled: false } };
+            expect(findReusableVideoStream([watermarked], asked, LIVE_VIEW_H265)).to.equal(undefined);
+        });
+
+        it("reuses a stream carrying exactly the overlays the envelope asked for", () => {
+            const watermarked = stream({ overlays: { watermarkEnabled: true, osdEnabled: false } });
+            const asked = { ...REQUEST, overlays: { watermarkEnabled: true, osdEnabled: false } };
+            expect(findReusableVideoStream([watermarked], asked, LIVE_VIEW_H265)?.videoStreamId).to.equal(1);
+        });
+
         it("refuses a stream with the same pixel count but a different aspect ratio", () => {
             // 1440x1440 has the same area as 1920x1080 (2,073,600px) but is square, not widescreen.
             const square = stream({
@@ -609,6 +633,7 @@ describe("streamPolicy", () => {
     describe("satisfiesVideoCallerBounds", () => {
         const STREAM = {
             videoStreamId: 4,
+            overlays: NO_OVERLAYS,
             streamUsage: LIVE_VIEW,
             videoCodec: H265,
             minResolution: { width: 1280, height: 720 },
@@ -644,6 +669,26 @@ describe("streamPolicy", () => {
             expect(satisfiesVideoCallerBounds(STREAM, bounds)).to.equal(false);
         });
 
+        it("refuses a stream whose overlays differ from the ones the caller stated", () => {
+            const watermarked = { ...STREAM, overlays: { watermarkEnabled: true, osdEnabled: false } };
+            expect(
+                satisfiesVideoCallerBounds(
+                    watermarked,
+                    videoCallerBounds({ codec: H265 }, LIVE_VIEW, { watermarkEnabled: false }),
+                ),
+            ).to.equal(false);
+            expect(
+                satisfiesVideoCallerBounds(STREAM, videoCallerBounds({ codec: H265 }, LIVE_VIEW, { osdEnabled: true })),
+            ).to.equal(false);
+        });
+
+        it("accepts any overlays for a caller that stated none, which is the envelope's business", () => {
+            const watermarked = { ...STREAM, overlays: { watermarkEnabled: true, osdEnabled: true } };
+            expect(satisfiesVideoCallerBounds(watermarked, videoCallerBounds({ codec: H265 }, LIVE_VIEW, {}))).to.equal(
+                true,
+            );
+        });
+
         it("accepts a stream inside every limit the offer stated", () => {
             const bounds = videoCallerBounds(
                 { codec: H265, maxPixels: 2560 * 1440, maxFrameRate: 30, maxBitRate: 4000000 },
@@ -662,6 +707,7 @@ describe("streamPolicy", () => {
 
         const IN_USE_WIDE = {
             videoStreamId: 4,
+            overlays: NO_OVERLAYS,
             streamUsage: LIVE_VIEW,
             videoCodec: H265,
             minResolution: { width: 1280, height: 720 },
@@ -822,6 +868,7 @@ describe("streamPolicy", () => {
             minBitRate: 800000,
             maxBitRate: 4000000,
             keyFrameInterval: 2000,
+            overlays: {},
         };
         /** 2560x1440 at 30 fps, i.e. what the envelope above asks the camera to reserve. */
         const SENSOR_RATE = 2560 * 1440 * 30;
@@ -834,6 +881,7 @@ describe("streamPolicy", () => {
         function videoStream(id: number, width: number, height: number, maxFrameRate: number): AllocatedVideoStream {
             return {
                 videoStreamId: id,
+                overlays: NO_OVERLAYS,
                 streamUsage: LIVE_VIEW,
                 videoCodec: H265,
                 minResolution: { width, height },
@@ -854,6 +902,7 @@ describe("streamPolicy", () => {
         ): AllocatedSnapshotStream {
             return {
                 snapshotStreamId: 1,
+                overlays: NO_OVERLAYS,
                 imageCodec: 0,
                 minResolution: { width, height },
                 maxResolution: { width, height },
@@ -954,6 +1003,7 @@ describe("streamPolicy", () => {
             minBitRate: 800000,
             maxBitRate: 4000000,
             keyFrameInterval: 2000,
+            overlays: {},
         };
 
         it("halves the resolution ceiling first, in even dimensions", () => {

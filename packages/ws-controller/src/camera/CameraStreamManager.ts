@@ -32,8 +32,15 @@ import type {
     StreamLease,
     VideoEnvelope,
 } from "./cameraTypes.js";
-import { lacksFeature, sessionPrivacyModes, snapshotPrivacyModes, statedFeatureNames } from "./devicePolicy.js";
+import {
+    lacksFeature,
+    overlaySupport,
+    sessionPrivacyModes,
+    snapshotPrivacyModes,
+    statedFeatureNames,
+} from "./devicePolicy.js";
 import { deviceStatusOf } from "./deviceStatus.js";
+import { resolveOverlays } from "./overlayPolicy.js";
 import { decodableVideoCodecs, mediaRefusal, parseSdpVideoConstraints, videoCodecLimits } from "./sdpConstraints.js";
 import type { MediaRefusal, SdpVideoConstraints, SelectedVideoCodecLimits } from "./sdpConstraints.js";
 import { CameraSessionRegistry } from "./sessionRegistry.js";
@@ -114,9 +121,17 @@ function ladderReaction(status: number | undefined): LadderReaction {
     }
 }
 
-/** The envelope actually delivered by an allocated video stream, as opposed to the one requested. */
+/**
+ * The envelope actually delivered by an allocated video stream, as opposed to the one requested.
+ *
+ * `overlays` is the camera's own statement about this stream, carried across unchanged. That makes the
+ * envelope both the honest report for a reused or degraded stream and a conformant request again for
+ * `#restoreFreedVideoStream`: the struct states a flag only where the camera has the feature, so what
+ * the camera left out is exactly what must not go back on an allocate.
+ */
 function envelopeOfVideoStream(stream: AllocatedVideoStream, keyFrameInterval: number): VideoEnvelope {
     return {
+        overlays: stream.overlays,
         codec: stream.videoCodec,
         minResolution: stream.minResolution,
         maxResolution: stream.maxResolution,
@@ -147,6 +162,7 @@ function allocatedVideoStream(streamId: number, streamUsage: number, envelope: V
         minBitRate: envelope.minBitRate,
         maxBitRate: envelope.maxBitRate,
         referenceCount: 0,
+        overlays: envelope.overlays,
     };
 }
 
@@ -1030,6 +1046,20 @@ export class CameraStreamManager {
             });
         }
 
+        const support = overlaySupport(state.features);
+        const overlaySelection = resolveOverlays(args.hints ?? {}, support);
+        if ("unsupported" in overlaySelection) {
+            // No narrowing reaches this: the camera cannot draw an overlay it has no feature for, and
+            // sending the field at all is INVALID_COMMAND there (§11.2.8.4, conformance WMARK / OSD).
+            throw ServerError.cameraStreamIncompatible({
+                reason: "capability",
+                track: "video",
+                feature: featureName(overlaySelection.unsupported),
+                device: deviceCodecs.map(videoCodecName),
+                requested: [videoCodecName(codec)],
+            });
+        }
+
         const capabilities = {
             sensor:
                 state.videoSensorParams === undefined
@@ -1045,6 +1075,7 @@ export class CameraStreamManager {
             capabilities,
             limits: args.limits,
             hints: args.hints,
+            overlays: overlaySelection.overlays,
         });
         if ("unsatisfiable" in selection) {
             throw ServerError.cameraStreamIncompatible({
@@ -1118,6 +1149,7 @@ export class CameraStreamManager {
                         minBitRate: envelope.minBitRate,
                         maxBitRate: envelope.maxBitRate,
                         keyFrameInterval: envelope.keyFrameInterval,
+                        ...envelope.overlays,
                     },
                 });
                 const streamId =
@@ -1511,6 +1543,7 @@ export class CameraStreamManager {
                 minBitRate: envelope.minBitRate,
                 maxBitRate: envelope.maxBitRate,
                 keyFrameInterval: envelope.keyFrameInterval,
+                ...envelope.overlays,
             },
         });
         const streamId =
@@ -1970,6 +2003,8 @@ export class CameraStreamManager {
         endpointId: EndpointNumber;
         maxResolution?: Resolution;
         codec?: number;
+        watermarkEnabled?: boolean;
+        osdEnabled?: boolean;
     }): Promise<SnapshotResult> {
         const { nodeId, endpointId } = args;
         return this.withEndpointLock(nodeId, endpointId, () =>
@@ -1986,6 +2021,20 @@ export class CameraStreamManager {
                         requested: args.codec === undefined ? new Array<string>() : [imageCodecName(args.codec)],
                     });
                 }
+                const support = overlaySupport(state.features);
+                const overlaySelection = resolveOverlays(
+                    { watermarkEnabled: args.watermarkEnabled, osdEnabled: args.osdEnabled },
+                    support,
+                );
+                if ("unsupported" in overlaySelection) {
+                    throw ServerError.cameraStreamIncompatible({
+                        reason: "capability",
+                        feature: featureName(overlaySelection.unsupported),
+                        device: new Array<string>(),
+                        requested: args.codec === undefined ? new Array<string>() : [imageCodecName(args.codec)],
+                    });
+                }
+                const overlays = overlaySelection.overlays;
                 const selection = selectSnapshotCapabilities(state.snapshotCapabilities, {
                     encodersExhausted: encodersExhausted({
                         maxConcurrentEncoders: state.maxConcurrentEncoders,
@@ -2022,7 +2071,10 @@ export class CameraStreamManager {
                     });
                 }
 
-                const adopted = findAdoptableSnapshotStream(state.allocatedSnapshotStreams, best, args);
+                const adopted = findAdoptableSnapshotStream(state.allocatedSnapshotStreams, best, {
+                    ...args,
+                    overlays,
+                });
                 if (adopted !== undefined) {
                     const captured = await this.#captureAdoptedSnapshot({
                         nodeId,
@@ -2062,6 +2114,7 @@ export class CameraStreamManager {
                                 maxFrameRate: capability.maxFrameRate,
                                 minResolution: capability.resolution,
                                 maxResolution: capability.resolution,
+                                ...overlays,
                             },
                         });
                         const snapshotStreamId =
@@ -2094,6 +2147,14 @@ export class CameraStreamManager {
                     throw this.snapshotFailure(state, lastStatus, deviceCodecs, requestedCodecs);
                 }
                 const { capability, snapshotStreamId } = allocated;
+                if (Object.keys(overlays).length > 0 && !capability.requiresHardwareEncoder) {
+                    // §11.2.8.8.6 keys the may-ignore on RequiresHardwareEncoder alone, not on
+                    // `usesHardwareEncoder`'s nesting of it under RequiresEncodedPixels. A camera that
+                    // ignores the flags reports its own, so adoption then re-allocates every call.
+                    logger.info(
+                        `Node ${nodeId} snapshot stream ${snapshotStreamId} was allocated at a capability that needs no hardware encoder, so the camera may ignore the watermark and OSD flags it was asked for and apply the source video stream's instead`,
+                    );
+                }
                 const lease = this.recordAllocation(nodeId, endpointId, {
                     kind: "snapshot",
                     streamId: snapshotStreamId,

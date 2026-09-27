@@ -187,6 +187,7 @@ describe("toCameraState", () => {
                         maxBitRate: 8000000,
                         keyFrameInterval: 2000,
                         referenceCount: 2,
+                        watermarkEnabled: true,
                     },
                 ],
             },
@@ -204,6 +205,9 @@ describe("toCameraState", () => {
                 minBitRate: 100000,
                 maxBitRate: 8000000,
                 referenceCount: 2,
+                // osdEnabled is left out of the input and stays absent: a camera reports the flag only
+                // where it has the feature, and that absence is what keeps the field off a re-allocate.
+                overlays: { watermarkEnabled: true, osdEnabled: undefined },
             },
         ]);
     });
@@ -256,6 +260,7 @@ describe("toCameraState", () => {
                         encodedPixels: false,
                         hardwareEncoder: false,
                         referenceCount: 0,
+                        osdEnabled: true,
                     },
                 ],
             },
@@ -271,6 +276,7 @@ describe("toCameraState", () => {
                 frameRate: 1,
                 encodedPixels: false,
                 hardwareEncoder: false,
+                overlays: { watermarkEnabled: undefined, osdEnabled: true },
             },
         ]);
     });

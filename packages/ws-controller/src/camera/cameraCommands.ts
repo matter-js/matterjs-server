@@ -194,6 +194,8 @@ const VIDEO_HINT_KEY_SET: Record<keyof CameraVideoHints, true> = {
     max_frame_rate: true,
     min_bit_rate: true,
     max_bit_rate: true,
+    watermark_enabled: true,
+    osd_enabled: true,
 };
 
 export const VIDEO_HINT_KEYS: readonly string[] = Object.keys(VIDEO_HINT_KEY_SET);
@@ -214,6 +216,8 @@ const SNAPSHOT_ARG_KEY_SET: Record<keyof Required<ArgsOf<"camera_snapshot">>, tr
     endpoint_id: true,
     max_resolution: true,
     codec: true,
+    watermark_enabled: true,
+    osd_enabled: true,
 };
 
 /** The top-level keys `camera_start_stream` takes. @see VIDEO_HINT_KEY_SET */
@@ -334,6 +338,8 @@ function parseVideoHints(value: unknown): VideoHints {
     );
     const minBitRate = toOptionalNumber(value.min_bit_rate, "video.min_bit_rate", CAMERA_FIELD_RANGES.minBitRate);
     const maxBitRate = toOptionalNumber(value.max_bit_rate, "video.max_bit_rate", CAMERA_FIELD_RANGES.maxBitRate);
+    const watermarkEnabled = toOptionalBoolean(value.watermark_enabled, "video.watermark_enabled");
+    const osdEnabled = toOptionalBoolean(value.osd_enabled, "video.osd_enabled");
     return {
         ...(codecs === undefined ? {} : { codecs }),
         ...(value.min_resolution === undefined
@@ -346,6 +352,8 @@ function parseVideoHints(value: unknown): VideoHints {
         ...(maxFrameRate === undefined ? {} : { maxFrameRate }),
         ...(minBitRate === undefined ? {} : { minBitRate }),
         ...(maxBitRate === undefined ? {} : { maxBitRate }),
+        ...(watermarkEnabled === undefined ? {} : { watermarkEnabled }),
+        ...(osdEnabled === undefined ? {} : { osdEnabled }),
     };
 }
 
@@ -440,16 +448,22 @@ function toImageCodec(value: unknown): number {
 export interface ParsedSnapshotArgs extends ParsedCameraTarget {
     maxResolution?: Resolution;
     codec?: number;
+    watermarkEnabled?: boolean;
+    osdEnabled?: boolean;
 }
 
 export function parseSnapshotArgs(args: unknown): ParsedSnapshotArgs {
     const { target, fields } = parseCameraCommand(args, "camera_snapshot");
     const { max_resolution: maxResolution, codec } = fields;
     const imageCodec = codec === undefined ? undefined : toImageCodec(codec);
+    const watermarkEnabled = toOptionalBoolean(fields.watermark_enabled, "watermark_enabled");
+    const osdEnabled = toOptionalBoolean(fields.osd_enabled, "osd_enabled");
     return {
         ...target,
         ...(maxResolution === undefined ? {} : { maxResolution: toResolution(maxResolution, "max_resolution") }),
         ...(imageCodec === undefined ? {} : { codec: imageCodec }),
+        ...(watermarkEnabled === undefined ? {} : { watermarkEnabled }),
+        ...(osdEnabled === undefined ? {} : { osdEnabled }),
     };
 }
 
@@ -542,6 +556,8 @@ export function toWireCapabilities(capabilities: CameraCapabilities): CameraCapa
                 max_bit_rate: stream.maxBitRate,
                 reference_count: stream.referenceCount,
                 owned_by_server: stream.ownedByServer,
+                watermark_enabled: stream.overlays.watermarkEnabled ?? false,
+                osd_enabled: stream.overlays.osdEnabled ?? false,
             })),
             audio: capabilities.allocated.audio.map(stream => ({
                 audio_stream_id: stream.audioStreamId,
@@ -564,6 +580,8 @@ export function toWireCapabilities(capabilities: CameraCapabilities): CameraCapa
                 frame_rate: stream.frameRate,
                 encoded_pixels: stream.encodedPixels,
                 hardware_encoder: stream.hardwareEncoder,
+                watermark_enabled: stream.overlays.watermarkEnabled ?? false,
+                osd_enabled: stream.overlays.osdEnabled ?? false,
             })),
         },
         sessions: capabilities.sessions.map(session => ({
@@ -596,6 +614,10 @@ function toWireStartStreamVideo(stream: ResolvedStream): CameraStartStreamVideoR
         bit_rate: { min: envelope.minBitRate, max: envelope.maxBitRate },
         reused: stream.reused,
         allocated_by_server: stream.allocatedByUs,
+        // Two provenances: the camera's own statement for a reused or degraded stream, the request it
+        // accepted for a freshly allocated one. Absent either way means no such overlay.
+        watermark_enabled: envelope.overlays.watermarkEnabled ?? false,
+        osd_enabled: envelope.overlays.osdEnabled ?? false,
         ...(stream.degraded === undefined ? {} : { degraded: stream.degraded }),
         ...(stream.evicted === undefined ? {} : { evicted_stream_ids: stream.evicted }),
     };

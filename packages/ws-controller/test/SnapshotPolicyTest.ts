@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import type { OverlayBounds } from "../src/camera/overlayPolicy.js";
 import type { SnapshotCapability, SnapshotSelection } from "../src/camera/snapshotPolicy.js";
 import {
     encodersExhausted,
@@ -11,6 +12,7 @@ import {
     selectSnapshotCapabilities,
     usesHardwareEncoder,
 } from "../src/camera/snapshotPolicy.js";
+import { NO_OVERLAYS, overlays } from "./cameraFixtures.js";
 
 /** The ordered candidates, failing the test when the selection was unsatisfiable instead. */
 function chosen(selection: SnapshotSelection): SnapshotCapability[] {
@@ -58,6 +60,7 @@ describe("snapshotPolicy", () => {
     describe("encodersExhausted", () => {
         const LIVE_VIDEO = {
             videoStreamId: 1,
+            overlays: NO_OVERLAYS,
             streamUsage: 3,
             videoCodec: 1,
             minResolution: { width: 1920, height: 1080 },
@@ -72,6 +75,7 @@ describe("snapshotPolicy", () => {
         /** A snapshot stream the camera states uses one of its hardware encoders (§11.2.6.13.9). */
         const ENCODING_SNAPSHOT = {
             snapshotStreamId: 8,
+            overlays: NO_OVERLAYS,
             imageCodec: 0,
             minResolution: { width: 1920, height: 1080 },
             maxResolution: { width: 1920, height: 1080 },
@@ -315,7 +319,13 @@ describe("snapshotPolicy", () => {
 
     describe("findAdoptableSnapshotStream", () => {
         const best = G350[1];
-        const stream = (snapshotStreamId: number, width: number, height: number, imageCodec = 0) => ({
+        const stream = (
+            snapshotStreamId: number,
+            width: number,
+            height: number,
+            imageCodec = 0,
+            carried: OverlayBounds = {},
+        ) => ({
             snapshotStreamId,
             imageCodec,
             minResolution: { width, height },
@@ -324,40 +334,64 @@ describe("snapshotPolicy", () => {
             frameRate: 1,
             encodedPixels: false,
             hardwareEncoder: false,
+            overlays: overlays(carried),
         });
 
         it("adopts a stream whose whole range covers the capability that would be allocated", () => {
-            expect(findAdoptableSnapshotStream([stream(8, 1920, 1080)], best, {})?.snapshotStreamId).to.equal(8);
+            expect(
+                findAdoptableSnapshotStream([stream(8, 1920, 1080)], best, { overlays: {} })?.snapshotStreamId,
+            ).to.equal(8);
+        });
+
+        it("refuses a stream whose overlays are not the ones the request resolved to", () => {
+            const watermarked = stream(8, 1920, 1080, 0, { watermarkEnabled: true });
+            expect(
+                findAdoptableSnapshotStream([watermarked], best, {
+                    overlays: { watermarkEnabled: false, osdEnabled: false },
+                }),
+            ).to.equal(undefined);
+        });
+
+        it("adopts a stream carrying exactly those overlays", () => {
+            const watermarked = stream(8, 1920, 1080, 0, { watermarkEnabled: true });
+            expect(
+                findAdoptableSnapshotStream([watermarked], best, {
+                    overlays: { watermarkEnabled: true, osdEnabled: false },
+                })?.snapshotStreamId,
+            ).to.equal(8);
         });
 
         it("refuses a stream smaller than that capability, since adoption may not cost picture size", () => {
-            expect(findAdoptableSnapshotStream([stream(8, 640, 480)], best, {})).to.equal(undefined);
+            expect(findAdoptableSnapshotStream([stream(8, 640, 480)], best, { overlays: {} })).to.equal(undefined);
         });
 
         it("refuses a stream whose floor is below the capability, however high its ceiling is", () => {
             // §11.2.8.13.3 lets the camera answer with any size in the stream's range, so the ceiling
             // states what the frame may be rather than what it will be.
             const ranged = { ...stream(8, 1920, 1080), minResolution: { width: 640, height: 480 } };
-            expect(findAdoptableSnapshotStream([ranged], best, {})).to.equal(undefined);
+            expect(findAdoptableSnapshotStream([ranged], best, { overlays: {} })).to.equal(undefined);
         });
 
         it("refuses a stream that outnumbers the capability in pixels but is shorter", () => {
             // 3000x700 is 2.10 Mpx against 1920x1080's 2.07, and 380 rows short of it.
-            expect(findAdoptableSnapshotStream([stream(8, 3000, 700)], best, {})).to.equal(undefined);
+            expect(findAdoptableSnapshotStream([stream(8, 3000, 700)], best, { overlays: {} })).to.equal(undefined);
         });
 
         it("refuses a stream that outnumbers the capability in pixels but is narrower", () => {
             // 1000x2100 is 2.10 Mpx against 1920x1080's 2.07, and 920 columns short of it.
-            expect(findAdoptableSnapshotStream([stream(8, 1000, 2100)], best, {})).to.equal(undefined);
+            expect(findAdoptableSnapshotStream([stream(8, 1000, 2100)], best, { overlays: {} })).to.equal(undefined);
         });
 
         it("refuses a stream in a codec the caller did not ask for", () => {
-            expect(findAdoptableSnapshotStream([stream(8, 1920, 1080, 1)], best, { codec: 0 })).to.equal(undefined);
+            expect(findAdoptableSnapshotStream([stream(8, 1920, 1080, 1)], best, { overlays: {}, codec: 0 })).to.equal(
+                undefined,
+            );
         });
 
         it("refuses a stream above the ceiling the caller stated", () => {
             expect(
                 findAdoptableSnapshotStream([stream(8, 1920, 1080)], best, {
+                    overlays: {},
                     maxResolution: { width: 1280, height: 720 },
                 }),
             ).to.equal(undefined);
@@ -366,13 +400,16 @@ describe("snapshotPolicy", () => {
         it("refuses a stream wider than the caller's ceiling although it is no taller", () => {
             const wide = { ...stream(8, 3000, 1080), minResolution: { width: 1920, height: 1080 } };
             expect(
-                findAdoptableSnapshotStream([wide], best, { maxResolution: { width: 2000, height: 1080 } }),
+                findAdoptableSnapshotStream([wide], best, {
+                    overlays: {},
+                    maxResolution: { width: 2000, height: 1080 },
+                }),
             ).to.equal(undefined);
         });
 
         it("takes the largest of several candidates", () => {
             const candidates = [stream(8, 1920, 1080), stream(9, 2560, 1440)];
-            expect(findAdoptableSnapshotStream(candidates, best, {})?.snapshotStreamId).to.equal(9);
+            expect(findAdoptableSnapshotStream(candidates, best, { overlays: {} })?.snapshotStreamId).to.equal(9);
         });
     });
 });

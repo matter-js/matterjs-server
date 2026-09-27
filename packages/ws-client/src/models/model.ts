@@ -432,6 +432,28 @@ export interface CameraVideoHints {
     min_bit_rate?: number;
     /** An integer 1 to 4294967295, the range `VideoStreamAllocate.MaxBitRate` encodes in. */
     max_bit_rate?: number;
+    /**
+     * Whether the camera burns its manufacturer watermark into the picture.
+     *
+     * A hard requirement in both directions: a stream already allocated with the other setting is not
+     * reused for this request, and `true` on a camera that does not advertise the `Watermark` feature
+     * fails with error 102 naming it, because no narrowing makes a camera draw what it cannot draw.
+     * `false` is accepted there, since such a camera has no watermark to apply.
+     *
+     * Left unset, the server asks the camera for no watermark — `VideoStreamStruct.WatermarkEnabled`
+     * has a spec fallback of 0 — and will not *reuse* a stream that has one, but the last-resort
+     * degraded rung may still hand one out, flagged `degraded`. State the field to have it enforced at
+     * every rung. Both of those comparisons need a camera that advertises the feature: on one that
+     * advertises neither, and while a camera has not reported its `FeatureMap` at all (`features`
+     * absent), nothing about the overlays is compared.
+     */
+    watermark_enabled?: boolean;
+    /**
+     * Whether the camera burns an on-screen display — date, time, device name — into the picture.
+     *
+     * Same rules as `watermark_enabled`, against the `OnScreenDisplay` feature.
+     */
+    osd_enabled?: boolean;
 }
 
 /**
@@ -493,6 +515,16 @@ export interface CameraAllocatedVideoStream {
     max_bit_rate: number;
     reference_count: number;
     owned_by_server: boolean;
+    /**
+     * Whether the camera draws its watermark on this stream, as the camera states it.
+     *
+     * False where the camera states no such overlay, which a camera without the `Watermark` feature
+     * states for every stream. A `camera_start_stream` that states `watermark_enabled` is served by a
+     * stream whose flag matches, so this is what tells two otherwise identical streams apart.
+     */
+    watermark_enabled: boolean;
+    /** Whether the camera draws an on-screen display on this stream. @see {@link CameraAllocatedVideoStream.watermark_enabled} */
+    osd_enabled: boolean;
 }
 
 export interface CameraAllocatedAudioStream {
@@ -542,6 +574,17 @@ export interface CameraAllocatedSnapshotStream {
      * `CAMERA_RESOURCE_EXHAUSTED_ERROR_CODE`.
      */
     hardware_encoder: boolean;
+    /**
+     * Whether the camera draws its watermark on this stream, as the camera states it.
+     *
+     * This is the authoritative value for a snapshot: for a capability whose
+     * `requires_hardware_encoder` is false the camera may ignore what `camera_snapshot` asked for and
+     * use the source video stream's setting instead, so read the outcome here rather than assuming the
+     * request was honoured.
+     */
+    watermark_enabled: boolean;
+    /** Whether the camera draws an on-screen display on this stream. @see {@link CameraAllocatedSnapshotStream.watermark_enabled} */
+    osd_enabled: boolean;
 }
 
 /**
@@ -674,6 +717,19 @@ export interface CameraStartStreamVideoResult {
      * `CAMERA_RESOURCE_EXHAUSTED_ERROR_CODE` instead.
      */
     evicted_stream_ids?: number[];
+    /**
+     * Whether the stream this session uses carries the camera's watermark.
+     *
+     * The camera's own statement for a reused or degraded stream, and the request the camera accepted
+     * for a freshly allocated one — with one exception: the cluster's allocate deduplication may answer
+     * with the id of an existing stream whose overlays differ, so `camera_get_capabilities`'
+     * `allocated.video[]` is the authority if the distinction matters. Worth reading even when the
+     * request stated nothing: an unstated overlay is asked for as `false`, but the degraded rung may
+     * hand out a stream that has one.
+     */
+    watermark_enabled: boolean;
+    /** Whether the camera draws an on-screen display on it. @see {@link CameraStartStreamVideoResult.watermark_enabled} */
+    osd_enabled: boolean;
 }
 
 export interface CameraStartStreamAudioResult {
@@ -1022,6 +1078,22 @@ export interface APICommands {
             max_resolution?: { width: number; height: number };
             /** Image codec name from `camera_get_capabilities`, e.g. "JPEG". */
             codec?: string;
+            /**
+             * Whether the camera burns its manufacturer watermark into the image.
+             *
+             * `true` on a camera that does not advertise the `Watermark` feature fails with error 102
+             * naming it; `false` is accepted there. Left unset, no watermark is asked for, and a
+             * snapshot stream that has one is not adopted for this call — on a camera that advertises
+             * the feature; on one that advertises neither, and before a camera has reported its
+             * `FeatureMap`, nothing about the overlays is compared.
+             *
+             * The camera may ignore the request for a capability whose `requires_hardware_encoder` is
+             * false and apply the source video stream's setting instead, so the outcome is what
+             * `camera_get_capabilities` reports for the stream, not what was asked for here.
+             */
+            watermark_enabled?: boolean;
+            /** Whether the camera burns an on-screen display into the image. @see watermark_enabled */
+            osd_enabled?: boolean;
         };
         response: CameraSnapshotResult;
     };

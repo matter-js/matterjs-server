@@ -13,6 +13,8 @@ import type {
     Resolution,
     VideoEnvelope,
 } from "./cameraTypes.js";
+import type { OverlayBounds } from "./overlayPolicy.js";
+import { overlaysMatch } from "./overlayPolicy.js";
 import type { SdpVideoConstraints, SelectedVideoCodecLimits, VideoCodecLimits } from "./sdpConstraints.js";
 import { receivableCodecs } from "./sdpConstraints.js";
 import { audioCodecName } from "./wireNames.js";
@@ -50,7 +52,7 @@ export interface VideoRangeBounds {
     maxBitRate?: number;
 }
 
-export interface VideoHints extends VideoRangeBounds {
+export interface VideoHints extends VideoRangeBounds, OverlayBounds {
     codecs?: string[];
 }
 
@@ -66,6 +68,8 @@ export interface VideoHints extends VideoRangeBounds {
 export interface VideoCallerBounds extends VideoRangeBounds {
     limits: SelectedVideoCodecLimits;
     streamUsage: number;
+    /** The overlays the caller stated, each absent when it stated nothing about that one. */
+    overlays: OverlayBounds;
 }
 
 export function videoCallerBounds(
@@ -82,6 +86,7 @@ export function videoCallerBounds(
         maxFrameRate: hints?.maxFrameRate,
         minBitRate: hints?.minBitRate,
         maxBitRate: hints?.maxBitRate,
+        overlays: { watermarkEnabled: hints?.watermarkEnabled, osdEnabled: hints?.osdEnabled },
     };
 }
 
@@ -115,6 +120,15 @@ export interface VideoEnvelopeArgs {
     /** The codec to allocate for, carrying the offer limits that codec itself stated. */
     limits: SelectedVideoCodecLimits;
     hints: VideoHints | undefined;
+    /**
+     * The overlay fields to allocate with, as `resolveOverlays` resolved them from the hints and the
+     * camera's feature map.
+     *
+     * Required rather than read out of `hints`, because the hints cannot say whether the camera
+     * advertises the feature and a field silently left off a `WMARK` camera's allocate is
+     * `INVALID_COMMAND` (§11.2.8.4).
+     */
+    overlays: OverlayBounds;
 }
 
 function pixels(resolution: Resolution): number {
@@ -207,7 +221,7 @@ function resolutionText(resolution: Resolution): string {
  * still clamp down, since giving those up gives up nothing the caller stated.
  */
 export function computeVideoEnvelope(args: VideoEnvelopeArgs): VideoSelection {
-    const { capabilities, limits, hints } = args;
+    const { capabilities, limits, hints, overlays } = args;
     const codec = limits.codec;
 
     let maxResolution = capabilities.sensor;
@@ -293,6 +307,7 @@ export function computeVideoEnvelope(args: VideoEnvelopeArgs): VideoSelection {
 
     return {
         envelope: {
+            overlays,
             codec,
             minResolution,
             maxResolution,
@@ -394,6 +409,9 @@ function resolutionContains(
 export function satisfiesVideoCallerBounds(candidate: AllocatedVideoStream, bounds: VideoCallerBounds): boolean {
     const limits = bounds.limits;
     if (candidate.videoCodec !== limits.codec) return false;
+    // An overlay is burnt into the picture, so a stated one is as hard as a stated resolution. One the
+    // caller left unstated is the server's own choice and binds in `fitsComputedEnvelope` instead.
+    if (!overlaysMatch(candidate.overlays, bounds.overlays)) return false;
     // stream_usage is the only mandatory argument of camera_start_stream. Handing a Recording stream
     // to a LiveView caller substitutes the one thing every caller states.
     if (candidate.streamUsage !== bounds.streamUsage) return false;
@@ -413,6 +431,7 @@ export function satisfiesVideoCallerBounds(candidate: AllocatedVideoStream, boun
 /** Whether `candidate` also fits the envelope the server computed, on every dimension the envelope states. */
 function fitsComputedEnvelope(candidate: AllocatedVideoStream, envelope: VideoEnvelope): boolean {
     return (
+        overlaysMatch(candidate.overlays, envelope.overlays) &&
         resolutionContains(
             { min: envelope.minResolution, max: envelope.maxResolution },
             { min: candidate.minResolution, max: candidate.maxResolution },

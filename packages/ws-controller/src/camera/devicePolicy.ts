@@ -7,6 +7,7 @@
 import type { CameraPrivacyMode } from "@matter-server/ws-client";
 import { StreamUsage } from "@matter/main/types";
 import type { CameraFeatures, CameraPrivacyState } from "./cameraTypes.js";
+import type { OverlaySupport } from "./overlayPolicy.js";
 import { advertisedFeatureNames } from "./wireNames.js";
 
 /**
@@ -43,6 +44,17 @@ export function statedFeatureNames(features: CameraFeatures): string[] | undefin
  */
 export function lacksFeature(features: CameraFeatures, feature: keyof CameraFeatures): boolean {
     return featureMapStated(features) && features[feature] !== true;
+}
+
+/**
+ * Which overlay features the camera advertises, for the conformance rule on both allocates.
+ *
+ * `{}` for a map that has not been stated, which is what keeps `resolveOverlays` from gating on one —
+ * the same rule {@link lacksFeature} applies, for the same reason.
+ */
+export function overlaySupport(features: CameraFeatures): OverlaySupport {
+    if (!featureMapStated(features)) return {};
+    return { watermark: features.watermark === true, osd: features.onScreenDisplay === true };
 }
 
 /**

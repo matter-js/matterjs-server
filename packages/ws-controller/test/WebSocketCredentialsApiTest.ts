@@ -26,6 +26,7 @@ function freshEnv(): Environment {
 interface StubCameraStreams {
     releaseConnection(connectionId: string): Promise<void>;
     startStream?(args: { connectionId: string; allowEviction?: boolean }): Promise<unknown>;
+    snapshot?(args: { watermarkEnabled?: boolean; osdEnabled?: boolean }): Promise<unknown>;
     forgetSession?(nodeId: bigint, endpointId: number, webRtcSessionId: number): boolean;
     /** Which connections may receive a session's signalling; absent means the manager holds no record. */
     signallingOwners?(nodeId: bigint, endpointId: number, webRtcSessionId: number): ReadonlySet<string> | undefined;
@@ -1162,6 +1163,43 @@ describe("WebSocket camera_start_stream arguments", () => {
                 await h.sendOn(client, "camera_start_stream", { ...base, allow_eviction: false });
                 await h.sendOn(client, "camera_start_stream", base);
                 expect(stated).to.deep.equal([false, undefined]);
+            } finally {
+                client.close();
+            }
+        } finally {
+            await h.close();
+        }
+    });
+});
+
+describe("WebSocket camera_snapshot arguments", () => {
+    it("forwards the overlay arguments to the stream manager", async () => {
+        // The one hop between the parsed arguments and the allocate that has to carry them; without it
+        // a caller's stated overlay is dropped and the camera decides instead.
+        const stated = new Array<{ watermarkEnabled?: boolean; osdEnabled?: boolean }>();
+        const h = await createHarness({
+            async releaseConnection() {},
+            async snapshot(args: { watermarkEnabled?: boolean; osdEnabled?: boolean }) {
+                stated.push({ watermarkEnabled: args.watermarkEnabled, osdEnabled: args.osdEnabled });
+                return {
+                    data: new Uint8Array([1]),
+                    imageCodec: 0,
+                    resolution: { width: 640, height: 480 },
+                    downgraded: false,
+                    snapshotStreamId: 3,
+                };
+            },
+        });
+        try {
+            const client = await h.openClient();
+            try {
+                const base = { node_id: 1, endpoint_id: 1 };
+                await h.sendOn(client, "camera_snapshot", { ...base, watermark_enabled: true, osd_enabled: false });
+                await h.sendOn(client, "camera_snapshot", base);
+                expect(stated).to.deep.equal([
+                    { watermarkEnabled: true, osdEnabled: false },
+                    { watermarkEnabled: undefined, osdEnabled: undefined },
+                ]);
             } finally {
                 client.close();
             }

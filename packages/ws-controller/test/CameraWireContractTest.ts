@@ -103,6 +103,7 @@ const CAPABILITIES: CameraCapabilities = {
         video: [
             {
                 videoStreamId: 1,
+                overlays: { watermarkEnabled: true, osdEnabled: false },
                 streamUsage: 2,
                 videoCodec: 0,
                 minResolution: { width: 640, height: 360 },
@@ -131,6 +132,7 @@ const CAPABILITIES: CameraCapabilities = {
         snapshot: [
             {
                 snapshotStreamId: 3,
+                overlays: { watermarkEnabled: false, osdEnabled: true },
                 imageCodec: 0,
                 minResolution: { width: 640, height: 480 },
                 maxResolution: { width: 1920, height: 1080 },
@@ -169,6 +171,7 @@ const START_STREAM: StartStreamResult = {
             minBitRate: 1000000,
             maxBitRate: 4000000,
             keyFrameInterval: 4000,
+            overlays: {},
         },
         reused: true,
         allocatedByUs: true,
@@ -538,7 +541,7 @@ describe("camera wire contract", () => {
                     command: "camera_snapshot",
                     parse: parseSnapshotArgs,
                     args: {},
-                    accepted: ["node_id", "endpoint_id", "max_resolution", "codec"],
+                    accepted: ["node_id", "endpoint_id", "max_resolution", "codec", "watermark_enabled", "osd_enabled"],
                 },
                 {
                     command: "camera_release_stream",

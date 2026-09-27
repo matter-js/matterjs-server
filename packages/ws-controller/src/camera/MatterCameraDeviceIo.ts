@@ -111,6 +111,9 @@ export function toCameraState(state: RawCameraAvStreamManagementState, features:
             minBitRate: stream.minBitRate,
             maxBitRate: stream.maxBitRate,
             referenceCount: stream.referenceCount,
+            // Not defaulted: a re-allocation of this stream may send the field only where the camera
+            // reported one (see AllocatedVideoStream).
+            overlays: { watermarkEnabled: stream.watermarkEnabled, osdEnabled: stream.osdEnabled },
         })),
         allocatedAudioStreams: (state.allocatedAudioStreams ?? []).map(stream => ({
             audioStreamId: stream.audioStreamId,
@@ -131,6 +134,7 @@ export function toCameraState(state: RawCameraAvStreamManagementState, features:
             frameRate: stream.frameRate,
             encodedPixels: stream.encodedPixels,
             hardwareEncoder: stream.hardwareEncoder,
+            overlays: { watermarkEnabled: stream.watermarkEnabled, osdEnabled: stream.osdEnabled },
         })),
         microphoneCapabilities:
             state.microphoneCapabilities === undefined

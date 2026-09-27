@@ -5,6 +5,8 @@
  */
 
 import type { AllocatedSnapshotStream, AllocatedVideoStream, Resolution } from "./cameraTypes.js";
+import type { OverlayBounds } from "./overlayPolicy.js";
+import { overlaysMatch } from "./overlayPolicy.js";
 
 /** SnapshotCapabilitiesStruct (§11.2.6.9) as `CameraAvStreamManagementClient` reports it. */
 export interface SnapshotCapability {
@@ -111,15 +113,20 @@ export function isDowngradeFrom(chosen: Resolution, best: SnapshotCapability | u
  *
  * The caller's own ceiling and codec are hard, as everywhere else: a stream past either is not a
  * candidate rather than a frame the caller did not ask for.
+ *
+ * `overlays` is what `resolveOverlays` resolved, not what the caller stated: adoption is this
+ * path's only reuse rung and there is no degraded counterpart to give a server default up at, so the
+ * value that would have been allocated is the one a candidate has to carry.
  */
 export function findAdoptableSnapshotStream(
     streams: AllocatedSnapshotStream[],
     best: SnapshotCapability,
-    bounds: { maxResolution?: Resolution; codec?: number },
+    bounds: { maxResolution?: Resolution; codec?: number; overlays: OverlayBounds },
 ): AllocatedSnapshotStream | undefined {
     const ceiling = bounds.maxResolution;
     const candidates = streams.filter(stream => {
         if (bounds.codec !== undefined && stream.imageCodec !== bounds.codec) return false;
+        if (!overlaysMatch(stream.overlays, bounds.overlays)) return false;
         if (ceiling !== undefined && !fitsUnder(stream.maxResolution, ceiling)) return false;
         return fitsUnder(best.resolution, stream.minResolution);
     });

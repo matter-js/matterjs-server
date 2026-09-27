@@ -6,6 +6,7 @@
 
 import type { EndpointNumber, NodeId } from "@matter/main";
 import type { CameraAvStreamManagementClient } from "@matter/node/behaviors/camera-av-stream-management";
+import type { OverlayBounds } from "./overlayPolicy.js";
 
 export type StreamKind = "video" | "audio" | "snapshot";
 
@@ -14,8 +15,16 @@ export interface Resolution {
     height: number;
 }
 
-/** A range the device may adapt within; `VideoStreamAllocate` takes exactly this shape. */
+/**
+ * A range the device may adapt within; `VideoStreamAllocate` takes exactly this shape.
+ *
+ * The two overlay flags are absent when the field must not be sent at all, which is what
+ * `resolveOverlays` decides from the camera's feature map: their conformance on the command is
+ * `WMARK` / `OSD` (§11.2.8.4), so a camera without the feature answers `INVALID_COMMAND` for a field
+ * it never advertised.
+ */
 export interface VideoEnvelope {
+    overlays: OverlayBounds;
     codec: number;
     minResolution: Resolution;
     maxResolution: Resolution;
@@ -34,8 +43,18 @@ export interface AudioEnvelope {
     bitDepth: number;
 }
 
-/** An allocated video stream as `AllocatedVideoStreams` reports it. */
+/**
+ * An allocated video stream as `AllocatedVideoStreams` reports it.
+ *
+ * `overlays` carries the camera's own statement with its own optionality: the struct reports each flag
+ * only for a camera advertising the feature (§11.2.6.11), so an absent one is a camera that cannot draw
+ * that overlay. It is not defaulted here, because the same value is what a re-allocation of this stream
+ * has to send, and there the difference between "stated false" and "not stated" is the difference
+ * between a conformant request and `INVALID_COMMAND`. `overlaysMatch` is the one place absence reads as
+ * off.
+ */
 export interface AllocatedVideoStream {
+    overlays: OverlayBounds;
     videoStreamId: number;
     streamUsage: number;
     videoCodec: number;
@@ -60,8 +79,17 @@ export interface AllocatedAudioStream {
     referenceCount: number;
 }
 
-/** An allocated snapshot stream as `AllocatedSnapshotStreams` reports it. */
+/**
+ * An allocated snapshot stream as `AllocatedSnapshotStreams` reports it.
+ *
+ * `overlays` is what the camera states for this stream (§11.2.6.13). Unlike the video struct that table
+ * states no fallback, so absence carries no spec-given value; what makes it read as off is the field's
+ * `WMARK` / `OSD` conformance — a camera that states nothing has no such overlay to draw. It is the
+ * camera's statement rather than a promise either way: §11.2.8.8.6 lets it ignore the requested flags
+ * for a capability that needs no hardware encoder and use the source video stream's setting instead.
+ */
 export interface AllocatedSnapshotStream {
+    overlays: OverlayBounds;
     snapshotStreamId: number;
     imageCodec: number;
     minResolution: Resolution;

@@ -23,11 +23,13 @@ import type {
     VideoEnvelope,
 } from "../src/camera/cameraTypes.js";
 import { deviceStatusOf } from "../src/camera/deviceStatus.js";
+import type { OverlayBounds } from "../src/camera/overlayPolicy.js";
 import { videoCodecLimits } from "../src/camera/sdpConstraints.js";
 import type { SdpVideoConstraints } from "../src/camera/sdpConstraints.js";
+import type { VideoHints } from "../src/camera/streamPolicy.js";
 import { ServerError, ServerErrorCode } from "../src/types/WebSocketMessageTypes.js";
 import { DEVICE_CLEANUP_BUDGET_MS } from "../src/util/deviceCleanupBudget.js";
-import { cameraFeatures } from "./cameraFixtures.js";
+import { NO_OVERLAYS, cameraFeatures } from "./cameraFixtures.js";
 
 /** ResolvedStream.envelope is a union; a result from resolveVideoStream is always the video shape. */
 function requireVideoEnvelope(envelope: VideoEnvelope | AudioEnvelope): VideoEnvelope {
@@ -350,6 +352,7 @@ describe("CameraStreamManager", () => {
                 allocatedVideoStreams: [
                     {
                         videoStreamId: 1,
+                        overlays: NO_OVERLAYS,
                         streamUsage: LIVE_VIEW,
                         videoCodec: H265,
                         minResolution: { width: 640, height: 360 },
@@ -385,6 +388,7 @@ describe("CameraStreamManager", () => {
                 allocatedVideoStreams: [
                     {
                         videoStreamId: 9,
+                        overlays: NO_OVERLAYS,
                         streamUsage: LIVE_VIEW,
                         videoCodec: H265,
                         minResolution: { width: 1920, height: 1080 },
@@ -415,6 +419,7 @@ describe("CameraStreamManager", () => {
 
         const CONTAINED_STREAM = {
             videoStreamId: 7,
+            overlays: NO_OVERLAYS,
             streamUsage: LIVE_VIEW,
             videoCodec: H265,
             minResolution: { width: 1920, height: 1080 },
@@ -824,6 +829,7 @@ describe("CameraStreamManager", () => {
             const recording = {
                 ...CONTAINED_STREAM,
                 videoStreamId: 20,
+                overlays: NO_OVERLAYS,
                 videoCodec: H264,
                 streamUsage: 1,
                 referenceCount: 0,
@@ -831,6 +837,7 @@ describe("CameraStreamManager", () => {
             const analysis = {
                 ...CONTAINED_STREAM,
                 videoStreamId: 21,
+                overlays: NO_OVERLAYS,
                 videoCodec: H264,
                 streamUsage: 2,
                 referenceCount: 0,
@@ -894,6 +901,7 @@ describe("CameraStreamManager", () => {
             const internal = {
                 ...CONTAINED_STREAM,
                 videoStreamId: 20,
+                overlays: NO_OVERLAYS,
                 videoCodec: H264,
                 streamUsage: 0,
                 referenceCount: 0,
@@ -923,6 +931,7 @@ describe("CameraStreamManager", () => {
             const busy = {
                 ...CONTAINED_STREAM,
                 videoStreamId: 7,
+                overlays: NO_OVERLAYS,
                 referenceCount: 1,
                 maxResolution: { width: 3840, height: 2160 },
             };
@@ -949,6 +958,7 @@ describe("CameraStreamManager", () => {
             const busy = {
                 ...CONTAINED_STREAM,
                 videoStreamId: 7,
+                overlays: NO_OVERLAYS,
                 referenceCount: 1,
                 minResolution: { width: 1280, height: 720 },
             };
@@ -1205,6 +1215,7 @@ describe("CameraStreamManager", () => {
             // snapshot stream the camera counts in its own pixel rate leaves less for the livestream.
             const snapshot = {
                 snapshotStreamId: 4,
+                overlays: NO_OVERLAYS,
                 imageCodec: 0,
                 minResolution: { width: 2560, height: 1440 },
                 maxResolution: { width: 2560, height: 1440 },
@@ -1234,6 +1245,7 @@ describe("CameraStreamManager", () => {
             const usable = {
                 ...CONTAINED_STREAM,
                 videoStreamId: 7,
+                overlays: NO_OVERLAYS,
                 referenceCount: 0,
                 minBitRate: 100000,
                 maxBitRate: 200000,
@@ -1263,6 +1275,7 @@ describe("CameraStreamManager", () => {
             const busy = {
                 ...CONTAINED_STREAM,
                 videoStreamId: 7,
+                overlays: NO_OVERLAYS,
                 referenceCount: 1,
                 maxResolution: { width: 3840, height: 2160 },
             };
@@ -1365,6 +1378,7 @@ describe("CameraStreamManager", () => {
             const busy = {
                 ...CONTAINED_STREAM,
                 videoStreamId: 7,
+                overlays: NO_OVERLAYS,
                 referenceCount: 1,
                 maxResolution: { width: 3840, height: 2160 },
             };
@@ -1751,6 +1765,7 @@ describe("CameraStreamManager", () => {
                 allocatedVideoStreams: [
                     {
                         videoStreamId: 8,
+                        overlays: NO_OVERLAYS,
                         streamUsage: LIVE_VIEW,
                         videoCodec: H265,
                         minResolution: { width: 1920, height: 1080 },
@@ -1917,6 +1932,7 @@ describe("CameraStreamManager", () => {
 
         const CONTAINED_STREAM = {
             videoStreamId: 7,
+            overlays: NO_OVERLAYS,
             streamUsage: LIVE_VIEW,
             videoCodec: H265,
             minResolution: { width: 1920, height: 1080 },
@@ -3316,6 +3332,7 @@ describe("CameraStreamManager", () => {
                 allocatedVideoStreams: [
                     {
                         videoStreamId: 1,
+                        overlays: NO_OVERLAYS,
                         streamUsage: LIVE_VIEW,
                         videoCodec: H265,
                         minResolution: { width: 640, height: 360 },
@@ -3357,6 +3374,7 @@ describe("CameraStreamManager", () => {
                 allocatedVideoStreams: [
                     {
                         videoStreamId: 1,
+                        overlays: NO_OVERLAYS,
                         streamUsage: LIVE_VIEW,
                         videoCodec: H265,
                         minResolution: { width: 1920, height: 1080 },
@@ -3394,6 +3412,7 @@ describe("CameraStreamManager", () => {
                 allocatedSnapshotStreams: [
                     {
                         snapshotStreamId: 8,
+                        overlays: NO_OVERLAYS,
                         imageCodec: 0,
                         minResolution: { width: 640, height: 480 },
                         maxResolution: { width: 1920, height: 1080 },
@@ -3614,6 +3633,7 @@ describe("CameraStreamManager", () => {
                 allocatedVideoStreams: [
                     {
                         videoStreamId: 1,
+                        overlays: NO_OVERLAYS,
                         streamUsage: LIVE_VIEW,
                         videoCodec: H265,
                         minResolution: { width: 640, height: 360 },
@@ -3659,6 +3679,7 @@ describe("CameraStreamManager", () => {
                 allocatedVideoStreams: [
                     {
                         videoStreamId: 1,
+                        overlays: NO_OVERLAYS,
                         streamUsage: LIVE_VIEW,
                         videoCodec: H265,
                         minResolution: { width: 640, height: 360 },
@@ -3770,6 +3791,7 @@ describe("CameraStreamManager", () => {
                 allocatedSnapshotStreams: [
                     {
                         snapshotStreamId: first.snapshotStreamId,
+                        overlays: NO_OVERLAYS,
                         imageCodec: 0,
                         minResolution: { width: 1920, height: 1080 },
                         maxResolution: { width: 1920, height: 1080 },
@@ -3797,6 +3819,7 @@ describe("CameraStreamManager", () => {
                 allocatedSnapshotStreams: [
                     {
                         snapshotStreamId: 8,
+                        overlays: NO_OVERLAYS,
                         imageCodec: 0,
                         minResolution: { width: 640, height: 480 },
                         maxResolution: { width: 1920, height: 1080 },
@@ -3830,6 +3853,7 @@ describe("CameraStreamManager", () => {
                 allocatedSnapshotStreams: [
                     {
                         snapshotStreamId: 8,
+                        overlays: NO_OVERLAYS,
                         imageCodec: 0,
                         minResolution: { width: 1920, height: 1080 },
                         maxResolution: { width: 1920, height: 1080 },
@@ -3899,6 +3923,7 @@ describe("CameraStreamManager", () => {
         /** A snapshot stream the device already lists, at the camera's largest capability. */
         const EXISTING_SNAPSHOT_STREAM = {
             snapshotStreamId: 8,
+            overlays: NO_OVERLAYS,
             imageCodec: 0,
             minResolution: { width: 1920, height: 1080 },
             maxResolution: { width: 1920, height: 1080 },
@@ -4141,6 +4166,7 @@ describe("CameraStreamManager", () => {
                 allocatedVideoStreams: [
                     {
                         videoStreamId: 1,
+                        overlays: NO_OVERLAYS,
                         streamUsage: LIVE_VIEW,
                         videoCodec: H265,
                         minResolution: { width: 640, height: 360 },
@@ -4179,6 +4205,7 @@ describe("CameraStreamManager", () => {
                 allocatedVideoStreams: [
                     {
                         videoStreamId: 1,
+                        overlays: NO_OVERLAYS,
                         streamUsage: LIVE_VIEW,
                         videoCodec: H265,
                         minResolution: { width: 640, height: 360 },
@@ -4202,6 +4229,7 @@ describe("CameraStreamManager", () => {
                 allocatedVideoStreams: [
                     {
                         videoStreamId: 1,
+                        overlays: NO_OVERLAYS,
                         streamUsage: LIVE_VIEW,
                         videoCodec: H265,
                         minResolution: { width: 640, height: 360 },
@@ -4229,6 +4257,7 @@ describe("CameraStreamManager", () => {
                 allocatedVideoStreams: [
                     {
                         videoStreamId: 1,
+                        overlays: NO_OVERLAYS,
                         streamUsage: LIVE_VIEW,
                         videoCodec: H265,
                         minResolution: { width: 640, height: 360 },
@@ -4269,6 +4298,7 @@ describe("CameraStreamManager", () => {
                 allocatedVideoStreams: [
                     {
                         videoStreamId: 1,
+                        overlays: NO_OVERLAYS,
                         streamUsage: 0,
                         videoCodec: H265,
                         minResolution: { width: 640, height: 360 },
@@ -4297,6 +4327,7 @@ describe("CameraStreamManager", () => {
     describe("leases", () => {
         const FOREIGN_STREAM = {
             videoStreamId: 7,
+            overlays: NO_OVERLAYS,
             streamUsage: 1,
             videoCodec: 0,
             minResolution: { width: 320, height: 240 },
@@ -4562,6 +4593,7 @@ describe("CameraStreamManager", () => {
                 allocatedVideoStreams: [
                     {
                         videoStreamId: 9,
+                        overlays: NO_OVERLAYS,
                         streamUsage: LIVE_VIEW,
                         videoCodec: envelope.codec,
                         minResolution: envelope.minResolution,
@@ -4667,6 +4699,7 @@ describe("CameraStreamManager", () => {
                 ...FOREIGN_STREAM,
                 ...CONTAINED_FOREIGN,
                 videoStreamId: 11,
+                overlays: NO_OVERLAYS,
                 referenceCount: 1,
                 maxResolution: { width: 3840, height: 2160 },
             };
@@ -4838,6 +4871,63 @@ describe("CameraStreamManager reuse before the device has reported", () => {
         expect(second.envelope).to.deep.equal(first.envelope);
     });
 
+    it("refuses an unreported stream whose overlays the caller did not ask for", async () => {
+        // The lease's stand-in allocation has to record the overlays that were asked for, or the
+        // shadow window hands a watermarked stream to the next request that wants none.
+        const overlayState: CameraState = {
+            ...STATE,
+            features: cameraFeatures("video", "snapshot", "watermark", "onScreenDisplay"),
+            allocatedVideoStreams: [],
+        };
+        const { manager, invokes } = allocatingManager(overlayState, [9, 10]);
+        const first = await manager.resolveVideoStream({
+            nodeId: NODE,
+            endpointId: ENDPOINT,
+            streamUsage: LIVE_VIEW,
+            limits: { codec: H265 },
+            hints: { watermarkEnabled: true },
+        });
+        expect(first.streamId).to.equal(9);
+
+        const second = await manager.resolveVideoStream({
+            nodeId: NODE,
+            endpointId: ENDPOINT,
+            streamUsage: LIVE_VIEW,
+            limits: { codec: H265 },
+            hints: { watermarkEnabled: false },
+        });
+        expect(second.streamId).to.equal(10);
+        expect(second.reused).to.equal(false);
+        expect(invokes.filter(invoke => invoke.command === "videoStreamAllocate")).to.have.length(2);
+    });
+
+    it("reuses an unreported stream whose overlays are the ones asked for again", async () => {
+        const overlayState: CameraState = {
+            ...STATE,
+            features: cameraFeatures("video", "snapshot", "watermark", "onScreenDisplay"),
+            allocatedVideoStreams: [],
+        };
+        const { manager, invokes } = allocatingManager(overlayState, [9, 10]);
+        const hints = { watermarkEnabled: true };
+        await manager.resolveVideoStream({
+            nodeId: NODE,
+            endpointId: ENDPOINT,
+            streamUsage: LIVE_VIEW,
+            limits: { codec: H265 },
+            hints,
+        });
+        const second = await manager.resolveVideoStream({
+            nodeId: NODE,
+            endpointId: ENDPOINT,
+            streamUsage: LIVE_VIEW,
+            limits: { codec: H265 },
+            hints,
+        });
+        expect(second.streamId).to.equal(9);
+        expect(second.reused).to.equal(true);
+        expect(invokes.filter(invoke => invoke.command === "videoStreamAllocate")).to.have.length(1);
+    });
+
     it("reuses an audio stream it has just allocated instead of allocating a twin", async () => {
         const { manager, invokes } = managerWith({ ...STATE, allocatedAudioStreams: [] }, async invoke =>
             invoke.command === "audioStreamAllocate" ? { audioStreamId: 4 } : undefined,
@@ -4926,6 +5016,7 @@ describe("CameraStreamManager reuse before the device has reported", () => {
             allocatedVideoStreams: [
                 {
                     videoStreamId: 9,
+                    overlays: NO_OVERLAYS,
                     streamUsage: LIVE_VIEW,
                     videoCodec: envelope.codec,
                     minResolution: envelope.minResolution,
@@ -5186,6 +5277,7 @@ describe("CameraStreamManager reuse before the device has reported", () => {
                 allocatedVideoStreams: [
                     {
                         videoStreamId: 9,
+                        overlays: NO_OVERLAYS,
                         streamUsage: LIVE_VIEW,
                         videoCodec: envelope.codec,
                         minResolution: envelope.minResolution,
@@ -5558,6 +5650,7 @@ describe("CameraStreamManager device cleanup budget", () => {
                 allocatedVideoStreams: [
                     {
                         videoStreamId: 9,
+                        overlays: NO_OVERLAYS,
                         streamUsage: LIVE_VIEW,
                         videoCodec: H265,
                         minResolution: { width: 1920, height: 1080 },
@@ -5614,6 +5707,7 @@ describe("CameraStreamManager device cleanup budget", () => {
                 allocatedVideoStreams: [
                     {
                         videoStreamId: 9,
+                        overlays: NO_OVERLAYS,
                         streamUsage: LIVE_VIEW,
                         videoCodec: H265,
                         minResolution: { width: 1920, height: 1080 },
@@ -6232,5 +6326,426 @@ describe("CameraStreamManager device cleanup budget", () => {
             expect(thrown).to.not.be.instanceOf(ServerError);
             expect(deviceStatusOf(thrown)).to.equal(Status.InvalidInState);
         });
+    });
+});
+
+describe("CameraStreamManager overlays", () => {
+    /** A camera that draws both overlays, which makes both allocate fields mandatory. */
+    const OVERLAY_STATE: CameraState = {
+        ...STATE,
+        features: cameraFeatures("video", "snapshot", "watermark", "onScreenDisplay"),
+    };
+
+    function allocatingManager(state: CameraState) {
+        return managerWith(state, async invoke => {
+            if (invoke.command === "videoStreamAllocate") return { videoStreamId: 9 };
+            if (invoke.command === "snapshotStreamAllocate") return { snapshotStreamId: 3 };
+            if (invoke.command === "captureSnapshot") {
+                return { data: new Uint8Array([1]), imageCodec: 0, resolution: { width: 640, height: 480 } };
+            }
+            return undefined;
+        });
+    }
+
+    function videoStream(overlays: OverlayBounds) {
+        return {
+            videoStreamId: 7,
+            overlays,
+            streamUsage: LIVE_VIEW,
+            videoCodec: H265,
+            minResolution: { width: 640, height: 360 },
+            maxResolution: { width: 2560, height: 1440 },
+            minFrameRate: 1,
+            maxFrameRate: 30,
+            minBitRate: 800000,
+            maxBitRate: 8000000,
+            referenceCount: 0,
+        };
+    }
+
+    function snapshotStream(overlays: OverlayBounds) {
+        return {
+            snapshotStreamId: 8,
+            overlays,
+            imageCodec: 0,
+            minResolution: { width: 1920, height: 1080 },
+            maxResolution: { width: 1920, height: 1080 },
+            referenceCount: 0,
+            frameRate: 1,
+            encodedPixels: false,
+            hardwareEncoder: false,
+        };
+    }
+
+    async function resolve(state: CameraState, hints?: VideoHints) {
+        const { manager, invokes } = allocatingManager(state);
+        const stream = await manager.resolveVideoStream({
+            nodeId: NODE,
+            endpointId: ENDPOINT,
+            streamUsage: LIVE_VIEW,
+            limits: { codec: H265 },
+            ...(hints === undefined ? {} : { hints }),
+        });
+        return { stream, invokes };
+    }
+
+    it("asks a camera that draws overlays for neither when the caller stated neither", async () => {
+        const { invokes } = await resolve(OVERLAY_STATE);
+        const allocate = invokes.find(invoke => invoke.command === "videoStreamAllocate");
+        // §11.2.6.11 gives both struct fields a fallback of 0, so false is what an unstated
+        // overlay means; omitting the field is INVALID_COMMAND on such a camera.
+        expect(allocate?.fields.watermarkEnabled).to.equal(false);
+        expect(allocate?.fields.osdEnabled).to.equal(false);
+    });
+
+    it("sends what the caller stated", async () => {
+        const { invokes, stream } = await resolve(OVERLAY_STATE, { watermarkEnabled: true });
+        const allocate = invokes.find(invoke => invoke.command === "videoStreamAllocate");
+        expect(allocate?.fields.watermarkEnabled).to.equal(true);
+        expect(allocate?.fields.osdEnabled).to.equal(false);
+        expect(requireVideoEnvelope(stream.envelope).overlays).to.deep.equal({
+            watermarkEnabled: true,
+            osdEnabled: false,
+        });
+    });
+
+    it("sends neither field to a camera that advertises neither feature", async () => {
+        const { invokes } = await resolve(STATE);
+        const allocate = invokes.find(invoke => invoke.command === "videoStreamAllocate");
+        expect(allocate?.fields).to.not.have.property("watermarkEnabled");
+        expect(allocate?.fields).to.not.have.property("osdEnabled");
+    });
+
+    it("accepts a caller that declined an overlay the camera cannot draw anyway", async () => {
+        const { invokes } = await resolve(STATE, { watermarkEnabled: false, osdEnabled: false });
+        const allocate = invokes.find(invoke => invoke.command === "videoStreamAllocate");
+        expect(allocate?.fields).to.not.have.property("watermarkEnabled");
+        expect(allocate?.fields).to.not.have.property("osdEnabled");
+    });
+
+    it("names the missing feature when the caller demanded an overlay the camera cannot draw", async () => {
+        let thrown: unknown;
+        try {
+            await resolve(STATE, { watermarkEnabled: true });
+        } catch (error) {
+            thrown = error;
+        }
+        expect(thrown).to.be.instanceOf(ServerError);
+        expect((thrown as ServerError).code).to.equal(ServerErrorCode.CameraStreamIncompatible);
+        const detail = JSON.parse((thrown as ServerError).message);
+        expect(detail.reason).to.equal("capability");
+        expect(detail.feature).to.equal("Watermark");
+        expect(detail.track).to.equal("video");
+    });
+
+    it("names OnScreenDisplay for a demanded OSD the camera cannot draw", async () => {
+        let thrown: unknown;
+        try {
+            await resolve(STATE, { osdEnabled: true });
+        } catch (error) {
+            thrown = error;
+        }
+        const detail = JSON.parse((thrown as ServerError).message);
+        expect(detail.feature).to.equal("OnScreenDisplay");
+    });
+
+    it("does not reuse a stream without a watermark for a caller that asked for one", async () => {
+        const state = {
+            ...OVERLAY_STATE,
+            allocatedVideoStreams: [videoStream({ watermarkEnabled: false, osdEnabled: false })],
+        };
+        const { invokes, stream } = await resolve(state, { watermarkEnabled: true });
+        expect(stream.reused).to.equal(false);
+        expect(stream.streamId).to.equal(9);
+        expect(invokes.some(invoke => invoke.command === "videoStreamAllocate")).to.equal(true);
+    });
+
+    it("does not reuse a watermarked stream for a caller that asked for no watermark", async () => {
+        const state = {
+            ...OVERLAY_STATE,
+            allocatedVideoStreams: [videoStream({ watermarkEnabled: true, osdEnabled: false })],
+        };
+        const { stream } = await resolve(state, { watermarkEnabled: false });
+        expect(stream.reused).to.equal(false);
+    });
+
+    it("does not reuse a watermarked stream for a caller that stated nothing either", async () => {
+        // An unstated overlay resolves to false, which is what the reuse rung then requires: two
+        // identical calls may not get visibly different pictures depending on what is allocated.
+        const state = {
+            ...OVERLAY_STATE,
+            allocatedVideoStreams: [videoStream({ watermarkEnabled: true, osdEnabled: false })],
+        };
+        const { stream } = await resolve(state);
+        expect(stream.reused).to.equal(false);
+    });
+
+    it("reuses a stream whose overlays are the ones the request resolved to", async () => {
+        const state = {
+            ...OVERLAY_STATE,
+            allocatedVideoStreams: [videoStream({ watermarkEnabled: true, osdEnabled: false })],
+        };
+        const { stream } = await resolve(state, { watermarkEnabled: true, osdEnabled: false });
+        expect(stream.reused).to.equal(true);
+        expect(stream.streamId).to.equal(7);
+    });
+
+    it("reports a reused stream's own overlays, not the ones the request resolved to", async () => {
+        // The reported envelope is the camera's statement about the stream, so a feature map that has
+        // not arrived cannot turn a watermarked stream into an unwatermarked report.
+        const state: CameraState = {
+            ...STATE,
+            features: {},
+            allocatedVideoStreams: [videoStream({ watermarkEnabled: true, osdEnabled: false })],
+        };
+        const { stream } = await resolve(state, { watermarkEnabled: true });
+        expect(stream.reused).to.equal(true);
+        expect(requireVideoEnvelope(stream.envelope).overlays).to.deep.equal({
+            watermarkEnabled: true,
+            osdEnabled: false,
+        });
+    });
+
+    it("reports a degraded stream's own overlays", async () => {
+        const state: CameraState = {
+            ...OVERLAY_STATE,
+            allocatedVideoStreams: [
+                { ...videoStream({ watermarkEnabled: true, osdEnabled: false }), referenceCount: 1 },
+            ],
+        };
+        const { manager } = managerWith(state, async invoke => {
+            if (invoke.command === "videoStreamAllocate") throw statusError(Status.ResourceExhausted);
+            return undefined;
+        });
+        const stream = await manager.resolveVideoStream({
+            nodeId: NODE,
+            endpointId: ENDPOINT,
+            streamUsage: LIVE_VIEW,
+            limits: { codec: H265 },
+        });
+        expect(stream.degraded).to.equal(true);
+        expect(requireVideoEnvelope(stream.envelope).overlays).to.deep.equal({
+            watermarkEnabled: true,
+            osdEnabled: false,
+        });
+    });
+
+    it("puts a taken stream's overlays back although the camera has not stated its feature map", async () => {
+        // The replacement carries what the camera reported for the victim. Deriving it from the feature
+        // map instead dropped the fields here, which both changes the picture and, on a camera that does
+        // have the feature, is INVALID_COMMAND for the replacement allocate.
+        // osdEnabled absent, as a camera without OSD reports it: the replacement must not send it.
+        const victim = { ...videoStream({ watermarkEnabled: true }), videoStreamId: 11 };
+        const state: CameraState = { ...STATE, features: {}, allocatedVideoStreams: [victim] };
+        let allocates = 0;
+        const { manager, invokes } = managerWith(state, async invoke => {
+            if (invoke.command === "videoStreamAllocate") {
+                allocates += 1;
+                if (allocates <= MAX_ALLOCATE_ATTEMPTS) throw statusError(Status.ResourceExhausted);
+                return { videoStreamId: 12 };
+            }
+            return undefined;
+        });
+        let thrown: unknown;
+        try {
+            await manager.resolveVideoStream({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                streamUsage: LIVE_VIEW,
+                limits: { codec: H265 },
+                hints: { watermarkEnabled: false },
+            });
+        } catch (error) {
+            thrown = error;
+        }
+        expect(thrown).to.be.instanceOf(ServerError);
+        const restore = invokes.filter(invoke => invoke.command === "videoStreamAllocate").at(-1);
+        expect(restore?.fields.watermarkEnabled).to.equal(true);
+        expect(restore?.fields).to.not.have.property("osdEnabled");
+    });
+
+    it("hands out a stream with an unasked-for overlay only from the degraded rung, flagged", async () => {
+        // The degraded rung gives up the server's own choices, and an unstated overlay is one of
+        // them. A stated one is a caller bound and stays hard here too, which the next test shows.
+        const state = {
+            ...OVERLAY_STATE,
+            allocatedVideoStreams: [
+                { ...videoStream({ watermarkEnabled: true, osdEnabled: false }), referenceCount: 1 },
+            ],
+        };
+        const { manager } = managerWith(state, async invoke => {
+            if (invoke.command === "videoStreamAllocate") throw statusError(Status.ResourceExhausted);
+            return undefined;
+        });
+        const stream = await manager.resolveVideoStream({
+            nodeId: NODE,
+            endpointId: ENDPOINT,
+            streamUsage: LIVE_VIEW,
+            limits: { codec: H265 },
+        });
+        expect(stream.streamId).to.equal(7);
+        expect(stream.degraded).to.equal(true);
+    });
+
+    it("refuses rather than degrading onto a stream whose overlays the caller stated against", async () => {
+        const state = {
+            ...OVERLAY_STATE,
+            allocatedVideoStreams: [
+                { ...videoStream({ watermarkEnabled: true, osdEnabled: false }), referenceCount: 1 },
+            ],
+        };
+        const { manager } = managerWith(state, async invoke => {
+            if (invoke.command === "videoStreamAllocate") throw statusError(Status.ResourceExhausted);
+            return undefined;
+        });
+        let thrown: unknown;
+        try {
+            await manager.resolveVideoStream({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                streamUsage: LIVE_VIEW,
+                limits: { codec: H265 },
+                hints: { watermarkEnabled: false },
+            });
+        } catch (error) {
+            thrown = error;
+        }
+        expect(thrown).to.be.instanceOf(ServerError);
+        expect((thrown as ServerError).code).to.equal(ServerErrorCode.CameraResourceExhausted);
+    });
+
+    it("puts a taken stream's own overlays back on the replacement", async () => {
+        // The restore does not undo the eviction, but it may not change the picture it puts back.
+        const victim = { ...videoStream({ watermarkEnabled: true, osdEnabled: true }), videoStreamId: 11 };
+        const state = { ...OVERLAY_STATE, allocatedVideoStreams: [victim] };
+        let allocates = 0;
+        const { manager, invokes } = managerWith(state, async invoke => {
+            if (invoke.command === "videoStreamAllocate") {
+                allocates += 1;
+                // Every attempt for this request fails, so the capacity it bought goes unused and
+                // the scope restores the victim; the restore's own allocate then succeeds.
+                if (allocates <= MAX_ALLOCATE_ATTEMPTS) throw statusError(Status.ResourceExhausted);
+                return { videoStreamId: 12 };
+            }
+            return undefined;
+        });
+        let thrown: unknown;
+        try {
+            await manager.resolveVideoStream({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                streamUsage: LIVE_VIEW,
+                limits: { codec: H265 },
+                hints: { watermarkEnabled: false },
+            });
+        } catch (error) {
+            thrown = error;
+        }
+        expect(thrown).to.be.instanceOf(ServerError);
+        const restore = invokes.filter(invoke => invoke.command === "videoStreamAllocate").at(-1);
+        expect(restore?.fields.watermarkEnabled).to.equal(true);
+        expect(restore?.fields.osdEnabled).to.equal(true);
+    });
+
+    it("asks a snapshot camera that draws overlays for neither when the caller stated neither", async () => {
+        const { manager, invokes } = allocatingManager(OVERLAY_STATE);
+        await manager.snapshot({ nodeId: NODE, endpointId: ENDPOINT });
+        const allocate = invokes.find(invoke => invoke.command === "snapshotStreamAllocate");
+        expect(allocate?.fields.watermarkEnabled).to.equal(false);
+        expect(allocate?.fields.osdEnabled).to.equal(false);
+    });
+
+    it("sends a snapshot's stated overlays", async () => {
+        const { manager, invokes } = allocatingManager(OVERLAY_STATE);
+        await manager.snapshot({ nodeId: NODE, endpointId: ENDPOINT, osdEnabled: true });
+        const allocate = invokes.find(invoke => invoke.command === "snapshotStreamAllocate");
+        expect(allocate?.fields.watermarkEnabled).to.equal(false);
+        expect(allocate?.fields.osdEnabled).to.equal(true);
+    });
+
+    it("sends neither snapshot field to a camera that advertises neither feature", async () => {
+        const { manager, invokes } = allocatingManager(STATE);
+        await manager.snapshot({ nodeId: NODE, endpointId: ENDPOINT });
+        const allocate = invokes.find(invoke => invoke.command === "snapshotStreamAllocate");
+        expect(allocate?.fields).to.not.have.property("watermarkEnabled");
+        expect(allocate?.fields).to.not.have.property("osdEnabled");
+    });
+
+    it("names the missing feature when a snapshot demanded an overlay the camera cannot draw", async () => {
+        const { manager } = allocatingManager(STATE);
+        let thrown: unknown;
+        try {
+            await manager.snapshot({ nodeId: NODE, endpointId: ENDPOINT, watermarkEnabled: true });
+        } catch (error) {
+            thrown = error;
+        }
+        expect(thrown).to.be.instanceOf(ServerError);
+        const detail = JSON.parse((thrown as ServerError).message);
+        expect(detail.reason).to.equal("capability");
+        expect(detail.feature).to.equal("Watermark");
+    });
+
+    it("does not adopt a snapshot stream without the watermark the caller asked for", async () => {
+        const state = {
+            ...OVERLAY_STATE,
+            allocatedSnapshotStreams: [snapshotStream({ watermarkEnabled: false, osdEnabled: false })],
+        };
+        const { manager, invokes } = allocatingManager(state);
+        const result = await manager.snapshot({ nodeId: NODE, endpointId: ENDPOINT, watermarkEnabled: true });
+        expect(result.snapshotStreamId).to.equal(3);
+        expect(invokes.some(invoke => invoke.command === "snapshotStreamAllocate")).to.equal(true);
+    });
+
+    it("does not adopt a watermarked snapshot stream for a caller that stated nothing", async () => {
+        const state = {
+            ...OVERLAY_STATE,
+            allocatedSnapshotStreams: [snapshotStream({ watermarkEnabled: true, osdEnabled: false })],
+        };
+        const { manager } = allocatingManager(state);
+        const result = await manager.snapshot({ nodeId: NODE, endpointId: ENDPOINT });
+        expect(result.snapshotStreamId).to.equal(3);
+    });
+
+    it("adopts a snapshot stream whose overlays are the ones the request resolved to", async () => {
+        const state = {
+            ...OVERLAY_STATE,
+            allocatedSnapshotStreams: [snapshotStream({ watermarkEnabled: true, osdEnabled: false })],
+        };
+        const { manager, invokes } = allocatingManager(state);
+        const result = await manager.snapshot({
+            nodeId: NODE,
+            endpointId: ENDPOINT,
+            watermarkEnabled: true,
+            osdEnabled: false,
+        });
+        expect(result.snapshotStreamId).to.equal(8);
+        expect(invokes.some(invoke => invoke.command === "snapshotStreamAllocate")).to.equal(false);
+    });
+
+    it("reports each allocated stream's overlays", async () => {
+        const state = {
+            ...OVERLAY_STATE,
+            allocatedVideoStreams: [videoStream({ watermarkEnabled: true, osdEnabled: false })],
+            allocatedSnapshotStreams: [snapshotStream({ watermarkEnabled: false, osdEnabled: true })],
+        };
+        const capabilities = await managerWith(state).manager.getCapabilities(NODE, ENDPOINT);
+        expect(capabilities.allocated.video[0].overlays).to.deep.equal({
+            watermarkEnabled: true,
+            osdEnabled: false,
+        });
+        expect(capabilities.allocated.snapshot[0].overlays).to.deep.equal({
+            watermarkEnabled: false,
+            osdEnabled: true,
+        });
+    });
+
+    it("sends only what the caller stated while the camera has not stated its feature map", async () => {
+        // Nothing is gated on a map that has not arrived, so the caller's own statement reaches
+        // the device and the device answers for itself.
+        const state: CameraState = { ...STATE, features: {} };
+        const { invokes } = await resolve(state, { osdEnabled: true });
+        const allocate = invokes.find(invoke => invoke.command === "videoStreamAllocate");
+        expect(allocate?.fields.osdEnabled).to.equal(true);
+        expect(allocate?.fields).to.not.have.property("watermarkEnabled");
     });
 });

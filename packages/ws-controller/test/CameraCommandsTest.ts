@@ -209,6 +209,34 @@ describe("cameraCommands", () => {
             expect(parseStartStreamArgs(base).allowEviction).to.equal(undefined);
         });
 
+        it("reads the overlay hints, and leaves each unstated when the caller says nothing", () => {
+            const base = { node_id: 5, endpoint_id: 1, stream_usage: "LiveView" };
+            const parsed = parseStartStreamArgs({
+                ...base,
+                video: { watermark_enabled: true, osd_enabled: false },
+            });
+            expect(parsed.video).to.deep.equal({ watermarkEnabled: true, osdEnabled: false });
+            // Unstated rather than false: whether a camera is asked for no overlay or not asked at all
+            // depends on its feature map, which the parser does not read.
+            expect(parseStartStreamArgs({ ...base, video: {} }).video).to.deep.equal({});
+        });
+
+        it("refuses a non-boolean overlay hint", () => {
+            let thrown: unknown;
+            try {
+                parseStartStreamArgs({
+                    node_id: 5,
+                    endpoint_id: 1,
+                    stream_usage: "LiveView",
+                    video: { watermark_enabled: "yes" },
+                });
+            } catch (error) {
+                thrown = error;
+            }
+            expect(thrown).to.be.instanceOf(ServerError);
+            expect((thrown as ServerError).message).to.equal("video.watermark_enabled must be a boolean");
+        });
+
         it("keeps a urls list, the credentials and the caid on the struct", () => {
             const parsed = parseStartStreamArgs({
                 node_id: 5,
@@ -633,6 +661,20 @@ describe("cameraCommands", () => {
             expect(parsed.codec).to.equal(7);
         });
 
+        it("reads the overlay arguments, and leaves each unstated when the caller says nothing", () => {
+            const parsed = parseSnapshotArgs({
+                node_id: 5,
+                endpoint_id: 1,
+                watermark_enabled: false,
+                osd_enabled: true,
+            });
+            expect(parsed.watermarkEnabled).to.equal(false);
+            expect(parsed.osdEnabled).to.equal(true);
+            const silent = parseSnapshotArgs({ node_id: 5, endpoint_id: 1 });
+            expect(silent.watermarkEnabled).to.equal(undefined);
+            expect(silent.osdEnabled).to.equal(undefined);
+        });
+
         it("leaves max_resolution and codec undefined when omitted", () => {
             const parsed = parseSnapshotArgs({ node_id: 5, endpoint_id: 1 });
             expect(parsed.maxResolution).to.equal(undefined);
@@ -940,6 +982,7 @@ describe("cameraCommands", () => {
         it("converts allocated video/audio/snapshot streams to snake_case", () => {
             const videoStream: AllocatedVideoStream & { ownedByServer: boolean } = {
                 videoStreamId: 1,
+                overlays: { watermarkEnabled: true, osdEnabled: false },
                 streamUsage: 3,
                 videoCodec: 1,
                 minResolution: { width: 640, height: 360 },
@@ -964,6 +1007,7 @@ describe("cameraCommands", () => {
             };
             const snapshotStream: AllocatedSnapshotStream & { ownedByServer: boolean } = {
                 snapshotStreamId: 3,
+                overlays: { watermarkEnabled: false, osdEnabled: true },
                 imageCodec: 0,
                 minResolution: { width: 640, height: 480 },
                 maxResolution: { width: 1920, height: 1080 },
@@ -989,6 +1033,8 @@ describe("cameraCommands", () => {
                 max_bit_rate: 8000000,
                 reference_count: 1,
                 owned_by_server: true,
+                watermark_enabled: true,
+                osd_enabled: false,
             });
             expect(wire.allocated.audio[0]).to.deep.equal({
                 audio_stream_id: 2,
@@ -1011,6 +1057,8 @@ describe("cameraCommands", () => {
                 frame_rate: 1,
                 encoded_pixels: false,
                 hardware_encoder: true,
+                watermark_enabled: false,
+                osd_enabled: true,
             });
         });
     });
@@ -1033,6 +1081,7 @@ describe("cameraCommands", () => {
                         minBitRate: 100000,
                         maxBitRate: 8000000,
                         keyFrameInterval: 2000,
+                        overlays: { watermarkEnabled: false, osdEnabled: true },
                     },
                 },
             };
@@ -1048,6 +1097,8 @@ describe("cameraCommands", () => {
                 bit_rate: { min: 100000, max: 8000000 },
                 reused: false,
                 allocated_by_server: true,
+                watermark_enabled: false,
+                osd_enabled: true,
             });
         });
 
@@ -1069,6 +1120,7 @@ describe("cameraCommands", () => {
                         minBitRate: 100000,
                         maxBitRate: 4000000,
                         keyFrameInterval: 2000,
+                        overlays: {},
                     },
                 },
                 audio: {
