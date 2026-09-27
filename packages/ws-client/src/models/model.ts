@@ -525,6 +525,15 @@ export interface CameraAllocatedSnapshotStream {
     max_resolution: CameraResolution;
     reference_count: number;
     owned_by_server: boolean;
+    /** Frames per second the stream reserves, as the camera states it. */
+    frame_rate: number;
+    /**
+     * Whether the stream counts towards the camera's `max_encoded_pixel_rate`, as the camera states it.
+     *
+     * The reservation is `max_resolution` times `frame_rate`, so a client doing its own budgeting adds
+     * that for every stream with this flag set.
+     */
+    encoded_pixels: boolean;
     /**
      * Whether the stream uses one of the camera's `max_concurrent_encoders`, as the camera states it.
      *

@@ -557,6 +557,8 @@ export function toWireCapabilities(capabilities: CameraCapabilities): CameraCapa
                 max_resolution: stream.maxResolution,
                 reference_count: stream.referenceCount,
                 owned_by_server: stream.ownedByServer,
+                frame_rate: stream.frameRate,
+                encoded_pixels: stream.encodedPixels,
                 hardware_encoder: stream.hardwareEncoder,
             })),
         },

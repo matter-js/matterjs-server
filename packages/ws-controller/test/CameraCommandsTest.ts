@@ -960,6 +960,8 @@ describe("cameraCommands", () => {
                 minResolution: { width: 640, height: 480 },
                 maxResolution: { width: 1920, height: 1080 },
                 referenceCount: 0,
+                frameRate: 1,
+                encodedPixels: false,
                 hardwareEncoder: true,
                 ownedByServer: true,
             };
@@ -998,6 +1000,8 @@ describe("cameraCommands", () => {
                 max_resolution: { width: 1920, height: 1080 },
                 reference_count: 0,
                 owned_by_server: true,
+                frame_rate: 1,
+                encoded_pixels: false,
                 hardware_encoder: true,
             });
         });

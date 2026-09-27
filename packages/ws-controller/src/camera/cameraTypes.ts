@@ -67,6 +67,10 @@ export interface AllocatedSnapshotStream {
     minResolution: Resolution;
     maxResolution: Resolution;
     referenceCount: number;
+    /** FrameRate (§11.2.6.13.3), the rate this stream reserves in the encoded-pixel calculation. */
+    frameRate: number;
+    /** Whether this stream counts in the camera's encoded pixel rate (§11.2.6.13.8). */
+    encodedPixels: boolean;
     /** Whether this stream uses one of the camera's `MaxConcurrentEncoders` (§11.2.6.13.9). */
     hardwareEncoder: boolean;
 }

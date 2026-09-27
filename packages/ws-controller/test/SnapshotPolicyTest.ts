@@ -76,6 +76,8 @@ describe("snapshotPolicy", () => {
             minResolution: { width: 1920, height: 1080 },
             maxResolution: { width: 1920, height: 1080 },
             referenceCount: 0,
+            frameRate: 1,
+            encodedPixels: true,
             hardwareEncoder: true,
         };
 
@@ -319,6 +321,8 @@ describe("snapshotPolicy", () => {
             minResolution: { width, height },
             maxResolution: { width, height },
             referenceCount: 0,
+            frameRate: 1,
+            encodedPixels: false,
             hardwareEncoder: false,
         });
 

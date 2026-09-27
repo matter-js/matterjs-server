@@ -4,9 +4,15 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import type { AudioEnvelope, VideoEnvelope } from "../src/camera/cameraTypes.js";
+import type {
+    AllocatedSnapshotStream,
+    AllocatedVideoStream,
+    AudioEnvelope,
+    VideoEnvelope,
+} from "../src/camera/cameraTypes.js";
 import { parseSdpVideoConstraints, videoCodecLimits } from "../src/camera/sdpConstraints.js";
 import {
+    budgetVideoEnvelope,
     computeAudioEnvelope,
     computeVideoEnvelope,
     findDegradedVideoStream,
@@ -803,6 +809,138 @@ describe("streamPolicy", () => {
                     }),
                 ),
             ).to.equal(undefined);
+        });
+    });
+
+    describe("budgetVideoEnvelope", () => {
+        const SENSOR = {
+            codec: H265,
+            minResolution: { width: 640, height: 360 },
+            maxResolution: { width: 2560, height: 1440 },
+            minFrameRate: 1,
+            maxFrameRate: 30,
+            minBitRate: 800000,
+            maxBitRate: 4000000,
+            keyFrameInterval: 2000,
+        };
+        /** 2560x1440 at 30 fps, i.e. what the envelope above asks the camera to reserve. */
+        const SENSOR_RATE = 2560 * 1440 * 30;
+
+        const NO_STREAMS = {
+            videoStreams: new Array<AllocatedVideoStream>(),
+            snapshotStreams: new Array<AllocatedSnapshotStream>(),
+        };
+
+        function videoStream(id: number, width: number, height: number, maxFrameRate: number): AllocatedVideoStream {
+            return {
+                videoStreamId: id,
+                streamUsage: LIVE_VIEW,
+                videoCodec: H265,
+                minResolution: { width, height },
+                maxResolution: { width, height },
+                minFrameRate: 1,
+                maxFrameRate,
+                minBitRate: 800000,
+                maxBitRate: 4000000,
+                referenceCount: 0,
+            };
+        }
+
+        function snapshotStream(
+            width: number,
+            height: number,
+            frameRate: number,
+            encodedPixels: boolean,
+        ): AllocatedSnapshotStream {
+            return {
+                snapshotStreamId: 1,
+                imageCodec: 0,
+                minResolution: { width, height },
+                maxResolution: { width, height },
+                referenceCount: 0,
+                frameRate,
+                encodedPixels,
+                hardwareEncoder: false,
+            };
+        }
+
+        it("leaves the envelope alone when the camera states no budget", () => {
+            expect(budgetVideoEnvelope(SENSOR, { maxEncodedPixelRate: undefined, ...NO_STREAMS })).to.deep.equal(
+                SENSOR,
+            );
+        });
+
+        it("leaves the envelope alone when the budget carries it", () => {
+            expect(budgetVideoEnvelope(SENSOR, { maxEncodedPixelRate: SENSOR_RATE, ...NO_STREAMS })).to.deep.equal(
+                SENSOR,
+            );
+        });
+
+        it("narrows the frame rate to what the budget carries at full frame size", () => {
+            const budgeted = budgetVideoEnvelope(SENSOR, { maxEncodedPixelRate: SENSOR_RATE / 2, ...NO_STREAMS });
+            expect(budgeted.maxResolution).to.deep.equal({ width: 2560, height: 1440 });
+            expect(budgeted.maxFrameRate).to.equal(15);
+        });
+
+        it("narrows the frame size once not even one frame per second fits", () => {
+            // Half a sensor frame, so the frame size is what has to give before any rate does.
+            const budgeted = budgetVideoEnvelope(SENSOR, {
+                maxEncodedPixelRate: (2560 * 1440) / 2,
+                ...NO_STREAMS,
+            });
+            expect(budgeted.maxResolution).to.deep.equal({ width: 1810, height: 1018 });
+            expect(budgeted.maxFrameRate).to.equal(1);
+        });
+
+        it("subtracts what the camera's other video streams reserve", () => {
+            // One 1280x720 at 30 fps stream reserves a quarter of the sensor's rate, leaving three.
+            const budgeted = budgetVideoEnvelope(SENSOR, {
+                maxEncodedPixelRate: SENSOR_RATE,
+                videoStreams: [videoStream(7, 1280, 720, 30)],
+                snapshotStreams: new Array<AllocatedSnapshotStream>(),
+            });
+            expect(budgeted.maxFrameRate).to.equal(22);
+        });
+
+        it("subtracts a snapshot stream the camera counts in its encoded pixel rate", () => {
+            const budgeted = budgetVideoEnvelope(SENSOR, {
+                maxEncodedPixelRate: SENSOR_RATE,
+                videoStreams: new Array<AllocatedVideoStream>(),
+                snapshotStreams: [snapshotStream(2560, 1440, 15, true)],
+            });
+            expect(budgeted.maxFrameRate).to.equal(15);
+        });
+
+        it("ignores a snapshot stream the camera does not count in it", () => {
+            // EncodedPixels false means the stream draws nothing from that budget (§11.2.6.13.8).
+            const budgeted = budgetVideoEnvelope(SENSOR, {
+                maxEncodedPixelRate: SENSOR_RATE,
+                videoStreams: new Array<AllocatedVideoStream>(),
+                snapshotStreams: [snapshotStream(2560, 1440, 15, false)],
+            });
+            expect(budgeted.maxFrameRate).to.equal(30);
+        });
+
+        it("narrows nothing once the budget is spent, leaving the refusal to the camera", () => {
+            const budgeted = budgetVideoEnvelope(SENSOR, {
+                maxEncodedPixelRate: SENSOR_RATE,
+                videoStreams: [videoStream(7, 2560, 1440, 30)],
+                snapshotStreams: new Array<AllocatedSnapshotStream>(),
+            });
+            expect(budgeted).to.deep.equal(SENSOR);
+        });
+
+        it("never narrows a ceiling below the envelope's own floor", () => {
+            // The floors carry whatever the caller stated, so this is what keeps a stated bound from
+            // being quietly shrunk into the budget.
+            const pinned = {
+                ...SENSOR,
+                minResolution: { width: 2560, height: 1440 },
+                minFrameRate: 30,
+            };
+            const budgeted = budgetVideoEnvelope(pinned, { maxEncodedPixelRate: 1000, ...NO_STREAMS });
+            expect(budgeted.maxResolution).to.deep.equal({ width: 2560, height: 1440 });
+            expect(budgeted.maxFrameRate).to.equal(30);
         });
     });
 

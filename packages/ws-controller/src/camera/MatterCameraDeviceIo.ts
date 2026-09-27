@@ -128,6 +128,8 @@ export function toCameraState(state: RawCameraAvStreamManagementState, features:
             minResolution: toResolution(stream.minResolution),
             maxResolution: toResolution(stream.maxResolution),
             referenceCount: stream.referenceCount,
+            frameRate: stream.frameRate,
+            encodedPixels: stream.encodedPixels,
             hardwareEncoder: stream.hardwareEncoder,
         })),
         microphoneCapabilities:

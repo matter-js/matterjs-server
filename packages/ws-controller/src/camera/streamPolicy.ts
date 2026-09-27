@@ -7,6 +7,7 @@
 import { StreamUsage } from "@matter/main/types";
 import type {
     AllocatedAudioStream,
+    AllocatedSnapshotStream,
     AllocatedVideoStream,
     AudioEnvelope,
     Resolution,
@@ -302,6 +303,57 @@ export function computeVideoEnvelope(args: VideoEnvelopeArgs): VideoSelection {
             keyFrameInterval: LIVE_VIEW_KEY_FRAME_INTERVAL_MS,
         },
     };
+}
+
+function pixelRate(resolution: Resolution, frameRate: number): number {
+    return pixels(resolution) * frameRate;
+}
+
+/** What the camera says its encoders can produce, and the streams already drawing on that. */
+export interface VideoPixelRateBudget {
+    /** `MaxEncodedPixelRate` (§11.2.7.2), or none when the camera states no budget. */
+    maxEncodedPixelRate: number | undefined;
+    videoStreams: AllocatedVideoStream[];
+    snapshotStreams: AllocatedSnapshotStream[];
+}
+
+/**
+ * `envelope` narrowed into the encoded pixel rate the camera has left.
+ *
+ * `MaxEncodedPixelRate` (§11.2.7.2) is what the camera's encoders can produce in total, and the
+ * streams it already holds spend it. Asking for the sensor's maximum on top of that asks for
+ * something the camera has already said it cannot do, and the only answer the ladder has to that
+ * refusal costs another controller a stream — one the spec asks commissioners to pre-allocate and
+ * keep (§11.2.1.1). Narrowing here is what makes that refusal not happen.
+ *
+ * Only the ceilings move. Nothing drops below the envelope's own floors, and those already carry
+ * every floor the caller stated, so a caller whose stated bound needs more than the budget has left
+ * reaches the device unshrunk and the camera decides — the camera is the arbiter of a parameter
+ * conflict (§11.2.1.2.2), not this server.
+ *
+ * A budget already fully spent narrows nothing: no frame size fits inside it, so the request goes out
+ * as computed and the device's own refusal drives the ladder.
+ */
+export function budgetVideoEnvelope(envelope: VideoEnvelope, budget: VideoPixelRateBudget): VideoEnvelope {
+    const { maxEncodedPixelRate } = budget;
+    if (maxEncodedPixelRate === undefined) return envelope;
+    // The cluster states no per-stream formula for MaxEncodedPixelRate; §11.2.6.9.4 states it for a
+    // snapshot *capability* only. This is the reference server's own accounting, verbatim:
+    // CameraAVStreamManagementCluster.cpp, IsResourceAvailableForStreamAllocation sums
+    // maxFrameRate × maxResolution over every allocated video stream, and frameRate × maxResolution
+    // over every snapshot stream whose EncodedPixels is set (§11.2.6.13.8).
+    const committed =
+        budget.videoStreams.reduce((total, stream) => total + pixelRate(stream.maxResolution, stream.maxFrameRate), 0) +
+        budget.snapshotStreams
+            .filter(stream => stream.encodedPixels)
+            .reduce((total, stream) => total + pixelRate(stream.maxResolution, stream.frameRate), 0);
+    const free = maxEncodedPixelRate - committed;
+    if (free <= 0) return envelope;
+
+    const maxResolution = clampUp(scaleToPixels(envelope.maxResolution, free), envelope.minResolution);
+    const affordable = Math.max(1, Math.floor(free / pixels(maxResolution)));
+    const maxFrameRate = Math.max(envelope.minFrameRate, Math.min(envelope.maxFrameRate, affordable));
+    return { ...envelope, maxResolution, maxFrameRate };
 }
 
 function contains(outer: { min: number; max: number }, inner: { min: number; max: number }): boolean {

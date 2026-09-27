@@ -46,6 +46,7 @@ import {
 } from "./snapshotPolicy.js";
 import type { SnapshotCapability } from "./snapshotPolicy.js";
 import {
+    budgetVideoEnvelope,
     chooseEvictionVictim,
     computeAudioEnvelope,
     computeVideoEnvelope,
@@ -1031,8 +1032,6 @@ export class CameraStreamManager {
                 bound: { field: selection.field, requested: selection.requested, limit: selection.limit },
             });
         }
-        let envelope = selection.envelope;
-
         // The ladder's own copy: freeing a stream updates this array, never the state object.
         let liveStreams = state.allocatedVideoStreams;
         // Freeing and the exhaustion report stay on device state: a stream this server has only just
@@ -1040,15 +1039,31 @@ export class CameraStreamManager {
         const unreported = this.unreportedVideoStreams(nodeId, endpointId, liveStreams);
 
         const bounds = videoCallerBounds(args.limits, streamUsage, args.hints);
-        const reused = findReusableVideoStream([...liveStreams, ...unreported], envelope, bounds);
+        // The encoder budget is not applied here: a stream the camera already produces is already
+        // spending it, so reusing one costs the budget nothing however wide it is.
+        const reused = findReusableVideoStream([...liveStreams, ...unreported], selection.envelope, bounds);
         if (reused !== undefined) {
             return {
                 streamId: reused.videoStreamId,
-                envelope: envelopeOfVideoStream(reused, envelope.keyFrameInterval),
+                envelope: envelopeOfVideoStream(reused, selection.envelope.keyFrameInterval),
                 reused: true,
                 allocatedByUs: this.leaseReusedVideoStream(nodeId, endpointId, reused),
             };
         }
+
+        // Re-derived rather than adjusted after an eviction: the envelope is a function of what the
+        // camera has left, and freeing a stream changes that. The snapshot half is the reported view
+        // alone — a snapshot lease carries no allocation to stand in with (see StreamLease) — so a
+        // snapshot stream this server allocated moments ago is missing from the sum until the report
+        // catches up, which over-states the free budget and costs one refused allocate the ladder
+        // walks down from. The same lag `encodersExhausted` already documents.
+        const budgeted = (streams: AllocatedVideoStream[]): VideoEnvelope =>
+            budgetVideoEnvelope(selection.envelope, {
+                maxEncodedPixelRate: state.maxEncodedPixelRate,
+                videoStreams: [...streams, ...unreported],
+                snapshotStreams: state.allocatedSnapshotStreams,
+            });
+        let envelope = budgeted(liveStreams);
 
         let lastStatus: number | undefined;
         const freed = new Array<() => void>();
@@ -1115,6 +1130,7 @@ export class CameraStreamManager {
                     if (madeRoom !== undefined) {
                         liveStreams = liveStreams.filter(stream => stream.videoStreamId !== madeRoom.streamId);
                         freed.push(madeRoom.spend);
+                        envelope = budgeted(liveStreams);
                         continue;
                     }
                 }
