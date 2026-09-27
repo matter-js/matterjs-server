@@ -20,7 +20,6 @@ import {
     buildVideoRequest,
     cameraErrorText,
     isAudioOnlyCamera,
-    isOwnSnapshotStream,
     parseResolutionOption,
     resolutionOption,
     snapshotMimeType,
@@ -137,8 +136,8 @@ describe("camera API helpers", () => {
             expect(buildVideoRequest(capabilities({ features: ["Audio"] }), CHOICES)).to.equal(false);
         });
 
-        it("leaves the video key out for Auto on a camera without overlay features", () => {
-            expect(buildVideoRequest(capabilities(), CHOICES)).to.equal(undefined);
+        it("demands video for Auto on a camera that reports Video", () => {
+            expect(buildVideoRequest(capabilities(), CHOICES)).to.deep.equal({});
         });
 
         it("sends the picked resolution as max_resolution", () => {
@@ -207,35 +206,6 @@ describe("camera API helpers", () => {
             };
             expect(streamsToRelease(result)).to.deep.equal([]);
             expect(streamsToRelease({ ...result, video: null, audio: null })).to.deep.equal([]);
-        });
-    });
-
-    describe("isOwnSnapshotStream", () => {
-        const allocated = {
-            snapshot_stream_id: 4,
-            image_codec: "JPEG",
-            min_resolution: { width: 640, height: 480 },
-            max_resolution: { width: 640, height: 480 },
-            reference_count: 0,
-            allocated_by_server: false,
-            frame_rate: 1,
-            encoded_pixels: false,
-            hardware_encoder: false,
-            watermark_enabled: false,
-            osd_enabled: false,
-        };
-        const caps = capabilities({ allocated: { video: [], audio: [], snapshot: [allocated] } });
-
-        it("owns a stream that did not exist when the overlay opened", () => {
-            expect(isOwnSnapshotStream(caps, 9)).to.equal(true);
-        });
-
-        it("does not own a stream that already existed", () => {
-            expect(isOwnSnapshotStream(caps, 4)).to.equal(false);
-        });
-
-        it("owns nothing without the opening capabilities", () => {
-            expect(isOwnSnapshotStream(null, 9)).to.equal(false);
         });
     });
 
@@ -373,11 +343,36 @@ describe("camera API helpers", () => {
             expect(cameraErrorText(none)).to.equal("no camera");
         });
 
-        it("falls back to the message when a camera code's details are partial", () => {
+        it("shows the server's message text, not JSON, when a camera code's details are partial", () => {
             const noClusters = serverError(CAMERA_NOT_SUPPORTED_ERROR_CODE, { message: "no camera" });
-            expect(cameraErrorText(noClusters)).to.equal(noClusters.message);
+            expect(cameraErrorText(noClusters)).to.equal("no camera");
             const noModes = serverError(CAMERA_PRIVACY_MODE_ERROR_CODE, { message: "privacy", device_status: 1 });
-            expect(cameraErrorText(noModes)).to.equal(noModes.message);
+            expect(cameraErrorText(noModes)).to.equal("privacy");
+        });
+
+        it("names the error code when invalid details carry no message text", () => {
+            expect(cameraErrorText(serverError(CAMERA_PRIVACY_MODE_ERROR_CODE, { modes: 1 }))).to.equal(
+                "Camera privacy mode is enabled",
+            );
+            expect(cameraErrorText(serverError(CAMERA_STREAM_INCOMPATIBLE_ERROR_CODE, { message: 5 }))).to.equal(
+                "Camera cannot serve the requested stream",
+            );
+            expect(cameraErrorText(serverError(CAMERA_RESOURCE_EXHAUSTED_ERROR_CODE, {}))).to.equal(
+                "Camera has no capacity for this stream",
+            );
+            expect(cameraErrorText(serverError(CAMERA_STREAM_IN_USE_ERROR_CODE, []))).to.equal(
+                "Stream is still in use",
+            );
+            expect(cameraErrorText(serverError(CAMERA_NOT_SUPPORTED_ERROR_CODE, { message: null }))).to.equal(
+                "Endpoint does not support camera streaming",
+            );
+            expect(cameraErrorText(serverError(8, { reason: "x" }))).to.equal("Server error 8");
+        });
+
+        it("keeps a plain-text message under a camera code", () => {
+            expect(cameraErrorText(new ServerCommandError("device offline", CAMERA_STREAM_IN_USE_ERROR_CODE))).to.equal(
+                "device offline",
+            );
         });
 
         it("falls back to the message for other codes and errors", () => {

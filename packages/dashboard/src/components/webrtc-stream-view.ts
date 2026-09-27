@@ -5,18 +5,20 @@
  */
 
 import { consume } from "@lit/context";
-import type {
-    CameraCapabilitiesResult,
-    CameraResolution,
-    CameraSessionEndedData,
-    CameraStartStreamResult,
-    CameraStreamEvictedData,
-    MatterClient,
-    WebRtcAnswerData,
-    WebRtcCallbackData,
-    WebRtcIceCandidate,
-    WebRtcIceCandidatesData,
-    WebRtcOfferData,
+import {
+    CAMERA_STREAM_IN_USE_ERROR_CODE,
+    type CameraCapabilitiesResult,
+    type CameraResolution,
+    type CameraSessionEndedData,
+    type CameraStartStreamResult,
+    type CameraStreamEvictedData,
+    type MatterClient,
+    type WebRtcAnswerData,
+    type WebRtcCallbackData,
+    type WebRtcIceCandidate,
+    type WebRtcIceCandidatesData,
+    type WebRtcOfferData,
+    ServerCommandError,
 } from "@matter-server/ws-client";
 import { mdiAlertCircleOutline, mdiVideoOutline } from "@mdi/js";
 import { LitElement, css, html } from "lit";
@@ -28,7 +30,6 @@ import {
     cameraErrorText,
     type CameraQualityBadge,
     type CameraStreamRef,
-    isOwnSnapshotStream,
     snapshotMimeType,
     streamQualityBadges,
     streamsToRelease,
@@ -49,6 +50,27 @@ export interface CameraSnapshot {
 interface CameraSession {
     id: number;
     result: CameraStartStreamResult;
+}
+
+/** One `start()`: everything it created, torn down together and never touched by another attempt. */
+class StreamAttempt {
+    session: CameraSession | null = null;
+    /** Set when the camera or another connection ended the session, so teardown must not end it again. */
+    sessionEnded = false;
+    releasable = new Array<CameraStreamRef>();
+    readonly early = new Map<number, WebRtcCallbackData[]>();
+    readonly localCandidates = new Array<WebRtcIceCandidate>();
+    stopSignalling: (() => void) | null = null;
+    starting: Promise<unknown> | null = null;
+    /** Resolves once the streams known at teardown are ended and released. */
+    stopped: Promise<void> | null = null;
+    /** Also covers a session that a `camera_start_stream` still in flight at teardown opens later. */
+    settled: Promise<void> | null = null;
+
+    constructor(
+        readonly client: MatterClient,
+        readonly pc: RTCPeerConnection,
+    ) {}
 }
 
 @customElement("webrtc-stream-view")
@@ -73,15 +95,10 @@ export class WebRtcStreamView extends LitElement {
 
     @query("video") private _video?: HTMLVideoElement;
 
-    private _pc: RTCPeerConnection | null = null;
-    private _session: CameraSession | null = null;
-    /** Set when the camera or another connection ended the session, so stop() must not end it again. */
-    private _sessionEnded = false;
-    private _releasable = new Array<CameraStreamRef>();
+    private _attempt: StreamAttempt | null = null;
+    private _retiring = new Set<StreamAttempt>();
     private _ownSnapshotStreams = new Set<number>();
-    private _stopSignalling: (() => void) | null = null;
     private _stopCameraEvents: (() => void) | null = null;
-    private _stopping = false;
     private _snapshotChain: Promise<unknown> = Promise.resolve();
 
     get state(): StreamState {
@@ -89,16 +106,16 @@ export class WebRtcStreamView extends LitElement {
     }
 
     get videoStreamId(): number | null {
-        return this._session?.result.video?.stream_id ?? null;
+        return this._attempt?.session?.result.video?.stream_id ?? null;
     }
 
     get audioOnlySession(): boolean {
-        const result = this._session?.result;
+        const result = this._attempt?.session?.result;
         return result !== undefined && result.video === null && result.audio !== null;
     }
 
     get qualityBadges(): CameraQualityBadge[] {
-        return streamQualityBadges(this._session?.result.video ?? null);
+        return streamQualityBadges(this._attempt?.session?.result.video ?? null);
     }
 
     get muted(): boolean {
@@ -170,11 +187,7 @@ export class WebRtcStreamView extends LitElement {
         }
         const client = this.client;
         if (!client) throw new Error("Matter client not available");
-        if (this._state === "connecting" || this._state === "streaming") return;
-
-        this._fireStateChange("connecting", null);
-        this._sessionEnded = false;
-        this._ensureCameraEvents(client);
+        if (this._attempt) return;
 
         let pc: RTCPeerConnection;
         try {
@@ -183,11 +196,16 @@ export class WebRtcStreamView extends LitElement {
             this._fireStateChange("error", errorText(err));
             return;
         }
-        this._pc = pc;
-        const early = new Map<number, WebRtcCallbackData[]>();
-        const localCandidates = new Array<WebRtcIceCandidate>();
+        const attempt = new StreamAttempt(client, pc);
+        this._attempt = attempt;
+        this._fireStateChange("connecting", null);
+        this._ensureCameraEvents(client);
 
         try {
+            // A retiring attempt may still hold encoders or be opening a late session on this camera.
+            await Promise.all([...this._retiring].map(retiring => retiring.settled));
+            if (this._attempt !== attempt) return;
+
             const video = buildVideoRequest(this.capabilities, {
                 maxResolution: this.resolution,
                 watermarkEnabled: this.watermarkEnabled,
@@ -203,11 +221,11 @@ export class WebRtcStreamView extends LitElement {
                     sdpMid: ev.candidate.sdpMid,
                     sdpMLineIndex: ev.candidate.sdpMLineIndex,
                 };
-                if (this._session === null) {
-                    localCandidates.push(candidate);
+                if (attempt.session === null) {
+                    attempt.localCandidates.push(candidate);
                     return;
                 }
-                this._sendLocalIceCandidates([candidate]).catch(err =>
+                this._sendLocalIceCandidates(client, attempt.session, [candidate]).catch(err =>
                     console.warn("[webrtc-stream-view] sending ICE candidates failed", err),
                 );
             };
@@ -225,69 +243,48 @@ export class WebRtcStreamView extends LitElement {
                 if (videoElement.srcObject !== stream) videoElement.srcObject = stream;
             };
 
-            this._stopSignalling = client.addWebRtcCallbackListener(event => this._onWebRtcCallback(pc, early, event));
+            attempt.stopSignalling = client.addWebRtcCallbackListener(event => this._onWebRtcCallback(attempt, event));
 
             const offer = await pc.createOffer();
             await pc.setLocalDescription(offer);
             const sdp = pc.localDescription?.sdp;
             if (!sdp) throw new Error("Failed to create local SDP offer");
+            if (this._attempt !== attempt) return;
 
-            const result = await client.sendCommand("camera_start_stream", CAMERA_API_SCHEMA, {
+            const starting = client.sendCommand("camera_start_stream", CAMERA_API_SCHEMA, {
                 node_id: this.nodeId,
                 endpoint_id: this.endpointId,
                 stream_usage: "LiveView",
                 sdp,
                 ...(video === undefined ? {} : { video }),
             });
-            if (this._pc !== pc) {
-                await this._endSession(client, result.webrtc_session_id, true, streamsToRelease(result));
+            attempt.starting = starting;
+            const result = await starting;
+            attempt.session = { id: result.webrtc_session_id, result };
+            attempt.releasable = streamsToRelease(result);
+            if (this._attempt !== attempt) {
+                await attempt.settled;
                 return;
             }
-            this._session = { id: result.webrtc_session_id, result };
-            this._releasable = streamsToRelease(result);
 
-            for (const event of early.get(result.webrtc_session_id) ?? []) {
-                await this._handleSignalling(pc, event).catch(err => this._logSignallingFailure(event, err));
+            for (const event of attempt.early.get(result.webrtc_session_id) ?? []) {
+                await this._handleSignalling(attempt, event).catch(err => this._logSignallingFailure(event, err));
             }
-            early.clear();
-            if (localCandidates.length > 0) {
-                this._sendLocalIceCandidates(localCandidates.splice(0)).catch(err =>
+            attempt.early.clear();
+            if (attempt.localCandidates.length > 0 && this._attempt === attempt) {
+                this._sendLocalIceCandidates(client, attempt.session, attempt.localCandidates.splice(0)).catch(err =>
                     console.warn("[webrtc-stream-view] sending ICE candidates failed", err),
                 );
             }
         } catch (err) {
-            if (this._pc !== pc) return;
-            console.warn("[webrtc-stream-view] start failed", err);
-            this._fireStateChange("error", cameraErrorText(err));
-            await this.stop();
+            await this._fail(attempt, "start failed", err);
         }
     }
 
+    /** Ends the current attempt and waits for every attempt already being ended. */
     async stop(): Promise<void> {
-        if (this._stopping) return;
-        this._stopping = true;
-        try {
-            this._stopSignalling?.();
-            this._stopSignalling = null;
-            const pc = this._pc;
-            this._pc = null;
-            const session = this._session;
-            this._session = null;
-            const releasable = this._releasable;
-            this._releasable = new Array<CameraStreamRef>();
-
-            const client = this.client;
-            if (session && client) await this._endSession(client, session.id, !this._sessionEnded, releasable);
-            this._sessionEnded = false;
-
-            const video = this._video;
-            if (video?.srcObject) video.srcObject = null;
-            pc?.close();
-
-            if (this._state !== "idle" && this._state !== "error") this._fireStateChange("idle", null);
-        } finally {
-            this._stopping = false;
-        }
+        const stopped = this._retireCurrent();
+        await Promise.all([stopped, ...[...this._retiring].map(retiring => retiring.stopped)]);
     }
 
     async takeSnapshot(): Promise<CameraSnapshot> {
@@ -328,12 +325,53 @@ export class WebRtcStreamView extends LitElement {
                 osdEnabled: this.osdEnabled,
             }),
         });
-        if (isOwnSnapshotStream(this.capabilities, result.stream_id)) this._ownSnapshotStreams.add(result.stream_id);
+        if (result.provenance === "allocated") this._ownSnapshotStreams.add(result.stream_id);
         return {
             dataUri: `data:${snapshotMimeType(result.codec)};base64,${result.data}`,
             resolution: result.resolution,
             degraded: result.degraded,
         };
+    }
+
+    /**
+     * Detaches the current attempt from the view at once, so a newer `start()` can take over, and ends its
+     * session in the background.
+     */
+    private _retireCurrent(): Promise<void> {
+        const attempt = this._attempt;
+        if (!attempt) return Promise.resolve();
+        this._attempt = null;
+        attempt.stopSignalling?.();
+        attempt.stopSignalling = null;
+        attempt.pc.close();
+        const video = this._video;
+        if (video?.srcObject) video.srcObject = null;
+        if (this._state === "connecting" || this._state === "streaming") this._fireStateChange("idle", null);
+
+        const lateStart = attempt.session === null ? attempt.starting : null;
+        const stopped = this._endAttemptSession(attempt);
+        attempt.stopped = stopped;
+        attempt.settled = (
+            lateStart
+                ? stopped
+                      .then(() => lateStart)
+                      .then(
+                          () => this._endAttemptSession(attempt),
+                          // A start that fails leaves nothing to end; the start path reports it.
+                          () => undefined,
+                      )
+                : stopped
+        ).finally(() => this._retiring.delete(attempt));
+        this._retiring.add(attempt);
+        return stopped;
+    }
+
+    /** Reports a failure of the current attempt and ends it; a retired attempt's failure is only logged. */
+    private async _fail(attempt: StreamAttempt, what: string, err: unknown): Promise<void> {
+        console.warn(`[webrtc-stream-view] ${what}`, err);
+        if (this._attempt !== attempt) return;
+        this._fireStateChange("error", cameraErrorText(err));
+        await this._retireCurrent();
     }
 
     private _ensureCameraEvents(client: MatterClient): void {
@@ -351,36 +389,40 @@ export class WebRtcStreamView extends LitElement {
     }
 
     private _onSessionEnded(data: CameraSessionEndedData): void {
-        if (!this._isThisCamera(data) || data.webrtc_session_id !== this._session?.id) return;
-        this._sessionEnded = true;
-        this.stop().catch(err => console.warn("[webrtc-stream-view] stop after session end failed", err));
+        const attempt = this._attempt;
+        if (!attempt || !this._isThisCamera(data) || data.webrtc_session_id !== attempt.session?.id) return;
+        attempt.sessionEnded = true;
+        this._retireCurrent().catch(err => console.warn("[webrtc-stream-view] stop after session end failed", err));
     }
 
     private _onStreamEvicted(data: CameraStreamEvictedData): void {
         if (!this._isThisCamera(data)) return;
         if (data.kind === "snapshot") this._ownSnapshotStreams.delete(data.stream_id);
-        this._releasable = this._releasable.filter(
-            stream => stream.kind !== data.kind || stream.stream_id !== data.stream_id,
-        );
+        for (const attempt of [this._attempt, ...this._retiring]) {
+            if (!attempt) continue;
+            attempt.releasable = attempt.releasable.filter(
+                stream => stream.kind !== data.kind || stream.stream_id !== data.stream_id,
+            );
+        }
     }
 
-    private async _endSession(
-        client: MatterClient,
-        sessionId: number,
-        sendStop: boolean,
-        releasable: CameraStreamRef[],
-    ): Promise<void> {
-        if (sendStop) {
+    private async _endAttemptSession(attempt: StreamAttempt): Promise<void> {
+        const { client, session } = attempt;
+        if (!session) return;
+        if (!attempt.sessionEnded) {
             try {
                 await client.sendCommand("camera_stop_stream", CAMERA_API_SCHEMA, {
                     node_id: this.nodeId,
                     endpoint_id: this.endpointId,
-                    webrtc_session_id: sessionId,
+                    webrtc_session_id: session.id,
                 });
             } catch (err) {
                 console.warn("[webrtc-stream-view] camera_stop_stream failed", err);
             }
         }
+        // Read after the stop, so a stream evicted meanwhile is not released.
+        const releasable = attempt.releasable;
+        attempt.releasable = new Array<CameraStreamRef>();
         for (const stream of releasable) await this._release(client, stream);
     }
 
@@ -392,79 +434,81 @@ export class WebRtcStreamView extends LitElement {
                 ...stream,
             });
         } catch (err) {
-            // Error 104 is expected when another session still uses the stream.
-            console.info(`[webrtc-stream-view] ${stream.kind} stream ${stream.stream_id} not released`, err);
+            const inUse = err instanceof ServerCommandError && err.errorCode === CAMERA_STREAM_IN_USE_ERROR_CODE;
+            const log = inUse ? console.info : console.warn;
+            log(`[webrtc-stream-view] ${stream.kind} stream ${stream.stream_id} not released`, err);
         }
     }
 
-    private _onWebRtcCallback(
-        pc: RTCPeerConnection,
-        early: Map<number, WebRtcCallbackData[]>,
-        event: WebRtcCallbackData,
-    ): void {
+    private _onWebRtcCallback(attempt: StreamAttempt, event: WebRtcCallbackData): void {
         if (!this._isThisCamera(event)) return;
-        const session = this._session;
+        const session = attempt.session;
         if (session === null) {
-            const queue = early.get(event.webrtc_session_id) ?? new Array<WebRtcCallbackData>();
+            const queue = attempt.early.get(event.webrtc_session_id) ?? new Array<WebRtcCallbackData>();
             queue.push(event);
-            early.set(event.webrtc_session_id, queue);
+            attempt.early.set(event.webrtc_session_id, queue);
             return;
         }
         if (event.webrtc_session_id !== session.id) return;
-        this._handleSignalling(pc, event).catch(err => this._logSignallingFailure(event, err));
+        this._handleSignalling(attempt, event).catch(err => this._logSignallingFailure(event, err));
     }
 
     private _logSignallingFailure(event: WebRtcCallbackData, err: unknown): void {
         console.warn("[webrtc-stream-view] signalling failed", event.event_type, err);
     }
 
-    private async _handleSignalling(pc: RTCPeerConnection, event: WebRtcCallbackData): Promise<void> {
-        if (this._pc !== pc) return;
+    private async _handleSignalling(attempt: StreamAttempt, event: WebRtcCallbackData): Promise<void> {
+        if (this._attempt !== attempt) return;
         switch (event.event_type) {
             case "answer":
-                return this._handleAnswer(pc, event.data);
+                return this._handleAnswer(attempt, event.data);
             case "ice_candidates":
-                return this._handleRemoteIceCandidates(pc, event.data);
+                return this._handleRemoteIceCandidates(attempt.pc, event.data);
             case "offer":
-                return this._handleOffer(pc, event.data);
+                return this._handleOffer(attempt, event.data);
             case "end":
-                this._sessionEnded = true;
-                return this.stop();
+                attempt.sessionEnded = true;
+                return this._retireCurrent();
         }
     }
 
-    private async _handleAnswer(pc: RTCPeerConnection, data: WebRtcAnswerData | null): Promise<void> {
+    private async _handleAnswer(attempt: StreamAttempt, data: WebRtcAnswerData | null): Promise<void> {
         if (!data) return;
         try {
-            await pc.setRemoteDescription({ type: "answer", sdp: sanitizeAnswerSdp(data.sdp) });
-            if (this._pc === pc) this._fireStateChange("streaming", null);
+            await attempt.pc.setRemoteDescription({ type: "answer", sdp: sanitizeAnswerSdp(data.sdp) });
         } catch (err) {
-            const message = err instanceof Error ? err.message : String(err);
-            this._fireStateChange("error", `Failed to apply answer: ${message}`);
-            await this.stop();
+            return this._fail(attempt, "applying the answer failed", err);
         }
+        if (this._attempt === attempt) this._fireStateChange("streaming", null);
     }
 
-    /** A camera re-offer on an established session; answered through `camera_provide_answer`. */
-    private async _handleOffer(pc: RTCPeerConnection, data: WebRtcOfferData | null): Promise<void> {
-        const client = this.client;
-        const session = this._session;
-        if (!data || !client || !session) return;
+    /**
+     * A camera re-offer on an established session; answered through `camera_provide_answer`. An offer the
+     * browser refuses leaves the session as it was; once it is applied, the camera waits for an answer, so
+     * a failure after that ends the session.
+     */
+    private async _handleOffer(attempt: StreamAttempt, data: WebRtcOfferData | null): Promise<void> {
+        const { client, session, pc } = attempt;
+        if (!data || !session) return;
         if (pc.signalingState !== "stable") {
             console.info("[webrtc-stream-view] camera offer ignored in signaling state", pc.signalingState);
             return;
         }
         await pc.setRemoteDescription({ type: "offer", sdp: data.sdp });
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
-        const sdp = pc.localDescription?.sdp;
-        if (!sdp) return;
-        await client.sendCommand("camera_provide_answer", CAMERA_API_SCHEMA, {
-            node_id: this.nodeId,
-            endpoint_id: this.endpointId,
-            webrtc_session_id: session.id,
-            sdp,
-        });
+        try {
+            const answer = await pc.createAnswer();
+            await pc.setLocalDescription(answer);
+            const sdp = pc.localDescription?.sdp;
+            if (!sdp) throw new Error("Failed to create local SDP answer");
+            await client.sendCommand("camera_provide_answer", CAMERA_API_SCHEMA, {
+                node_id: this.nodeId,
+                endpoint_id: this.endpointId,
+                webrtc_session_id: session.id,
+                sdp,
+            });
+        } catch (err) {
+            await this._fail(attempt, "answering the camera offer failed", err);
+        }
     }
 
     private async _handleRemoteIceCandidates(
@@ -480,10 +524,11 @@ export class WebRtcStreamView extends LitElement {
         }
     }
 
-    private async _sendLocalIceCandidates(candidates: WebRtcIceCandidate[]): Promise<void> {
-        const client = this.client;
-        const session = this._session;
-        if (!client || !session) return;
+    private async _sendLocalIceCandidates(
+        client: MatterClient,
+        session: CameraSession,
+        candidates: WebRtcIceCandidate[],
+    ): Promise<void> {
         await client.sendCommand("camera_provide_ice_candidates", CAMERA_API_SCHEMA, {
             node_id: this.nodeId,
             endpoint_id: this.endpointId,

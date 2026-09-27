@@ -5,6 +5,7 @@
  */
 
 import {
+    CAMERA_STREAM_IN_USE_ERROR_CODE,
     CAMERA_STREAM_INCOMPATIBLE_ERROR_CODE,
     type CameraSessionEndedData,
     type CameraStartStreamResult,
@@ -33,6 +34,8 @@ interface FakeDescription {
 
 class FakePeerConnection {
     static instances = new Array<FakePeerConnection>();
+    /** When set, createOffer waits for it. */
+    static offerGate: Promise<void> | null = null;
     transceivers = new Array<string>();
     localDescription: FakeDescription | null = null;
     remoteDescription: FakeDescription | null = null;
@@ -53,6 +56,7 @@ class FakePeerConnection {
     }
 
     async createOffer(): Promise<FakeDescription> {
+        await FakePeerConnection.offerGate;
         return { type: "offer", sdp: "offer-sdp" };
     }
 
@@ -65,7 +69,14 @@ class FakePeerConnection {
         this.signalingState = description.type === "offer" ? "have-local-offer" : "stable";
     }
 
+    /** When set, setRemoteDescription stays pending until close(), which rejects it like a browser does. */
+    holdRemoteDescription = false;
+    #pendingRemote = new Array<(err: Error) => void>();
+
     async setRemoteDescription(description: FakeDescription) {
+        if (this.holdRemoteDescription) {
+            await new Promise<void>((_resolve, reject) => this.#pendingRemote.push(reject));
+        }
         this.remoteDescription = description;
         this.signalingState = description.type === "offer" ? "have-remote-offer" : "stable";
     }
@@ -76,6 +87,7 @@ class FakePeerConnection {
 
     close() {
         this.closed = true;
+        for (const reject of this.#pendingRemote.splice(0)) reject(new Error("InvalidStateError: closed"));
     }
 }
 
@@ -178,6 +190,44 @@ function createView(client: MatterClient): WebRtcStreamView {
 
 const settle = () => new Promise(resolve => setTimeout(resolve, 0));
 
+function deferred<T>() {
+    let resolve: (value: T) => void = () => {};
+    let reject: (err: unknown) => void = () => {};
+    const promise = new Promise<T>((res, rej) => {
+        resolve = res;
+        reject = rej;
+    });
+    return { promise, resolve, reject };
+}
+
+function recordStates(view: WebRtcStreamView) {
+    const states = new Array<string>();
+    view.addEventListener("streamstate", ev => {
+        if (ev instanceof CustomEvent) states.push(ev.detail.state);
+    });
+    return states;
+}
+
+function offerEvent(sessionId = SESSION_ID): WebRtcCallbackData {
+    return {
+        event_type: "offer",
+        webrtc_session_id: sessionId,
+        node_id: NODE_ID,
+        endpoint_id: ENDPOINT_ID,
+        fabric_index: 1,
+        data: { sdp: "camera-offer" },
+    };
+}
+
+function captureConsole(method: "info" | "warn") {
+    const original = console[method];
+    const messages = new Array<string>();
+    console[method] = (...args: unknown[]) => {
+        messages.push(String(args[0]));
+    };
+    return { messages, restore: () => (console[method] = original) };
+}
+
 describe("WebRtcStreamView", () => {
     before(() => {
         Object.defineProperty(globalThis, "RTCPeerConnection", {
@@ -193,6 +243,7 @@ describe("WebRtcStreamView", () => {
 
     beforeEach(() => {
         FakePeerConnection.instances = [];
+        FakePeerConnection.offerGate = null;
     });
 
     describe("start", () => {
@@ -234,6 +285,32 @@ describe("WebRtcStreamView", () => {
 
             expect(view.state).to.equal("error");
             expect(fake.calls).to.deep.equal([]);
+        });
+
+        it("ignores a second start while one is running", async () => {
+            const fake = fakeClient({ camera_start_stream: () => startResult() });
+            const view = createView(fake.client);
+
+            await Promise.all([view.start(), view.start()]);
+
+            expect(fake.commands()).to.deep.equal(["camera_start_stream"]);
+            expect(FakePeerConnection.instances).to.have.length(1);
+        });
+
+        it("sends no camera_start_stream when stopped while creating the offer", async () => {
+            const gate = deferred<void>();
+            FakePeerConnection.offerGate = gate.promise;
+            const fake = fakeClient({ camera_start_stream: () => startResult() });
+            const view = createView(fake.client);
+
+            const starting = view.start();
+            await settle();
+            await view.stop();
+            gate.resolve();
+            await starting;
+
+            expect(fake.commands()).to.deep.equal([]);
+            expect(view.state).to.equal("idle");
         });
 
         it("opens the session with camera_start_stream and the picked hints", async () => {
@@ -456,6 +533,32 @@ describe("WebRtcStreamView", () => {
             expect(fake.commands()).to.not.include("camera_provide_answer");
         });
 
+        it("ends the session with the error text when a camera re-offer cannot be answered", async () => {
+            const fake = fakeClient({
+                camera_start_stream: () => startResult(),
+                camera_provide_answer: () => {
+                    throw new ServerCommandError("Session is gone", 8);
+                },
+            });
+            const view = createView(fake.client);
+            await view.start();
+            fake.emitWebRtc(answerEvent());
+            await settle();
+
+            fake.emitWebRtc(offerEvent());
+            await settle();
+            await settle();
+
+            expect(view.state).to.equal("error");
+            expect(fake.commands()).to.deep.equal([
+                "camera_start_stream",
+                "camera_provide_answer",
+                "camera_stop_stream",
+                "camera_release_stream",
+            ]);
+            expect(lastPeer().closed).to.equal(true);
+        });
+
         it("shows the reason of a camera error as text", async () => {
             const fake = fakeClient({
                 camera_start_stream: () => {
@@ -535,6 +638,243 @@ describe("WebRtcStreamView", () => {
             expect(
                 fake.calls.filter(call => call.command === "camera_release_stream").map(call => call.args.kind),
             ).to.deep.equal(["video", "audio"]);
+        });
+
+        it("still releases its streams when camera_stop_stream fails", async () => {
+            const fake = fakeClient({
+                camera_start_stream: () => startResult(),
+                camera_stop_stream: () => {
+                    throw new Error("camera offline");
+                },
+            });
+            const view = createView(fake.client);
+            await view.start();
+
+            await view.stop();
+
+            expect(fake.commands()).to.deep.equal([
+                "camera_start_stream",
+                "camera_stop_stream",
+                "camera_release_stream",
+            ]);
+            expect(view.state).to.equal("idle");
+        });
+
+        it("logs an expected in-use refusal at info and any other release failure as a warning", async () => {
+            const fake = fakeClient({
+                camera_start_stream: () =>
+                    startResult({
+                        audio: {
+                            stream_id: 4,
+                            codec: "OPUS",
+                            channel_count: 1,
+                            sample_rate: 48000,
+                            bit_rate: 20000,
+                            bit_depth: 16,
+                            provenance: "allocated",
+                        },
+                    }),
+                camera_release_stream: args => {
+                    if (args.kind === "video") {
+                        throw new ServerCommandError(
+                            JSON.stringify({ message: "in use", stream_id: 3 }),
+                            CAMERA_STREAM_IN_USE_ERROR_CODE,
+                        );
+                    }
+                    throw new Error("connection lost");
+                },
+            });
+            const view = createView(fake.client);
+            await view.start();
+            const info = captureConsole("info");
+            const warn = captureConsole("warn");
+            try {
+                await view.stop();
+            } finally {
+                info.restore();
+                warn.restore();
+            }
+
+            expect(info.messages.filter(m => m.includes("not released"))).to.deep.equal([
+                "[webrtc-stream-view] video stream 3 not released",
+            ]);
+            expect(warn.messages.filter(m => m.includes("not released"))).to.deep.equal([
+                "[webrtc-stream-view] audio stream 4 not released",
+            ]);
+        });
+
+        it("a second stop waits for the first one to finish", async () => {
+            const stopping = deferred<null>();
+            const fake = fakeClient({
+                camera_start_stream: () => startResult(),
+                camera_stop_stream: () => stopping.promise,
+            });
+            const view = createView(fake.client);
+            await view.start();
+
+            const first = view.stop();
+            let secondDone = false;
+            const second = view.stop().then(() => (secondDone = true));
+            await settle();
+            expect(secondDone).to.equal(false);
+
+            stopping.resolve(null);
+            await Promise.all([first, second]);
+            expect(fake.commands().at(-1)).to.equal("camera_release_stream");
+        });
+
+        it("starts again only after a pending stop finished, and that stop leaves the new session alone", async () => {
+            const stopping = deferred<null>();
+            let nextSession = SESSION_ID;
+            const fake = fakeClient({
+                camera_start_stream: () => startResult({ webrtc_session_id: nextSession++ }),
+                camera_stop_stream: () => stopping.promise,
+            });
+            const view = createView(fake.client);
+            const states = recordStates(view);
+            await view.start();
+            lastPeer().setRemoteDescription = async () => {
+                throw new Error("bad answer");
+            };
+            fake.emitWebRtc(answerEvent());
+            await settle();
+            expect(view.state).to.equal("error");
+            expect(fake.commands()).to.deep.equal(["camera_start_stream", "camera_stop_stream"]);
+
+            const retry = view.start();
+            await settle();
+            expect(view.state).to.equal("connecting");
+            expect(fake.commands()).to.deep.equal(["camera_start_stream", "camera_stop_stream"]);
+
+            stopping.resolve(null);
+            await retry;
+            expect(fake.commands()).to.deep.equal([
+                "camera_start_stream",
+                "camera_stop_stream",
+                "camera_release_stream",
+                "camera_start_stream",
+            ]);
+            fake.emitWebRtc(answerEvent(SESSION_ID + 1));
+            await settle();
+
+            expect(view.state).to.equal("streaming");
+            expect(states.slice(-2)).to.deep.equal(["connecting", "streaming"]);
+            expect(lastPeer().closed).to.equal(false);
+            expect(fake.listenerCounts().webrtc).to.equal(1);
+            lastPeer().onicecandidate?.({ candidate: { candidate: "candidate:3", sdpMid: "0", sdpMLineIndex: 0 } });
+            await settle();
+            expect(fake.calls.at(-1)?.args.webrtc_session_id).to.equal(SESSION_ID + 1);
+        });
+
+        it("starts again only after a start stopped in flight has been ended", async () => {
+            const firstStart = deferred<CameraStartStreamResult>();
+            let starts = 0;
+            const fake = fakeClient({
+                camera_start_stream: () =>
+                    ++starts === 1 ? firstStart.promise : startResult({ webrtc_session_id: SESSION_ID + 1 }),
+            });
+            const view = createView(fake.client);
+
+            const starting = view.start();
+            await settle();
+            await view.stop();
+            const retry = view.start();
+            await settle();
+            expect(fake.commands()).to.deep.equal(["camera_start_stream"]);
+
+            firstStart.resolve(startResult());
+            await Promise.all([starting, retry]);
+
+            expect(fake.commands()).to.deep.equal([
+                "camera_start_stream",
+                "camera_stop_stream",
+                "camera_release_stream",
+                "camera_start_stream",
+            ]);
+            expect(view.state).to.equal("connecting");
+        });
+
+        it("does not start when stopped again while waiting for a pending stop", async () => {
+            const stopping = deferred<null>();
+            const fake = fakeClient({
+                camera_start_stream: () => startResult(),
+                camera_stop_stream: () => stopping.promise,
+            });
+            const view = createView(fake.client);
+            await view.start();
+
+            const firstStop = view.stop();
+            const retry = view.start();
+            const secondStop = view.stop();
+            stopping.resolve(null);
+            await Promise.all([firstStop, retry, secondStop]);
+
+            expect(fake.commands()).to.deep.equal([
+                "camera_start_stream",
+                "camera_stop_stream",
+                "camera_release_stream",
+            ]);
+            expect(FakePeerConnection.instances.map(pc => pc.closed)).to.deep.equal([true, true]);
+            expect(fake.listenerCounts().webrtc).to.equal(0);
+            expect(view.state).to.equal("idle");
+        });
+
+        it("forgets a stream evicted while its session is being ended", async () => {
+            const stopping = deferred<null>();
+            const fake = fakeClient({
+                camera_start_stream: () => startResult(),
+                camera_stop_stream: () => stopping.promise,
+            });
+            const view = createView(fake.client);
+            await view.start();
+
+            const stopped = view.stop();
+            await settle();
+            fake.emitEvicted({ node_id: NODE_ID, endpoint_id: ENDPOINT_ID, kind: "video", stream_id: 3 });
+            stopping.resolve(null);
+            await stopped;
+
+            expect(fake.commands()).to.deep.equal(["camera_start_stream", "camera_stop_stream"]);
+        });
+
+        it("starts again once a start stopped in flight fails", async () => {
+            const firstStart = deferred<CameraStartStreamResult>();
+            let starts = 0;
+            const fake = fakeClient({
+                camera_start_stream: () => (++starts === 1 ? firstStart.promise : startResult()),
+            });
+            const view = createView(fake.client);
+
+            const starting = view.start();
+            await settle();
+            await view.stop();
+            const retry = view.start();
+            firstStart.reject(new Error("timed out"));
+            await Promise.all([starting, retry]);
+
+            expect(fake.commands()).to.deep.equal(["camera_start_stream", "camera_start_stream"]);
+            expect(view.state).to.equal("connecting");
+        });
+
+        it("reports no error when stop rejects an answer still being applied", async () => {
+            const fake = fakeClient({ camera_start_stream: () => startResult() });
+            const view = createView(fake.client);
+            const states = recordStates(view);
+            await view.start();
+            lastPeer().holdRemoteDescription = true;
+
+            fake.emitWebRtc(answerEvent());
+            await settle();
+            await view.stop();
+            await settle();
+
+            expect(view.state).to.equal("idle");
+            expect(states).to.deep.equal(["connecting", "idle"]);
+            expect(fake.commands()).to.deep.equal([
+                "camera_start_stream",
+                "camera_stop_stream",
+                "camera_release_stream",
+            ]);
         });
 
         it("does not end a session the camera ended, but releases its streams", async () => {
@@ -663,9 +1003,12 @@ describe("WebRtcStreamView", () => {
             expect(view.state).to.equal("idle");
         });
 
-        it("drops buffered signalling that follows a buffered end", async () => {
+        it("drops buffered signalling and held ICE candidates that follow a buffered end", async () => {
             const fake: ReturnType<typeof fakeClient> = fakeClient({
                 camera_start_stream: () => {
+                    lastPeer().onicecandidate?.({
+                        candidate: { candidate: "candidate:1", sdpMid: "0", sdpMLineIndex: 0 },
+                    });
                     fake.emitWebRtc({
                         event_type: "end",
                         webrtc_session_id: SESSION_ID,
@@ -684,6 +1027,7 @@ describe("WebRtcStreamView", () => {
 
             expect(lastPeer().remoteDescription).to.equal(null);
             expect(view.state).to.equal("idle");
+            expect(fake.commands()).to.deep.equal(["camera_start_stream", "camera_release_stream"]);
         });
 
         it("tears down the session, snapshot streams and listeners when removed from the page", async () => {
@@ -779,45 +1123,37 @@ describe("WebRtcStreamView", () => {
             ).to.deep.equal([{ node_id: NODE_ID, endpoint_id: ENDPOINT_ID, kind: "snapshot", stream_id: 20 }]);
         });
 
-        it("never releases a snapshot stream that existed when the overlay opened", async () => {
-            const fake = fakeClient({
-                camera_snapshot: () => ({
-                    data: "AA==",
-                    codec: "JPEG",
-                    resolution: { width: 640, height: 480 },
-                    degraded: false,
-                    stream_id: 4,
-                    provenance: "adopted",
-                }),
-            });
+        it("releases a snapshot stream its capture allocated before the capabilities loaded", async () => {
+            const fake = snapshotClient();
             const view = createView(fake.client);
-            view.capabilities = capabilities({
-                allocated: {
-                    video: [],
-                    audio: [],
-                    snapshot: [
-                        {
-                            snapshot_stream_id: 4,
-                            image_codec: "JPEG",
-                            min_resolution: { width: 640, height: 480 },
-                            max_resolution: { width: 640, height: 480 },
-                            reference_count: 0,
-                            allocated_by_server: false,
-                            frame_rate: 1,
-                            encoded_pixels: false,
-                            hardware_encoder: false,
-                            watermark_enabled: false,
-                            osd_enabled: false,
-                        },
-                    ],
-                },
-            });
 
             await view.takeSnapshot();
             await view.releaseSnapshotStreams();
 
-            expect(fake.commands()).to.deep.equal(["camera_snapshot"]);
+            expect(fake.commands()).to.deep.equal(["camera_snapshot", "camera_release_stream"]);
         });
+
+        for (const provenance of ["reused", "adopted"] as const) {
+            it(`never releases a snapshot stream its capture ${provenance}`, async () => {
+                const fake = fakeClient({
+                    camera_snapshot: () => ({
+                        data: "AA==",
+                        codec: "JPEG",
+                        resolution: { width: 640, height: 480 },
+                        degraded: false,
+                        stream_id: 4,
+                        provenance,
+                    }),
+                });
+                const view = createView(fake.client);
+                view.capabilities = capabilities();
+
+                await view.takeSnapshot();
+                await view.releaseSnapshotStreams();
+
+                expect(fake.commands()).to.deep.equal(["camera_snapshot"]);
+            });
+        }
 
         it("waits for an in-flight capture before releasing", async () => {
             let finishCapture: () => void = () => {};

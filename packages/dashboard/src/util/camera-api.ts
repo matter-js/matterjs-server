@@ -74,9 +74,10 @@ export function isAudioOnlyCamera(caps: CameraCapabilitiesResult | null): boolea
 
 /**
  * The `video` argument for `camera_start_stream`; undefined means leave the key out. Any object, `{}`
- * included, demands video, so without a hint the track is left to the server, which then serves an
- * audio-only camera whose features are not known yet. Overlay flags are stated only on a camera that
- * advertises them, because `true` on any other fails with error 102.
+ * included, demands video: a camera reporting the `Video` feature gets one, an audio-only camera gets
+ * `false`. While the features are unknown, video is demanded only when a hint was picked, so the server
+ * can still serve an audio-only camera. Overlay flags are stated only on a camera that advertises them,
+ * because `true` on any other fails with error 102.
  */
 export function buildVideoRequest(
     caps: CameraCapabilitiesResult | null,
@@ -87,7 +88,7 @@ export function buildVideoRequest(
     if (choices.maxResolution) hints.max_resolution = choices.maxResolution;
     if (hasCameraFeature(caps, "Watermark")) hints.watermark_enabled = choices.watermarkEnabled;
     if (hasCameraFeature(caps, "OnScreenDisplay")) hints.osd_enabled = choices.osdEnabled;
-    return Object.keys(hints).length > 0 ? hints : undefined;
+    return hasCameraFeature(caps, "Video") || Object.keys(hints).length > 0 ? hints : undefined;
 }
 
 export function buildSnapshotOverlays(
@@ -106,17 +107,6 @@ export function streamsToRelease(result: CameraStartStreamResult): CameraStreamR
     if (result.video?.provenance === "allocated") streams.push({ kind: "video", stream_id: result.video.stream_id });
     if (result.audio?.provenance === "allocated") streams.push({ kind: "audio", stream_id: result.audio.stream_id });
     return streams;
-}
-
-/**
- * `camera_snapshot` names its stream but not who allocated it. A stream missing from the allocations
- * read when the overlay opened was allocated by this dashboard's own capture; without that read,
- * nothing counts as own, so another controller's stream is never released.
- */
-export function isOwnSnapshotStream(openingCaps: CameraCapabilitiesResult | null, streamId: number): boolean {
-    return (
-        openingCaps !== null && !openingCaps.allocated.snapshot.some(stream => stream.snapshot_stream_id === streamId)
-    );
 }
 
 export function snapshotMimeType(codec: string): string {
@@ -166,6 +156,27 @@ const PRIVACY_MODE_TEXT: Record<CameraPrivacyMode, string> = {
     soft_recording_mode_enabled: "recording privacy mode",
 };
 
+const ERROR_CODE_TEXT: Record<number, string> = {
+    [CAMERA_STREAM_INCOMPATIBLE_ERROR_CODE]: "Camera cannot serve the requested stream",
+    [CAMERA_RESOURCE_EXHAUSTED_ERROR_CODE]: "Camera has no capacity for this stream",
+    [CAMERA_STREAM_IN_USE_ERROR_CODE]: "Stream is still in use",
+    [CAMERA_NOT_SUPPORTED_ERROR_CODE]: "Endpoint does not support camera streaming",
+    [CAMERA_PRIVACY_MODE_ERROR_CODE]: "Camera privacy mode is enabled",
+};
+
+/** A server message that is a JSON object is details the client could not read; never show it raw. */
+function serverMessageText(error: ServerCommandError): string {
+    let parsed: unknown;
+    try {
+        parsed = JSON.parse(error.message);
+    } catch {
+        return error.message;
+    }
+    if (typeof parsed !== "object" || parsed === null) return error.message;
+    if ("message" in parsed && typeof parsed.message === "string") return parsed.message;
+    return ERROR_CODE_TEXT[error.errorCode] ?? `Server error ${error.errorCode}`;
+}
+
 export function cameraErrorText(error: unknown): string {
     if (!(error instanceof ServerCommandError)) return errorText(error);
     if (error.hasDetails(CAMERA_STREAM_INCOMPATIBLE_ERROR_CODE)) {
@@ -197,5 +208,5 @@ export function cameraErrorText(error: unknown): string {
         const clusters = error.details.missing_clusters.map(id => `0x${id.toString(16).padStart(4, "0")}`);
         return clusters.length > 0 ? `${error.details.message}: missing ${clusters.join(", ")}` : error.details.message;
     }
-    return error.message;
+    return serverMessageText(error);
 }

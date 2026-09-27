@@ -384,6 +384,11 @@ export class CameraOverlay extends LitElement {
                             : nothing
                     }
                     ${
+                        this._state === "connecting"
+                            ? html`<md-filled-button @click=${this._stop}>End</md-filled-button>`
+                            : nothing
+                    }
+                    ${
                         this._state === "streaming"
                             ? html`<md-filled-button @click=${this._stop}>End</md-filled-button>
                                   <md-text-button
