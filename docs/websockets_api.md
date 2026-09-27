@@ -1609,6 +1609,13 @@ These commands are available only in the Matter.js server and not in the Python 
   `set_wifi_credentials` and `set_default_fabric_label` answer error 8, while a command that hands
   `node_id` straight to the Matter conversion — `get_node`, `interview_node`, `ping_node` and the
   other node-targeted ones — reports a missing or non-numeric one as error 0 (`UnknownError`)
+- **Node ID classes**: every node-targeted command refuses a `node_id` whose class can never name a
+  node, with error 8 naming the class. Accepted are the Operational range (a commissioned node) and
+  the Temporary Local range (this server's imported test nodes); a Group Node ID, a CASE Authenticated
+  Tag, a PAKE key identifier, the Unspecified Node ID and the reserved ranges are refused (Matter Core
+  specification § 2.5.5, Table 4). The Python Matter Server hands all of them to the node lookup and
+  answers `NODE_NOT_EXISTS`, which says the node is not commissioned rather than that the argument
+  could never name one
 - **Commands that read no arguments**: `server_info`, `get_all_credentials`, `get_thread_border_routers`,
   `discover`, `get_loglevel` and `initiate_ota_upload` still require `args` to be an object when the
   message states one, although they read nothing from it

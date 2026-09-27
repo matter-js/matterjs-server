@@ -69,6 +69,7 @@ import {
 } from "../types/WebSocketMessageTypes.js";
 import { formatNodeId } from "../util/formatNodeId.js";
 import { MATTER_VERSION } from "../util/matterVersion.js";
+import { unusableNodeIdClass } from "../util/nodeIdClasses.js";
 import { ConfigStorage } from "./ConfigStorage.js";
 import { nextConnectionLogTag, nextConnectionOwnerId } from "./connectionIdentity.js";
 import {
@@ -274,6 +275,24 @@ export class WebSocketControllerHandler implements WebServerHandler {
      */
     #handlerFor(nodeId: number | bigint): TestNodeCommandHandler | ControllerCommandHandler {
         return TestNodeCommandHandler.isTestNodeId(nodeId) ? this.#testNodeHandler : this.#commandHandler;
+    }
+
+    /**
+     * The node a command names, branded once its Node ID class is known to name a node a command can
+     * reach.
+     *
+     * Every route that targets a node brands its `node_id` here, so one rule decides which ids reach
+     * matter.js. A class that names an access-control subject or a set of nodes would otherwise be
+     * branded and answered as `NODE_NOT_EXISTS`, which tells a client the node is not commissioned
+     * rather than that the argument can never name a node.
+     */
+    #targetNodeId(nodeId: number | bigint, command: string): NodeId {
+        const target = NodeId(nodeId);
+        const unusable = unusableNodeIdClass(target);
+        if (unusable !== undefined) {
+            throw ServerError.invalidArguments(`${command} cannot address ${unusable}: node_id must name one node`);
+        }
+        return target;
     }
 
     /**
@@ -1301,8 +1320,8 @@ export class WebSocketControllerHandler implements WebServerHandler {
 
     async #handleGetNode(args: ArgsOf<"get_node">): Promise<ResponseOf<"get_node">> {
         const { node_id } = args;
-        const nodeId = NodeId(node_id);
-        const handler = this.#handlerFor(node_id);
+        const nodeId = this.#targetNodeId(node_id, "get_node");
+        const handler = this.#handlerFor(nodeId);
 
         if (!handler.hasNode(nodeId)) {
             throw ServerError.nodeNotExists(node_id);
@@ -1320,7 +1339,8 @@ export class WebSocketControllerHandler implements WebServerHandler {
         args: ArgsOf<"get_node_ip_addresses">,
     ): Promise<ResponseOf<"get_node_ip_addresses">> {
         const { node_id, prefer_cache, scoped } = args;
-        const result = await this.#handlerFor(node_id).getNodeIpAddresses(NodeId(node_id), prefer_cache);
+        const nodeId = this.#targetNodeId(node_id, "get_node_ip_addresses");
+        const result = await this.#handlerFor(nodeId).getNodeIpAddresses(nodeId, prefer_cache);
         // scoped=true means keep the interface suffix (e.g., %en0), scoped=false (default) strips it
         if (scoped) {
             return result;
@@ -1329,16 +1349,13 @@ export class WebSocketControllerHandler implements WebServerHandler {
     }
 
     async #handleReadAttribute(args: ArgsOf<"read_attribute">): Promise<ResponseOf<"read_attribute">> {
-        const { node_id: nodeId, attribute_path, fabric_filtered = false } = args;
+        const { node_id, attribute_path, fabric_filtered = false } = args;
+        const nodeId = this.#targetNodeId(node_id, "read_attribute");
 
         // Normalize attribute_path to array
         const attributePaths = Array.isArray(attribute_path) ? attribute_path : [attribute_path];
 
-        const result = await this.#handlerFor(nodeId).handleReadAttributes(
-            NodeId(nodeId),
-            attributePaths,
-            fabric_filtered,
-        );
+        const result = await this.#handlerFor(nodeId).handleReadAttributes(nodeId, attributePaths, fabric_filtered);
 
         if (Object.keys(result).length === 0) {
             throw ServerError.sdkStackError("Failed to read attribute: no values returned");
@@ -1348,7 +1365,8 @@ export class WebSocketControllerHandler implements WebServerHandler {
     }
 
     async #handleWriteAttribute(args: ArgsOf<"write_attribute">): Promise<ResponseOf<"write_attribute">> {
-        const { node_id: nodeId, attribute_path, value } = args;
+        const { node_id, attribute_path, value } = args;
+        const nodeId = this.#targetNodeId(node_id, "write_attribute");
         const { endpointId, clusterId, attributeId } = splitAttributePath(attribute_path);
 
         // Write operations don't support wildcards
@@ -1357,7 +1375,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
         }
 
         const { status } = await this.#handlerFor(nodeId).handleWriteAttribute({
-            nodeId: NodeId(nodeId),
+            nodeId,
             endpointId,
             clusterId,
             attributeId,
@@ -1411,7 +1429,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
         requestedBy: string,
     ): Promise<ResponseOf<"device_command">> {
         const {
-            node_id: nodeId,
+            node_id,
             endpoint_id: endpointId,
             cluster_id: clusterId,
             command_name: commandName,
@@ -1419,10 +1437,11 @@ export class WebSocketControllerHandler implements WebServerHandler {
             timed_request_timeout_ms: timedInteractionTimeoutMs,
         } = args;
 
+        const nodeId = this.#targetNodeId(node_id, "device_command");
         const camelizedCommand = camelize(commandName);
         const invoke = (): Promise<unknown> =>
             this.#handlerFor(nodeId).handleInvoke({
-                nodeId: NodeId(nodeId),
+                nodeId,
                 endpointId: EndpointNumber(endpointId),
                 clusterId: ClusterId(clusterId),
                 commandName: camelizedCommand,
@@ -1446,7 +1465,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 ? await invoke()
                 : await invokeEndSession(invoke, deviceHeldSession =>
                       this.#dropWebRtcSessionRecords(
-                          NodeId(nodeId),
+                          nodeId,
                           EndpointNumber(endpointId),
                           sessionId,
                           requestedBy,
@@ -1623,7 +1642,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
 
     async #handleInterviewNode(args: ArgsOf<"interview_node">): Promise<ResponseOf<"interview_node">> {
         const { node_id } = args;
-        const nodeId = NodeId(node_id);
+        const nodeId = this.#targetNodeId(node_id, "interview_node");
 
         // Handle test nodes - just broadcast the node_updated event
         if (TestNodeCommandHandler.isTestNodeId(nodeId)) {
@@ -1655,14 +1674,14 @@ export class WebSocketControllerHandler implements WebServerHandler {
 
     async #handleGetIcdState(args: ArgsOf<"get_icd_state">): Promise<ResponseOf<"get_icd_state">> {
         const { node_id } = args;
-        const nodeId = NodeId(node_id);
+        const nodeId = this.#targetNodeId(node_id, "get_icd_state");
         this.#rejectIcdCommandForTestNode(nodeId);
         return this.#commandHandler.getIcdState(nodeId);
     }
 
     async #handleRegisterIcd(args: ArgsOf<"register_icd">): Promise<ResponseOf<"register_icd">> {
         const { node_id, allow_multi_admin, ignored_vendors } = args;
-        const nodeId = NodeId(node_id);
+        const nodeId = this.#targetNodeId(node_id, "register_icd");
         this.#rejectIcdCommandForTestNode(nodeId);
         await this.#commandHandler.registerIcd(nodeId, {
             allowMultiAdmin: allow_multi_admin,
@@ -1674,7 +1693,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
 
     async #handleResyncIcd(args: ArgsOf<"resync_icd">): Promise<ResponseOf<"resync_icd">> {
         const { node_id } = args;
-        const nodeId = NodeId(node_id);
+        const nodeId = this.#targetNodeId(node_id, "resync_icd");
         this.#rejectIcdCommandForTestNode(nodeId);
         await this.#commandHandler.resyncIcd(nodeId);
         return null;
@@ -1682,7 +1701,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
 
     async #handleUnregisterIcd(args: ArgsOf<"unregister_icd">): Promise<ResponseOf<"unregister_icd">> {
         const { node_id, force = false } = args;
-        const nodeId = NodeId(node_id);
+        const nodeId = this.#targetNodeId(node_id, "unregister_icd");
         this.#rejectIcdCommandForTestNode(nodeId);
         await this.#commandHandler.unregisterIcd(nodeId, force);
         this.#broadcastEvent("node_updated", this.#collectNodeDetails(nodeId));
@@ -1691,12 +1710,14 @@ export class WebSocketControllerHandler implements WebServerHandler {
 
     async #handlePingNode(args: ArgsOf<"ping_node">): Promise<ResponseOf<"ping_node">> {
         const { node_id, attempts = 1 } = args;
-        return await this.#handlerFor(node_id).pingNode(NodeId(node_id), attempts);
+        const nodeId = this.#targetNodeId(node_id, "ping_node");
+        return await this.#handlerFor(nodeId).pingNode(nodeId, attempts);
     }
 
     async #handleRemoveNode(args: ArgsOf<"remove_node">): Promise<ResponseOf<"remove_node">> {
         const { node_id } = args;
-        await this.#handlerFor(node_id).removeNode(NodeId(node_id));
+        const nodeId = this.#targetNodeId(node_id, "remove_node");
+        await this.#handlerFor(nodeId).removeNode(nodeId);
         return null;
     }
 
@@ -1849,7 +1870,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
         args: ArgsOf<"open_commissioning_window">,
     ): Promise<ResponseOf<"open_commissioning_window">> {
         const { node_id, timeout /*, iteration, option, discriminator*/ } = args;
-        const nodeId = NodeId(node_id);
+        const nodeId = this.#targetNodeId(node_id, "open_commissioning_window");
         const { manualCode, qrCode } = await this.#commandHandler.openCommissioningWindow({
             nodeId,
             timeout,
@@ -1907,7 +1928,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
 
     async #handleGetMatterFabrics(args: ArgsOf<"get_matter_fabrics">): Promise<ResponseOf<"get_matter_fabrics">> {
         const { node_id } = args;
-        const nodeId = NodeId(node_id);
+        const nodeId = this.#targetNodeId(node_id, "get_matter_fabrics");
         const fabrics = await this.#commandHandler.getFabrics(nodeId);
         return fabrics.map(({ fabricId, vendorId, fabricIndex, label }) => ({
             fabric_id: fabricId,
@@ -1920,18 +1941,25 @@ export class WebSocketControllerHandler implements WebServerHandler {
 
     async #handleRemoveMatterFabric(args: ArgsOf<"remove_matter_fabric">): Promise<ResponseOf<"remove_matter_fabric">> {
         const { node_id, fabric_index } = args;
-        await this.#commandHandler.removeFabric(NodeId(node_id), FabricIndex(fabric_index));
+        await this.#commandHandler.removeFabric(
+            this.#targetNodeId(node_id, "remove_matter_fabric"),
+            FabricIndex(fabric_index),
+        );
         return {};
     }
 
     async #handleSetAclEntry(args: ArgsOf<"set_acl_entry">): Promise<ResponseOf<"set_acl_entry">> {
         const { node_id, entry } = args;
-        return await this.#commandHandler.setAclEntry(NodeId(node_id), entry);
+        return await this.#commandHandler.setAclEntry(this.#targetNodeId(node_id, "set_acl_entry"), entry);
     }
 
     async #handleSetNodeBinding(args: ArgsOf<"set_node_binding">): Promise<ResponseOf<"set_node_binding">> {
         const { node_id, endpoint, bindings } = args;
-        return await this.#commandHandler.setNodeBinding(NodeId(node_id), EndpointNumber(endpoint), bindings);
+        return await this.#commandHandler.setNodeBinding(
+            this.#targetNodeId(node_id, "set_node_binding"),
+            EndpointNumber(endpoint),
+            bindings,
+        );
     }
 
     async #handleImportTestNode(args: ArgsOf<"import_test_node">): Promise<ResponseOf<"import_test_node">> {
@@ -1944,13 +1972,13 @@ export class WebSocketControllerHandler implements WebServerHandler {
 
     async #handleCheckNodeUpdate(args: ArgsOf<"check_node_update">): Promise<ResponseOf<"check_node_update">> {
         const { node_id } = args;
-        return await this.#commandHandler.checkNodeUpdate(NodeId(node_id));
+        return await this.#commandHandler.checkNodeUpdate(this.#targetNodeId(node_id, "check_node_update"));
     }
 
     async #handleUpdateNode(args: ArgsOf<"update_node">): Promise<ResponseOf<"update_node">> {
         const { node_id, software_version } = args;
         const targetVersion = typeof software_version === "string" ? parseInt(software_version, 10) : software_version;
-        return await this.#commandHandler.updateNode(NodeId(node_id), targetVersion);
+        return await this.#commandHandler.updateNode(this.#targetNodeId(node_id, "update_node"), targetVersion);
     }
 
     #collectNodeDetails(nodeId: NodeId): MatterNode {

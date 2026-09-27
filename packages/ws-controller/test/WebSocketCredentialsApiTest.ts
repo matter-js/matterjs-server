@@ -4,8 +4,9 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import { toBigIntAwareJson } from "@matter-server/ws-client";
 import { AsyncObservable, Environment, MockStorageService, Observable } from "@matter/general";
-import { EndpointNumber, NodeId } from "@matter/main";
+import { CaseAuthenticatedTag, EndpointNumber, NodeId } from "@matter/main";
 import { WebRtcTransportProvider } from "@matter/main/clusters/web-rtc-transport-provider";
 import { Status, StatusResponseError } from "@matter/main/types";
 import { ThreadCredentialsRegistry } from "@matter/thread-br-client";
@@ -79,6 +80,21 @@ function nextFrame(ws: WebSocket, what: string, wanted: (msg: WireFrame) => bool
         };
         ws.on("message", onMessage);
     });
+}
+
+/**
+ * The frame sent as already-serialized text, for a `node_id` that only a bigint states exactly:
+ * `JSON.stringify` throws on a bigint, so such a frame cannot go through {@link answerTo}.
+ */
+async function answerToFrameText(h: TestHarness, messageId: string, frameText: string): Promise<WireFrame> {
+    const ws = await h.openClient();
+    try {
+        const answer = nextFrame(ws, "response", msg => msg.message_id === messageId);
+        ws.send(frameText);
+        return await answer;
+    } finally {
+        ws.close();
+    }
 }
 
 /** The whole frame, sent as written, so a message that states no `args` at all can be tested. */
@@ -1946,4 +1962,55 @@ describe("WebSocket generic command arguments", () => {
             await h.close();
         }
     });
+});
+
+describe("node id classes on the generic node-targeted commands", () => {
+    // One per shape the routes take: a read, a write, an invoke, a lookup, and a command that brands
+    // the id inline rather than into a local. A class refused on one is refused on all of them.
+    const ROUTES: ReadonlyArray<readonly [string, Record<string, unknown>]> = [
+        ["read_attribute", { attribute_path: "1/6/0" }],
+        ["write_attribute", { attribute_path: "1/6/0", value: 1 }],
+        ["device_command", { endpoint_id: 1, cluster_id: 6, command_name: "toggle", payload: {} }],
+        ["ping_node", {}],
+        ["get_node", {}],
+        ["set_acl_entry", { entry: {} }],
+    ];
+
+    // Every class that names no node, with the words the refusal has to carry. Checking the class
+    // name is what distinguishes the branch under test from the reserved fall-through.
+    const REFUSED: ReadonlyArray<readonly [string, bigint, string]> = [
+        ["a group node id", NodeId.fromGroupId(1), "a Group Node ID"],
+        ["the unspecified node id", NodeId.UNSPECIFIED_NODE_ID, "the Unspecified Node ID"],
+        [
+            "a CASE authenticated tag",
+            NodeId.fromCaseAuthenticatedTag(CaseAuthenticatedTag(1)),
+            "a CASE Authenticated Tag",
+        ],
+        ["a PAKE key identifier", NodeId.getFromPakeKeyIdentifier(1), "a PAKE key identifier"],
+        ["a reserved node id", NodeId(0xffff_ffff_0000_0000n), "a reserved Node ID"],
+    ];
+
+    for (const [command, extraArgs] of ROUTES) {
+        for (const [label, nodeId, namedClass] of REFUSED) {
+            it(`refuses ${command} addressed to ${label} with error 8 naming the class`, async () => {
+                const h = await createHarness();
+                try {
+                    const answer = await answerToFrameText(
+                        h,
+                        `${command}-${namedClass}`,
+                        toBigIntAwareJson({
+                            message_id: `${command}-${namedClass}`,
+                            command,
+                            args: { node_id: nodeId, ...extraArgs },
+                        }),
+                    );
+                    expect(answer.error_code).to.equal(8);
+                    expect(answer.details).to.contain(command);
+                    expect(answer.details).to.contain(namedClass);
+                } finally {
+                    await h.close();
+                }
+            });
+        }
+    }
 });
