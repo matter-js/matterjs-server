@@ -23,7 +23,9 @@ export const DEVICE_CLEANUP_BUDGET_MS = 10000;
  *
  * The invokes underneath cannot be cancelled and run on unattended, so what they still change on
  * this side must be safe to apply late: see `CameraSessionRegistry.forgetEstablished` and the lease
- * generation on `StreamLease`. What they change on the DEVICE cannot be guarded from here — an
+ * generation on `StreamLease`. `forgetEstablished` also announces the session's end, so a client can
+ * hear about one this pass abandoned after the pass returned; the announcement names the session, and
+ * a later report of a session that is really gone is still true. What they change on the DEVICE cannot be guarded from here — an
  * abandoned deallocate still reaches the camera, after the endpoint lock is gone, and the id it
  * names may by then be a stream a later request allocated. Closing that needs an invoke this server
  * can abort, and `Invoke` carries no abort signal.

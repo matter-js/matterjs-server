@@ -45,6 +45,9 @@ const MANUAL_CODE = "34970112332";
 
 function createFakeCameraStreams() {
     return {
+        // The real manager reports a session ending and a stream taken on these; a connection issuing
+        // a camera command subscribes to them before the command is dispatched.
+        events: { sessionEnded: new Observable(), streamEvicted: new Observable() },
         async startStream() {
             return { webRtcSessionId: 42, mode: "provide_offer" as const, video: undefined, audio: undefined };
         },

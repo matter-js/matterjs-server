@@ -26,6 +26,8 @@ class EventType(Enum):
     WEBRTC_CALLBACK = "webrtc_callback"
     THREAD_DIAGNOSTICS_UPDATED = "thread_diagnostics_updated"  # schema 12+
     NETWORK_TOPOLOGY_UPDATED = "network_topology_updated"  # schema 13+
+    CAMERA_SESSION_ENDED = "camera_session_ended"  # schema 14+
+    CAMERA_STREAM_EVICTED = "camera_stream_evicted"  # schema 14+
 
 
 class APICommand(str, Enum):

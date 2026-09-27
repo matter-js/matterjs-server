@@ -5,7 +5,7 @@
  */
 
 import type { EndpointNumber, NodeId } from "@matter/main";
-import type { ManagedSession } from "./cameraTypes.js";
+import type { CameraSessionEnded, ManagedSession } from "./cameraTypes.js";
 
 /** What a release path matches on, shared by tracked sessions and registrations still in flight. */
 export interface SessionScope {
@@ -35,9 +35,15 @@ interface PendingRecord {
  * alone identifies nothing: the key is node, endpoint and id together.
  */
 export class CameraSessionRegistry {
+    readonly #announce: (ended: CameraSessionEnded) => void;
     readonly #sessions = new Map<string, ManagedSession>();
     readonly #pending = new Map<PendingSession, PendingRecord>();
     readonly #releasing = new Map<ManagedSession, Promise<boolean>>();
+
+    /** `announce` is called for every tracked session this registry stops holding on a release path. */
+    constructor(announce: (ended: CameraSessionEnded) => void) {
+        this.#announce = announce;
+    }
 
     #key(nodeId: NodeId, endpointId: EndpointNumber, webRtcSessionId: number): string {
         return `${nodeId}/${endpointId}/${webRtcSessionId}`;
@@ -109,7 +115,13 @@ export class CameraSessionRegistry {
         return this.#sessions.get(this.#key(nodeId, endpointId, webRtcSessionId));
     }
 
-    /** Stop tracking a session the device no longer holds. Reports whether an entry existed. */
+    /**
+     * Stop tracking a session the device no longer holds. Reports whether an entry existed.
+     *
+     * Nothing is announced here, unlike {@link forgetEstablished}: the two callers are the peer's own
+     * `End`, which the owner already receives as a `webrtc_callback` event, and a client's own
+     * `EndSession` on the raw provider route, which that client sent itself.
+     */
     forget(nodeId: NodeId, endpointId: EndpointNumber, webRtcSessionId: number): boolean {
         return this.#sessions.delete(this.#key(nodeId, endpointId, webRtcSessionId));
     }
@@ -120,11 +132,23 @@ export class CameraSessionRegistry {
      * An `EndSession` whose wait was abandoned still completes, and a camera reissues a
      * `WebRTCSessionID` it has freed, so a give-back that lands late must not be able to drop the
      * session established since.
+     *
+     * Every drop here is announced, `requestedBy` naming the connection whose `camera_stop_stream` it
+     * was, or absent when the server ended the session on its own. A drop this reports nothing for is
+     * one no entry named, so there was nothing of this server's to report.
      */
-    forgetEstablished(session: ManagedSession): boolean {
+    forgetEstablished(session: ManagedSession, requestedBy: string | undefined): boolean {
         const key = this.#key(session.nodeId, session.endpointId, session.webRtcSessionId);
         if (this.#sessions.get(key) !== session) return false;
-        return this.#sessions.delete(key);
+        this.#sessions.delete(key);
+        this.#announce({
+            nodeId: session.nodeId,
+            endpointId: session.endpointId,
+            webRtcSessionId: session.webRtcSessionId,
+            ownerId: session.connectionId,
+            requestedBy,
+        });
+        return true;
     }
 
     /**

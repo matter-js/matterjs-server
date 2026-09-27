@@ -476,6 +476,42 @@ describe("ws-client", () => {
                 expect(client.nodes[nodeKey]?.attributes["1/6/0"]).to.equal(true);
             });
 
+            it("hands a camera session ending and a camera eviction to their own listeners", async () => {
+                await client.connect();
+                const endings = new Array<unknown>();
+                const evictions = new Array<unknown>();
+                const stopEndings = client.addCameraSessionEndedListener(data => endings.push(data));
+                const stopEvictions = client.addCameraStreamEvictedListener(data => evictions.push(data));
+                try {
+                    server.sendEvent("camera_session_ended", {
+                        node_id: 5,
+                        endpoint_id: 1,
+                        webrtc_session_id: 7,
+                    });
+                    server.sendEvent("camera_stream_evicted", {
+                        node_id: 5,
+                        endpoint_id: 1,
+                        kind: "snapshot",
+                        stream_id: 3,
+                    });
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                } finally {
+                    stopEndings();
+                    stopEvictions();
+                }
+                expect(endings).to.deep.equal([{ node_id: 5, endpoint_id: 1, webrtc_session_id: 7 }]);
+                expect(evictions).to.deep.equal([{ node_id: 5, endpoint_id: 1, kind: "snapshot", stream_id: 3 }]);
+
+                // The unsubscribe the listener handed back is the only way to stop receiving them.
+                server.sendEvent("camera_session_ended", {
+                    node_id: 5,
+                    endpoint_id: 1,
+                    webrtc_session_id: 8,
+                });
+                await new Promise(resolve => setTimeout(resolve, 100));
+                expect(endings).to.have.length(1);
+            });
+
             it("keeps the ICE credentials and TURN secret of an incoming offer out of the console", async () => {
                 const bigIntSafe = (_key: string, value: unknown) =>
                     typeof value === "bigint" ? value.toString() : value;

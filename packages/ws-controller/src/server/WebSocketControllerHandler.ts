@@ -120,6 +120,20 @@ const WEBRTC_OPT_IN_COMMANDS = new Set([
     "camera_provide_ice_candidates",
 ]);
 
+// Issuing any camera command (schema 14) opts the connection in to camera_session_ended and
+// camera_stream_evicted: both report what the server did to a camera on nobody's request, and a
+// pre-14 client would receive an event type it does not know.
+const CAMERA_OPT_IN_COMMANDS = new Set([
+    "send_webrtc_provider_command",
+    "camera_get_capabilities",
+    "camera_start_stream",
+    "camera_stop_stream",
+    "camera_snapshot",
+    "camera_release_stream",
+    "camera_provide_answer",
+    "camera_provide_ice_candidates",
+]);
+
 /**
  * The arguments `send_webrtc_provider_command` takes. Its `payload` refuses a key naming no field,
  * so its own arguments do too: a caller whose argument was ignored gets the session it did not ask
@@ -338,6 +352,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
             // connection, not per session: every opted-in connection sees every session's signaling.
             const optIns = { threadDiagnostics: false, webRtc: false };
             let topologyObserverRegistered = false;
+            let cameraObserversRegistered = false;
             const observers = new ObserverGroup();
             const connection = new WebSocketConnection(ws, {
                 connId,
@@ -612,6 +627,61 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 });
             };
 
+            // Registered before the camera command is dispatched, like the webrtc_callback opt-in and
+            // for the same reason: that very command can evict a stream or end a session, and an
+            // observer added after it answered has already missed the event. Touching the getter
+            // constructs the manager, which the command about to run does anyway.
+            const ensureCameraObservers = () => {
+                if (cameraObserversRegistered || this.#closed || this.#shuttingDown) return;
+                // After the getter, not before: it throws on a stopped controller that never built the
+                // manager, and a connection that then set the flag would stay opted out for good.
+                const camera = this.#controller.cameraStreams;
+                cameraObserversRegistered = true;
+                observers.on(camera.events.sessionEnded, ended => {
+                    if (this.#closed || this.#shuttingDown) return;
+                    // The connection that asked has the answer to its own `camera_stop_stream`, and a
+                    // session this server holds a record of concerns only the connection that opened
+                    // it. No record means no owner, and withholding it then tells nobody at all —
+                    // `signallingOwners`' rule, for its reason.
+                    if (ended.requestedBy === ownerId) return;
+                    if (ended.ownerId !== undefined && ended.ownerId !== ownerId) return;
+                    // Shared Observable: an uncaught throw here aborts the emit and starves the other
+                    // connections, and this one runs on a device release path.
+                    try {
+                        connection.sendReliable(
+                            toBigIntAwareJson({
+                                event: "camera_session_ended",
+                                data: {
+                                    node_id: ended.nodeId,
+                                    endpoint_id: ended.endpointId,
+                                    webrtc_session_id: ended.webRtcSessionId,
+                                },
+                            }),
+                        );
+                    } catch (err) {
+                        logger.error(`[${connId}] Failed to send camera_session_ended`, err);
+                    }
+                });
+                observers.on(camera.events.streamEvicted, evicted => {
+                    if (this.#closed || this.#shuttingDown) return;
+                    try {
+                        connection.sendReliable(
+                            toBigIntAwareJson({
+                                event: "camera_stream_evicted",
+                                data: {
+                                    node_id: evicted.nodeId,
+                                    endpoint_id: evicted.endpointId,
+                                    kind: evicted.kind,
+                                    stream_id: evicted.streamId,
+                                },
+                            }),
+                        );
+                    } catch (err) {
+                        logger.error(`[${connId}] Failed to send camera_stream_evicted`, err);
+                    }
+                });
+            };
+
             observers.on(this.#commandHandler.events.webRtcCallback, data => {
                 if (this.#closed || this.#shuttingDown || !optIns.webRtc) return;
                 // WebRTC signaling is control-plane: never coalesced or dropped, so send reliably.
@@ -665,6 +735,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 if (THREAD_DIAGNOSTICS_OPT_IN_COMMANDS.has(command)) optIns.threadDiagnostics = true;
                 if (NETWORK_TOPOLOGY_OPT_IN_COMMANDS.has(command)) ensureTopologyObserver();
                 if (WEBRTC_OPT_IN_COMMANDS.has(command)) optIns.webRtc = true;
+                if (CAMERA_OPT_IN_COMMANDS.has(command)) ensureCameraObservers();
             };
 
             ws.on("message", data => {
@@ -833,7 +904,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
                     result = await this.#handleCameraStartStream(args, ownerId);
                     break;
                 case "camera_stop_stream":
-                    result = await this.#handleCameraStopStream(args);
+                    result = await this.#handleCameraStopStream(args, ownerId);
                     break;
                 case "camera_snapshot":
                     result = await this.#handleCameraSnapshot(args);
@@ -1485,9 +1556,11 @@ export class WebSocketControllerHandler implements WebServerHandler {
         return toWireStartStreamResult(result);
     }
 
-    async #handleCameraStopStream(args: unknown): Promise<ResponseOf<"camera_stop_stream">> {
+    async #handleCameraStopStream(args: unknown, ownerId: string): Promise<ResponseOf<"camera_stop_stream">> {
         const { nodeId, endpointId, webRtcSessionId } = parseStopStreamArgs(args);
-        const ended = await this.#controller.cameraStreams.stopStream(nodeId, endpointId, webRtcSessionId);
+        // Named so the session's owner is told that somebody else ended it, and this connection is not
+        // told what its own answer already says.
+        const ended = await this.#controller.cameraStreams.stopStream(nodeId, endpointId, webRtcSessionId, ownerId);
         return { ended };
     }
 

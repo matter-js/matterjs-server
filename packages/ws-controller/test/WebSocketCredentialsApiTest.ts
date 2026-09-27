@@ -5,11 +5,13 @@
  */
 
 import { AsyncObservable, Environment, MockStorageService, Observable } from "@matter/general";
+import { EndpointNumber, NodeId } from "@matter/main";
 import { WebRtcTransportProvider } from "@matter/main/clusters/web-rtc-transport-provider";
 import { Status, StatusResponseError } from "@matter/main/types";
 import { ThreadCredentialsRegistry } from "@matter/thread-br-client";
 import { createServer } from "node:http";
 import WebSocket from "ws";
+import type { CameraSessionEnded, CameraStreamEvicted } from "../src/camera/cameraTypes.js";
 import { ConfigStorage } from "../src/server/ConfigStorage.js";
 import { WebSocketControllerHandler } from "../src/server/WebSocketControllerHandler.js";
 
@@ -26,6 +28,12 @@ function freshEnv(): Environment {
 interface StubCameraStreams {
     releaseConnection(connectionId: string): Promise<void>;
     startStream?(args: { connectionId: string; allowEviction?: boolean }): Promise<unknown>;
+    stopStream?(nodeId: bigint, endpointId: number, webRtcSessionId: number, requestedBy?: string): Promise<boolean>;
+    /** What the manager reports on nobody's request: a session that ended, a stream that was taken. */
+    events?: {
+        sessionEnded: Observable<[CameraSessionEnded]>;
+        streamEvicted: Observable<[CameraStreamEvicted]>;
+    };
     snapshot?(args: { watermarkEnabled?: boolean; osdEnabled?: boolean }): Promise<unknown>;
     forgetSession?(nodeId: bigint, endpointId: number, webRtcSessionId: number): boolean;
     /** Which connections may receive a session's signalling; absent means the manager holds no record. */
@@ -99,6 +107,7 @@ function makeStubController(
     const stubCameraStreams: StubCameraStreams = {
         async releaseConnection() {},
         signallingOwners: () => undefined,
+        events: { sessionEnded: new Observable(), streamEvicted: new Observable() },
         ...cameraStreams,
     };
 
@@ -1254,6 +1263,177 @@ describe("WebSocket camera session cleanup on disconnect", () => {
                 expect(released).to.deep.equal([closingConnectionId]);
             } finally {
                 staysOpen.close();
+            }
+        } finally {
+            await h.close();
+        }
+    });
+});
+
+describe("WebSocket camera lifecycle events", () => {
+    /** Every camera event frame a connection received, in arrival order. */
+    function collectCameraEvents(ws: WebSocket): Array<{ event: string; data: Record<string, unknown> }> {
+        const seen = new Array<{ event: string; data: Record<string, unknown> }>();
+        ws.on("message", raw => {
+            const msg = JSON.parse(raw.toString()) as { event?: string; data?: Record<string, unknown> };
+            if (msg.event === "camera_session_ended" || msg.event === "camera_stream_evicted") {
+                seen.push({ event: msg.event, data: msg.data ?? {} });
+            }
+        });
+        return seen;
+    }
+
+    const STARTED = { node_id: 1, endpoint_id: 1, stream_usage: "LiveView" };
+
+    /** A harness whose `camera_stop_stream` announces what the real manager's release path announces. */
+    async function harnessWithStopAnnouncing(): Promise<{
+        h: TestHarness;
+        sessionEnded: Observable<[CameraSessionEnded]>;
+        streamEvicted: Observable<[CameraStreamEvicted]>;
+    }> {
+        const sessionEnded = new Observable<[CameraSessionEnded]>();
+        const streamEvicted = new Observable<[CameraStreamEvicted]>();
+        const ownerBySession = new Map<number, string>();
+        let nextSessionId = 1;
+        const h = await createHarness({
+            async releaseConnection() {},
+            events: { sessionEnded, streamEvicted },
+            async startStream(args: { connectionId: string }) {
+                const webRtcSessionId = nextSessionId++;
+                ownerBySession.set(webRtcSessionId, args.connectionId);
+                return { webRtcSessionId, mode: "solicit_offer" };
+            },
+            // The registry announces every release, naming the session's owner and the connection that
+            // asked; an id it holds no record of names only the asking connection.
+            async stopStream(nodeId: bigint, endpointId: number, webRtcSessionId: number, requestedBy?: string) {
+                sessionEnded.emit({
+                    nodeId: NodeId(nodeId),
+                    endpointId: EndpointNumber(endpointId),
+                    webRtcSessionId,
+                    ownerId: ownerBySession.get(webRtcSessionId),
+                    requestedBy,
+                });
+                return true;
+            },
+        });
+        return { h, sessionEnded, streamEvicted };
+    }
+
+    it("tells the connection that started a session that another connection ended it", async () => {
+        const { h } = await harnessWithStopAnnouncing();
+        try {
+            const owner = await h.openClient();
+            const other = await h.openClient();
+            const uninvolved = await h.openClient();
+            try {
+                const seenByOwner = collectCameraEvents(owner);
+                const seenByOther = collectCameraEvents(other);
+                const seenByUninvolved = collectCameraEvents(uninvolved);
+
+                const session = await h.sendOn<{ webrtc_session_id: number }>(owner, "camera_start_stream", STARTED);
+                // Both other connections are camera-aware, so what withholds the event from them is the
+                // ownership and not the opt-in: one of them ended the session, the other has nothing to
+                // do with it.
+                await h.sendOn(other, "camera_start_stream", STARTED);
+                await h.sendOn(uninvolved, "camera_start_stream", STARTED);
+
+                const stopped = await h.sendOn<{ ended: boolean }>(other, "camera_stop_stream", {
+                    node_id: 1,
+                    endpoint_id: 1,
+                    webrtc_session_id: session.webrtc_session_id,
+                });
+                expect(stopped.ended).to.equal(true);
+                await new Promise(resolve => setTimeout(resolve, 100));
+
+                expect(seenByOwner).to.deep.equal([
+                    {
+                        event: "camera_session_ended",
+                        data: { node_id: 1, endpoint_id: 1, webrtc_session_id: session.webrtc_session_id },
+                    },
+                ]);
+                expect(seenByOther).to.deep.equal([]);
+                expect(seenByUninvolved).to.deep.equal([]);
+            } finally {
+                owner.close();
+                other.close();
+                uninvolved.close();
+            }
+        } finally {
+            await h.close();
+        }
+    });
+
+    it("tells no connection about a session it ended itself", async () => {
+        // The response to its own camera_stop_stream is the answer; a second report of the same fact
+        // is what this event exists to avoid, which is also why the peer's own End stays on
+        // webrtc_callback.
+        const { h } = await harnessWithStopAnnouncing();
+        try {
+            const owner = await h.openClient();
+            try {
+                const seenByOwner = collectCameraEvents(owner);
+                const session = await h.sendOn<{ webrtc_session_id: number }>(owner, "camera_start_stream", STARTED);
+                await h.sendOn(owner, "camera_stop_stream", {
+                    node_id: 1,
+                    endpoint_id: 1,
+                    webrtc_session_id: session.webrtc_session_id,
+                });
+                await new Promise(resolve => setTimeout(resolve, 100));
+                expect(seenByOwner).to.deep.equal([]);
+            } finally {
+                owner.close();
+            }
+        } finally {
+            await h.close();
+        }
+    });
+
+    it("tells a raw-route client about a session with no owner, and every camera-aware connection about an eviction", async () => {
+        const { h, sessionEnded, streamEvicted } = await harnessWithStopAnnouncing();
+        try {
+            const raw = await h.openClient();
+            const bystander = await h.openClient();
+            try {
+                const seenByRaw = collectCameraEvents(raw);
+                const seenByBystander = collectCameraEvents(bystander);
+                // A client on the raw provider route issues no camera_* command at all, and it is the
+                // one whose sessions this server holds no record of, so the opt-in has to cover it.
+                await h
+                    .sendOn(raw, "send_webrtc_provider_command", {
+                        node_id: 1,
+                        endpoint_id: 1,
+                        command_name: "ProvideOffer",
+                        payload: { webRtcSessionId: null, sdp: "v=0" },
+                    })
+                    .catch(() => undefined);
+
+                sessionEnded.emit({
+                    nodeId: NodeId(1n),
+                    endpointId: EndpointNumber(1),
+                    webRtcSessionId: 4,
+                    requestedBy: "conn-elsewhere",
+                });
+                streamEvicted.emit({
+                    nodeId: NodeId(1n),
+                    endpointId: EndpointNumber(1),
+                    kind: "video",
+                    streamId: 2,
+                });
+                await new Promise(resolve => setTimeout(resolve, 100));
+
+                expect(seenByRaw).to.deep.equal([
+                    { event: "camera_session_ended", data: { node_id: 1, endpoint_id: 1, webrtc_session_id: 4 } },
+                    {
+                        event: "camera_stream_evicted",
+                        data: { node_id: 1, endpoint_id: 1, kind: "video", stream_id: 2 },
+                    },
+                ]);
+                // A connection that issued no camera command at all is a client that may not know the
+                // event types, which is what the opt-in is for.
+                expect(seenByBystander).to.deep.equal([]);
+            } finally {
+                raw.close();
+                bystander.close();
             }
         } finally {
             await h.close();

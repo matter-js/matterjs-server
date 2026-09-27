@@ -776,6 +776,29 @@ export type CameraPrivacyMode = keyof CameraCapabilitiesResult["privacy"];
 /** Which track a stream belongs to, as `camera_release_stream` and error 103 spell it. */
 export type CameraStreamKind = "video" | "audio" | "snapshot";
 
+/**
+ * The `camera_session_ended` payload.
+ *
+ * No reason field: the one ending a client is told about is another connection's `camera_stop_stream`
+ * on a session this client opened, or on a session the server holds no record of. The peer's own `End`
+ * arrives as a `webrtc_callback` `end` event, a client's own stop is answered by that command, and the
+ * two endings the server decides — the owning connection closing, and shutdown — reach no client: the
+ * first concerns only the connection that went away, and the second is what `server_shutdown` reports.
+ */
+export interface CameraSessionEndedData {
+    node_id: number | bigint;
+    endpoint_id: number;
+    webrtc_session_id: number;
+}
+
+/** The `camera_stream_evicted` payload: one stream id that has stopped existing on the camera. */
+export interface CameraStreamEvictedData {
+    node_id: number | bigint;
+    endpoint_id: number;
+    kind: "video";
+    stream_id: number;
+}
+
 /** One entry of error 103's `allocated`: a stream holding capacity the refused request needed. */
 export interface CameraOccupyingStream {
     /** Not always the kind that was asked for: a refused snapshot reports the video streams. */
@@ -1343,6 +1366,30 @@ export interface APIEvents {
     webrtc_callback: {
         data: WebRtcCallbackData;
     };
+    /**
+     * Another connection ended a session this connection opened.
+     *
+     * Reaches only a connection that has issued a camera command (`send_webrtc_provider_command`
+     * counts), and among those the one that opened the session — never the connection whose
+     * `camera_stop_stream` ended it, which has its own answer. A session the server holds no record of,
+     * such as one opened on the raw provider route, reaches every such connection instead, since
+     * nothing names an owner for it. The peer's own `End` is not reported here: the owner already
+     * receives it as a `webrtc_callback` `end` event.
+     */
+    camera_session_ended: {
+        data: CameraSessionEndedData;
+    };
+    /**
+     * A stream the server deallocated to make room for another request on the same camera.
+     *
+     * Reaches every connection that has issued a camera command, the one the room was made for
+     * included: no record names which connection holds a stream, and the caller that benefited also
+     * reads the same ids in `camera_start_stream`'s `video.evicted_stream_ids`. The id is gone for
+     * good: a replacement the server allocates for the same range gets a new id.
+     */
+    camera_stream_evicted: {
+        data: CameraStreamEvictedData;
+    };
 }
 
 /** All known event type names */
@@ -1396,6 +1443,14 @@ interface ServerEventWebRtcCallback {
     event: "webrtc_callback";
     data: WebRtcCallbackData;
 }
+interface ServerEventCameraSessionEnded {
+    event: "camera_session_ended";
+    data: CameraSessionEndedData;
+}
+interface ServerEventCameraStreamEvicted {
+    event: "camera_stream_evicted";
+    data: CameraStreamEvictedData;
+}
 
 export type EventMessage =
     | ServerEventNodeAdded
@@ -1409,7 +1464,9 @@ export type EventMessage =
     | ServerEventInfoUpdated
     | ServerEventThreadDiagnosticsUpdated
     | ServerEventNetworkTopologyUpdated
-    | ServerEventWebRtcCallback;
+    | ServerEventWebRtcCallback
+    | ServerEventCameraSessionEnded
+    | ServerEventCameraStreamEvicted;
 
 export interface ResultMessageBase {
     message_id: string;

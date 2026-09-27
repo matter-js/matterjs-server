@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Logger, Time } from "@matter/main";
+import { Logger, MaybePromise, Observable, Time } from "@matter/main";
 import type { EndpointNumber, NodeId } from "@matter/main";
 import { CameraAvStreamManagement } from "@matter/main/clusters/camera-av-stream-management";
 import { WebRtcTransportDefinitions } from "@matter/main/clusters/web-rtc-transport-definitions";
@@ -23,6 +23,8 @@ import type {
     AudioEnvelope,
     CameraFeatures,
     CameraPrivacyState,
+    CameraSessionEnded,
+    CameraStreamEvicted,
     DeviceWebRtcSession,
     LeaseStatement,
     ManagedSession,
@@ -575,11 +577,38 @@ export class CameraStreamManager {
     readonly #io: CameraDeviceIo;
     readonly #leases = new Map<string, StreamLease[]>();
     readonly #locks = new Map<string, Promise<unknown>>();
-    readonly #sessions = new CameraSessionRegistry();
+    /**
+     * What this server did to a camera that no client asked it to do.
+     *
+     * Both are facts a client cannot learn from any response of its own: a session of its own that
+     * something else ended, and a stream that stopped existing because another request needed the
+     * capacity. Declared ahead of the registry, which emits the first of them.
+     */
+    readonly events = {
+        sessionEnded: new Observable<[CameraSessionEnded], MaybePromise<void>>(),
+        streamEvicted: new Observable<[CameraStreamEvicted], MaybePromise<void>>(),
+    };
+    readonly #sessions = new CameraSessionRegistry(ended => this.#announce(this.events.sessionEnded, ended));
     #nextLeaseGeneration = 0;
 
     constructor(io: CameraDeviceIo) {
         this.#io = io;
+    }
+
+    /**
+     * Report something that already happened on the device, without letting a listener undo it.
+     *
+     * matter.js's `Observable.emit` rethrows an observer's error, and awaits one that answers with a
+     * promise. Every one of these is emitted after a device round trip has succeeded and, for the
+     * eviction, while the endpoint lock is held — so a listener must not be able to turn a stop that
+     * happened into a failed `camera_stop_stream`, abort a shutdown pass, or leave a request without
+     * the replacement its freed stream registers next.
+     */
+    #announce<T>(observable: Observable<[T], MaybePromise<void>>, event: T): void {
+        MaybePromise.catch(
+            () => observable.emit(event),
+            error => logger.warn("A listener of a camera event failed:", error),
+        );
     }
 
     /**
@@ -1494,6 +1523,12 @@ export class CameraStreamManager {
             return undefined;
         }
         this.dropLease(nodeId, endpointId, "video", victim.videoStreamId);
+        this.#announce(this.events.streamEvicted, {
+            nodeId,
+            endpointId,
+            kind: "video",
+            streamId: victim.videoStreamId,
+        });
         const spend = scope.returnUnlessSpent(() =>
             this.#restoreFreedVideoStream(nodeId, endpointId, victim, keyFrameInterval).catch(error => {
                 logger.warn(
@@ -1746,7 +1781,10 @@ export class CameraStreamManager {
             audioStreamIds: audio === undefined ? new Array<number>() : [audio.streamId],
         };
         scope.returnOnFailure(async () => {
-            await this.#endSession(session);
+            // No client asked for this: the one thing that ends a session here is the closing
+            // connection claiming this registration. Nothing is announced either way, because the
+            // session never reached the registry.
+            await this.#endSession(session, undefined);
         });
         if (!this.#sessions.track(pending, session)) {
             throw ServerError.sdkStackError(
@@ -1798,7 +1836,7 @@ export class CameraStreamManager {
      * route that ends a session: the entry then names nothing the device will act on, and this call
      * ended nothing.
      */
-    async #endSession(session: ManagedSession): Promise<boolean> {
+    async #endSession(session: ManagedSession, requestedBy: string | undefined): Promise<boolean> {
         const { nodeId, endpointId, webRtcSessionId } = session;
         try {
             await invokeEndSession(
@@ -1811,7 +1849,7 @@ export class CameraStreamManager {
                         fields: { webRtcSessionId, reason: WEBRTC_END_REASON_USER_HANGUP },
                     }),
                 async () => {
-                    this.#sessions.forgetEstablished(session);
+                    this.#sessions.forgetEstablished(session, requestedBy);
                 },
             );
         } catch (error) {
@@ -1835,10 +1873,17 @@ export class CameraStreamManager {
      * sent to the device as it stands, since `webRtcSessionId` is allocated per provider and names a
      * session only together with the node and endpoint it was issued on.
      */
-    async stopStream(nodeId: NodeId, endpointId: EndpointNumber, webRtcSessionId: number): Promise<boolean> {
+    async stopStream(
+        nodeId: NodeId,
+        endpointId: EndpointNumber,
+        webRtcSessionId: number,
+        requestedBy?: string,
+    ): Promise<boolean> {
         const session = this.#sessions.get(nodeId, endpointId, webRtcSessionId);
-        if (session !== undefined) return this.#sessions.releaseOnce(session, held => this.#endSession(held));
-        return this.#endUntrackedSession(nodeId, endpointId, webRtcSessionId);
+        if (session !== undefined) {
+            return this.#sessions.releaseOnce(session, held => this.#endSession(held, requestedBy));
+        }
+        return this.#endUntrackedSession(nodeId, endpointId, webRtcSessionId, requestedBy);
     }
 
     /**
@@ -1852,7 +1897,12 @@ export class CameraStreamManager {
      * of this server's or none. That check is about the server, not the connection — any connection
      * can end any of this server's sessions here, as it already can for a tracked one.
      */
-    async #endUntrackedSession(nodeId: NodeId, endpointId: EndpointNumber, webRtcSessionId: number): Promise<boolean> {
+    async #endUntrackedSession(
+        nodeId: NodeId,
+        endpointId: EndpointNumber,
+        webRtcSessionId: number,
+        requestedBy: string | undefined,
+    ): Promise<boolean> {
         try {
             await this.io.invoke({
                 nodeId,
@@ -1868,6 +1918,10 @@ export class CameraStreamManager {
             );
             return false;
         }
+        // Announced with no owner, which every route reads as "tell everyone": this server ended a
+        // session it holds no record of, so it cannot name the connection driving it, and the client
+        // that can least afford to be left guessing is the one that opened it on the raw route.
+        this.#announce(this.events.sessionEnded, { nodeId, endpointId, webRtcSessionId, requestedBy });
         return true;
     }
 
@@ -1928,8 +1982,11 @@ export class CameraStreamManager {
      * same `EndSession` rather than sending a second one, and retries only once it has failed.
      */
     async #releaseSessions(matches: (scope: SessionScope) => boolean): Promise<void> {
+        // No client asked for these, so the announcement names nobody who needs telling: the only
+        // connection a closing connection's sessions concern is the one that went away, and at
+        // shutdown every socket is closed before this runs — `server_shutdown` is that event.
         const inFlight = this.#sessions.claim(matches, session =>
-            this.#endSession(session).catch(error => {
+            this.#endSession(session, undefined).catch(error => {
                 logger.warn(`Failed to end session ${session.webRtcSessionId} on node ${session.nodeId}:`, error);
                 // Rethrown so a `camera_stop_stream` joined to this same release is told the session is
                 // still open rather than being handed a stop that did not happen. Logged as well because

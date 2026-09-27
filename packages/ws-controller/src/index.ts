@@ -22,6 +22,9 @@ export type {
     SignallingCommandName,
 } from "./camera/webRtcProviderArguments.js";
 
+// What `CameraStreamManager.events` emits, so a consumer of the manager can name its payloads.
+export type { CameraSessionEnded, CameraStreamEvicted } from "./camera/cameraTypes.js";
+
 // Export controller components
 export { WebRtcTransportRequestorServer } from "@matter/node/behaviors/web-rtc-transport-requestor";
 export * from "./controller/ControllerCommandHandler.js";

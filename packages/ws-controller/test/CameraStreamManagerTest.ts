@@ -18,6 +18,8 @@ import {
 import type {
     AudioEnvelope,
     CameraFeatures,
+    CameraSessionEnded,
+    CameraStreamEvicted,
     DeviceWebRtcSession,
     Resolution,
     VideoEnvelope,
@@ -239,6 +241,15 @@ export function managerWith(
         },
     };
     return { manager: new CameraStreamManager(io), invokes, holder };
+}
+
+/** Every session ending the manager announced, in order. */
+function endingsOf(manager: CameraStreamManager): CameraSessionEnded[] {
+    const seen = new Array<CameraSessionEnded>();
+    manager.events.sessionEnded.on(ended => {
+        seen.push(ended);
+    });
+    return seen;
 }
 
 /** `leasedEndpointCount` is a protected test hook; this exposes it. */
@@ -707,6 +718,35 @@ describe("CameraStreamManager", () => {
             expect(invokes.filter(invoke => invoke.command === "videoStreamAllocate")).to.have.length(
                 NARROWING_ATTEMPTS + 1,
             );
+        });
+
+        it("announces the stream the make-room rung took", async () => {
+            // The request that benefits is told in its own response; the client holding the id that
+            // stopped existing has nothing else to learn it from.
+            const idle = { ...CONTAINED_STREAM, videoStreamId: 7, referenceCount: 0 };
+            let allocateAttempts = 0;
+            const { manager } = managerWith(withStreams([idle]), async invoke => {
+                if (invoke.command === "videoStreamAllocate") {
+                    allocateAttempts += 1;
+                    if (allocateAttempts <= NARROWING_ATTEMPTS) throw statusError(Status.ResourceExhausted);
+                    return { videoStreamId: 11 };
+                }
+                return undefined;
+            });
+            const evicted = new Array<CameraStreamEvicted>();
+            manager.events.streamEvicted.on(taken => {
+                evicted.push(taken);
+            });
+
+            await manager.resolveVideoStream({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                streamUsage: LIVE_VIEW,
+                limits: { codec: H265 },
+                hints: { maxResolution: { width: 1280, height: 720 } },
+            });
+
+            expect(evicted).to.deep.equal([{ nodeId: NODE, endpointId: ENDPOINT, kind: "video", streamId: 7 }]);
         });
 
         it("reacts to a device status matter.js wrapped in a cause chain", async () => {
@@ -2487,6 +2527,184 @@ describe("CameraStreamManager", () => {
             expect(invokes.map(invoke => invoke.command)).to.not.include("videoStreamDeallocate");
         });
 
+        it("tells the owning connection that its session was stopped, whoever stopped it", async () => {
+            // `camera_stop_stream` names no connection, by design: the camera's PeerNodeID check is the
+            // gate. So the connection that started the session learns of its end nowhere else.
+            const { manager } = allocatingManager();
+            const announced = endingsOf(manager);
+            await manager.startStream({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                connectionId: "conn-1",
+                streamUsage: LIVE_VIEW,
+                sdp: VIDEO_OFFER,
+                video: {},
+                audio: false,
+            });
+
+            await manager.stopStream(NODE, ENDPOINT, 42, "conn-2");
+
+            expect(announced).to.deep.equal([
+                {
+                    nodeId: NODE,
+                    endpointId: ENDPOINT,
+                    webRtcSessionId: 42,
+                    ownerId: "conn-1",
+                    requestedBy: "conn-2",
+                },
+            ]);
+        });
+
+        it("announces the sessions a closing connection and a shutdown ended, asked for by nobody", async () => {
+            let nextSessionId = 42;
+            const { manager } = managerWith(STATE, async invoke => {
+                if (invoke.command === "videoStreamAllocate") return { videoStreamId: 9 };
+                if (invoke.command === "provideOffer") return { webRtcSessionId: nextSessionId++ };
+                return undefined;
+            });
+            const announced = endingsOf(manager);
+            const start = (connectionId: string) =>
+                manager.startStream({
+                    nodeId: NODE,
+                    endpointId: ENDPOINT,
+                    connectionId,
+                    streamUsage: LIVE_VIEW,
+                    sdp: VIDEO_OFFER,
+                    video: {},
+                    audio: false,
+                });
+            await start("conn-1");
+            await start("conn-2");
+
+            await manager.releaseConnection("conn-1");
+            await manager.stopAll();
+
+            // `requestedBy` absent is what tells a route that no client is waiting to hear this.
+            expect(announced.map(ended => [ended.webRtcSessionId, ended.ownerId, ended.requestedBy])).to.deep.equal([
+                [42, "conn-1", undefined],
+                [43, "conn-2", undefined],
+            ]);
+        });
+
+        it("announces a session it holds no record of with no owner, so every client hears it", async () => {
+            // A raw-route session is nobody's as far as this server's records go, and the client
+            // driving it is the one that cannot afford to keep signalling into a session that is gone.
+            const { manager } = managerWith(STATE);
+            const announced = endingsOf(manager);
+            expect(await manager.stopStream(NODE, ENDPOINT, 999, "conn-9")).to.equal(true);
+            expect(announced).to.deep.equal([
+                { nodeId: NODE, endpointId: ENDPOINT, webRtcSessionId: 999, requestedBy: "conn-9" },
+            ]);
+        });
+
+        it("announces nothing for a session the camera says it does not hold", async () => {
+            const { manager } = managerWith(STATE, async invoke => {
+                if (invoke.command === "endSession") throw statusError(Status.NotFound);
+                return undefined;
+            });
+            const announced = endingsOf(manager);
+            expect(await manager.stopStream(NODE, ENDPOINT, 999)).to.equal(false);
+            expect(announced).to.deep.equal([]);
+        });
+
+        it("announces nothing while a session is still open because EndSession failed", async () => {
+            const { manager } = managerWith(STATE, async invoke => {
+                if (invoke.command === "videoStreamAllocate") return { videoStreamId: 9 };
+                if (invoke.command === "provideOffer") return { webRtcSessionId: 42 };
+                if (invoke.command === "endSession") throw statusError(Status.Busy);
+                return undefined;
+            });
+            const announced = endingsOf(manager);
+            await manager.startStream({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                connectionId: "conn-1",
+                streamUsage: LIVE_VIEW,
+                sdp: VIDEO_OFFER,
+                video: {},
+                audio: false,
+            });
+            let thrown: unknown;
+            try {
+                await manager.stopStream(NODE, ENDPOINT, 42);
+            } catch (error) {
+                thrown = error;
+            }
+            expect(deviceStatusOf(thrown)).to.equal(Status.Busy);
+            expect(announced).to.deep.equal([]);
+        });
+
+        it("reports the stop even when a listener of the ending throws", async () => {
+            // The EndSession has already happened when the ending is announced, so a listener must not
+            // be able to turn a stop that did happen into a failure.
+            const { manager } = allocatingManager();
+            manager.events.sessionEnded.on(() => {
+                throw new Error("listener refused");
+            });
+            await manager.startStream({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                connectionId: "conn-1",
+                streamUsage: LIVE_VIEW,
+                sdp: VIDEO_OFFER,
+                video: {},
+                audio: false,
+            });
+            expect(await manager.stopStream(NODE, ENDPOINT, 42)).to.equal(true);
+        });
+
+        it("reports the stop of a session it holds no record of even when a listener throws", async () => {
+            const { manager } = managerWith(STATE);
+            manager.events.sessionEnded.on(() => {
+                throw new Error("listener refused");
+            });
+            expect(await manager.stopStream(NODE, ENDPOINT, 999, "conn-9")).to.equal(true);
+        });
+
+        it("does not leave an async listener's rejection unhandled", async () => {
+            // Observable.emit awaits an observer that answers with a promise and hands the promise back,
+            // so a guard that only catches a synchronous throw leaves an unhandled rejection behind.
+            const { manager } = allocatingManager();
+            manager.events.sessionEnded.on(async () => {
+                await Promise.resolve();
+                throw new Error("async listener refused");
+            });
+            await manager.startStream({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                connectionId: "conn-1",
+                streamUsage: LIVE_VIEW,
+                sdp: VIDEO_OFFER,
+                video: {},
+                audio: false,
+            });
+            const messages = await logged(async () => {
+                expect(await manager.stopStream(NODE, ENDPOINT, 42, "conn-2")).to.equal(true);
+                // The rejection settles a microtask after the emit; an unhandled one would be reported
+                // against whatever test is running by then.
+                await new Promise(resolve => setImmediate(resolve));
+            });
+            expect(messages.some(message => message.includes("async listener refused"))).to.equal(true);
+        });
+
+        it("announces nothing when the peer is the one that ended the session", async () => {
+            // The owner already has it as a webrtc_callback `end`; a second report of the same session
+            // ending would leave a client two events to reconcile and no order between them.
+            const { manager } = allocatingManager();
+            const announced = endingsOf(manager);
+            await manager.startStream({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                connectionId: "conn-1",
+                streamUsage: LIVE_VIEW,
+                sdp: VIDEO_OFFER,
+                video: {},
+                audio: false,
+            });
+            expect(manager.forgetSession(NODE, ENDPOINT, 42)).to.equal(true);
+            expect(announced).to.deep.equal([]);
+        });
+
         it("ends a session the camera holds that this process run never tracked", async () => {
             // The way back after an ungraceful restart: the registry is gone, the camera still holds
             // the session, and only EndSession decrements the stream's ReferenceCount.
@@ -3166,6 +3384,7 @@ describe("CameraStreamManager", () => {
                     thrown = error;
                 },
             );
+            const announced = endingsOf(manager);
             await atOffer; // The session is registered as in flight and the provider has the request.
             let releaseReturned = false;
             const releasing = manager.releaseConnection("conn-1").then(() => {
@@ -3200,6 +3419,9 @@ describe("CameraStreamManager", () => {
                     .map(invoke => invoke.command)
                     .filter(command => command === "endSession" || command === "videoStreamDeallocate"),
             ).to.deep.equal(["endSession", "videoStreamDeallocate"]);
+            // Nothing is announced for a session that never reached a client: the connection that
+            // asked for it is gone, and its own failure answer is the report.
+            expect(announced).to.deep.equal([]);
         });
 
         it("ends a session whose connection closed while the call was still queued for the endpoint", async () => {

@@ -164,6 +164,51 @@ export interface ManagedSession {
 }
 
 /**
+ * One session that ended without the client that opened it asking for it.
+ *
+ * The peer's own `End` is not one of these: it reaches the owner as a `webrtc_callback` `end` event,
+ * and a second report of the same session ending would leave a client two events and no order between
+ * them. Nor is a session ended by its own owner, or one ended because the owning connection closed or
+ * the server is shutting down — the two fields below are what a route needs to leave those out.
+ */
+export interface CameraSessionEnded {
+    nodeId: NodeId;
+    endpointId: EndpointNumber;
+    webRtcSessionId: number;
+    /**
+     * The connection that established the session: the one this concerns.
+     *
+     * Absent for a session this server holds no record of, which is what a session opened on the raw
+     * provider route and one adopted from the camera are. Nothing names an owner for those, so the
+     * route reads absence as "tell every camera-aware connection", exactly as it does for their
+     * signalling.
+     */
+    ownerId?: string;
+    /**
+     * The connection whose `camera_stop_stream` ended it, absent when no client asked.
+     *
+     * That connection already has the answer to its own command, so a route tells it nothing. Absent
+     * means the server ended the session on its own: the owning connection closed, or it is shutting
+     * down. Neither reaches a client — in the first case the only connection this concerns is the one
+     * that went away, and in the second every socket is closed before the sessions are ended, which
+     * is what the `server_shutdown` event is for.
+     */
+    requestedBy?: string;
+}
+
+/**
+ * One stream the make-room rung destroyed, for the clients that were not the ones it served.
+ *
+ * `kind` is `video`: the rung takes video streams, and a caller reads the same ids in its own response.
+ */
+export interface CameraStreamEvicted {
+    nodeId: NodeId;
+    endpointId: EndpointNumber;
+    kind: "video";
+    streamId: number;
+}
+
+/**
  * A WebRTC session as the camera's own `CurrentSessions` (§11.5.5.1) reports it.
  *
  * The camera is the record of which sessions exist, so this survives a restart of this server while

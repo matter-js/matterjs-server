@@ -26,6 +26,8 @@ import {
     ResponseOf,
     SuccessResultMessage,
     ThreadDiagnosticsBatch,
+    CameraSessionEndedData,
+    CameraStreamEvictedData,
     WebRtcCallbackData,
     WebRtcProviderCommandName,
 } from "./models/model.js";
@@ -101,6 +103,8 @@ export class MatterClient {
     private msgId = Math.floor(Math.random() * 0x7fffffff);
     private eventListeners: Record<string, Array<() => void>> = {};
     private webrtcCallbackListeners: Array<(data: WebRtcCallbackData) => void> = [];
+    private cameraSessionEndedListeners: Array<(data: CameraSessionEndedData) => void> = [];
+    private cameraStreamEvictedListeners: Array<(data: CameraStreamEvictedData) => void> = [];
     private nodeEventListeners: Array<(event: MatterNodeEvent) => void> = [];
 
     /**
@@ -141,6 +145,26 @@ export class MatterClient {
         this.webrtcCallbackListeners.push(listener);
         return () => {
             this.webrtcCallbackListeners = this.webrtcCallbackListeners.filter(l => l !== listener);
+        };
+    }
+
+    /**
+     * Subscribe to camera_session_ended events. Returns an unsubscribe function.
+     *
+     * The server sends them only to a connection that has issued a camera command.
+     */
+    addCameraSessionEndedListener(listener: (data: CameraSessionEndedData) => void): () => void {
+        this.cameraSessionEndedListeners.push(listener);
+        return () => {
+            this.cameraSessionEndedListeners = this.cameraSessionEndedListeners.filter(l => l !== listener);
+        };
+    }
+
+    /** Subscribe to camera_stream_evicted events. Returns an unsubscribe function. */
+    addCameraStreamEvictedListener(listener: (data: CameraStreamEvictedData) => void): () => void {
+        this.cameraStreamEvictedListeners.push(listener);
+        return () => {
+            this.cameraStreamEvictedListeners = this.cameraStreamEvictedListeners.filter(l => l !== listener);
         };
     }
 
@@ -787,6 +811,20 @@ export class MatterClient {
 
         if (event.event === "webrtc_callback") {
             for (const listener of this.webrtcCallbackListeners) {
+                listener(event.data);
+            }
+            return;
+        }
+
+        if (event.event === "camera_session_ended") {
+            for (const listener of this.cameraSessionEndedListeners) {
+                listener(event.data);
+            }
+            return;
+        }
+
+        if (event.event === "camera_stream_evicted") {
+            for (const listener of this.cameraStreamEvictedListeners) {
                 listener(event.data);
             }
             return;

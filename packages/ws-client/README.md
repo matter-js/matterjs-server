@@ -434,6 +434,35 @@ await client.sendCommand("camera_release_stream", 0, {
 
 Fails with `CAMERA_STREAM_IN_USE_ERROR_CODE` if the stream still has an active listener, so releasing never breaks a live session. The camera decides: the deallocate always goes out, and its `INVALID_IN_STATE` becomes this code, because that is what the reference implementation answers for a reference count above 0 and nothing else. The reference count the server holds is a cached view and decides nothing; it only fills in `reference_count` in the `details` when it is above zero, so a stream the server reads as referenced is still released when the camera accepts it. A missing AV Stream Management cluster is still `CAMERA_NOT_SUPPORTED_ERROR_CODE` and a malformed argument still error 8. Anything else the camera refuses — an id it does not know, or a video or audio stream whose usage is `Internal` — surfaces as the device's own error.
 
+### Camera lifecycle events
+
+Two events report what the server did to a camera on nobody's request. A connection receives them once
+it has issued any `camera_*` command or `send_webrtc_provider_command`, so a client that never used this
+API never sees an event type it does not know.
+
+```typescript
+const stopWatchingSessions = client.addCameraSessionEndedListener(ended => {
+    console.log(`session ${ended.webrtc_session_id} was ended by someone else`);
+});
+const stopWatchingStreams = client.addCameraStreamEvictedListener(taken => {
+    console.log(`${taken.kind} stream ${taken.stream_id} is gone`);
+});
+```
+
+`camera_session_ended` is how a client learns that a session it opened was ended by another connection's
+`camera_stop_stream`, which the camera permits because its own `PeerNodeID` check is what decides who may
+end a session. It reaches the connection that opened the session, and every camera-aware connection for a
+session the server holds no record of, such as one opened on the raw `send_webrtc_provider_command`
+route. It never reaches the connection whose stop ended the session — that command's response is the
+answer — and it carries no reason, because the other endings either reach the client already (the peer's
+own `End`, as a `webrtc_callback` `end` event) or cannot reach it at all (the owning connection closing,
+and shutdown, which the `server_shutdown` event reports).
+
+`camera_stream_evicted` names a stream the server deallocated to make room for another request on the
+same camera. The id is gone for good: a replacement the server allocates for the same range gets a new
+id. It reaches every camera-aware connection, including the caller the room was made for, which also
+reads the same ids in its `camera_start_stream` response under `video.evicted_stream_ids`.
+
 ### Camera error codes
 
 | Code | Constant | When |
