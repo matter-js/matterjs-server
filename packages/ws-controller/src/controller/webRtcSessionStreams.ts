@@ -201,6 +201,16 @@ export interface WebRtcProviderSessionArgs {
     /** The provider's ClusterRevision, or undefined while the endpoint has not stated one. */
     clusterRevision: number | undefined;
     formatNode: (nodeId: NodeId) => string;
+    /**
+     * Called with the id the provider answered with, before the local requestor is given the session.
+     *
+     * The requestor answers `NotFound` for every signalling command naming a session it has not
+     * stored, the peer's `End` included, so nothing can be routed for this id until `upsertSession`
+     * has run — and after it has, a caller that needs to know its own id already does. That ordering
+     * is the whole point of the hook: it is the one place a caller can learn the id while it is still
+     * true that no `End` for it can have arrived.
+     */
+    sessionEstablishing?: (webRtcSessionId: number) => void;
 }
 
 /**
@@ -270,6 +280,7 @@ export async function establishWebRtcProviderSession(
         );
     }
     const webRtcSessionId = response.webRtcSessionId;
+    args.sessionEstablishing?.(webRtcSessionId);
 
     const streamUsage = fields.streamUsage;
     const metadataEnabled = fields.metadataEnabled === true;

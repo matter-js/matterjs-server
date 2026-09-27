@@ -200,6 +200,26 @@ export interface RecordedInvoke {
     fields: Record<string, unknown>;
     nodeId: NodeId;
     endpointId: EndpointNumber;
+    /**
+     * The manager's own id hook, for a test that needs to act in the window it opens: the real
+     * provider path calls it with the answered id and then gives the session to the local requestor,
+     * so a test that calls it and then ends the session is in that window and nowhere else.
+     * Undefined for every command but `provideOffer` / `solicitOffer`.
+     */
+    sessionEstablishing?: (webRtcSessionId: number) => void;
+}
+
+/**
+ * Call the manager's id hook as the real provider path does — after the response, before anything can
+ * route an `End` for the id — so no test double can keep the pre-hook behaviour by accident.
+ *
+ * Calling it a second time states the same id, so a test that called it itself is not disturbed.
+ */
+function announceEstablishingSession(recorded: RecordedInvoke, response: unknown): void {
+    if (recorded.command !== "provideOffer" && recorded.command !== "solicitOffer") return;
+    if (typeof response !== "object" || response === null || !("webRtcSessionId" in response)) return;
+    const { webRtcSessionId } = response;
+    if (typeof webRtcSessionId === "number") recorded.sessionEstablishing?.(webRtcSessionId);
 }
 
 /**
@@ -235,9 +255,12 @@ export function managerWith(
                 fields: args.fields,
                 nodeId: args.nodeId,
                 endpointId: args.endpointId,
+                sessionEstablishing: args.sessionEstablishing,
             };
             invokes.push(recorded);
-            return respond(recorded);
+            const response = await respond(recorded);
+            announceEstablishingSession(recorded, response);
+            return response;
         },
     };
     return { manager: new CameraStreamManager(io), invokes, holder };
@@ -275,9 +298,12 @@ function probeWith(
                 fields: args.fields,
                 nodeId: args.nodeId,
                 endpointId: args.endpointId,
+                sessionEstablishing: args.sessionEstablishing,
             };
             invokes.push(recorded);
-            return respond(recorded);
+            const response = await respond(recorded);
+            announceEstablishingSession(recorded, response);
+            return response;
         },
     };
     return { manager: new LeaseProbe(io), invokes, holder };
@@ -3522,6 +3548,106 @@ describe("CameraStreamManager", () => {
             const afterStop = endedSessions(invokes).length;
             await manager.stopAll();
             expect(endedSessions(invokes)).to.have.length(afterStop);
+        });
+
+        it("refuses to track a session the peer ended while the registration was still in flight", async () => {
+            // The window this test exists for: the provider has answered the offer and the id has
+            // reached the registration, the local requestor is being given the session and can route
+            // an `End` for it, and no registry entry names it yet. A peer end emitted anywhere else
+            // proves nothing about it.
+            const peerEndFoundNoEntry = new Array<boolean>();
+            const { manager, invokes } = managerWith(STATE, async invoke => {
+                if (invoke.command === "videoStreamAllocate") return { videoStreamId: 9 };
+                if (invoke.command === "provideOffer") {
+                    invoke.sessionEstablishing?.(42);
+                    peerEndFoundNoEntry.push(manager.forgetSession(NODE, ENDPOINT, 42) === false);
+                    return { webRtcSessionId: 42 };
+                }
+                // The camera resolves the id to no session of its own: it ended the session itself.
+                if (invoke.command === "endSession") throw statusError(Status.NotFound);
+                return undefined;
+            });
+
+            let thrown: unknown;
+            try {
+                await start(manager);
+            } catch (error) {
+                thrown = error;
+            }
+
+            expect(peerEndFoundNoEntry).to.deep.equal([true]);
+            expect(thrown).to.be.instanceOf(ServerError);
+            expect((thrown as ServerError).message).to.contain("was ended before this server could track it");
+            // Nothing names the session, so no later pass sends a second EndSession for it, and the
+            // failed call gave its stream back.
+            expect(manager.forgetSession(NODE, ENDPOINT, 42)).to.equal(false);
+            expect(invokes.filter(invoke => invoke.command === "videoStreamDeallocate")).to.have.length(1);
+        });
+
+        it("refuses to track a session another connection stopped while the registration was in flight", async () => {
+            // camera_stop_stream for an id this server holds no entry for still ends it on the camera,
+            // so it has to reach the registry the same way the peer's End does. Without that the caller
+            // is handed a session another connection has already ended.
+            const stopped = new Array<boolean>();
+            const { manager, invokes } = managerWith(STATE, async invoke => {
+                if (invoke.command === "videoStreamAllocate") return { videoStreamId: 9 };
+                if (invoke.command === "provideOffer") {
+                    invoke.sessionEstablishing?.(42);
+                    stopped.push(await manager.stopStream(NODE, ENDPOINT, 42, "conn-2"));
+                    return { webRtcSessionId: 42 };
+                }
+                return undefined;
+            });
+
+            let thrown: unknown;
+            try {
+                await start(manager);
+            } catch (error) {
+                thrown = error;
+            }
+
+            expect(stopped).to.deep.equal([true]);
+            expect(thrown).to.be.instanceOf(ServerError);
+            expect(manager.forgetSession(NODE, ENDPOINT, 42)).to.equal(false);
+            expect(invokes.filter(invoke => invoke.command === "videoStreamDeallocate")).to.have.length(1);
+        });
+
+        it("tracks a session whose camera ended a different session while the registration was in flight", async () => {
+            const { manager } = managerWith(STATE, async invoke => {
+                if (invoke.command === "videoStreamAllocate") return { videoStreamId: 9 };
+                if (invoke.command === "provideOffer") {
+                    invoke.sessionEstablishing?.(42);
+                    manager.forgetSession(NODE, ENDPOINT, 41);
+                    return { webRtcSessionId: 42 };
+                }
+                return undefined;
+            });
+
+            expect((await start(manager)).webRtcSessionId).to.equal(42);
+            expect(manager.forgetSession(NODE, ENDPOINT, 42)).to.equal(true);
+        });
+
+        it("tracks a reissued id whose earlier session the peer ended, since that end named an entry", async () => {
+            // A camera reissues an id it has freed, so the end of session 42 and a registration about
+            // to be answered with 42 can be the same id and different sessions. An end an entry names
+            // is the first case: the camera cannot have issued 42 again while it still held it.
+            let secondInFlight = false;
+            const { manager } = managerWith(STATE, async invoke => {
+                if (invoke.command === "videoStreamAllocate") return { videoStreamId: 9 };
+                if (invoke.command === "provideOffer") {
+                    if (secondInFlight) {
+                        invoke.sessionEstablishing?.(42);
+                        manager.forgetSession(NODE, ENDPOINT, 42);
+                    }
+                    return { webRtcSessionId: 42 };
+                }
+                return undefined;
+            });
+
+            await start(manager, "conn-1");
+            secondInFlight = true;
+            expect((await start(manager, "conn-2")).webRtcSessionId).to.equal(42);
+            expect(manager.forgetSession(NODE, ENDPOINT, 42)).to.equal(true);
         });
 
         it("gives back the streams it allocated when the provider call fails", async () => {

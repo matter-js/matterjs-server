@@ -351,6 +351,29 @@ describe("establishWebRtcProviderSession", () => {
         expect("audioStreams" in (invokedFields[0] ?? {})).to.equal(false);
     });
 
+    it("states the session id before the local requestor is given the session", async () => {
+        // The order is the contract: once the requestor holds the session it answers the peer's End
+        // instead of NotFound, so a caller told the id only afterwards cannot tell an end of this
+        // session from an end of any other session on the same camera.
+        const steps = new Array<string>();
+        const io: WebRtcProviderSessionIo = {
+            invoke: async () => ({ webRtcSessionId: 9 }),
+            upsertSession: async () => {
+                steps.push("upsert");
+            },
+        };
+
+        await establishWebRtcProviderSession(
+            io,
+            baseArgs({
+                commandName: "ProvideOffer",
+                sessionEstablishing: webRtcSessionId => steps.push(`establishing:${webRtcSessionId}`),
+            }),
+        );
+
+        expect(steps).to.deep.equal(["establishing:9", "upsert"]);
+    });
+
     it("tracks a trackable ProvideOffer session in the local requestor", async () => {
         const upserted = new Array<unknown>();
         const io: WebRtcProviderSessionIo = {

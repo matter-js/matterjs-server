@@ -392,8 +392,9 @@ export class ControllerCommandHandler {
         endpointId: EndpointNumber;
         commandName: "ProvideOffer" | "SolicitOffer";
         fields: Record<string, unknown>;
+        sessionEstablishing?: (webRtcSessionId: number) => void;
     }): Promise<WebRtcTransportProvider.ProvideOfferResponse | WebRtcTransportProvider.SolicitOfferResponse> {
-        const { nodeId, endpointId, commandName, fields } = args;
+        const { nodeId, endpointId, commandName, fields, sessionEstablishing } = args;
 
         const requestorEndpoint = this.#cameraControllerEndpoint();
         const originatingEndpointId = EndpointNumber(requestorEndpoint.number);
@@ -418,6 +419,7 @@ export class ControllerCommandHandler {
         const response = await establishWebRtcProviderSession(io, {
             commandName,
             fields,
+            sessionEstablishing,
             nodeId,
             endpointId,
             originatingEndpointId,
@@ -439,6 +441,8 @@ export class ControllerCommandHandler {
         endpointId: EndpointNumber;
         commandName: SessionEstablishingCommandName;
         fields: Record<string, unknown>;
+        /** @see WebRtcProviderSessionArgs.sessionEstablishing */
+        sessionEstablishing?: (webRtcSessionId: number) => void;
     }): Promise<WebRtcTransportProvider.ProvideOfferResponse | WebRtcTransportProvider.SolicitOfferResponse> {
         return this.#establishWebRtcProviderSession(args);
     }

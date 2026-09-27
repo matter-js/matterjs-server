@@ -223,6 +223,7 @@ export class MatterCameraDeviceIo implements CameraDeviceIo {
         cluster: "avsm" | "webrtcProvider";
         command: string;
         fields: Record<string, unknown>;
+        sessionEstablishing?: (webRtcSessionId: number) => void;
     }): Promise<unknown> {
         if (args.cluster === "avsm") {
             const node = this.#handler.getNode(args.nodeId).node;
@@ -247,6 +248,7 @@ export class MatterCameraDeviceIo implements CameraDeviceIo {
                 endpointId: args.endpointId,
                 commandName: args.command === "provideOffer" ? "ProvideOffer" : "SolicitOffer",
                 fields: args.fields,
+                sessionEstablishing: args.sessionEstablishing,
             });
         }
 

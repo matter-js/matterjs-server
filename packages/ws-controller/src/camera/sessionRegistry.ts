@@ -26,7 +26,25 @@ interface PendingRecord {
     claimed: boolean;
     settled: Promise<void>;
     markSettled: () => void;
+    /**
+     * The id the provider answered this registration with, once it is known.
+     *
+     * Recorded before the local requestor is given the session, so it is known before any `End` for
+     * it can be routed. That is what lets {@link CameraSessionRegistry.forget} tell an end of *this*
+     * session from an end of any other session on the same camera.
+     */
+    webRtcSessionId?: number;
+    /** Set when this registration's session ended before it was tracked, whoever ended it. */
+    ended: boolean;
 }
+
+/**
+ * Why a session this server established could not be tracked.
+ *
+ * Both mean the same thing to the caller — it owns ending the session it just established — and
+ * differ only in what it tells its client.
+ */
+export type SessionTrackRefusal = "claimed" | "already_ended";
 
 /**
  * The sessions this server established on devices, tracked from before establishment until release.
@@ -56,20 +74,41 @@ export class CameraSessionRegistry {
         const settled = new Promise<void>(resolve => {
             markSettled = resolve;
         });
-        this.#pending.set(pending, { claimed: false, settled, markSettled });
+        this.#pending.set(pending, { claimed: false, settled, markSettled, ended: false });
         return pending;
     }
 
     /**
-     * Track an established session, unless a release path claimed the registration meanwhile.
+     * Record the id the provider answered a registration with.
      *
-     * False means the caller owns ending the session it just established: a release path is waiting
-     * for exactly that, and tracking it now would hand back a session nobody is coming for.
+     * Must be called before the local requestor is given the session: after that an `End` for the id
+     * can be routed, and an end this registry cannot attribute is one {@link track} cannot refuse.
+     * An id recorded for a registration that never reaches {@link track} costs nothing — the record
+     * goes with the registration.
      */
-    track(pending: PendingSession, session: ManagedSession): boolean {
-        if (this.#pending.get(pending)?.claimed !== false) return false;
+    establishing(pending: PendingSession, webRtcSessionId: number): void {
+        const record = this.#pending.get(pending);
+        if (record !== undefined) record.webRtcSessionId = webRtcSessionId;
+    }
+
+    /**
+     * Track an established session, or refuse it and say why.
+     *
+     * A refusal means the caller owns ending the session it just established. `claimed` is a release
+     * path waiting for exactly that, which tracking the session would leave nobody coming for.
+     * `already_ended` is a session that ended between the provider answering the offer and this call —
+     * the peer's own `End`, or another connection's `camera_stop_stream` or `EndSession` for the id the
+     * provider had just issued. The registry holds no entry to drop at that point, so without this the
+     * caller would be handed a dead session id as a live one, its signalling would be routed to
+     * nothing, and the next stop or shutdown would send an `EndSession` for a session that no longer
+     * exists. Which of those ended it is not knowable here, and the refusal does not claim to know.
+     */
+    track(pending: PendingSession, session: ManagedSession): SessionTrackRefusal | undefined {
+        const record = this.#pending.get(pending);
+        if (record === undefined || record.claimed) return "claimed";
+        if (record.ended) return "already_ended";
         this.#sessions.set(this.#key(session.nodeId, session.endpointId, session.webRtcSessionId), session);
-        return true;
+        return undefined;
     }
 
     /**
@@ -120,10 +159,28 @@ export class CameraSessionRegistry {
      *
      * Nothing is announced here, unlike {@link forgetEstablished}: the two callers are the peer's own
      * `End`, which the owner already receives as a `webrtc_callback` event, and a client's own
-     * `EndSession` on the raw provider route, which that client sent itself.
+     * `EndSession` on the generic `device_command` route, which that client sent itself.
+     *
+     * An id no entry names is still this server's own when a registration in flight has been answered
+     * with it, which {@link establishing} is what records — a session ends before it is tracked
+     * whenever the camera answers an offer it cannot serve, and whenever another connection ends the
+     * id the camera has just issued. Such a registration is marked and {@link track} refuses it, so
+     * every path on which this server learns a session has ended must come through here. Nothing is marked on the strength of node and endpoint alone: the
+     * camera reissues an id it has freed, so any end on that camera could otherwise be read as the end
+     * of a session established since, and a live session would be refused and torn down.
      */
     forget(nodeId: NodeId, endpointId: EndpointNumber, webRtcSessionId: number): boolean {
-        return this.#sessions.delete(this.#key(nodeId, endpointId, webRtcSessionId));
+        if (this.#sessions.delete(this.#key(nodeId, endpointId, webRtcSessionId))) return true;
+        for (const [pending, record] of this.#pending) {
+            if (
+                pending.nodeId === nodeId &&
+                pending.endpointId === endpointId &&
+                record.webRtcSessionId === webRtcSessionId
+            ) {
+                record.ended = true;
+            }
+        }
+        return false;
     }
 
     /**

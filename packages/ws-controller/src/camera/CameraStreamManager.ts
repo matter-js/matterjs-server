@@ -500,6 +500,12 @@ export interface CameraDeviceIo {
         cluster: "avsm" | "webrtcProvider";
         command: string;
         fields: Record<string, unknown>;
+        /**
+         * For `provideOffer` / `solicitOffer` only: called with the session id the provider answered
+         * with, before the local requestor is given the session and therefore before any `End` for it
+         * can be routed. Ignored for every other command.
+         */
+        sessionEstablishing?: (webRtcSessionId: number) => void;
     }): Promise<unknown>;
 }
 
@@ -1816,6 +1822,7 @@ export class CameraStreamManager {
      * to be read: a privacy switch is the one refusal here whose reason this server can name.
      */
     async #invokeEstablishingOffer(
+        pending: PendingSession,
         args: StartStreamArgs,
         video: ResolvedStream | undefined,
         audio: ResolvedStream | undefined,
@@ -1827,6 +1834,10 @@ export class CameraStreamManager {
                 endpointId,
                 cluster: "webrtcProvider",
                 command: args.sdp === undefined ? "solicitOffer" : "provideOffer",
+                // The registration has to hold the id before the local requestor can route an `End`
+                // for it, which is the only point at which an end of this session can be told apart
+                // from an end of any other session on this camera.
+                sessionEstablishing: webRtcSessionId => this.#sessions.establishing(pending, webRtcSessionId),
                 fields: {
                     ...(args.sdp === undefined ? {} : { sdp: args.sdp }),
                     streamUsage,
@@ -1970,7 +1981,7 @@ export class CameraStreamManager {
             });
         }
 
-        const response = await this.#invokeEstablishingOffer(args, video, audio);
+        const response = await this.#invokeEstablishingOffer(pending, args, video, audio);
 
         const webRtcSessionId =
             typeof response === "object" && response !== null && "webRtcSessionId" in response
@@ -1991,14 +2002,17 @@ export class CameraStreamManager {
             audioStreamIds: audio === undefined ? new Array<number>() : [audio.streamId],
         };
         scope.returnOnFailure(async () => {
-            // No client asked for this: the one thing that ends a session here is the closing
-            // connection claiming this registration. Nothing is announced either way, because the
-            // session never reached the registry.
+            // No client asked for this: what ends a session here is the closing connection claiming
+            // this registration, or the camera having ended it already. Nothing is announced either
+            // way, because the session never reached the registry.
             await this.#endSession(session, undefined);
         });
-        if (!this.#sessions.track(pending, session)) {
+        const refusal = this.#sessions.track(pending, session);
+        if (refusal !== undefined) {
             throw ServerError.sdkStackError(
-                `WebRTC session ${webRtcSessionId} was ended: the requesting connection closed while the camera was establishing it`,
+                refusal === "claimed"
+                    ? `WebRTC session ${webRtcSessionId} was ended: the requesting connection closed while the camera was establishing it`
+                    : `WebRTC session ${webRtcSessionId} was ended before this server could track it, so it is no longer usable`,
             );
         }
 
@@ -2128,6 +2142,11 @@ export class CameraStreamManager {
             );
             return false;
         }
+        // Every path on which this server learns a session has ended goes through the registry, even
+        // one that had no entry to drop: a registration in flight may have been answered with this id,
+        // and `forget` is where that is remembered so `track` refuses the session it is about to hand
+        // back as live.
+        this.#sessions.forget(nodeId, endpointId, webRtcSessionId);
         // Announced with no owner, which every route reads as "tell everyone": this server ended a
         // session it holds no record of, so it cannot name the connection driving it, and the client
         // that can least afford to be left guessing is the one that opened it on the raw route.

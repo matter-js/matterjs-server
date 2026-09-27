@@ -328,7 +328,13 @@ describe("MatterCameraDeviceIo.invoke (webrtcProvider routing)", () => {
 
     interface HandlerStub {
         invokeCommand: () => Promise<unknown>;
-        invokeWebRtcProviderCommand: (args: unknown) => Promise<unknown>;
+        invokeWebRtcProviderCommand: (args: {
+            nodeId: NodeId;
+            endpointId: EndpointNumber;
+            commandName: string;
+            fields: Record<string, unknown>;
+            sessionEstablishing?: (webRtcSessionId: number) => void;
+        }) => Promise<unknown>;
         removeTrackedWebRtcSession: (
             webRtcSessionId: number,
             nodeId: NodeId,
@@ -373,8 +379,37 @@ describe("MatterCameraDeviceIo.invoke (webrtcProvider routing)", () => {
         });
 
         expect(calls).to.deep.equal([
-            { nodeId: NODE_ID, endpointId: ENDPOINT_ID, commandName: "ProvideOffer", fields: { sdp: "v=0" } },
+            {
+                nodeId: NODE_ID,
+                endpointId: ENDPOINT_ID,
+                commandName: "ProvideOffer",
+                fields: { sdp: "v=0" },
+                sessionEstablishing: undefined,
+            },
         ]);
+    });
+
+    it("forwards the caller's session-establishing hook, which the session registry depends on", async () => {
+        const announced = new Array<number>();
+        const io = new MatterCameraDeviceIo(
+            makeHandler({
+                invokeWebRtcProviderCommand: async args => {
+                    args.sessionEstablishing?.(7);
+                    return { webRtcSessionId: 7 };
+                },
+            }),
+        );
+
+        await io.invoke({
+            nodeId: NODE_ID,
+            endpointId: ENDPOINT_ID,
+            cluster: "webrtcProvider",
+            command: "provideOffer",
+            fields: { sdp: "v=0" },
+            sessionEstablishing: webRtcSessionId => announced.push(webRtcSessionId),
+        });
+
+        expect(announced).to.deep.equal([7]);
     });
 
     it("routes a solicitOffer invoke through invokeWebRtcProviderCommand as SolicitOffer", async () => {
@@ -397,7 +432,13 @@ describe("MatterCameraDeviceIo.invoke (webrtcProvider routing)", () => {
         });
 
         expect(calls).to.deep.equal([
-            { nodeId: NODE_ID, endpointId: ENDPOINT_ID, commandName: "SolicitOffer", fields: { streamUsage: 3 } },
+            {
+                nodeId: NODE_ID,
+                endpointId: ENDPOINT_ID,
+                commandName: "SolicitOffer",
+                fields: { streamUsage: 3 },
+                sessionEstablishing: undefined,
+            },
         ]);
     });
 
