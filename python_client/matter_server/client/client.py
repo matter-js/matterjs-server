@@ -71,6 +71,9 @@ if TYPE_CHECKING:
 
 SUB_WILDCARD: Final = "*"
 
+# Relayed by the server only from schema 14 on; the offer variants have been relayed since 12.
+SIGNALLING_PROVIDER_COMMANDS: Final = frozenset({"ProvideAnswer", "ProvideIceCandidates"})
+
 # pylint: disable=too-many-public-methods,too-many-locals,too-many-branches
 
 
@@ -734,13 +737,14 @@ class MatterClient:
         ``ProvideOffer`` and ``SolicitOffer`` establish a session and answer with the
         camera's response; ``ProvideAnswer`` and ``ProvideIceCandidates`` signal into a
         session the camera already holds and answer ``None``, because the cluster defines
-        no response payload for them. ``EndSession`` is deliberately not relayed here:
+        no response payload for them, and are relayed only from schema 14 on. ``EndSession``
+        is deliberately not relayed here:
         ``camera_stop_stream`` owns it, so one session gets one ``EndSession`` and the
         server's own records go with that invoke.
         """
         response = await self.send_command(
             APICommand.SEND_WEBRTC_PROVIDER_COMMAND,
-            require_schema=12,
+            require_schema=14 if command_name in SIGNALLING_PROVIDER_COMMANDS else 12,
             node_id=node_id,
             endpoint_id=endpoint_id,
             command_name=command_name,

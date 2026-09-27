@@ -1,8 +1,19 @@
 """Tests for the WebRTC additions to the websocket protocol model."""
 
+from __future__ import annotations
+
+import asyncio
+from unittest.mock import MagicMock
+
+import pytest
+
+from matter_server.client import MatterClient
+from matter_server.client.exceptions import ServerVersionTooOld
 from matter_server.common.models import (
     APICommand,
+    CommandMessage,
     EventType,
+    ServerInfoMessage,
     WebRTCCallbackData,
     WebRTCIceCandidate,
 )
@@ -51,3 +62,47 @@ def test_webrtc_ice_candidate_optional_fields():
     c = WebRTCIceCandidate(candidate="candidate:foo")
     assert c.sdpMid is None
     assert c.sdpMLineIndex is None
+
+
+def _signalling_client(schema_version: int) -> MatterClient:
+    """A client that reports a schema version and answers every command with None."""
+    client = MatterClient.__new__(MatterClient)
+    client._result_futures = {}
+    client._loop = asyncio.get_running_loop()
+    connection = MagicMock()
+    connection.connected = True
+    connection.server_info = ServerInfoMessage(
+        fabric_id=1,
+        compressed_fabric_id=1,
+        schema_version=schema_version,
+        min_supported_schema_version=1,
+        sdk_version="0.0.0",
+        wifi_credentials_set=False,
+        thread_credentials_set=False,
+        bluetooth_enabled=False,
+    )
+
+    async def send_message(message: CommandMessage) -> None:
+        client._result_futures[message.message_id].set_result(None)
+
+    connection.send_message = send_message
+    client.connection = connection
+    return client
+
+
+@pytest.mark.parametrize("command_name", ["ProvideAnswer", "ProvideIceCandidates"])
+async def test_signalling_variants_require_schema_14(command_name: str) -> None:
+    """A schema 13 server does not relay them, so the client must refuse before sending."""
+    client = _signalling_client(schema_version=13)
+    with pytest.raises(ServerVersionTooOld):
+        await client.send_webrtc_provider_command(1, 1, command_name, {})
+
+    client = _signalling_client(schema_version=14)
+    assert await client.send_webrtc_provider_command(1, 1, command_name, {}) is None
+
+
+@pytest.mark.parametrize("command_name", ["ProvideOffer", "SolicitOffer"])
+async def test_offer_variants_still_require_only_schema_12(command_name: str) -> None:
+    """They have been relayed since schema 12 and must not be gated behind 14."""
+    client = _signalling_client(schema_version=12)
+    assert await client.send_webrtc_provider_command(1, 1, command_name, {}) is None
