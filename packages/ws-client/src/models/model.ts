@@ -712,6 +712,15 @@ export const CAMERA_STREAM_PROVENANCES = ["allocated", "reused", "adopted"] as c
 /** Where a `camera_start_stream` stream came from. @see CAMERA_STREAM_PROVENANCES */
 export type CameraStreamProvenance = (typeof CAMERA_STREAM_PROVENANCES)[number];
 
+/**
+ * The ceilings the camera's encoder budget lowered, each carrying the value the server would have asked
+ * for had the budget been free. @see CameraStartStreamVideoResult.narrowed_by_encoder_budget
+ */
+export interface CameraEncoderBudgetNarrowing {
+    max_frame_rate?: number;
+    max_resolution?: CameraResolution;
+}
+
 export interface CameraStartStreamVideoResult {
     /** The id `camera_release_stream` takes with `kind: "video"`. */
     stream_id: number;
@@ -758,10 +767,7 @@ export interface CameraStartStreamVideoResult {
      * stream handed over is outside the range the server computed; here the stream fits that range and
      * the range itself was narrowed.
      */
-    narrowed_by_encoder_budget?: {
-        max_frame_rate?: number;
-        max_resolution?: CameraResolution;
-    };
+    narrowed_by_encoder_budget?: CameraEncoderBudgetNarrowing;
     /**
      * Whether the stream this session uses carries the camera's watermark.
      *
