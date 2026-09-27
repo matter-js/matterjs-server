@@ -4,15 +4,20 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { isLongIdleTimeCapable, isLongIdleTimeDevice } from "@matter-server/ws-client";
+import {
+    ICD_MULTI_ADMIN_ERROR_CODE,
+    isLongIdleTimeCapable,
+    isLongIdleTimeDevice,
+    ServerCommandError,
+} from "@matter-server/ws-client";
 import {
     decodeRegisteredClients,
     icdBadge,
     icdInfo,
     isRegisteredByUs,
+    multiAdminVendorIds,
     otherFabricClientCount,
     parseIcdFeatures,
-    parseMultiAdminDetails,
     wakeInstruction,
 } from "../src/util/icd.js";
 
@@ -209,14 +214,20 @@ describe("icd util", () => {
         });
     });
 
-    describe("parseMultiAdminDetails", () => {
-        it("extracts vendor ids", () => {
-            expect(parseMultiAdminDetails('{"message":"x","admin_vendor_ids":[4631,4362]}')).to.deep.equal([
-                4631, 4362,
-            ]);
+    describe("multiAdminVendorIds", () => {
+        it("extracts vendor ids from the error details", () => {
+            const err = new ServerCommandError(
+                '{"message":"x","admin_vendor_ids":[4631,4362]}',
+                ICD_MULTI_ADMIN_ERROR_CODE,
+            );
+            expect(multiAdminVendorIds(err)).to.deep.equal([4631, 4362]);
         });
-        it("returns undefined for plain text", () => {
-            expect(parseMultiAdminDetails("boom")).to.equal(undefined);
+        it("is empty for a multi-admin rejection with unreadable details", () => {
+            expect(multiAdminVendorIds(new ServerCommandError("boom", ICD_MULTI_ADMIN_ERROR_CODE))).to.deep.equal([]);
+        });
+        it("is undefined for other errors", () => {
+            expect(multiAdminVendorIds(new ServerCommandError("{}", 8))).to.equal(undefined);
+            expect(multiAdminVendorIds(new Error("boom"))).to.equal(undefined);
         });
     });
 });

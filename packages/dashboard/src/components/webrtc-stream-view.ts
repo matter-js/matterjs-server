@@ -6,222 +6,50 @@
 
 import { consume } from "@lit/context";
 import type {
+    CameraCapabilitiesResult,
+    CameraResolution,
+    CameraSessionEndedData,
+    CameraStartStreamResult,
+    CameraStreamEvictedData,
     MatterClient,
-    MatterNode,
     WebRtcAnswerData,
     WebRtcCallbackData,
+    WebRtcIceCandidate,
     WebRtcIceCandidatesData,
-    WebRtcEndData,
+    WebRtcOfferData,
 } from "@matter-server/ws-client";
 import { mdiAlertCircleOutline, mdiVideoOutline } from "@mdi/js";
 import { LitElement, css, html } from "lit";
 import { customElement, property, query, state } from "lit/decorators.js";
 import { clientContext } from "../client/client-context.js";
-import { asObject, pickNumber } from "../util/attribute-shapes.js";
 import {
-    pixelRate,
-    planVideoMaxFrameRate,
-    VIDEO_MIN_FRAME_RATE,
-    videoStreamFitsSnapshotBudget,
-} from "../util/camera-stream-budget.js";
-import { buildProvideOfferRequest } from "../util/webrtc-provider-payload.js";
+    buildSnapshotOverlays,
+    buildVideoRequest,
+    cameraErrorText,
+    type CameraQualityBadge,
+    type CameraStreamRef,
+    isOwnSnapshotStream,
+    snapshotMimeType,
+    streamQualityBadges,
+    streamsToRelease,
+} from "../util/camera-api.js";
+import { errorText } from "../util/error-text.js";
 import "./ha-svg-icon.js";
 
-// Spec values from @matter/types globals/StreamUsage.ts and
-// web-rtc-transport-definitions.ts WebRtcEndReason. Kept inline to avoid a new
-// @matter/types dep just for two numeric literals.
-const STREAM_USAGE_LIVE_VIEW = 3;
-const END_REASON_USER_HANGUP = 2;
-
-// Hardcoded to avoid pulling full cluster schema into the dashboard bundle.
-export const CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID = 0x551;
-const WEBRTC_TRANSPORT_PROVIDER_CLUSTER_ID = 0x553;
-
-// AVSM FeatureMap bits (spec §11.2.4): ADO=0 audio, VDO=1 gates VideoStreamAllocate —
-// audio-only devices such as Audio Doorbell advertise ADO without VDO — SNP=2 enables
-// snapshot streams, WMARK=6 enables watermark overlay, OSD=7 enables on-screen display.
-// When advertised, VideoStreamAllocate and SnapshotStreamAllocate REQUIRE
-// watermarkEnabled / osdEnabled fields.
-export const AVSM_FEAT_ADO = 1 << 0;
-export const AVSM_FEAT_VDO = 1 << 1;
-export const AVSM_FEAT_SNP = 1 << 2;
-export const AVSM_FEAT_WMARK = 1 << 6;
-export const AVSM_FEAT_OSD = 1 << 7;
-export const AVSM_FEATURE_MAP_ATTR_ID = 0xfffc;
-// MaxEncodedPixelRate (attr 0x0001): shared encoder budget in px/s that video and
-// snapshot streams draw from.
-const AVSM_MAX_ENCODED_PIXEL_RATE_ATTR_ID = 0x1;
-
-export interface AvsmFeatures {
-    // false until the FeatureMap attribute is cached; callers must not read a missing FeatureMap
-    // as "no video" (that would skip VideoStreamAllocate on a real camera whose attribute is late).
-    known: boolean;
-    ado: boolean;
-    vdo: boolean;
-    snp: boolean;
-    wmark: boolean;
-    osd: boolean;
-}
-
-/**
- * Reads the AVSM FeatureMap (spec §11.2.4) for a node/endpoint's CameraAvStreamManagement
- * cluster. Audio-only devices (Intercom, Audio Doorbell) advertise Audio without Video (vdo).
- */
-export function readAvsmFeatures(node: MatterNode | undefined, endpoint: number): AvsmFeatures {
-    const raw = node?.attributes[`${endpoint}/${CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID}/${AVSM_FEATURE_MAP_ATTR_ID}`];
-    const known = typeof raw === "number";
-    const bits = known ? raw : 0;
-    return {
-        known,
-        ado: (bits & AVSM_FEAT_ADO) !== 0,
-        vdo: (bits & AVSM_FEAT_VDO) !== 0,
-        snp: (bits & AVSM_FEAT_SNP) !== 0,
-        wmark: (bits & AVSM_FEAT_WMARK) !== 0,
-        osd: (bits & AVSM_FEAT_OSD) !== 0,
-    };
-}
-
-/**
- * Audio-only live view: the FeatureMap is known and does not advertise Video. When the FeatureMap
- * hasn't arrived we assume video-capable, so a late attribute can't strand a real camera in an
- * audio-only session (and VideoStreamAllocate is still attempted).
- */
-export function isAudioOnlyAvsm(features: AvsmFeatures): boolean {
-    return features.known && !features.vdo;
-}
-
-const DEFAULT_MAX_RESOLUTION = { width: 1920, height: 1080 };
-const DEFAULT_MIN_RESOLUTION = { width: 640, height: 480 };
-
-interface ProvideOfferResponse {
-    webRtcSessionId: number;
-    videoStreamId: number | null;
-    audioStreamId: number | null;
-}
-
-function parseStreamAllocate(value: unknown, idKey: "videoStreamId" | "audioStreamId"): number | null {
-    const obj = asObject(value);
-    if (!obj) return null;
-    return pickNumber(obj, idKey);
-}
-
-function parseSnapshotAllocateResponse(value: unknown): number | null {
-    const obj = asObject(value);
-    if (!obj) return null;
-    return pickNumber(obj, "snapshotStreamId");
-}
-
-interface SnapshotCapability {
-    resolution: { width: number; height: number };
-    maxFrameRate: number;
-    imageCodec: number;
-    /** RequiresEncodedPixels — whether this capability draws from MaxEncodedPixelRate. */
-    requiresEncodedPixels: boolean;
-}
-
-const SNAPSHOT_DEFAULTS: SnapshotCapability = {
-    resolution: { width: 1920, height: 1080 },
-    maxFrameRate: 30,
-    imageCodec: 0,
-    requiresEncodedPixels: true,
-};
-
-/** Clamp a requested resolution down to a capability's max, per dimension (never increases either). */
-function clampToCapability(
-    requested: { width: number; height: number },
-    cap: { width: number; height: number },
-): { width: number; height: number } {
-    return {
-        width: Math.min(requested.width, cap.width),
-        height: Math.min(requested.height, cap.height),
-    };
-}
-
-export function parseSnapshotCapabilitiesFromList(list: unknown[], preferEncoderFree: boolean): SnapshotCapability {
-    // SnapshotCapabilitiesStruct field IDs per the Matter spec:
-    // 0=resolution (VideoResolutionStruct {0=width, 1=height}), 1=maxFrameRate, 2=imageCodec,
-    // 3=requiresEncodedPixels. Cached attributes are tag-based (numeric keys); read_attribute
-    // responses are name-based.
-    const candidates = list.map(asObject).filter((c): c is Record<string, unknown> => c !== null);
-    if (candidates.length === 0) return SNAPSHOT_DEFAULTS;
-    const parsed = candidates.map(cap => {
-        const res = asObject(cap["resolution"] ?? cap["0"]);
-        const width = res ? pickNumber(res, "width", "0") : null;
-        const height = res ? pickNumber(res, "height", "1") : null;
-        const maxFrameRate = pickNumber(cap, "maxFrameRate", "1");
-        const imageCodec = pickNumber(cap, "imageCodec", "2");
-        const requiresEncodedPixels = cap["requiresEncodedPixels"] ?? cap["3"];
-        return {
-            resolution: {
-                width: width ?? SNAPSHOT_DEFAULTS.resolution.width,
-                height: height ?? SNAPSHOT_DEFAULTS.resolution.height,
-            },
-            maxFrameRate: maxFrameRate ?? SNAPSHOT_DEFAULTS.maxFrameRate,
-            imageCodec: imageCodec ?? SNAPSHOT_DEFAULTS.imageCodec,
-            requiresEncodedPixels: requiresEncodedPixels !== false,
-        };
-    });
-    // When preferEncoderFree (a video stream is live), restrict to encoder-free capabilities
-    // (RequiresEncodedPixels=false): a camera with MaxConcurrentEncoders=1 holds its sole encoder
-    // for the video stream, so only an encoder-free capability can be captured concurrently (often
-    // a lower resolution). When idle, use the full set so a capture can use the higher-resolution
-    // (encoder) capability. Within the chosen set, take the highest resolution.
-    const encoderFree = parsed.filter(cap => !cap.requiresEncodedPixels);
-    const pool = preferEncoderFree && encoderFree.length > 0 ? encoderFree : parsed;
-    return pool.reduce((best, cur) =>
-        cur.resolution.width * cur.resolution.height > best.resolution.width * best.resolution.height ? cur : best,
-    );
-}
-
-interface CaptureSnapshotResult {
-    dataBase64: string;
-    imageCodec: number;
-    resolution: { width: number; height: number };
-}
-
-function bytesToBase64(bytes: Uint8Array): string {
-    // Chunked to avoid stack overflow when spreading large arrays into String.fromCharCode.
-    const CHUNK = 8192;
-    let binary = "";
-    for (let i = 0; i < bytes.length; i += CHUNK) {
-        binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
-    }
-    return btoa(binary);
-}
-
-function parseDataToBase64(data: unknown): string {
-    if (typeof data === "string") return data;
-    if (data instanceof Uint8Array) return bytesToBase64(data);
-    if (data instanceof ArrayBuffer) return bytesToBase64(new Uint8Array(data));
-    if (Array.isArray(data)) return bytesToBase64(new Uint8Array(data as number[]));
-    throw new Error(`Unexpected snapshot data shape: ${typeof data}`);
-}
-
-function parseCaptureSnapshotResponse(value: unknown): CaptureSnapshotResult {
-    const obj = asObject(value);
-    if (!obj) throw new Error("CaptureSnapshot returned no response");
-    const data = obj["data"];
-    if (data == null) throw new Error("CaptureSnapshot response missing data field");
-    const imageCodec = pickNumber(obj, "imageCodec") ?? 0;
-    const res = asObject(obj["resolution"]);
-    const width = res ? (pickNumber(res, "width") ?? 0) : 0;
-    const height = res ? (pickNumber(res, "height") ?? 0) : 0;
-    return { dataBase64: parseDataToBase64(data), imageCodec, resolution: { width, height } };
-}
-
-function parseProvideOfferResponse(value: unknown): ProvideOfferResponse | null {
-    const obj = asObject(value);
-    if (!obj) return null;
-    const sessionId = pickNumber(obj, "webRtcSessionId");
-    if (sessionId === null) return null;
-    return {
-        webRtcSessionId: sessionId,
-        videoStreamId: parseStreamAllocate(value, "videoStreamId"),
-        audioStreamId: parseStreamAllocate(value, "audioStreamId"),
-    };
-}
+const CAMERA_API_SCHEMA = 14;
 
 type StreamState = "idle" | "connecting" | "streaming" | "error";
+
+export interface CameraSnapshot {
+    dataUri: string;
+    resolution: CameraResolution;
+    degraded: boolean;
+}
+
+interface CameraSession {
+    id: number;
+    result: CameraStartStreamResult;
+}
 
 @customElement("webrtc-stream-view")
 export class WebRtcStreamView extends LitElement {
@@ -232,47 +60,45 @@ export class WebRtcStreamView extends LitElement {
     @property({ attribute: false }) nodeId!: number | bigint;
     @property({ type: Number }) endpointId!: number;
     @property({ type: Boolean }) liveViewSupported = true;
-    @property({ type: Object }) resolution: { width: number; height: number } | null = null;
-
+    @property({ attribute: false }) capabilities: CameraCapabilitiesResult | null = null;
+    /** Upper bound for the video stream; null lets the server choose. */
+    @property({ attribute: false }) resolution: CameraResolution | null = null;
     @property({ type: Boolean }) watermarkEnabled = false;
     @property({ type: Boolean }) osdEnabled = false;
+    /** Upper bound for snapshots; null lets the server choose. */
+    @property({ attribute: false }) snapshotResolution: CameraResolution | null = null;
 
     @state() private _state: StreamState = "idle";
     @state() private _errorMessage: string | null = null;
 
-    @property({ attribute: false }) snapshotResolution: { width: number; height: number } | null = null;
-
-    private _snapshotStreamId: number | null = null;
-    private _snapshotResolution: { width: number; height: number } | null = null;
-    private _snapshotImageCodec: number | null = null;
-    private _snapshotMaxFrameRate: number | null = null;
-    private _snapshotWatermarkEnabled: boolean | undefined = undefined;
-    private _snapshotOsdEnabled: boolean | undefined = undefined;
-    private _snapshotChain: Promise<unknown> = Promise.resolve();
-    /** True when we allocated this stream ourselves and must Deallocate it on stop. False when reusing an existing allocation. */
-    private _videoStreamOwned = false;
-    private _audioStreamOwned = false;
-    private _snapshotStreamOwned = false;
-
     @query("video") private _video?: HTMLVideoElement;
 
     private _pc: RTCPeerConnection | null = null;
-    private _localIceQueue: RTCIceCandidate[] = [];
-    private _answerReceived = false;
-    private _webRtcSessionId: number | null = null;
-    private _videoStreamId: number | null = null;
-    private _audioStreamId: number | null = null;
-    private _unsubscribe: (() => void) | null = null;
+    private _session: CameraSession | null = null;
+    /** Set when the camera or another connection ended the session, so stop() must not end it again. */
+    private _sessionEnded = false;
+    private _releasable = new Array<CameraStreamRef>();
+    private _ownSnapshotStreams = new Set<number>();
+    private _stopSignalling: (() => void) | null = null;
+    private _stopCameraEvents: (() => void) | null = null;
     private _stopping = false;
-    private _endReceivedFromPeer = false;
-    private _preSessionQueue: WebRtcCallbackData[] = [];
+    private _snapshotChain: Promise<unknown> = Promise.resolve();
 
     get state(): StreamState {
         return this._state;
     }
 
     get videoStreamId(): number | null {
-        return this._videoStreamId;
+        return this._session?.result.video?.stream_id ?? null;
+    }
+
+    get audioOnlySession(): boolean {
+        const result = this._session?.result;
+        return result !== undefined && result.video === null && result.audio !== null;
+    }
+
+    get qualityBadges(): CameraQualityBadge[] {
+        return streamQualityBadges(this._session?.result.video ?? null);
     }
 
     get muted(): boolean {
@@ -285,8 +111,13 @@ export class WebRtcStreamView extends LitElement {
 
     override disconnectedCallback() {
         super.disconnectedCallback();
-        void this.deallocateSnapshot();
-        void this.stop();
+        this.stop()
+            .then(() => this.releaseSnapshotStreams())
+            .catch(err => console.warn("[webrtc-stream-view] teardown failed", err))
+            .finally(() => {
+                this._stopCameraEvents?.();
+                this._stopCameraEvents = null;
+            });
     }
 
     override render() {
@@ -337,267 +168,97 @@ export class WebRtcStreamView extends LitElement {
             this._fireStateChange("error", "Live view is not supported on this device");
             return;
         }
-        if (!this.client) throw new Error("Matter client not available");
+        const client = this.client;
+        if (!client) throw new Error("Matter client not available");
         if (this._state === "connecting" || this._state === "streaming") return;
 
         this._fireStateChange("connecting", null);
-        this._answerReceived = false;
-        this._localIceQueue = [];
-        this._stopping = false;
-        this._endReceivedFromPeer = false;
-        this._preSessionQueue = [];
+        this._sessionEnded = false;
+        this._ensureCameraEvents(client);
+
+        let pc: RTCPeerConnection;
+        try {
+            pc = new RTCPeerConnection({ iceServers: [] });
+        } catch (err) {
+            this._fireStateChange("error", errorText(err));
+            return;
+        }
+        this._pc = pc;
+        const early = new Map<number, WebRtcCallbackData[]>();
+        const localCandidates = new Array<WebRtcIceCandidate>();
 
         try {
-            const pc = new RTCPeerConnection({ iceServers: [] });
-            this._pc = pc;
-            const avsmFeatures = this._readAvsmFeatures();
-            const audioOnly = isAudioOnlyAvsm(avsmFeatures);
-
-            if (!audioOnly) pc.addTransceiver("video", { direction: "recvonly" });
+            const video = buildVideoRequest(this.capabilities, {
+                maxResolution: this.resolution,
+                watermarkEnabled: this.watermarkEnabled,
+                osdEnabled: this.osdEnabled,
+            });
+            if (video !== false) pc.addTransceiver("video", { direction: "recvonly" });
             pc.addTransceiver("audio", { direction: "recvonly" });
 
             pc.onicecandidate = ev => {
-                if (ev.candidate === null) {
-                    console.log("[webrtc-stream-view] local ICE gathering complete");
+                if (ev.candidate === null) return;
+                const candidate: WebRtcIceCandidate = {
+                    candidate: ev.candidate.candidate,
+                    sdpMid: ev.candidate.sdpMid,
+                    sdpMLineIndex: ev.candidate.sdpMLineIndex,
+                };
+                if (this._session === null) {
+                    localCandidates.push(candidate);
                     return;
                 }
-                console.log("[webrtc-stream-view] local ICE candidate", ev.candidate.candidate, {
-                    queued: !this._answerReceived,
-                    queueDepth: this._localIceQueue.length,
-                });
-                if (!this._answerReceived) {
-                    this._localIceQueue.push(ev.candidate);
-                    return;
-                }
-                void this._sendLocalIceCandidates([ev.candidate]);
-            };
-            pc.oniceconnectionstatechange = () => {
-                console.log("[webrtc-stream-view] iceConnectionState ->", pc.iceConnectionState);
+                this._sendLocalIceCandidates([candidate]).catch(err =>
+                    console.warn("[webrtc-stream-view] sending ICE candidates failed", err),
+                );
             };
             pc.onconnectionstatechange = () => {
                 console.log("[webrtc-stream-view] connectionState ->", pc.connectionState);
             };
-            pc.onsignalingstatechange = () => {
-                console.log("[webrtc-stream-view] signalingState ->", pc.signalingState);
-            };
-
             pc.ontrack = ev => {
-                console.log("[webrtc-stream-view] ontrack", {
-                    kind: ev.track.kind,
-                    readyState: ev.track.readyState,
-                    streams: ev.streams.length,
-                });
-                const video = this._video;
-                if (!video) {
-                    console.warn("[webrtc-stream-view] ontrack fired but <video> query is null");
-                    return;
-                }
-                // Cameras may put each track in its own MediaStream (distinct msid), so
-                // ev.streams[0] differs per track. Assigning it to srcObject directly lets the audio
-                // track's stream clobber the video track's. Aggregate every received track into one
-                // element-owned MediaStream instead.
-                const existing = video.srcObject instanceof MediaStream ? video.srcObject : null;
+                const videoElement = this._video;
+                if (!videoElement) return;
+                // Cameras may put each track in its own MediaStream, so ev.streams[0] differs per track and
+                // assigning it directly would let the audio stream replace the video stream.
+                const existing = videoElement.srcObject instanceof MediaStream ? videoElement.srcObject : null;
                 const stream = existing ?? new MediaStream();
-                if (!stream.getTracks().includes(ev.track)) {
-                    stream.addTrack(ev.track);
-                }
-                if (video.srcObject !== stream) {
-                    video.srcObject = stream;
-                }
+                if (!stream.getTracks().includes(ev.track)) stream.addTrack(ev.track);
+                if (videoElement.srcObject !== stream) videoElement.srcObject = stream;
             };
 
-            const minResolution = this.resolution ?? DEFAULT_MIN_RESOLUTION;
-            const maxResolution = this.resolution ?? DEFAULT_MAX_RESOLUTION;
-            const maxEncodedPixelRate = this._readMaxEncodedPixelRate();
-            const snapshotReservation = this._snapshotBudgetReservation();
-
-            if (audioOnly) {
-                // Audio-only devices (e.g. Audio Doorbell) don't advertise VDO: VideoStreamAllocate
-                // isn't in their AcceptedCommandList and would fail with UnsupportedCommand
-                // (code 129). Skip video entirely and stream audio-only.
-                this._videoStreamId = null;
-                this._videoStreamOwned = false;
-            } else {
-                // Reserving the whole MaxEncodedPixelRate (e.g. 1080p@120) starves a concurrent
-                // SnapshotStreamAllocate (ResourceExhausted); size the video rate to leave the
-                // snapshot stream room within the shared encoder budget.
-                const videoMaxFrameRate = planVideoMaxFrameRate({
-                    maxEncodedPixelRate,
-                    videoResolution: maxResolution,
-                    snapshotReservation,
-                });
-                const videoAllocPayload: Record<string, unknown> = {
-                    streamUsage: STREAM_USAGE_LIVE_VIEW,
-                    videoCodec: 0,
-                    minFrameRate: Math.min(VIDEO_MIN_FRAME_RATE, videoMaxFrameRate),
-                    maxFrameRate: videoMaxFrameRate,
-                    minResolution,
-                    maxResolution,
-                    minBitRate: 10000,
-                    maxBitRate: 10000,
-                    keyFrameInterval: 4000,
-                };
-                if (avsmFeatures.wmark) videoAllocPayload.watermarkEnabled = this.watermarkEnabled;
-                if (avsmFeatures.osd) videoAllocPayload.osdEnabled = this.osdEnabled;
-
-                // Spec §11.2.1.2.1 — server SHALL reuse an existing stream that covers our
-                // request. Search AllocatedVideoStreams (attr 0x000F) first to avoid even
-                // sending VideoStreamAllocate when a usable stream is already in place. Skip
-                // candidates that over-reserve the encoder budget so reuse can't reintroduce
-                // the snapshot ResourceExhausted a fresh allocation avoids.
-                const videoWant = {
-                    streamUsage: STREAM_USAGE_LIVE_VIEW,
-                    videoCodec: 0,
-                    minRes: minResolution,
-                    maxRes: maxResolution,
-                    watermarkEnabled: avsmFeatures.wmark ? this.watermarkEnabled : undefined,
-                    osdEnabled: avsmFeatures.osd ? this.osdEnabled : undefined,
-                    budget: { maxEncodedPixelRate, snapshotReservation },
-                };
-                const reusedVideoId = this._findMatchingVideoStream(videoWant);
-                let videoAlloc: unknown = null;
-                let usedFallbackReuse = false;
-                if (reusedVideoId !== null) {
-                    console.info("[webrtc-stream-view] reusing existing video stream", reusedVideoId);
-                    this._videoStreamId = reusedVideoId;
-                    this._videoStreamOwned = false;
-                } else {
-                    try {
-                        videoAlloc = await this.client.deviceCommand(
-                            this.nodeId,
-                            this.endpointId,
-                            CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID,
-                            "VideoStreamAllocate",
-                            videoAllocPayload,
-                        );
-                    } catch (err) {
-                        const message = err instanceof Error ? err.message : String(err);
-                        const isResourceExhausted =
-                            message.includes("Resource exhausted") || message.includes("(code 137)");
-                        if (!isResourceExhausted) throw err;
-                        // Cameras with a shared encoder pool refuse VideoStreamAllocate while a snapshot
-                        // stream is held — free ours and retry once.
-                        if (this._snapshotStreamId !== null) {
-                            console.info(
-                                "[webrtc-stream-view] VideoStreamAllocate ResourceExhausted; freeing snapshot stream and retrying",
-                            );
-                            await this._runSerialized(() => this.deallocateSnapshot());
-                            videoAlloc = await this.client.deviceCommand(
-                                this.nodeId,
-                                this.endpointId,
-                                CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID,
-                                "VideoStreamAllocate",
-                                videoAllocPayload,
-                            );
-                        } else {
-                            // The budget is held by a stream we didn't allocate (e.g. another
-                            // controller's 120 fps stream). Fall back to reusing it so live view
-                            // still works; a concurrent snapshot may then be refused.
-                            const fallbackId = this._findMatchingVideoStream({ ...videoWant, budget: undefined });
-                            if (fallbackId === null) throw err;
-                            console.warn(
-                                "[webrtc-stream-view] VideoStreamAllocate ResourceExhausted; reusing over-budget stream",
-                                fallbackId,
-                                "(concurrent snapshot may be unavailable)",
-                            );
-                            this._videoStreamId = fallbackId;
-                            this._videoStreamOwned = false;
-                            usedFallbackReuse = true;
-                        }
-                    }
-                    if (!usedFallbackReuse) {
-                        const videoStreamId = parseStreamAllocate(videoAlloc, "videoStreamId");
-                        if (videoStreamId === null) {
-                            throw new Error("VideoStreamAllocate did not return a videoStreamId");
-                        }
-                        this._videoStreamId = videoStreamId;
-                        this._videoStreamOwned = true;
-                    }
-                }
-            }
-
-            // Audio is best-effort: not all cameras expose it. Reuse if a matching
-            // AllocatedAudioStreams entry exists, else allocate.
-            const audioWant = {
-                streamUsage: STREAM_USAGE_LIVE_VIEW,
-                audioCodec: 0,
-                channelCount: 1,
-                sampleRate: 48000,
-            };
-            const reusedAudioId = this._findMatchingAudioStream(audioWant);
-            if (reusedAudioId !== null) {
-                console.info("[webrtc-stream-view] reusing existing audio stream", reusedAudioId);
-                this._audioStreamId = reusedAudioId;
-                this._audioStreamOwned = false;
-            } else {
-                try {
-                    const audioAlloc = await this.client.deviceCommand(
-                        this.nodeId,
-                        this.endpointId,
-                        CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID,
-                        "AudioStreamAllocate",
-                        {
-                            ...audioWant,
-                            bitRate: 20000,
-                            bitDepth: 24,
-                        },
-                    );
-                    this._audioStreamId = parseStreamAllocate(audioAlloc, "audioStreamId");
-                    this._audioStreamOwned = this._audioStreamId !== null;
-                } catch (err) {
-                    console.info("AudioStreamAllocate failed; continuing without audio", err);
-                    this._audioStreamId = null;
-                }
-            }
-
-            if (this._videoStreamId === null && this._audioStreamId === null) {
-                // Without either stream ProvideOffer requests no media; fail loudly instead of
-                // negotiating an empty session (audio-only device whose AudioStreamAllocate failed).
-                throw new Error("No media stream allocated: device advertises neither video nor audio");
-            }
+            this._stopSignalling = client.addWebRtcCallbackListener(event => this._onWebRtcCallback(pc, early, event));
 
             const offer = await pc.createOffer();
             await pc.setLocalDescription(offer);
-
-            this._unsubscribe = this.client.addWebRtcCallbackListener(data => void this._onWebRtcCallback(data));
-
             const sdp = pc.localDescription?.sdp;
-            if (!sdp) {
-                throw new Error("Failed to create local SDP offer");
-            }
+            if (!sdp) throw new Error("Failed to create local SDP offer");
 
-            console.log("[webrtc-stream-view] sending ProvideOffer", {
-                nodeId: this.nodeId,
-                endpointId: this.endpointId,
-                videoStreamId: this._videoStreamId,
-                audioStreamId: this._audioStreamId,
-                streamUsage: STREAM_USAGE_LIVE_VIEW,
-                sdpLength: sdp.length,
+            const result = await client.sendCommand("camera_start_stream", CAMERA_API_SCHEMA, {
+                node_id: this.nodeId,
+                endpoint_id: this.endpointId,
+                stream_usage: "LiveView",
+                sdp,
+                video,
             });
-            const offerResponse = await this.client.sendWebRtcProviderCommand(
-                this.nodeId,
-                this.endpointId,
-                "ProvideOffer",
-                buildProvideOfferRequest(sdp, STREAM_USAGE_LIVE_VIEW, this._videoStreamId, this._audioStreamId),
-            );
-            console.log("[webrtc-stream-view] ProvideOffer response", offerResponse);
-            const parsed = parseProvideOfferResponse(offerResponse);
-            if (parsed === null) {
-                throw new Error("ProvideOffer response missing webRtcSessionId");
+            if (this._pc !== pc) {
+                await this._endSession(client, result.webrtc_session_id, true, streamsToRelease(result));
+                return;
             }
-            this._webRtcSessionId = parsed.webRtcSessionId;
-            console.log("[webrtc-stream-view] webRtcSessionId established", this._webRtcSessionId);
+            this._session = { id: result.webrtc_session_id, result };
+            this._releasable = streamsToRelease(result);
 
-            const buffered = this._preSessionQueue;
-            this._preSessionQueue = [];
-            for (const ev of buffered) {
-                if (ev.webrtc_session_id === parsed.webRtcSessionId) {
-                    await this._onWebRtcCallback(ev);
-                }
+            for (const event of early.get(result.webrtc_session_id) ?? []) {
+                await this._handleSignalling(pc, event).catch(err => this._logSignallingFailure(event, err));
+            }
+            early.clear();
+            if (localCandidates.length > 0) {
+                this._sendLocalIceCandidates(localCandidates.splice(0)).catch(err =>
+                    console.warn("[webrtc-stream-view] sending ICE candidates failed", err),
+                );
             }
         } catch (err) {
-            const message = err instanceof Error ? err.message : String(err);
-            this._fireStateChange("error", message);
+            if (this._pc !== pc) return;
+            console.warn("[webrtc-stream-view] start failed", err);
+            this._fireStateChange("error", cameraErrorText(err));
             await this.stop();
         }
     }
@@ -605,93 +266,46 @@ export class WebRtcStreamView extends LitElement {
     async stop(): Promise<void> {
         if (this._stopping) return;
         this._stopping = true;
-
-        if (this._unsubscribe) {
-            this._unsubscribe();
-            this._unsubscribe = null;
-        }
-
-        const sessionId = this._webRtcSessionId;
-        const initiatedEnd = sessionId !== null && !this._endReceivedFromPeer;
-        if (initiatedEnd) {
-            try {
-                await this.client?.deviceCommand(
-                    this.nodeId,
-                    this.endpointId,
-                    WEBRTC_TRANSPORT_PROVIDER_CLUSTER_ID,
-                    "EndSession",
-                    { webRtcSessionId: sessionId, reason: END_REASON_USER_HANGUP },
-                );
-            } catch (err) {
-                console.warn("EndSession failed during stop", err);
-            }
-        }
-
-        if (this._videoStreamId !== null && this._videoStreamOwned) {
-            try {
-                await this.client?.deviceCommand(
-                    this.nodeId,
-                    this.endpointId,
-                    CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID,
-                    "VideoStreamDeallocate",
-                    { videoStreamId: this._videoStreamId },
-                );
-            } catch (err) {
-                console.warn("VideoStreamDeallocate failed during stop", err);
-            }
-        }
-        if (this._audioStreamId !== null && this._audioStreamOwned) {
-            try {
-                await this.client?.deviceCommand(
-                    this.nodeId,
-                    this.endpointId,
-                    CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID,
-                    "AudioStreamDeallocate",
-                    { audioStreamId: this._audioStreamId },
-                );
-            } catch (err) {
-                console.warn("AudioStreamDeallocate failed during stop", err);
-            }
-        }
-        this._videoStreamOwned = false;
-        this._audioStreamOwned = false;
-
-        await this._runSerialized(() => this.deallocateSnapshot());
-
-        const video = this._video;
-        if (video && video.srcObject) {
-            video.srcObject = null;
-        }
-
-        if (this._pc) {
-            try {
-                this._pc.close();
-            } catch {
-                // Closing twice raises in some browsers; safe to ignore.
-            }
+        try {
+            this._stopSignalling?.();
+            this._stopSignalling = null;
+            const pc = this._pc;
             this._pc = null;
-        }
+            const session = this._session;
+            this._session = null;
+            const releasable = this._releasable;
+            this._releasable = new Array<CameraStreamRef>();
 
-        this._localIceQueue = [];
-        this._answerReceived = false;
-        this._webRtcSessionId = null;
-        this._videoStreamId = null;
-        this._audioStreamId = null;
-        this._endReceivedFromPeer = false;
-        this._preSessionQueue = [];
+            const client = this.client;
+            if (session && client) await this._endSession(client, session.id, !this._sessionEnded, releasable);
+            this._sessionEnded = false;
 
-        if (this._state !== "idle" && this._state !== "error") {
-            this._fireStateChange("idle", null);
+            const video = this._video;
+            if (video?.srcObject) video.srcObject = null;
+            pc?.close();
+
+            if (this._state !== "idle" && this._state !== "error") this._fireStateChange("idle", null);
+        } finally {
+            this._stopping = false;
         }
-        this._stopping = false;
     }
 
-    /**
-     * Runs a snapshot-stream lifecycle op (capture, or a deallocate triggered by the video path /
-     * teardown) after any in-flight one settles. Keeps re-negotiation and cross-path deallocation
-     * from tearing down a stream a concurrent capture is using, and first-time captures from each
-     * allocating (leak).
-     */
+    async takeSnapshot(): Promise<CameraSnapshot> {
+        return this._runSerialized(() => this._takeSnapshot());
+    }
+
+    /** Releases the snapshot streams this view's own captures allocated. */
+    async releaseSnapshotStreams(): Promise<void> {
+        return this._runSerialized(async () => {
+            const client = this.client;
+            if (!client) return;
+            for (const streamId of [...this._ownSnapshotStreams]) {
+                this._ownSnapshotStreams.delete(streamId);
+                await this._release(client, { kind: "snapshot", stream_id: streamId });
+            }
+        });
+    }
+
     private _runSerialized<T>(op: () => Promise<T>): Promise<T> {
         const run = this._snapshotChain.then(op, op);
         this._snapshotChain = run.then(
@@ -701,368 +315,129 @@ export class WebRtcStreamView extends LitElement {
         return run;
     }
 
-    async takeSnapshot(): Promise<{ dataUri: string; resolution: { width: number; height: number } }> {
-        return this._runSerialized(() => this._takeSnapshot());
-    }
-
-    private async _takeSnapshot(): Promise<{ dataUri: string; resolution: { width: number; height: number } }> {
-        if (!this.client) throw new Error("Matter client not available");
-        const streamId = await this._ensureSnapshotStream();
-        const requestedResolution = this._snapshotResolution ?? SNAPSHOT_DEFAULTS.resolution;
-        const response = await this.client.deviceCommand(
-            this.nodeId,
-            this.endpointId,
-            CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID,
-            "CaptureSnapshot",
-            { snapshotStreamId: streamId, requestedResolution },
-        );
-        const parsed = parseCaptureSnapshotResponse(response);
-        const mimeType = parsed.imageCodec === 0 ? "jpeg" : "png";
+    private async _takeSnapshot(): Promise<CameraSnapshot> {
+        const client = this.client;
+        if (!client) throw new Error("Matter client not available");
+        this._ensureCameraEvents(client);
+        const result = await client.sendCommand("camera_snapshot", CAMERA_API_SCHEMA, {
+            node_id: this.nodeId,
+            endpoint_id: this.endpointId,
+            ...(this.snapshotResolution ? { max_resolution: this.snapshotResolution } : {}),
+            ...buildSnapshotOverlays(this.capabilities, {
+                watermarkEnabled: this.watermarkEnabled,
+                osdEnabled: this.osdEnabled,
+            }),
+        });
+        if (isOwnSnapshotStream(this.capabilities, result.stream_id)) this._ownSnapshotStreams.add(result.stream_id);
         return {
-            dataUri: `data:image/${mimeType};base64,${parsed.dataBase64}`,
-            resolution: parsed.resolution,
+            dataUri: `data:${snapshotMimeType(result.codec)};base64,${result.data}`,
+            resolution: result.resolution,
+            degraded: result.degraded,
         };
     }
 
-    private _readAvsmFeatures(): AvsmFeatures {
-        return readAvsmFeatures(this.client?.nodes[String(this.nodeId)], this.endpointId);
-    }
-
-    private _readMaxEncodedPixelRate(): number | null {
-        const node = this.client?.nodes[String(this.nodeId)];
-        const raw =
-            node?.attributes[
-                `${this.endpointId}/${CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID}/${AVSM_MAX_ENCODED_PIXEL_RATE_ATTR_ID}`
-            ];
-        return typeof raw === "number" && raw > 0 ? raw : null;
-    }
-
-    /**
-     * px/s a concurrent snapshot stream would reserve from MaxEncodedPixelRate, so the
-     * video stream can be sized to leave room. Zero when the camera has no snapshot feature
-     * or the chosen capability does not draw from the encoder budget.
-     */
-    private _snapshotBudgetReservation(): number {
-        if (!this._readAvsmFeatures().snp) return 0;
-        const node = this.client?.nodes[String(this.nodeId)];
-        const capsRaw = node?.attributes[`${this.endpointId}/${CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID}/10`];
-        const cap =
-            Array.isArray(capsRaw) && capsRaw.length > 0
-                ? parseSnapshotCapabilitiesFromList(capsRaw, true)
-                : SNAPSHOT_DEFAULTS;
-        if (!cap.requiresEncodedPixels) return 0;
-        // Match the clamp _ensureSnapshotStream applies so the reservation reflects what will
-        // actually be requested, not an over-large snapshotResolution the capability can't provide.
-        const resolution = clampToCapability(this.snapshotResolution ?? cap.resolution, cap.resolution);
-        return pixelRate(resolution, cap.maxFrameRate);
-    }
-
-    async deallocateSnapshot(): Promise<void> {
-        if (this._snapshotStreamId === null) return;
-        const id = this._snapshotStreamId;
-        const wasOwned = this._snapshotStreamOwned;
-        this._snapshotStreamId = null;
-        this._snapshotResolution = null;
-        this._snapshotImageCodec = null;
-        this._snapshotMaxFrameRate = null;
-        this._snapshotWatermarkEnabled = undefined;
-        this._snapshotOsdEnabled = undefined;
-        this._snapshotStreamOwned = false;
-        if (!wasOwned) return; // Reused an existing allocation — leave it for its owner.
-        try {
-            await this.client?.deviceCommand(
-                this.nodeId,
-                this.endpointId,
-                CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID,
-                "SnapshotStreamDeallocate",
-                { snapshotStreamId: id },
-            );
-        } catch (e) {
-            console.warn("SnapshotStreamDeallocate failed (continuing):", e);
-        }
-    }
-
-    /**
-     * Search AllocatedVideoStreams (attr 0x000F) for an entry whose advertised
-     * capability ranges cover our requested params. Spec §11.2.1.2.1 says the
-     * camera SHALL reuse a matching stream — reading first avoids creating
-     * duplicates when a server's reuse logic is buggy or matching is too strict.
-     */
-    private _findMatchingVideoStream(want: {
-        streamUsage: number;
-        videoCodec: number;
-        minRes: { width: number; height: number };
-        maxRes: { width: number; height: number };
-        watermarkEnabled?: boolean;
-        osdEnabled?: boolean;
-        budget?: { maxEncodedPixelRate: number | null; snapshotReservation: number };
-    }): number | null {
-        const node = this.client?.nodes[String(this.nodeId)];
-        const list = node?.attributes[`${this.endpointId}/${CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID}/15`];
-        if (!Array.isArray(list)) return null;
-        for (const item of list) {
-            const obj = asObject(item);
-            if (!obj) continue;
-            const streamUsage = pickNumber(obj, "streamUsage", "1");
-            const videoCodec = pickNumber(obj, "videoCodec", "2");
-            if (streamUsage !== want.streamUsage || videoCodec !== want.videoCodec) continue;
-            const minRes = asObject(obj["minResolution"] ?? obj["5"]);
-            const maxRes = asObject(obj["maxResolution"] ?? obj["6"]);
-            if (!minRes || !maxRes) continue;
-            const eMinW = pickNumber(minRes, "width", "0") ?? 0;
-            const eMinH = pickNumber(minRes, "height", "1") ?? 0;
-            const eMaxW = pickNumber(maxRes, "width", "0") ?? 0;
-            const eMaxH = pickNumber(maxRes, "height", "1") ?? 0;
-            if (eMinW > want.minRes.width || eMaxW < want.maxRes.width) continue;
-            if (eMinH > want.minRes.height || eMaxH < want.maxRes.height) continue;
-            if (want.budget) {
-                // Unknown frame rate under a real budget can't be shown to fit → treat as infinite
-                // (skip). When the budget is unknown, videoStreamFitsSnapshotBudget short-circuits to
-                // true regardless, so an unparseable frame rate doesn't wrongly block reuse.
-                const eMaxFrameRate = pickNumber(obj, "maxFrameRate", "4") ?? Number.POSITIVE_INFINITY;
-                const fits = videoStreamFitsSnapshotBudget({
-                    maxEncodedPixelRate: want.budget.maxEncodedPixelRate,
-                    candidateResolution: { width: eMaxW, height: eMaxH },
-                    candidateFrameRate: eMaxFrameRate,
-                    snapshotReservation: want.budget.snapshotReservation,
-                });
-                if (!fits) continue;
-            }
-            if (want.watermarkEnabled !== undefined) {
-                const v = obj["watermarkEnabled"] ?? obj["10"];
-                if (v !== want.watermarkEnabled) continue;
-            }
-            if (want.osdEnabled !== undefined) {
-                const v = obj["osdEnabled"] ?? obj["11"];
-                if (v !== want.osdEnabled) continue;
-            }
-            const id = pickNumber(obj, "videoStreamId", "0");
-            if (id !== null) return id;
-        }
-        return null;
-    }
-
-    private _findMatchingAudioStream(want: {
-        streamUsage: number;
-        audioCodec: number;
-        channelCount: number;
-        sampleRate: number;
-    }): number | null {
-        const node = this.client?.nodes[String(this.nodeId)];
-        const list = node?.attributes[`${this.endpointId}/${CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID}/16`];
-        if (!Array.isArray(list)) return null;
-        for (const item of list) {
-            const obj = asObject(item);
-            if (!obj) continue;
-            const streamUsage = pickNumber(obj, "streamUsage", "1");
-            const audioCodec = pickNumber(obj, "audioCodec", "2");
-            const channelCount = pickNumber(obj, "channelCount", "3");
-            const sampleRate = pickNumber(obj, "sampleRate", "4");
-            if (
-                streamUsage !== want.streamUsage ||
-                audioCodec !== want.audioCodec ||
-                channelCount !== want.channelCount ||
-                sampleRate !== want.sampleRate
-            )
-                continue;
-            const id = pickNumber(obj, "audioStreamId", "0");
-            if (id !== null) return id;
-        }
-        return null;
-    }
-
-    private _findMatchingSnapshotStream(want: {
-        imageCodec: number;
-        resolution: { width: number; height: number };
-        watermarkEnabled?: boolean;
-        osdEnabled?: boolean;
-    }): number | null {
-        const node = this.client?.nodes[String(this.nodeId)];
-        const list = node?.attributes[`${this.endpointId}/${CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID}/17`];
-        if (!Array.isArray(list)) return null;
-        for (const item of list) {
-            const obj = asObject(item);
-            if (!obj) continue;
-            const imageCodec = pickNumber(obj, "imageCodec", "1");
-            if (imageCodec !== want.imageCodec) continue;
-            const minRes = asObject(obj["minResolution"] ?? obj["3"]);
-            const maxRes = asObject(obj["maxResolution"] ?? obj["4"]);
-            if (!minRes || !maxRes) continue;
-            const eMinW = pickNumber(minRes, "width", "0") ?? 0;
-            const eMinH = pickNumber(minRes, "height", "1") ?? 0;
-            const eMaxW = pickNumber(maxRes, "width", "0") ?? 0;
-            const eMaxH = pickNumber(maxRes, "height", "1") ?? 0;
-            if (eMinW > want.resolution.width || eMaxW < want.resolution.width) continue;
-            if (eMinH > want.resolution.height || eMaxH < want.resolution.height) continue;
-            if (want.watermarkEnabled !== undefined) {
-                const v = obj["watermarkEnabled"] ?? obj["9"];
-                if (v !== want.watermarkEnabled) continue;
-            }
-            if (want.osdEnabled !== undefined) {
-                const v = obj["osdEnabled"] ?? obj["10"];
-                if (v !== want.osdEnabled) continue;
-            }
-            const id = pickNumber(obj, "snapshotStreamId", "0");
-            if (id !== null) return id;
-        }
-        return null;
-    }
-
-    private async _ensureSnapshotStream(): Promise<number> {
-        if (!this.client) throw new Error("Matter client not available");
-
-        const node = this.client.nodes[String(this.nodeId)];
-
-        // SnapshotCapabilities (attr id 10) — preferred source. Some cameras advertise the SNP
-        // feature but ship an empty capabilities list, so fall back to sensible defaults when it
-        // is empty.
-        // Once a video stream is allocated the sole encoder (MaxConcurrentEncoders=1) is held —
-        // through the whole connecting/streaming phase, not just once "streaming" — so a concurrent
-        // snapshot must use an encoder-free capability (typically a lower resolution).
-        const encoderBusy = this._videoStreamId !== null;
-        const capsRaw = node?.attributes[`${this.endpointId}/${CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID}/10`];
-        const cap: SnapshotCapability =
-            Array.isArray(capsRaw) && capsRaw.length > 0
-                ? parseSnapshotCapabilitiesFromList(capsRaw, encoderBusy)
-                : SNAPSHOT_DEFAULTS;
-        // Never request more than the chosen capability provides: a larger resolution would map
-        // to an encoder-requiring capability the busy encoder can't satisfy (ResourceExhausted).
-        const targetResolution = clampToCapability(this.snapshotResolution ?? cap.resolution, cap.resolution);
-
-        const avsmFeatures = this._readAvsmFeatures();
-        const wantWatermark = avsmFeatures.wmark ? this.watermarkEnabled : undefined;
-        const wantOsd = avsmFeatures.osd ? this.osdEnabled : undefined;
-
-        // A cached stream only still covers the current call if its resolution, codec, frame rate,
-        // and watermark/OSD flags all still match: the caller may have changed `snapshotResolution`
-        // or toggled watermark/OSD, or the encoder may have freed up (which reselects the capability,
-        // changing maxFrameRate), since it was ensured. Otherwise release it before searching for
-        // (or allocating) one that actually covers the new target.
-        if (this._snapshotStreamId !== null) {
-            if (
-                this._snapshotResolution?.width === targetResolution.width &&
-                this._snapshotResolution?.height === targetResolution.height &&
-                this._snapshotImageCodec === cap.imageCodec &&
-                this._snapshotMaxFrameRate === cap.maxFrameRate &&
-                this._snapshotWatermarkEnabled === wantWatermark &&
-                this._snapshotOsdEnabled === wantOsd
-            ) {
-                return this._snapshotStreamId;
-            }
-            await this.deallocateSnapshot();
-        }
-
-        // AllocatedSnapshotStreams (attr 0x0011) — reuse existing stream when its capability
-        // range covers our target resolution (spec §11.2.1.2.1 / §11.2.8.8.8).
-        const reused = this._findMatchingSnapshotStream({
-            imageCodec: cap.imageCodec,
-            resolution: targetResolution,
-            watermarkEnabled: wantWatermark,
-            osdEnabled: wantOsd,
-        });
-        if (reused !== null) {
-            console.info("[webrtc-stream-view] reusing existing snapshot stream", reused);
-            this._snapshotStreamId = reused;
-            this._snapshotResolution = targetResolution;
-            this._snapshotImageCodec = cap.imageCodec;
-            this._snapshotMaxFrameRate = cap.maxFrameRate;
-            this._snapshotWatermarkEnabled = wantWatermark;
-            this._snapshotOsdEnabled = wantOsd;
-            this._snapshotStreamOwned = false;
-            return reused;
-        }
-
-        const snapshotAllocPayload: Record<string, unknown> = {
-            imageCodec: cap.imageCodec,
-            maxFrameRate: cap.maxFrameRate,
-            minResolution: targetResolution,
-            maxResolution: targetResolution,
-            quality: 90,
+    private _ensureCameraEvents(client: MatterClient): void {
+        if (this._stopCameraEvents) return;
+        const stopEnded = client.addCameraSessionEndedListener(data => this._onSessionEnded(data));
+        const stopEvicted = client.addCameraStreamEvictedListener(data => this._onStreamEvicted(data));
+        this._stopCameraEvents = () => {
+            stopEnded();
+            stopEvicted();
         };
-        if (avsmFeatures.wmark) snapshotAllocPayload.watermarkEnabled = this.watermarkEnabled;
-        if (avsmFeatures.osd) snapshotAllocPayload.osdEnabled = this.osdEnabled;
-        const response = await this.client.deviceCommand(
-            this.nodeId,
-            this.endpointId,
-            CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID,
-            "SnapshotStreamAllocate",
-            snapshotAllocPayload,
+    }
+
+    private _isThisCamera(data: { node_id: number | bigint; endpoint_id: number }): boolean {
+        return String(data.node_id) === String(this.nodeId) && data.endpoint_id === this.endpointId;
+    }
+
+    private _onSessionEnded(data: CameraSessionEndedData): void {
+        if (!this._isThisCamera(data) || data.webrtc_session_id !== this._session?.id) return;
+        this._sessionEnded = true;
+        this.stop().catch(err => console.warn("[webrtc-stream-view] stop after session end failed", err));
+    }
+
+    private _onStreamEvicted(data: CameraStreamEvictedData): void {
+        if (!this._isThisCamera(data)) return;
+        if (data.kind === "snapshot") this._ownSnapshotStreams.delete(data.stream_id);
+        this._releasable = this._releasable.filter(
+            stream => stream.kind !== data.kind || stream.stream_id !== data.stream_id,
         );
-        const snapshotStreamId = parseSnapshotAllocateResponse(response);
-        if (snapshotStreamId === null) {
-            throw new Error("SnapshotStreamAllocate did not return a snapshot stream id");
-        }
-        this._snapshotStreamId = snapshotStreamId;
-        this._snapshotResolution = targetResolution;
-        this._snapshotImageCodec = cap.imageCodec;
-        this._snapshotMaxFrameRate = cap.maxFrameRate;
-        this._snapshotWatermarkEnabled = wantWatermark;
-        this._snapshotOsdEnabled = wantOsd;
-        this._snapshotStreamOwned = true;
-        return this._snapshotStreamId;
     }
 
-    private async _onWebRtcCallback(data: WebRtcCallbackData): Promise<void> {
-        console.log("[webrtc-stream-view] webrtc_callback received", {
-            event_type: data.event_type,
-            webrtc_session_id: data.webrtc_session_id,
-            node_id: data.node_id,
-            endpoint_id: data.endpoint_id,
-            fabric_index: data.fabric_index,
-            myNodeId: this.nodeId,
-            myEndpointId: this.endpointId,
-            mySessionId: this._webRtcSessionId,
-        });
-        if (this._webRtcSessionId === null) {
-            if (String(data.node_id) === String(this.nodeId) && data.endpoint_id === this.endpointId) {
-                this._preSessionQueue.push(data);
-                console.log("[webrtc-stream-view] queued pre-session callback");
-            } else {
-                console.log("[webrtc-stream-view] dropped pre-session callback (different node/endpoint)");
+    private async _endSession(
+        client: MatterClient,
+        sessionId: number,
+        sendStop: boolean,
+        releasable: CameraStreamRef[],
+    ): Promise<void> {
+        if (sendStop) {
+            try {
+                await client.sendCommand("camera_stop_stream", CAMERA_API_SCHEMA, {
+                    node_id: this.nodeId,
+                    endpoint_id: this.endpointId,
+                    webrtc_session_id: sessionId,
+                });
+            } catch (err) {
+                console.warn("[webrtc-stream-view] camera_stop_stream failed", err);
             }
-            return;
         }
-        if (data.webrtc_session_id !== this._webRtcSessionId) {
-            console.log("[webrtc-stream-view] dropped: session id mismatch");
-            return;
-        }
-        if (String(data.node_id) !== String(this.nodeId)) {
-            console.log("[webrtc-stream-view] dropped: node id mismatch");
-            return;
-        }
-        if (data.endpoint_id !== this.endpointId) {
-            console.log("[webrtc-stream-view] dropped: endpoint id mismatch");
-            return;
-        }
-
-        switch (data.event_type) {
-            case "answer":
-                void this._handleAnswer(data.data);
-                return;
-            case "ice_candidates":
-                void this._handleRemoteIceCandidates(data.data);
-                return;
-            case "end":
-                this._handleEnd(data.data);
-                return;
-            case "offer":
-                console.info("WebRTC re-offer received; renegotiation unsupported", data);
-                return;
-        }
+        for (const stream of releasable) await this._release(client, stream);
     }
 
-    private async _handleAnswer(data: WebRtcAnswerData | null): Promise<void> {
-        if (!this._pc || !data) return;
+    private async _release(client: MatterClient, stream: CameraStreamRef): Promise<void> {
         try {
-            const sdp = this._sanitizeAnswerSdp(data.sdp);
-            await this._pc.setRemoteDescription({ type: "answer", sdp });
-            this._answerReceived = true;
-            const queue = this._localIceQueue;
-            this._localIceQueue = [];
-            if (queue.length > 0) {
-                await this._sendLocalIceCandidates(queue);
-            }
-            this._fireStateChange("streaming", null);
+            await client.sendCommand("camera_release_stream", CAMERA_API_SCHEMA, {
+                node_id: this.nodeId,
+                endpoint_id: this.endpointId,
+                ...stream,
+            });
+        } catch (err) {
+            // Error 104 is expected when another session still uses the stream.
+            console.info(`[webrtc-stream-view] ${stream.kind} stream ${stream.stream_id} not released`, err);
+        }
+    }
+
+    private _onWebRtcCallback(
+        pc: RTCPeerConnection,
+        early: Map<number, WebRtcCallbackData[]>,
+        event: WebRtcCallbackData,
+    ): void {
+        if (!this._isThisCamera(event)) return;
+        const session = this._session;
+        if (session === null) {
+            const queue = early.get(event.webrtc_session_id) ?? new Array<WebRtcCallbackData>();
+            queue.push(event);
+            early.set(event.webrtc_session_id, queue);
+            return;
+        }
+        if (event.webrtc_session_id !== session.id) return;
+        this._handleSignalling(pc, event).catch(err => this._logSignallingFailure(event, err));
+    }
+
+    private _logSignallingFailure(event: WebRtcCallbackData, err: unknown): void {
+        console.warn("[webrtc-stream-view] signalling failed", event.event_type, err);
+    }
+
+    private async _handleSignalling(pc: RTCPeerConnection, event: WebRtcCallbackData): Promise<void> {
+        if (this._pc !== pc) return;
+        switch (event.event_type) {
+            case "answer":
+                return this._handleAnswer(pc, event.data);
+            case "ice_candidates":
+                return this._handleRemoteIceCandidates(pc, event.data);
+            case "offer":
+                return this._handleOffer(pc, event.data);
+            case "end":
+                this._sessionEnded = true;
+                return this.stop();
+        }
+    }
+
+    private async _handleAnswer(pc: RTCPeerConnection, data: WebRtcAnswerData | null): Promise<void> {
+        if (!data) return;
+        try {
+            await pc.setRemoteDescription({ type: "answer", sdp: sanitizeAnswerSdp(data.sdp) });
+            if (this._pc === pc) this._fireStateChange("streaming", null);
         } catch (err) {
             const message = err instanceof Error ? err.message : String(err);
             this._fireStateChange("error", `Failed to apply answer: ${message}`);
@@ -1070,78 +445,51 @@ export class WebRtcStreamView extends LitElement {
         }
     }
 
-    /**
-     * Some Matter cameras (notably the matter.js camera-controller example app) answer
-     * `a=sendrecv` on audio m-lines even when our offer is `a=recvonly`. Per RFC 3264 the
-     * only valid mirror of recvonly is sendonly; sendrecv triggers
-     * "Answer tried to set recv when offer did not set send" in setRemoteDescription.
-     * We add both video and audio transceivers as recvonly, so any sendrecv answer must
-     * be coerced to sendonly to apply cleanly.
-     */
-    private _sanitizeAnswerSdp(sdp: string): string {
-        const lines = sdp.split(/\r\n|\n/);
-        let inMediaSection = false;
-        let mutated = false;
-        for (let i = 0; i < lines.length; i++) {
-            const line = lines[i];
-            if (line.startsWith("m=")) {
-                inMediaSection = true;
-                continue;
-            }
-            if (inMediaSection && line === "a=sendrecv") {
-                lines[i] = "a=sendonly";
-                mutated = true;
-            }
+    /** A camera re-offer on an established session; answered through `camera_provide_answer`. */
+    private async _handleOffer(pc: RTCPeerConnection, data: WebRtcOfferData | null): Promise<void> {
+        const client = this.client;
+        const session = this._session;
+        if (!data || !client || !session) return;
+        if (pc.signalingState !== "stable") {
+            console.info("[webrtc-stream-view] camera offer ignored in signaling state", pc.signalingState);
+            return;
         }
-        if (mutated) {
-            console.warn(
-                "[webrtc-stream-view] coerced a=sendrecv -> a=sendonly in answer (offer was recvonly on all m-lines)",
-            );
-        }
-        return lines.join("\r\n");
+        await pc.setRemoteDescription({ type: "offer", sdp: data.sdp });
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        const sdp = pc.localDescription?.sdp;
+        if (!sdp) return;
+        await client.sendCommand("camera_provide_answer", CAMERA_API_SCHEMA, {
+            node_id: this.nodeId,
+            endpoint_id: this.endpointId,
+            webrtc_session_id: session.id,
+            sdp,
+        });
     }
 
-    private async _handleRemoteIceCandidates(data: WebRtcIceCandidatesData | null): Promise<void> {
-        if (!this._pc || !data) return;
-        for (const c of data.ice_candidates) {
+    private async _handleRemoteIceCandidates(
+        pc: RTCPeerConnection,
+        data: WebRtcIceCandidatesData | null,
+    ): Promise<void> {
+        for (const candidate of data?.ice_candidates ?? []) {
             try {
-                await this._pc.addIceCandidate({
-                    candidate: c.candidate,
-                    sdpMid: c.sdpMid ?? undefined,
-                    sdpMLineIndex: c.sdpMLineIndex ?? undefined,
-                });
+                await pc.addIceCandidate(candidate);
             } catch (err) {
-                console.warn("Failed to add remote ICE candidate", err, c);
+                console.warn("[webrtc-stream-view] failed to add remote ICE candidate", err, candidate);
             }
         }
     }
 
-    private _handleEnd(_data: WebRtcEndData | null): void {
-        // Peer initiated the end; skip our own EndSession on teardown.
-        this._endReceivedFromPeer = true;
-        void this.stop();
-    }
-
-    private async _sendLocalIceCandidates(candidates: RTCIceCandidate[]): Promise<void> {
-        if (!this.client || this._webRtcSessionId === null || candidates.length === 0) return;
-        try {
-            await this.client.deviceCommand(
-                this.nodeId,
-                this.endpointId,
-                WEBRTC_TRANSPORT_PROVIDER_CLUSTER_ID,
-                "ProvideICECandidates",
-                {
-                    webRtcSessionId: this._webRtcSessionId,
-                    ICECandidates: candidates.map(c => ({
-                        candidate: c.candidate,
-                        SDPMid: c.sdpMid,
-                        SDPMLineIndex: c.sdpMLineIndex,
-                    })),
-                },
-            );
-        } catch (err) {
-            console.warn("ProvideICECandidates failed", err);
-        }
+    private async _sendLocalIceCandidates(candidates: WebRtcIceCandidate[]): Promise<void> {
+        const client = this.client;
+        const session = this._session;
+        if (!client || !session) return;
+        await client.sendCommand("camera_provide_ice_candidates", CAMERA_API_SCHEMA, {
+            node_id: this.nodeId,
+            endpoint_id: this.endpointId,
+            webrtc_session_id: session.id,
+            ice_candidates: candidates,
+        });
     }
 
     private _fireStateChange(state: StreamState, errorMessage: string | null): void {
@@ -1225,6 +573,24 @@ export class WebRtcStreamView extends LitElement {
             }
         }
     `;
+}
+
+/**
+ * Some cameras (notably the matter.js camera-controller example) answer `a=sendrecv` on m-lines this
+ * view offered as `a=recvonly`. RFC 3264 only allows `sendonly` as the mirror of `recvonly`, and the
+ * browser rejects the answer otherwise.
+ */
+export function sanitizeAnswerSdp(sdp: string): string {
+    const lines = sdp.split(/\r\n|\n/);
+    let inMediaSection = false;
+    for (let i = 0; i < lines.length; i++) {
+        if (lines[i].startsWith("m=")) {
+            inMediaSection = true;
+        } else if (inMediaSection && lines[i] === "a=sendrecv") {
+            lines[i] = "a=sendonly";
+        }
+    }
+    return lines.join("\r\n");
 }
 
 declare global {

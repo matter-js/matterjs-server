@@ -4,7 +4,12 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { isLongIdleTimeCapable, isLongIdleTimeDevice } from "@matter-server/ws-client";
+import {
+    ICD_MULTI_ADMIN_ERROR_CODE,
+    isLongIdleTimeCapable,
+    isLongIdleTimeDevice,
+    ServerCommandError,
+} from "@matter-server/ws-client";
 import { attributeArray } from "./access-control.js";
 import { formatDuration } from "./duration.js";
 
@@ -178,16 +183,8 @@ export function icdBadge(attributes: Record<string, unknown>, available: boolean
     return undefined;
 }
 
-/** Extracts admin vendor ids from a multi-admin error `details` payload; undefined if not that shape. */
-export function parseMultiAdminDetails(message: string): number[] | undefined {
-    try {
-        const parsed: unknown = JSON.parse(message);
-        if (parsed !== null && typeof parsed === "object" && "admin_vendor_ids" in parsed) {
-            const ids = parsed.admin_vendor_ids;
-            if (Array.isArray(ids) && ids.every(id => typeof id === "number")) return ids;
-        }
-    } catch {
-        // not JSON — plain error text
-    }
-    return undefined;
+/** Vendor ids from an ICD multi-admin rejection, empty if unreadable; undefined for any other error. */
+export function multiAdminVendorIds(error: unknown): number[] | undefined {
+    if (!(error instanceof ServerCommandError) || error.errorCode !== ICD_MULTI_ADMIN_ERROR_CODE) return undefined;
+    return error.hasDetails(ICD_MULTI_ADMIN_ERROR_CODE) ? error.details.admin_vendor_ids : new Array<number>();
 }
