@@ -6,7 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime  # noqa: TC003
 from enum import Enum
-from typing import Any, Literal
+from typing import Any, Literal, Required, TypedDict
 
 # Enums and constants
 
@@ -426,3 +426,356 @@ class MatterSoftwareVersion:
             "release_notes_url": self.release_notes_url,
             "update_source": self.update_source.value,
         }
+
+
+# Camera API (schema 14+). Names are spelled as on the wire; value sets such as codec names,
+# stream usages and `provenance` stay `str` so a newer server can add values.
+
+
+class CameraResolutionHint(TypedDict):
+    """A resolution in a camera command's arguments."""
+
+    width: int
+    height: int
+
+
+class CameraVideoHints(TypedDict, total=False):
+    """Video hints for `camera_start_stream`; every stated key is a hard requirement."""
+
+    codecs: list[str]
+    min_resolution: CameraResolutionHint
+    max_resolution: CameraResolutionHint
+    min_frame_rate: int
+    max_frame_rate: int
+    min_bit_rate: int
+    max_bit_rate: int
+    watermark_enabled: bool
+    osd_enabled: bool
+
+
+class CameraAudioHints(TypedDict, total=False):
+    """Audio hints for `camera_start_stream`; stating any key makes audio required."""
+
+    codecs: list[str]
+    channel_count: int
+    sample_rate: int
+    bit_rate: int
+
+
+class CameraIceServer(TypedDict, total=False):
+    """An ICE server in the W3C `RTCIceServer` spelling."""
+
+    urls: Required[str | list[str]]
+    username: str
+    credential: str
+    caid: int
+
+
+@dataclass
+class CameraResolution:
+    """A resolution as the camera reports it."""
+
+    width: int
+    height: int
+
+
+@dataclass
+class CameraRateDistortionPoint:
+    """A codec/resolution trade-off point and its minimum bit rate."""
+
+    codec: str
+    resolution: CameraResolution
+    min_bit_rate: int
+
+
+@dataclass
+class CameraSnapshotCapability:
+    """One snapshot capability; `image_codec` is the value `camera_snapshot` takes as `codec`."""
+
+    resolution: CameraResolution
+    max_frame_rate: int
+    image_codec: str
+    requires_encoded_pixels: bool
+    requires_hardware_encoder: bool
+
+
+@dataclass
+class CameraAllocatedVideoStream:
+    """A video stream allocated on the camera."""
+
+    # pylint: disable=too-many-instance-attributes
+
+    video_stream_id: int
+    stream_usage: str
+    video_codec: str
+    min_resolution: CameraResolution
+    max_resolution: CameraResolution
+    min_frame_rate: int
+    max_frame_rate: int
+    min_bit_rate: int
+    max_bit_rate: int
+    reference_count: int
+    allocated_by_server: bool
+    watermark_enabled: bool
+    osd_enabled: bool
+
+
+@dataclass
+class CameraAllocatedAudioStream:
+    """An audio stream allocated on the camera."""
+
+    audio_stream_id: int
+    stream_usage: str
+    audio_codec: str
+    channel_count: int
+    sample_rate: int
+    bit_rate: int
+    bit_depth: int
+    reference_count: int
+    allocated_by_server: bool
+
+
+@dataclass
+class CameraAllocatedSnapshotStream:
+    """A snapshot stream allocated on the camera.
+
+    A stream with `hardware_encoder` holds one of the camera's encoders until it is released,
+    whatever `reference_count` says.
+    """
+
+    # pylint: disable=too-many-instance-attributes
+
+    snapshot_stream_id: int
+    image_codec: str
+    min_resolution: CameraResolution
+    max_resolution: CameraResolution
+    reference_count: int
+    allocated_by_server: bool
+    frame_rate: int
+    encoded_pixels: bool
+    hardware_encoder: bool
+    watermark_enabled: bool
+    osd_enabled: bool
+
+
+@dataclass
+class CameraWebRtcSession:
+    """A WebRTC session of this server's fabric, as the camera's `CurrentSessions` lists it.
+
+    `camera_stop_stream` can end it exactly when `established_by_this_server` is true.
+    """
+
+    webrtc_session_id: int
+    peer_node_id: int
+    peer_endpoint_id: int
+    stream_usage: str
+    video_stream_ids: list[int]
+    audio_stream_ids: list[int]
+    established_by_this_server: bool
+
+
+@dataclass
+class CameraPrivacy:
+    """The camera's privacy switches; `None` where the camera has no such switch."""
+
+    soft_recording_mode_enabled: bool | None = None
+    soft_livestream_mode_enabled: bool | None = None
+    hard_mode_on: bool | None = None
+
+
+@dataclass
+class CameraVideoCapabilities:
+    """Video facts the camera states."""
+
+    rate_distortion_points: list[CameraRateDistortionPoint]
+    codecs: list[str]
+    sensor: CameraResolution | None = None
+    min_viewport: CameraResolution | None = None
+    max_fps: int | None = None
+    max_hdr_fps: int | None = None
+    hdr_capable: bool | None = None
+
+
+@dataclass
+class CameraAudioCapabilities:
+    """Audio facts the camera states."""
+
+    codecs: list[str]
+    sample_rates: list[int]
+    bit_depths: list[int]
+    channels: int | None = None
+    two_way_talk_support: str | None = None
+
+
+@dataclass
+class CameraSnapshotCapabilities:
+    """Snapshot facts the camera states."""
+
+    capabilities: list[CameraSnapshotCapability]
+
+
+@dataclass
+class CameraLimits:
+    """Capacity limits and stream usages the camera states."""
+
+    supported_stream_usages: list[str]
+    stream_usage_priorities: list[str]
+    max_encoded_pixel_rate: int | None = None
+    max_concurrent_encoders: int | None = None
+    max_network_bandwidth: int | None = None
+
+
+@dataclass
+class CameraAllocatedStreams:
+    """The streams currently allocated on the camera."""
+
+    video: list[CameraAllocatedVideoStream]
+    audio: list[CameraAllocatedAudioStream]
+    snapshot: list[CameraAllocatedSnapshotStream]
+
+
+@dataclass
+class CameraCapabilities:
+    """Result of `camera_get_capabilities`.
+
+    `features` is `None` while the camera has not reported its feature map; the server then
+    gates nothing on features. An empty list means the camera advertises none.
+    """
+
+    privacy: CameraPrivacy
+    video: CameraVideoCapabilities
+    audio: CameraAudioCapabilities
+    snapshot: CameraSnapshotCapabilities
+    limits: CameraLimits
+    allocated: CameraAllocatedStreams
+    sessions: list[CameraWebRtcSession]
+    features: list[str] | None = None
+
+
+@dataclass
+class CameraResolutionRange:
+    """A resolution range."""
+
+    min: CameraResolution
+    max: CameraResolution
+
+
+@dataclass
+class CameraValueRange:
+    """A numeric range."""
+
+    min: int
+    max: int
+
+
+@dataclass
+class CameraEncoderBudgetNarrowing:
+    """Ceilings the encoder budget lowered, each holding the value it would have had without it."""
+
+    max_frame_rate: int | None = None
+    max_resolution: CameraResolution | None = None
+
+
+@dataclass
+class CameraStartStreamVideoResult:
+    """The video track of a `camera_start_stream` result.
+
+    `provenance` is `allocated`, `reused` or `adopted`. `evicted_stream_ids` and
+    `narrowed_by_encoder_budget` are `None` when the request evicted or narrowed nothing.
+    """
+
+    # pylint: disable=too-many-instance-attributes
+
+    stream_id: int
+    codec: str
+    resolution: CameraResolutionRange
+    frame_rate: CameraValueRange
+    bit_rate: CameraValueRange
+    provenance: str
+    degraded: bool
+    watermark_enabled: bool
+    osd_enabled: bool
+    evicted_stream_ids: list[int] | None = None
+    narrowed_by_encoder_budget: CameraEncoderBudgetNarrowing | None = None
+
+
+@dataclass
+class CameraStartStreamAudioResult:
+    """The audio track of a `camera_start_stream` result."""
+
+    stream_id: int
+    codec: str
+    channel_count: int
+    sample_rate: int
+    bit_rate: int
+    bit_depth: int
+    provenance: str
+
+
+@dataclass
+class CameraStartStreamResult:
+    """Result of `camera_start_stream`; `mode` is `solicit_offer` or `provide_offer`."""
+
+    webrtc_session_id: int
+    mode: str
+    video: CameraStartStreamVideoResult | None
+    audio: CameraStartStreamAudioResult | None
+
+
+@dataclass
+class CameraStopStreamResult:
+    """Result of `camera_stop_stream`; `ended` is false when the camera did not know the session."""
+
+    ended: bool
+
+
+@dataclass
+class CameraSnapshotResult:
+    """Result of `camera_snapshot`.
+
+    `data` is the base64-encoded image. The snapshot stream `stream_id` stays allocated until
+    `camera_release_stream` frees it.
+    """
+
+    data: str
+    codec: str
+    resolution: CameraResolution
+    degraded: bool
+    stream_id: int
+
+
+@dataclass
+class CameraSessionEndedData:
+    """Payload of the `camera_session_ended` event."""
+
+    node_id: int
+    endpoint_id: int
+    webrtc_session_id: int
+
+
+@dataclass
+class CameraStreamEvictedData:
+    """Payload of the `camera_stream_evicted` event; `kind` is `video` or `snapshot`."""
+
+    node_id: int
+    endpoint_id: int
+    kind: str
+    stream_id: int
+
+
+@dataclass
+class CameraStreamIncompatibleBound:
+    """The caller bound error 102 ruled out before asking the camera, with values as text."""
+
+    field: str
+    requested: str
+    limit: str
+
+
+@dataclass
+class CameraOccupyingStream:
+    """A stream holding capacity a request refused with error 103 needed."""
+
+    kind: str
+    stream_id: int
+    reference_count: int

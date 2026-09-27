@@ -7,7 +7,12 @@ from unittest.mock import MagicMock
 import pytest
 
 from matter_server.client import MatterClient
-from matter_server.common.models import EventMessage, EventType
+from matter_server.common.models import (
+    CameraSessionEndedData,
+    CameraStreamEvictedData,
+    EventMessage,
+    EventType,
+)
 
 
 def _make_client() -> MatterClient:
@@ -37,30 +42,44 @@ def test_known_event_still_dispatches() -> None:
     assert received == [(EventType.SERVER_SHUTDOWN, None)]
 
 
+_WEBRTC_CALLBACK = {"node_id": 7, "endpoint_id": 1, "event_type": "answer"}
+
+# (event type, wire payload, payload a subscriber receives)
 _NODE_SCOPED_CAMERA_EVENTS = [
-    (EventType.WEBRTC_CALLBACK, {"node_id": 7, "endpoint_id": 1, "event_type": "answer"}),
-    (EventType.CAMERA_SESSION_ENDED, {"node_id": 7, "endpoint_id": 1, "webrtc_session_id": 5}),
-    (EventType.CAMERA_STREAM_EVICTED, {"node_id": 7, "endpoint_id": 1, "kind": "snapshot", "stream_id": 3}),
+    (EventType.WEBRTC_CALLBACK, _WEBRTC_CALLBACK, _WEBRTC_CALLBACK),
+    (
+        EventType.CAMERA_SESSION_ENDED,
+        {"node_id": 7, "endpoint_id": 1, "webrtc_session_id": 5},
+        CameraSessionEndedData(node_id=7, endpoint_id=1, webrtc_session_id=5),
+    ),
+    (
+        EventType.CAMERA_STREAM_EVICTED,
+        {"node_id": 7, "endpoint_id": 1, "kind": "snapshot", "stream_id": 3},
+        CameraStreamEvictedData(node_id=7, endpoint_id=1, kind="snapshot", stream_id=3),
+    ),
 ]
 
 
-@pytest.mark.parametrize(("event_type", "data"), _NODE_SCOPED_CAMERA_EVENTS)
+@pytest.mark.parametrize(("event_type", "data", "expected"), _NODE_SCOPED_CAMERA_EVENTS)
 def test_node_scoped_camera_event_reaches_a_node_filtered_subscriber(
-    event_type: EventType, data: dict
+    event_type: EventType, data: dict, expected: object
 ) -> None:
-    """Home Assistant subscribes per node, so an event carrying node_id must be routed by it."""
+    """Home Assistant subscribes per node, so an event carrying node_id must be routed by it.
+
+    webrtc_callback stays the wire dict; the camera_* events arrive as dataclasses.
+    """
     client = _make_client()
     received: list[tuple[object, object]] = []
     client.subscribe_events(lambda event, payload: received.append((event, payload)), node_filter=7)
 
     client._handle_event_message(EventMessage(event=event_type, data=data))
 
-    assert received == [(event_type, data)]
+    assert received == [(event_type, expected)]
 
 
-@pytest.mark.parametrize(("event_type", "data"), _NODE_SCOPED_CAMERA_EVENTS)
+@pytest.mark.parametrize(("event_type", "data", "expected"), _NODE_SCOPED_CAMERA_EVENTS)
 def test_node_scoped_camera_event_is_withheld_from_another_node(
-    event_type: EventType, data: dict
+    event_type: EventType, data: dict, expected: object
 ) -> None:
     """The node id routes the event rather than merely travelling with it."""
     client = _make_client()

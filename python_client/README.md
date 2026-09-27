@@ -74,6 +74,24 @@ Beyond the `python-matter-server` API, the client exposes commands the Matter.js
   then streams the bytes to `POST /ota-upload/<upload_id>`. Raises `OtaUploadError` (code 101) for a
   corrupt image, an expired/spent id, or disabled OTA support.
 - `get_icd_state`, `register_icd`, `unregister_icd`, `resync_icd` — ICD Check-In registration
+- `camera_get_capabilities`, `camera_start_stream`, `camera_provide_answer`,
+  `camera_provide_ice_candidates`, `camera_stop_stream`, `camera_snapshot`, `camera_release_stream`
+  — the camera API (schema 14+), returning dataclasses from `matter_server.common.models`.
+  `camera_start_stream`'s `video` / `audio` take `None` (the server decides), a `CameraVideoHints` /
+  `CameraAudioHints` dict, or `False` (no such track). `camera_session_ended` and
+  `camera_stream_evicted` events arrive as `CameraSessionEndedData` / `CameraStreamEvictedData`;
+  `webrtc_callback` stays a dict. Errors 102 to 106 (`CameraStreamIncompatible`, ...) expose their
+  details as attributes, e.g. `err.reason` and `err.bound` on `CameraStreamIncompatible`
+
+```python
+    try:
+        result = await client.camera_start_stream(node_id, 1, "LiveView", sdp=offer, audio=False)
+    except CameraStreamIncompatible as err:
+        print(err.reason, err.bound)
+    else:
+        # The camera's answer arrives as a webrtc_callback "answer" event for this session.
+        print(result.webrtc_session_id, result.video.codec if result.video else None)
+```
 
 ```python
     version = await client.upload_ota_file("/path/to/firmware.ota")

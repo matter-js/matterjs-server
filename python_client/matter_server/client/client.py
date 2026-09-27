@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import asdict
 import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final, Literal, Self, cast
@@ -25,6 +26,16 @@ from matter_server.common.helpers.util import (
 )
 from matter_server.common.models import (
     APICommand,
+    CameraAudioHints,
+    CameraCapabilities,
+    CameraIceServer,
+    CameraResolutionHint,
+    CameraSessionEndedData,
+    CameraSnapshotResult,
+    CameraStartStreamResult,
+    CameraStopStreamResult,
+    CameraStreamEvictedData,
+    CameraVideoHints,
     CommandMessage,
     CommissionableNodeData,
     CommissioningParameters,
@@ -43,6 +54,7 @@ from matter_server.common.models import (
     ServerDiagnostics,
     ServerInfoMessage,
     SuccessResultMessage,
+    WebRTCIceCandidate,
 )
 
 from .connection import MatterClientConnection
@@ -61,7 +73,7 @@ from .models.node import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Sequence
     from os import PathLike
     from types import TracebackType
 
@@ -760,6 +772,164 @@ class MatterClient:
         )
         return cast("dict[str, Any] | None", response)
 
+    async def camera_get_capabilities(self, node_id: int, endpoint_id: int) -> CameraCapabilities:
+        """Return what the camera states and what is allocated on it. Allocates nothing.
+
+        Requires schema 14.
+        """
+        data = await self.send_command(
+            APICommand.CAMERA_GET_CAPABILITIES, require_schema=14, node_id=node_id, endpoint_id=endpoint_id
+        )
+        return dataclass_from_dict(CameraCapabilities, data)
+
+    async def camera_start_stream(
+        self,
+        node_id: int,
+        endpoint_id: int,
+        stream_usage: str,
+        sdp: str | None = None,
+        video: CameraVideoHints | Literal[False] | None = None,
+        audio: CameraAudioHints | Literal[False] | None = None,
+        ice_servers: list[CameraIceServer] | None = None,
+        ice_transport_policy: str | None = None,
+        metadata_enabled: bool | None = None,
+        allow_eviction: bool | None = None,
+    ) -> CameraStartStreamResult:
+        """Open a WebRTC session, allocating or reusing the streams it needs.
+
+        Sends ``ProvideOffer`` when ``sdp`` is given, ``SolicitOffer`` otherwise; the camera's offer
+        then arrives as a ``webrtc_callback`` ``offer`` event. ``video``/``audio``: ``None`` leaves
+        the track to the server, a hints mapping states hard requirements, ``False`` excludes it.
+        An argument left ``None`` is not sent.
+
+        Requires schema 14.
+        """
+        optional = {
+            "sdp": sdp,
+            "video": video,
+            "audio": audio,
+            "ice_servers": ice_servers,
+            "ice_transport_policy": ice_transport_policy,
+            "metadata_enabled": metadata_enabled,
+            "allow_eviction": allow_eviction,
+        }
+        data = await self.send_command(
+            APICommand.CAMERA_START_STREAM,
+            require_schema=14,
+            node_id=node_id,
+            endpoint_id=endpoint_id,
+            stream_usage=stream_usage,
+            **{key: value for key, value in optional.items() if value is not None},
+        )
+        return dataclass_from_dict(CameraStartStreamResult, data)
+
+    async def camera_provide_answer(self, node_id: int, endpoint_id: int, webrtc_session_id: int, sdp: str) -> None:
+        """Send the SDP answer for a session started without ``sdp``.
+
+        Requires schema 14.
+        """
+        await self.send_command(
+            APICommand.CAMERA_PROVIDE_ANSWER,
+            require_schema=14,
+            node_id=node_id,
+            endpoint_id=endpoint_id,
+            webrtc_session_id=webrtc_session_id,
+            sdp=sdp,
+        )
+
+    async def camera_provide_ice_candidates(
+        self,
+        node_id: int,
+        endpoint_id: int,
+        webrtc_session_id: int,
+        ice_candidates: Sequence[WebRTCIceCandidate | dict[str, Any]],
+    ) -> None:
+        """Trickle ICE candidates into an existing session (at least one).
+
+        A candidate from a ``webrtc_callback`` ``ice_candidates`` event can be passed unchanged.
+
+        Requires schema 14.
+        """
+        await self.send_command(
+            APICommand.CAMERA_PROVIDE_ICE_CANDIDATES,
+            require_schema=14,
+            node_id=node_id,
+            endpoint_id=endpoint_id,
+            webrtc_session_id=webrtc_session_id,
+            ice_candidates=[
+                asdict(candidate) if isinstance(candidate, WebRTCIceCandidate) else candidate
+                for candidate in ice_candidates
+            ],
+        )
+
+    async def camera_stop_stream(
+        self, node_id: int, endpoint_id: int, webrtc_session_id: int
+    ) -> CameraStopStreamResult:
+        """End a WebRTC session; the stream allocation is kept.
+
+        Requires schema 14.
+        """
+        data = await self.send_command(
+            APICommand.CAMERA_STOP_STREAM,
+            require_schema=14,
+            node_id=node_id,
+            endpoint_id=endpoint_id,
+            webrtc_session_id=webrtc_session_id,
+        )
+        return dataclass_from_dict(CameraStopStreamResult, data)
+
+    async def camera_snapshot(
+        self,
+        node_id: int,
+        endpoint_id: int,
+        max_resolution: CameraResolutionHint | None = None,
+        codec: str | None = None,
+        watermark_enabled: bool | None = None,
+        osd_enabled: bool | None = None,
+    ) -> CameraSnapshotResult:
+        """Capture one image. An argument left ``None`` is not sent.
+
+        The snapshot stream stays allocated; free it with ``camera_release_stream``.
+
+        Requires schema 14.
+        """
+        optional = {
+            "max_resolution": max_resolution,
+            "codec": codec,
+            "watermark_enabled": watermark_enabled,
+            "osd_enabled": osd_enabled,
+        }
+        data = await self.send_command(
+            APICommand.CAMERA_SNAPSHOT,
+            require_schema=14,
+            node_id=node_id,
+            endpoint_id=endpoint_id,
+            **{key: value for key, value in optional.items() if value is not None},
+        )
+        return dataclass_from_dict(CameraSnapshotResult, data)
+
+    async def camera_release_stream(
+        self,
+        node_id: int,
+        endpoint_id: int,
+        kind: Literal["video", "audio", "snapshot"],
+        stream_id: int,
+    ) -> None:
+        """Deallocate a stream, whoever allocated it.
+
+        Raises ``CameraStreamInUse`` while the camera still references the stream.
+
+        Requires schema 14.
+        """
+        await self.send_command(
+            APICommand.CAMERA_RELEASE_STREAM,
+            require_schema=14,
+            node_id=node_id,
+            endpoint_id=endpoint_id,
+            kind=kind,
+            stream_id=stream_id,
+        )
+
     def _prepare_message(
         self,
         command: str,
@@ -974,7 +1144,12 @@ class MatterClient:
             self._signal_event(EventType.NETWORK_TOPOLOGY_UPDATED, data=topology)
             return
         if msg.event in NODE_SCOPED_CAMERA_EVENTS:
-            self._signal_event(msg.event, data=msg.data, node_id=msg.data["node_id"])
+            payload: Any = msg.data
+            if msg.event == EventType.CAMERA_SESSION_ENDED:
+                payload = dataclass_from_dict(CameraSessionEndedData, msg.data)
+            elif msg.event == EventType.CAMERA_STREAM_EVICTED:
+                payload = dataclass_from_dict(CameraStreamEvictedData, msg.data)
+            self._signal_event(msg.event, data=payload, node_id=msg.data["node_id"])
             return
         # An event type unknown to this (older) client is passed through by parse_value as a raw
         # string; forwarding it would crash on `event.value` in _signal_event. Drop it instead so a
