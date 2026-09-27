@@ -1261,6 +1261,7 @@ describe("cameraCommands", () => {
                 resolution: { width: 640, height: 480 },
                 degraded: true,
                 snapshotStreamId: 3,
+                provenance: "allocated",
             };
             const wire = toWireSnapshotResult(result);
             expect(wire.data).to.equal(Buffer.from([1, 2, 3]).toString("base64"));
@@ -1269,15 +1270,17 @@ describe("cameraCommands", () => {
             expect(wire.degraded).to.equal(true);
         });
 
-        it("names the stream the frame came from", () => {
+        it("names the stream the frame came from and its provenance", () => {
             const wire = toWireSnapshotResult({
                 data: new Uint8Array([1]),
                 imageCodec: 0,
                 resolution: { width: 640, height: 480 },
                 degraded: false,
                 snapshotStreamId: 8,
+                provenance: "adopted",
             });
             expect(wire.stream_id).to.equal(8);
+            expect(wire.provenance).to.equal("adopted");
         });
     });
 

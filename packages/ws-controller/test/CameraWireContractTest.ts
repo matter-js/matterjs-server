@@ -191,6 +191,7 @@ const SNAPSHOT: SnapshotResult = {
     resolution: { width: 1920, height: 1080 },
     degraded: true,
     snapshotStreamId: 8,
+    provenance: "allocated",
 };
 
 /** Every error payload the camera commands can produce, with every optional field present. */

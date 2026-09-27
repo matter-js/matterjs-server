@@ -695,6 +695,7 @@ describe("WebRtcStreamView", () => {
                     resolution: { width: 640, height: 480 },
                     degraded: false,
                     stream_id: 40,
+                    provenance: "allocated",
                 }),
             });
             const view = createView(fake.client);
@@ -726,6 +727,7 @@ describe("WebRtcStreamView", () => {
                     resolution: { width: 640, height: 480 },
                     degraded: true,
                     stream_id: nextStreamId++,
+                    provenance: "allocated",
                 }),
             });
         }
@@ -785,6 +787,7 @@ describe("WebRtcStreamView", () => {
                     resolution: { width: 640, height: 480 },
                     degraded: false,
                     stream_id: 4,
+                    provenance: "adopted",
                 }),
             });
             const view = createView(fake.client);
@@ -828,6 +831,7 @@ describe("WebRtcStreamView", () => {
                                 resolution: { width: 640, height: 480 },
                                 degraded: false,
                                 stream_id: 30,
+                                provenance: "allocated",
                             });
                     }),
             });

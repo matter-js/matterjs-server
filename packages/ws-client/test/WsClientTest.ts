@@ -565,6 +565,7 @@ describe("ws-client", () => {
                     resolution: { width: 640, height: 480 },
                     degraded: false,
                     stream_id: 3,
+                    provenance: "allocated",
                 }));
                 await client.connect();
 

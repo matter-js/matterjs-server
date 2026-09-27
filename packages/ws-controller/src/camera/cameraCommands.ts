@@ -639,5 +639,6 @@ export function toWireSnapshotResult(result: SnapshotResult): CameraSnapshotResu
         resolution: result.resolution,
         degraded: result.degraded,
         stream_id: result.snapshotStreamId,
+        provenance: result.provenance,
     };
 }

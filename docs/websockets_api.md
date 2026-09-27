@@ -1246,11 +1246,12 @@ Overlays work as under `camera_start_stream`'s `video` (see **The overlays** the
 - A snapshot stream whose overlays differ from what the request resolved to is not adopted.
 - Weaker than for video: at a capability whose `requires_hardware_encoder` is false the camera **may** ignore both fields and apply the source video stream's setting instead (spec §11.2.8.8.6). The request is not a guarantee; `camera_get_capabilities`'s `allocated.snapshot` reports what the camera actually did.
 
-Response: `{ data, codec, resolution, degraded, stream_id }`.
+Response: `{ data, codec, resolution, degraded, stream_id, provenance }`.
 
 - `data` is the image bytes, base64-encoded.
 - `degraded: true` says the frame is smaller than the best capability the request's own bounds allowed.
 - `stream_id` names the snapshot stream the frame came from. A successful call always leaves that stream on the camera, so this is the id `camera_release_stream` takes. That release can still fail with error 104 while something references the stream.
+- `provenance` says where that stream came from, with the values and meaning `camera_start_stream` uses: `allocated` (this call allocated it), `reused` (already there, and this server allocated it earlier in this run) or `adopted` (already there, not allocated by this server). A client that releases only the snapshot streams it caused releases the ones answered with `allocated`.
 
 Choosing a stream:
 

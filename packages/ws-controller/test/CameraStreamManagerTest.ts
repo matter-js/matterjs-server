@@ -4114,6 +4114,7 @@ describe("CameraStreamManager", () => {
             });
             expect(result.resolution).to.deep.equal({ width: 640, height: 480 });
             expect(result.degraded).to.equal(true);
+            expect(result.provenance).to.equal("allocated");
             const allocate = invokes.find(invoke => invoke.command === "snapshotStreamAllocate");
             expect(allocate?.fields.minResolution).to.deep.equal({ width: 640, height: 480 });
             expect(allocate?.fields.maxResolution).to.deep.equal({ width: 640, height: 480 });
@@ -4704,6 +4705,26 @@ describe("CameraStreamManager", () => {
             expect(result.degraded).to.equal(false);
             // Nothing in this call deallocates the adopted stream, so the caller may release it.
             expect(result.snapshotStreamId).to.equal(8);
+            expect(result.provenance).to.equal("adopted");
+        });
+
+        it("reports a snapshot stream it allocated in an earlier call as reused", async () => {
+            const { manager, invokes, holder } = probeWith({ ...STATE, allocatedSnapshotStreams: [] }, async invoke => {
+                if (invoke.command === "snapshotStreamAllocate") return { snapshotStreamId: 8 };
+                if (invoke.command === "captureSnapshot") {
+                    return { data: new Uint8Array([1]), imageCodec: 0, resolution: { width: 1920, height: 1080 } };
+                }
+                return undefined;
+            });
+            const first = await manager.snapshot({ nodeId: NODE, endpointId: ENDPOINT });
+            expect(first.provenance).to.equal("allocated");
+
+            holder.state = { ...STATE, allocatedSnapshotStreams: [EXISTING_SNAPSHOT_STREAM] };
+            invokes.length = 0;
+            const second = await manager.snapshot({ nodeId: NODE, endpointId: ENDPOINT });
+            expect(invokes.map(invoke => invoke.command)).to.deep.equal(["captureSnapshot"]);
+            expect(second.snapshotStreamId).to.equal(8);
+            expect(second.provenance).to.equal("reused");
         });
 
         it("does not adopt a stream whose range reaches below the capability it would allocate", async () => {

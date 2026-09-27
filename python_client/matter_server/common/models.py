@@ -734,7 +734,8 @@ class CameraSnapshotResult:
     """Result of `camera_snapshot`.
 
     `data` is the base64-encoded image. The snapshot stream `stream_id` stays allocated until
-    `camera_release_stream` frees it.
+    `camera_release_stream` frees it. `provenance` is `allocated` (this call allocated the stream),
+    `reused` or `adopted`, as on a `camera_start_stream` track.
     """
 
     data: str
@@ -742,6 +743,7 @@ class CameraSnapshotResult:
     resolution: CameraResolution
     degraded: bool
     stream_id: int
+    provenance: str
 
 
 @dataclass

@@ -656,7 +656,7 @@ export interface CameraCapabilitiesResult {
 }
 
 /**
- * Where the stream a `camera_start_stream` answered with came from.
+ * Where the stream a `camera_start_stream` or `camera_snapshot` answered with came from.
  *
  * - `allocated` — this call allocated the stream on the camera.
  * - `reused` — the stream was already there and this server allocated it earlier in this run.
@@ -668,7 +668,7 @@ export interface CameraCapabilitiesResult {
  */
 export const CAMERA_STREAM_PROVENANCES = ["allocated", "reused", "adopted"] as const;
 
-/** Where a `camera_start_stream` stream came from. @see CAMERA_STREAM_PROVENANCES */
+/** Where a `camera_start_stream` or `camera_snapshot` stream came from. @see CAMERA_STREAM_PROVENANCES */
 export type CameraStreamProvenance = (typeof CAMERA_STREAM_PROVENANCES)[number];
 
 /**
@@ -923,6 +923,8 @@ export interface CameraSnapshotResult {
      * allocations on single-encoder cameras.
      */
     stream_id: number;
+    /** Where the stream came from. @see CAMERA_STREAM_PROVENANCES */
+    provenance: CameraStreamProvenance;
 }
 
 export interface APICommands {

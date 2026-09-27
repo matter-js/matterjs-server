@@ -358,7 +358,14 @@ async def test_get_capabilities_keeps_absent_features_apart_from_none_advertised
 
 
 async def test_snapshot_sends_stated_arguments_and_parses_the_result() -> None:
-    wire = {"data": "/9j/", "codec": "JPEG", "resolution": _RESOLUTION, "degraded": True, "stream_id": 4}
+    wire = {
+        "data": "/9j/",
+        "codec": "JPEG",
+        "resolution": _RESOLUTION,
+        "degraded": True,
+        "stream_id": 4,
+        "provenance": "adopted",
+    }
     client = _bare_client(wire)
     result = await client.camera_snapshot(5, 1, max_resolution={"width": 640, "height": 480}, codec="JPEG")
     _, kwargs = _sent(client)
@@ -370,12 +377,26 @@ async def test_snapshot_sends_stated_arguments_and_parses_the_result() -> None:
         "codec": "JPEG",
     }
     assert result == CameraSnapshotResult(
-        data="/9j/", codec="JPEG", resolution=CameraResolution(1920, 1080), degraded=True, stream_id=4
+        data="/9j/",
+        codec="JPEG",
+        resolution=CameraResolution(1920, 1080),
+        degraded=True,
+        stream_id=4,
+        provenance="adopted",
     )
 
 
 async def test_snapshot_sends_overlay_flags_including_false() -> None:
-    client = _bare_client({"data": "", "codec": "JPEG", "resolution": _RESOLUTION, "degraded": False, "stream_id": 4})
+    client = _bare_client(
+        {
+            "data": "",
+            "codec": "JPEG",
+            "resolution": _RESOLUTION,
+            "degraded": False,
+            "stream_id": 4,
+            "provenance": "allocated",
+        }
+    )
     await client.camera_snapshot(5, 1, watermark_enabled=False, osd_enabled=True)
     _, kwargs = _sent(client)
     assert kwargs["watermark_enabled"] is False

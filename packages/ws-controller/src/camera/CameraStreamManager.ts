@@ -556,6 +556,7 @@ export interface SnapshotResult {
     degraded: boolean;
     /** The stream the frame came from, which a successful call always leaves on the camera. */
     snapshotStreamId: number;
+    provenance: CameraStreamProvenance;
 }
 
 export class CameraStreamManager {
@@ -2143,6 +2144,9 @@ export class CameraStreamManager {
                             ...captured,
                             degraded: isDegradedFrom(captured.resolution, bestWithinCallerBounds),
                             snapshotStreamId: adopted.snapshotStreamId,
+                            provenance: existingStreamProvenance(
+                                this.ownsStream(nodeId, endpointId, "snapshot", adopted.snapshotStreamId),
+                            ),
                         };
                     }
                     logger.info(
@@ -2227,6 +2231,7 @@ export class CameraStreamManager {
                     ...captured,
                     degraded: isDegradedFrom(captured.resolution, bestWithinCallerBounds),
                     snapshotStreamId,
+                    provenance: "allocated",
                 };
             }),
         );

@@ -435,6 +435,7 @@ describe("redactIncomingMessage", () => {
                 resolution: { width: 640, height: 480 },
                 stream_id: 3,
                 degraded: false,
+                provenance: "allocated",
             },
         };
         const { result } = redactIncomingMessage(message) as { result: Record<string, unknown> };
