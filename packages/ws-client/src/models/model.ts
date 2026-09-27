@@ -1698,16 +1698,27 @@ export type NotificationType = "success" | "info" | "warning" | "error";
 export type NodePingResult = Record<string, boolean>;
 
 /**
- * Minimum test node ID. Node IDs >= this value are reserved for test nodes.
- * Uses high 64-bit range (0xFFFF_FFFE_0000_0000) to avoid collision with real node IDs.
+ * First Node ID of the Temporary Local range, which this server allocates its test nodes from.
+ *
+ * @see Matter Core specification § 2.5.5, Table 4 "Node Identifier Allocations"
  */
 export const TEST_NODE_START = 0xffff_fffe_0000_0000n;
 
 /**
- * Check if a node ID is in the test node range (>= TEST_NODE_START).
- * Test nodes are imported diagnostic dumps, not real commissioned devices.
+ * Last Node ID of the Temporary Local range. The range carries a 32-bit local id, so it is 2^32 wide.
+ *
+ * @see Matter Core specification § 2.5.5, Table 4 "Node Identifier Allocations"
+ */
+export const TEST_NODE_END = TEST_NODE_START + (1n << 32n) - 1n;
+
+/**
+ * Check if a node ID is in the test node range. Test nodes are imported diagnostic dumps, not real
+ * commissioned devices.
+ *
+ * An id above the range is not one: the Group Node IDs and the reserved spans sit there, and routing
+ * one to the test-node registry answers `NODE_NOT_EXISTS` for a target no node id could ever name.
  */
 export function isTestNodeId(nodeId: number | bigint): boolean {
     const bigId = typeof nodeId === "bigint" ? nodeId : BigInt(nodeId);
-    return bigId >= TEST_NODE_START;
+    return bigId >= TEST_NODE_START && bigId <= TEST_NODE_END;
 }
