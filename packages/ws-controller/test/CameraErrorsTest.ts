@@ -5,6 +5,7 @@
  */
 
 import {
+    CAMERA_INCOMPATIBLE_REASONS,
     CAMERA_NOT_SUPPORTED_ERROR_CODE,
     CAMERA_PRIVACY_MODE_ERROR_CODE,
     CAMERA_RESOURCE_EXHAUSTED_ERROR_CODE,
@@ -12,6 +13,16 @@ import {
     CAMERA_STREAM_IN_USE_ERROR_CODE,
 } from "@matter-server/ws-client";
 import { ServerError, ServerErrorCode } from "../src/types/WebSocketMessageTypes.js";
+import type {
+    CameraStreamIncompatibleDetail,
+    CameraStreamIncompatibleReason,
+} from "../src/types/WebSocketMessageTypes.js";
+
+/** An error-102 detail for one reason, with the `feature` the `feature` reason has to carry. */
+function detailFor(reason: CameraStreamIncompatibleReason): CameraStreamIncompatibleDetail {
+    const facts = { device: new Array<string>(), requested: new Array<string>() };
+    return reason === "feature" ? { reason, feature: "Video", ...facts } : { reason, ...facts };
+}
 
 describe("camera server errors", () => {
     it("carries the incompatibility detail as JSON in the message", () => {
@@ -36,11 +47,44 @@ describe("camera server errors", () => {
             requested: [],
         });
         expect(JSON.parse(error.message)).to.deep.equal({
-            message: "No capability for this request on the camera or in the offer",
+            message: "Camera states no capability this request can use",
             reason: "capability",
             device: [],
             requested: [],
         });
+    });
+
+    it("states one message per reason, over the vocabulary the client package publishes", () => {
+        // The emitter and CAMERA_INCOMPATIBLE_REASONS are two statements of one wire vocabulary, and a
+        // reason with no message of its own reaches a client as `undefined`.
+        const messages = CAMERA_INCOMPATIBLE_REASONS.map(
+            reason => JSON.parse(ServerError.cameraStreamIncompatible(detailFor(reason)).message).message,
+        );
+        expect(messages.filter(message => typeof message === "string" && message.length > 0)).to.have.length(
+            CAMERA_INCOMPATIBLE_REASONS.length,
+        );
+        expect(new Set(messages).size).to.equal(CAMERA_INCOMPATIBLE_REASONS.length);
+    });
+
+    it("carries `feature` for the feature reason and for no other", () => {
+        // The field was the thing telling four meanings of one reason apart, so a client branched
+        // twice. It is a detail of `feature` now, and nothing else may carry it.
+        expect(
+            JSON.parse(
+                ServerError.cameraStreamIncompatible({
+                    reason: "feature",
+                    track: "video",
+                    feature: "Watermark",
+                    device: [],
+                    requested: [],
+                }).message,
+            ).feature,
+        ).to.equal("Watermark");
+        for (const reason of CAMERA_INCOMPATIBLE_REASONS.filter(name => name !== "feature")) {
+            expect(JSON.parse(ServerError.cameraStreamIncompatible(detailFor(reason)).message)).to.not.have.property(
+                "feature",
+            );
+        }
     });
 
     it("reports the device status that produced a bounds failure", () => {

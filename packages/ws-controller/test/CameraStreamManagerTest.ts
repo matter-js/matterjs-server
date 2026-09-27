@@ -2520,7 +2520,7 @@ describe("CameraStreamManager", () => {
             }
             expect((thrown as ServerError).code).to.equal(ServerErrorCode.CameraStreamIncompatible);
             const detail = JSON.parse((thrown as ServerError).message);
-            expect(detail.reason).to.equal("capability");
+            expect(detail.reason).to.equal("offer");
             expect(detail.track).to.equal("video");
             expect(detail.requested).to.deep.equal(["H265"]);
             expect(invokes.some(invoke => invoke.command === "provideOffer")).to.equal(false);
@@ -2560,7 +2560,7 @@ describe("CameraStreamManager", () => {
             const detail = JSON.parse((thrown as ServerError).message);
             // Not "codec": the camera's codec list is not what ruled audio out, and no codec the
             // caller could name instead would change the peer's refusal.
-            expect(detail.reason).to.equal("capability");
+            expect(detail.reason).to.equal("offer");
             expect(detail.device).to.deep.equal([]);
             expect(detail.track).to.equal("audio");
         });
@@ -2585,7 +2585,7 @@ describe("CameraStreamManager", () => {
                 thrown = error;
             }
             const detail = JSON.parse((thrown as ServerError).message);
-            expect(detail.reason).to.equal("capability");
+            expect(detail.reason).to.equal("offer");
             expect(detail.requested).to.deep.equal([]);
             expect(detail.track).to.equal("audio");
         });
@@ -2634,7 +2634,7 @@ describe("CameraStreamManager", () => {
             }
             expect((thrown as ServerError).code).to.equal(ServerErrorCode.CameraStreamIncompatible);
             const detail = JSON.parse((thrown as ServerError).message);
-            expect(detail.reason).to.equal("capability");
+            expect(detail.reason).to.equal("offer");
             expect(detail.track).to.equal("video");
             expect(detail.requested).to.deep.equal(["H265"]);
             expect(invokes.some(invoke => invoke.command === "provideOffer")).to.equal(false);
@@ -2676,7 +2676,7 @@ describe("CameraStreamManager", () => {
             }
             expect((thrown as ServerError).code).to.equal(ServerErrorCode.CameraStreamIncompatible);
             const detail = JSON.parse((thrown as ServerError).message);
-            expect(detail.reason).to.equal("capability");
+            expect(detail.reason).to.equal("offer");
             expect(detail.track).to.equal("audio");
         });
 
@@ -2742,7 +2742,7 @@ describe("CameraStreamManager", () => {
             }
             expect((thrown as ServerError).code).to.equal(ServerErrorCode.CameraStreamIncompatible);
             const detail = JSON.parse((thrown as ServerError).message);
-            expect(detail.reason).to.equal("capability");
+            expect(detail.reason).to.equal("offer");
             expect(detail.track).to.equal("video");
             expect(detail.requested).to.deep.equal(["H265"]);
             expect(invokes.some(invoke => invoke.command === "provideOffer")).to.equal(false);
@@ -2780,7 +2780,7 @@ describe("CameraStreamManager", () => {
             }
             expect((thrown as ServerError).code).to.equal(ServerErrorCode.CameraStreamIncompatible);
             const detail = JSON.parse((thrown as ServerError).message);
-            expect(detail.reason).to.equal("capability");
+            expect(detail.reason).to.equal("offer");
             expect(detail.track).to.equal("audio");
         });
 
@@ -3854,7 +3854,7 @@ describe("CameraStreamManager", () => {
                 thrown = error;
             }
             expect((thrown as ServerError).code).to.equal(ServerErrorCode.CameraStreamIncompatible);
-            expect(JSON.parse((thrown as ServerError).message).reason).to.equal("capability");
+            expect(JSON.parse((thrown as ServerError).message).reason).to.equal("no_media");
             expect(invokes.map(invoke => invoke.command)).to.not.include("solicitOffer");
         });
 
@@ -6776,7 +6776,7 @@ describe("CameraStreamManager device cleanup budget", () => {
 
             expect((thrown as ServerError).code).to.equal(ServerErrorCode.CameraStreamIncompatible);
             const detail = JSON.parse((thrown as ServerError).message);
-            expect(detail.reason).to.equal("capability");
+            expect(detail.reason).to.equal("feature");
             expect(detail.track).to.equal("video");
             // The fact that distinguishes this from a peer that rejected the section, which names no
             // feature: no codec, bound or offer the caller could send instead makes it work.
@@ -6810,7 +6810,7 @@ describe("CameraStreamManager device cleanup budget", () => {
                 thrown = error;
             }
             const detail = JSON.parse((thrown as ServerError).message);
-            expect(detail.reason).to.equal("capability");
+            expect(detail.reason).to.equal("feature");
             expect(detail.track).to.equal("audio");
             expect(detail.feature).to.equal("Audio");
         });
@@ -6853,7 +6853,7 @@ describe("CameraStreamManager device cleanup budget", () => {
                 thrown = error;
             }
             const detail = JSON.parse((thrown as ServerError).message);
-            expect(detail.reason).to.equal("capability");
+            expect(detail.reason).to.equal("feature");
             expect(detail.feature).to.equal("Snapshot");
         });
 
@@ -7326,7 +7326,7 @@ describe("CameraStreamManager overlays", () => {
         expect(thrown).to.be.instanceOf(ServerError);
         expect((thrown as ServerError).code).to.equal(ServerErrorCode.CameraStreamIncompatible);
         const detail = JSON.parse((thrown as ServerError).message);
-        expect(detail.reason).to.equal("capability");
+        expect(detail.reason).to.equal("feature");
         expect(detail.feature).to.equal("Watermark");
         expect(detail.track).to.equal("video");
     });
@@ -7574,7 +7574,7 @@ describe("CameraStreamManager overlays", () => {
         }
         expect(thrown).to.be.instanceOf(ServerError);
         const detail = JSON.parse((thrown as ServerError).message);
-        expect(detail.reason).to.equal("capability");
+        expect(detail.reason).to.equal("feature");
         expect(detail.feature).to.equal("Watermark");
     });
 

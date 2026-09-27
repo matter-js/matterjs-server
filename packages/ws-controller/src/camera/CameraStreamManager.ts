@@ -1133,7 +1133,7 @@ export class CameraStreamManager {
             // No narrowing reaches this: the camera cannot draw an overlay it has no feature for, and
             // sending the field at all is INVALID_COMMAND there (§11.2.8.4, conformance WMARK / OSD).
             throw ServerError.cameraStreamIncompatible({
-                reason: "capability",
+                reason: "feature",
                 track: "video",
                 feature: featureName(overlaySelection.unsupported),
                 device: deviceCodecs.map(videoCodecName),
@@ -1418,7 +1418,7 @@ export class CameraStreamManager {
             );
             return {
                 unavailable: ServerError.cameraStreamIncompatible({
-                    reason: "capability",
+                    reason: "offer",
                     track: "audio",
                     device: new Array<string>(),
                     requested: requestedCodecs,
@@ -1438,13 +1438,24 @@ export class CameraStreamManager {
             // a camera that reports MicrophoneCapabilities without advertising the feature is refused
             // here rather than at an `AudioStreamAllocate` that is not in its AcceptedCommandList.
             return {
-                unavailable: ServerError.cameraStreamIncompatible({
-                    reason: "capability",
-                    track: "audio",
-                    ...(lacksAudio ? { feature: featureName("audio") } : {}),
-                    device: new Array<string>(),
-                    requested: requestedCodecs,
-                }),
+                unavailable: ServerError.cameraStreamIncompatible(
+                    lacksAudio
+                        ? {
+                              reason: "feature",
+                              track: "audio",
+                              feature: featureName("audio"),
+                              device: new Array<string>(),
+                              requested: requestedCodecs,
+                          }
+                        : {
+                              // The camera advertises Audio and reports no MicrophoneCapabilities this
+                              // server can build a stream from, which no argument of the request changes.
+                              reason: "capability",
+                              track: "audio",
+                              device: new Array<string>(),
+                              requested: requestedCodecs,
+                          },
+                ),
             };
         }
         const deviceCodecs = microphone.supportedCodecs.map(audioCodecName);
@@ -1920,7 +1931,7 @@ export class CameraStreamManager {
                 );
                 outcome = {
                     unavailable: ServerError.cameraStreamIncompatible({
-                        reason: "capability",
+                        reason: "offer",
                         track: "video",
                         device: new Array<string>(),
                         requested: videoHints?.codecs ?? new Array<string>(),
@@ -1931,7 +1942,7 @@ export class CameraStreamManager {
                 // AcceptedCommandList at all, so it answers UnsupportedCommand to every narrowing.
                 outcome = {
                     unavailable: ServerError.cameraStreamIncompatible({
-                        reason: "capability",
+                        reason: "feature",
                         track: "video",
                         feature: featureName("video"),
                         device: new Array<string>(),
@@ -1977,7 +1988,7 @@ export class CameraStreamManager {
         // could be found for — adds up to no media at all.
         if (video === undefined && audio === undefined) {
             throw ServerError.cameraStreamIncompatible({
-                reason: "capability",
+                reason: "no_media",
                 device: new Array<string>(),
                 requested: new Array<string>(),
             });
@@ -2352,7 +2363,7 @@ export class CameraStreamManager {
                     // SnapshotCapabilities is gated on the feature: a camera that reports the list
                     // anyway has no `SnapshotStreamAllocate` in its AcceptedCommandList either.
                     throw ServerError.cameraStreamIncompatible({
-                        reason: "capability",
+                        reason: "feature",
                         feature: featureName("snapshot"),
                         device: new Array<string>(),
                         requested: args.codec === undefined ? new Array<string>() : [imageCodecName(args.codec)],
@@ -2365,7 +2376,7 @@ export class CameraStreamManager {
                 );
                 if ("unsupported" in overlaySelection) {
                     throw ServerError.cameraStreamIncompatible({
-                        reason: "capability",
+                        reason: "feature",
                         feature: featureName(overlaySelection.unsupported),
                         device: new Array<string>(),
                         requested: args.codec === undefined ? new Array<string>() : [imageCodecName(args.codec)],

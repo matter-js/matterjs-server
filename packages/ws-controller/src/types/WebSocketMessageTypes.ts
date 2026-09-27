@@ -25,6 +25,7 @@ export {
     type CameraBoundField,
     type CameraPrivacyMode,
     type CameraStreamIncompatibleBound,
+    type CameraStreamIncompatibleReason,
     type CameraStreamKind,
     type CommandMessage,
     type CommissionableNodeData,
@@ -54,7 +55,12 @@ export {
 // Re-export MatterNodeData as MatterNode for backward compatibility within ws-controller
 export type { MatterNodeData as MatterNode } from "@matter-server/ws-client";
 
-import type { CameraPrivacyMode, CameraStreamIncompatibleBound, CameraStreamKind } from "@matter-server/ws-client";
+import type {
+    CameraPrivacyMode,
+    CameraStreamIncompatibleBound,
+    CameraStreamIncompatibleReason,
+    CameraStreamKind,
+} from "@matter-server/ws-client";
 
 /**
  * Error codes matching Python Matter Server for API compatibility.
@@ -101,29 +107,14 @@ export enum ServerErrorCode {
     CameraPrivacyMode = 106,
 }
 
-export interface CameraStreamIncompatibleDetail {
-    /**
-     * Which dimension could not be met, so a client knows what to change: `codec` a codec list,
-     * `bounds` a resolution / frame-rate / bit-rate bound, `capability` nothing about the request
-     * itself — the camera states no capability of the kind it needs, or the offer refuses the track
-     * — and `level` a decode ceiling the offer's own `a=fmtp` record states and this server cannot
-     * read, which the client changes in the SDP it sends rather than in any argument of the command.
-     */
-    reason: "codec" | "bounds" | "capability" | "level";
+/** The facts every {@link CameraStreamIncompatibleDetail} carries, whatever its reason. */
+interface CameraStreamIncompatibleFacts {
     /**
      * Which `camera_start_stream` track the failure is about, so a caller learns which of its two
-     * statements could not be met. Absent when the failure is about the request as a whole (both
-     * tracks left out) or about a command that resolves no track, such as `camera_snapshot`.
+     * statements could not be met. Absent when the failure is about the request as a whole (`no_media`)
+     * or about a command that resolves no track, such as `camera_snapshot`.
      */
     track?: "video" | "audio";
-    /**
-     * The AVSM feature the camera's `FeatureMap` does not advertise, when that is what refused, named
-     * as `camera_get_capabilities` reports the advertised ones.
-     *
-     * It tells the two `capability` cases apart that no other field does: a camera that cannot carry
-     * the track at all names the feature, while an offer that rejects the track names none.
-     */
-    feature?: string;
     /**
      * The camera's own codec names, empty when the camera is not what refused — an offer that
      * rejects a media section, or a request that asked for no track at all. Never a statement that
@@ -141,10 +132,27 @@ export interface CameraStreamIncompatibleDetail {
     deviceStatus?: number;
 }
 
-const INCOMPATIBLE_MESSAGES: Record<CameraStreamIncompatibleDetail["reason"], string> = {
+/**
+ * What a client learns about a request the camera or the offer cannot serve.
+ *
+ * `feature` is carried by the `feature` reason and by no other, which is what the union states: the
+ * field is a detail of that one reason rather than a discriminator between several.
+ */
+export type CameraStreamIncompatibleDetail =
+    | (CameraStreamIncompatibleFacts & {
+          reason: "feature";
+          /** The AVSM feature the camera does not advertise, named as `camera_get_capabilities` reports the advertised ones. */
+          feature: string;
+      })
+    | (CameraStreamIncompatibleFacts & { reason: Exclude<CameraStreamIncompatibleReason, "feature"> });
+
+const INCOMPATIBLE_MESSAGES: Record<CameraStreamIncompatibleReason, string> = {
     codec: "No codec supported by both the camera and the caller",
     bounds: "Camera cannot serve the requested stream parameters",
-    capability: "No capability for this request on the camera or in the offer",
+    feature: "Camera does not advertise the feature this request needs",
+    capability: "Camera states no capability this request can use",
+    offer: "The offer carries no media section for this track",
+    no_media: "The request leaves no media for the session to carry",
     level: "Offer states a codec level this server cannot bound a stream by",
 };
 
@@ -275,7 +283,7 @@ export class ServerError extends Error {
                 message: INCOMPATIBLE_MESSAGES[detail.reason],
                 reason: detail.reason,
                 ...(detail.track === undefined ? {} : { track: detail.track }),
-                ...(detail.feature === undefined ? {} : { feature: detail.feature }),
+                ...(detail.reason === "feature" ? { feature: detail.feature } : {}),
                 device: detail.device,
                 requested: detail.requested,
                 ...(detail.bound === undefined ? {} : { bound: detail.bound }),

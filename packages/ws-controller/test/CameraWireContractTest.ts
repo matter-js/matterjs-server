@@ -205,7 +205,7 @@ function errorPayloads(): unknown[] {
             deviceStatus: 0x87,
         }),
         ServerError.cameraStreamIncompatible({
-            reason: "capability",
+            reason: "feature",
             track: "audio",
             feature: "Audio",
             device: new Array<string>(),

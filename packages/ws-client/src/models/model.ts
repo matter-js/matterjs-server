@@ -770,6 +770,45 @@ export const CAMERA_BOUND_FIELDS = [
 /** The hint key an error-102 `bound` names. @see CAMERA_BOUND_FIELDS */
 export type CameraBoundField = (typeof CAMERA_BOUND_FIELDS)[number];
 
+/**
+ * Every `reason` an error-102 payload can state.
+ *
+ * One value, one meaning: a client branches on `reason` alone and never reads a sibling field to tell
+ * two cases apart. Where a client can act on each:
+ *
+ * - `codec` — no codec both the camera and the caller, or the caller's offer, can carry. Change
+ *   `video.codecs` / `audio.codecs`, or the codecs the SDP offers.
+ * - `bounds` — a resolution, frame-rate or bit-rate bound the camera cannot meet. `bound` names the
+ *   one bound when the server ruled it out before asking the camera.
+ * - `feature` — the camera's AVSM `FeatureMap` does not advertise what the request needs, and
+ *   `feature` names it exactly as `camera_get_capabilities` reports the advertised ones. Nothing in
+ *   the request changes this.
+ * - `capability` — the camera advertises the feature and states no capability the request could use:
+ *   an empty `snapshot.capabilities`, or `audio` capabilities naming no codec, sample rate or bit
+ *   depth. Also nothing the request changes.
+ * - `offer` — the `sdp` the caller sent refuses this track's media section, will not receive on it, or
+ *   carries none. `track` names the kind. Change the offer, not an argument.
+ * - `no_media` — every track was declined or resolved to nothing, so the session would carry no media.
+ *   Ask for a track.
+ * - `level` — the offer states a decode ceiling this server cannot read, so it cannot hold a stream to
+ *   what the peer said it decodes. Change the `a=fmtp` record or the level in the offer.
+ *
+ * The type is derived from this list, so a client's reference and the server's emitter cannot name
+ * different sets.
+ */
+export const CAMERA_INCOMPATIBLE_REASONS = [
+    "codec",
+    "bounds",
+    "feature",
+    "capability",
+    "offer",
+    "no_media",
+    "level",
+] as const;
+
+/** The `reason` an error-102 payload states. @see CAMERA_INCOMPATIBLE_REASONS */
+export type CameraStreamIncompatibleReason = (typeof CAMERA_INCOMPATIBLE_REASONS)[number];
+
 /** One privacy switch, as `camera_get_capabilities` reports it and error 106 names it. */
 export type CameraPrivacyMode = keyof CameraCapabilitiesResult["privacy"];
 

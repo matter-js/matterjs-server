@@ -135,7 +135,22 @@ class OtaUploadError(MatterError):
 
 
 class CameraStreamIncompatible(MatterError):
-    """Raised when no codec or resolution range suits both the camera and the caller."""
+    """Raised when no codec or resolution range suits both the camera and the caller.
+
+    The details carry a ``reason`` that states one thing per value, so a client branches on
+    it alone: ``codec`` (the codec lists do not overlap), ``bounds`` (a range the camera
+    cannot meet, with ``bound`` naming the single bound where the server ruled it out),
+    ``feature`` (the camera's AVSM ``FeatureMap`` does not advertise what the request
+    needs, named in ``feature`` — the only reason that carries that field), ``capability``
+    (the camera advertises the feature and states no capability the request could use),
+    ``offer`` (the caller's own SDP refuses the track's media section, will not receive on
+    it, or carries none), ``no_media`` (the request leaves no media for the session at
+    all), and ``level`` (the offer states a decode ceiling the server cannot read).
+
+    ``codec`` and ``bounds`` are answered in the command's arguments, ``offer`` and
+    ``level`` in the SDP the client sends, and ``feature``, ``capability`` and ``no_media``
+    in neither.
+    """
 
     error_code = 102
 
