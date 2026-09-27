@@ -13,6 +13,7 @@ if TYPE_CHECKING:
 
 from matter_server.client import MatterClient
 from matter_server.client.exceptions import ServerVersionTooOld
+from matter_server.common.helpers.util import dataclass_from_dict
 from matter_server.common.models import (
     APICommand,
     CommandMessage,
@@ -42,6 +43,20 @@ def test_api_command_covers_every_camera_command():
         "camera_snapshot",
         "camera_release_stream",
     }
+
+
+def test_webrtc_callback_data_parses_from_the_wire():
+    wire = {
+        "event_type": "end",
+        "webrtc_session_id": 5,
+        "node_id": 100,
+        "endpoint_id": 2,
+        "fabric_index": 1,
+        "data": {"reason": 3},
+    }
+    payload = dataclass_from_dict(WebRTCCallbackData, wire)
+    assert payload.event_type == "end"
+    assert payload.data == {"reason": 3}
 
 
 def test_webrtc_callback_data_roundtrip():

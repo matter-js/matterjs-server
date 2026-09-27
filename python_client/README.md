@@ -76,7 +76,9 @@ Beyond the `python-matter-server` API, the client exposes commands the Matter.js
 - `get_icd_state`, `register_icd`, `unregister_icd`, `resync_icd` — ICD Check-In registration
 - `camera_get_capabilities`, `camera_start_stream`, `camera_provide_answer`,
   `camera_provide_ice_candidates`, `camera_stop_stream`, `camera_snapshot`, `camera_release_stream`
-  — the camera API (schema 14+), returning dataclasses from `matter_server.common.models`.
+  — the camera API (schema 14+). `camera_get_capabilities`, `camera_start_stream`, `camera_stop_stream`
+  and `camera_snapshot` return dataclasses from `matter_server.common.models`; the other three return
+  `None`.
   `camera_start_stream`'s `video` / `audio` take `None` (the server decides), a `CameraVideoHints` /
   `CameraAudioHints` dict, or `False` (no such track). `camera_session_ended` and
   `camera_stream_evicted` events arrive as `CameraSessionEndedData` / `CameraStreamEvictedData`;

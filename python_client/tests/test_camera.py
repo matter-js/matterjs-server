@@ -203,14 +203,14 @@ _WRAPPERS: list[tuple[Callable[[MatterClient], Awaitable[object]], APICommand]] 
 ]
 
 
-@pytest.mark.parametrize(("call", "command"), _WRAPPERS)
-async def test_wrapper_is_refused_by_a_schema_13_server(
-    call: Callable[[MatterClient], Awaitable[object]], command: APICommand
-) -> None:
+@pytest.mark.parametrize("call", [call for call, _ in _WRAPPERS], ids=[command.value for _, command in _WRAPPERS])
+async def test_wrapper_is_refused_by_a_schema_13_server(call: Callable[[MatterClient], Awaitable[object]]) -> None:
     client = _gated_client(13)
-    client.connection.send_message = AsyncMock(side_effect=AssertionError("sent past the schema gate"))
+    send_message = AsyncMock()
+    client.connection.send_message = send_message
     with pytest.raises(ServerVersionTooOld):
         await call(client)
+    send_message.assert_not_awaited()
 
 
 @pytest.mark.parametrize(("call", "command"), _WRAPPERS)
@@ -232,6 +232,7 @@ async def test_wrapper_sends_its_command_with_schema_14(
             "resolution": _RESOLUTION,
             "degraded": False,
             "stream_id": 4,
+            "provenance": "allocated",
         },
     }
     client = _bare_client(responses.get(command))

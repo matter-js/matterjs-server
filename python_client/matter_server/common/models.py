@@ -146,6 +146,7 @@ class WebRTCIceCandidate:
 class WebRTCCallbackData:
     """Payload of a webrtc_callback event.
 
+    `event_type` is one of `WebRTCEventType`, typed `str` so `dataclass_from_dict` can parse it.
     `data` shape varies by event_type:
       - "offer": {"sdp": str, "ice_servers": list | None, "ice_transport_policy": str | None}
       - "answer": {"sdp": str}
@@ -153,7 +154,7 @@ class WebRTCCallbackData:
       - "end": {"reason": int}
     """
 
-    event_type: WebRTCEventType
+    event_type: str
     webrtc_session_id: int
     node_id: int
     endpoint_id: int
