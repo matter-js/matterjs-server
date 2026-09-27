@@ -96,9 +96,9 @@ export enum ServerErrorCode {
     /** OHF extension: stream release refused because the device still references the stream. */
     CameraStreamInUse = 104,
     /** OHF extension: endpoint does not expose the clusters camera streaming needs. */
-    CameraNotSupported = 106,
+    CameraNotSupported = 105,
     /** OHF extension: the camera's privacy switch forbids the session or the snapshot. */
-    CameraPrivacyMode = 107,
+    CameraPrivacyMode = 106,
 }
 
 export interface CameraStreamIncompatibleDetail {

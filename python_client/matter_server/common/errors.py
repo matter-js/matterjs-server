@@ -155,7 +155,7 @@ class CameraStreamInUse(MatterError):
 class CameraNotSupported(MatterError):
     """Raised when an endpoint does not expose the clusters camera streaming needs."""
 
-    error_code = 106
+    error_code = 105
 
 
 class CameraPrivacyMode(MatterError):
@@ -166,7 +166,7 @@ class CameraPrivacyMode(MatterError):
     ``CameraStreamIncompatible``.
     """
 
-    error_code = 107
+    error_code = 106
 
 
 def exception_from_error_code(error_code: int) -> type[MatterError]:

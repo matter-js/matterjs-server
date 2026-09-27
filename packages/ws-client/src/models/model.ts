@@ -630,7 +630,7 @@ export interface CameraCapabilitiesResult {
      * The camera's privacy switches, which are what a camera entity's on/off state is.
      *
      * A key is absent when the camera states no such switch. While any of them is on, the commands
-     * it covers fail with error 107 naming it: `hard_mode_on` blocks every session and every
+     * it covers fail with error 106 naming it: `hard_mode_on` blocks every session and every
      * snapshot, `soft_livestream_mode_enabled` a session of stream usage `LiveView` and every
      * snapshot, and `soft_recording_mode_enabled` a session of stream usage `Recording` or
      * `Analysis`. The two soft switches are writable per §11.2.7.20 and §11.2.7.21 — this API has no
@@ -770,7 +770,7 @@ export const CAMERA_BOUND_FIELDS = [
 /** The hint key an error-102 `bound` names. @see CAMERA_BOUND_FIELDS */
 export type CameraBoundField = (typeof CAMERA_BOUND_FIELDS)[number];
 
-/** One privacy switch, as `camera_get_capabilities` reports it and error 107 names it. */
+/** One privacy switch, as `camera_get_capabilities` reports it and error 106 names it. */
 export type CameraPrivacyMode = keyof CameraCapabilitiesResult["privacy"];
 
 /** Which track a stream belongs to, as `camera_release_stream` and error 103 spell it. */
@@ -1512,7 +1512,7 @@ export const CAMERA_RESOURCE_EXHAUSTED_ERROR_CODE = 103;
  */
 export const CAMERA_STREAM_IN_USE_ERROR_CODE = 104;
 /** OHF extension: endpoint does not expose the clusters camera streaming needs. */
-export const CAMERA_NOT_SUPPORTED_ERROR_CODE = 106;
+export const CAMERA_NOT_SUPPORTED_ERROR_CODE = 105;
 /**
  * OHF extension: the camera's privacy switch forbids the call.
  *
@@ -1522,7 +1522,7 @@ export const CAMERA_NOT_SUPPORTED_ERROR_CODE = 106;
  * a request the client can change: no other stream usage, codec or bound makes the call succeed while
  * the switch is on, which is why it is not error 102.
  */
-export const CAMERA_PRIVACY_MODE_ERROR_CODE = 107;
+export const CAMERA_PRIVACY_MODE_ERROR_CODE = 106;
 
 /** ICD controller-side state for a node. Note: Only available with OHF Matter Server. */
 export interface IcdStateData {

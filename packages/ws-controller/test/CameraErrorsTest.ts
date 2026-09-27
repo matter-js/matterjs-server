@@ -4,6 +4,13 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import {
+    CAMERA_NOT_SUPPORTED_ERROR_CODE,
+    CAMERA_PRIVACY_MODE_ERROR_CODE,
+    CAMERA_RESOURCE_EXHAUSTED_ERROR_CODE,
+    CAMERA_STREAM_INCOMPATIBLE_ERROR_CODE,
+    CAMERA_STREAM_IN_USE_ERROR_CODE,
+} from "@matter-server/ws-client";
 import { ServerError, ServerErrorCode } from "../src/types/WebSocketMessageTypes.js";
 
 describe("camera server errors", () => {
@@ -69,6 +76,25 @@ describe("camera server errors", () => {
             stream_id: 3,
             reference_count: 2,
         });
+    });
+
+    it("numbers the camera codes 102 to 106 with no gap, as the ws-client constants spell them", () => {
+        // The enum and the client constants are two statements of one wire contract with nothing but
+        // this test between them, and a client keys its exception classes on the number.
+        expect([
+            ServerErrorCode.CameraStreamIncompatible,
+            ServerErrorCode.CameraResourceExhausted,
+            ServerErrorCode.CameraStreamInUse,
+            ServerErrorCode.CameraNotSupported,
+            ServerErrorCode.CameraPrivacyMode,
+        ]).to.deep.equal([102, 103, 104, 105, 106]);
+        expect([
+            CAMERA_STREAM_INCOMPATIBLE_ERROR_CODE,
+            CAMERA_RESOURCE_EXHAUSTED_ERROR_CODE,
+            CAMERA_STREAM_IN_USE_ERROR_CODE,
+            CAMERA_NOT_SUPPORTED_ERROR_CODE,
+            CAMERA_PRIVACY_MODE_ERROR_CODE,
+        ]).to.deep.equal([102, 103, 104, 105, 106]);
     });
 
     it("names the clusters an endpoint is missing", () => {
