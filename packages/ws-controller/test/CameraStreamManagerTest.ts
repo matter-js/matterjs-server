@@ -11,6 +11,7 @@ import { Status, StatusResponseError, StreamUsage } from "@matter/main/types";
 import type { CameraDeviceIo, CameraState } from "../src/camera/CameraStreamManager.js";
 import {
     CameraStreamManager,
+    MAX_ALLOCATE_ATTEMPTS,
     preferredVideoCodec,
     UNREPORTED_LEASE_GRACE_MS,
 } from "../src/camera/CameraStreamManager.js";
@@ -39,6 +40,13 @@ function requireAudioEnvelope(envelope: VideoEnvelope | AudioEnvelope): AudioEnv
     if ("minResolution" in envelope) throw new Error("expected an audio envelope");
     return envelope;
 }
+
+/**
+ * Allocate attempts a request makes before it reaches the eviction rung: the budgeted envelope plus
+ * the narrowing rounds the ladder spends on this server's own defaults. A fake that refuses this many
+ * is a camera short of capacity rather than one refusing a range.
+ */
+export const NARROWING_ATTEMPTS = 4;
 
 export const NODE = NodeId(5);
 export const ENDPOINT = EndpointNumber(1);
@@ -674,7 +682,9 @@ describe("CameraStreamManager", () => {
             const { manager, invokes } = managerWith(withStreams([idle]), async invoke => {
                 if (invoke.command === "videoStreamAllocate") {
                     allocateAttempts += 1;
-                    if (allocateAttempts === 1) throw statusError(Status.ResourceExhausted);
+                    // Refuses every narrowing too, so the request reaches the eviction rung: a camera
+                    // short of capacity is not served by a smaller envelope.
+                    if (allocateAttempts <= NARROWING_ATTEMPTS) throw statusError(Status.ResourceExhausted);
                     return { videoStreamId: 11 };
                 }
                 return undefined;
@@ -689,7 +699,9 @@ describe("CameraStreamManager", () => {
             expect(resolved.streamId).to.equal(11);
             expect(invokes.map(invoke => invoke.command)).to.include("videoStreamDeallocate");
             // The freed capacity went into stream 11, so there is nothing to put back.
-            expect(invokes.filter(invoke => invoke.command === "videoStreamAllocate")).to.have.length(2);
+            expect(invokes.filter(invoke => invoke.command === "videoStreamAllocate")).to.have.length(
+                NARROWING_ATTEMPTS + 1,
+            );
         });
 
         it("reacts to a device status matter.js wrapped in a cause chain", async () => {
@@ -701,7 +713,7 @@ describe("CameraStreamManager", () => {
             const { manager, invokes } = managerWith(withStreams([idle]), async invoke => {
                 if (invoke.command === "videoStreamAllocate") {
                     allocateAttempts += 1;
-                    if (allocateAttempts === 1) {
+                    if (allocateAttempts <= NARROWING_ATTEMPTS) {
                         throw new Error("invoke failed", {
                             cause: StatusResponseError.create(Status.ResourceExhausted),
                         });
@@ -727,7 +739,7 @@ describe("CameraStreamManager", () => {
             const { manager, invokes } = managerWith(withStreams([idle]), async invoke => {
                 if (invoke.command === "videoStreamAllocate") {
                     allocateAttempts += 1;
-                    if (allocateAttempts === 1) {
+                    if (allocateAttempts <= NARROWING_ATTEMPTS) {
                         throw new AggregateError([StatusResponseError.create(Status.ResourceExhausted)]);
                     }
                     return { videoStreamId: 11 };
@@ -754,7 +766,7 @@ describe("CameraStreamManager", () => {
                 if (invoke.command !== "videoStreamAllocate") return undefined;
                 allocateAttempts += 1;
                 if (allocateAttempts === 1) return { videoStreamId: 20 };
-                if (allocateAttempts === 2) throw statusError(Status.ResourceExhausted);
+                if (allocateAttempts <= 1 + NARROWING_ATTEMPTS) throw statusError(Status.ResourceExhausted);
                 return { videoStreamId: 30 };
             });
             const request = { nodeId: NODE, endpointId: ENDPOINT, streamUsage: LIVE_VIEW, limits: { codec: H265 } };
@@ -827,7 +839,7 @@ describe("CameraStreamManager", () => {
             const { manager, invokes } = managerWith(withStreams([recording, analysis]), async invoke => {
                 if (invoke.command !== "videoStreamAllocate") return undefined;
                 allocateAttempts += 1;
-                if (allocateAttempts === 1) throw statusError(Status.ResourceExhausted);
+                if (allocateAttempts <= NARROWING_ATTEMPTS) throw statusError(Status.ResourceExhausted);
                 return { videoStreamId: 30 };
             });
             const resolved = await manager.resolveVideoStream({
@@ -858,7 +870,7 @@ describe("CameraStreamManager", () => {
             const { manager, invokes } = managerWith(unranked, async invoke => {
                 if (invoke.command !== "videoStreamAllocate") return undefined;
                 allocateAttempts += 1;
-                if (allocateAttempts === 1) throw statusError(Status.ResourceExhausted);
+                if (allocateAttempts <= NARROWING_ATTEMPTS) throw statusError(Status.ResourceExhausted);
                 return { videoStreamId: 30 };
             });
             const resolved = await manager.resolveVideoStream({
@@ -1115,6 +1127,79 @@ describe("CameraStreamManager", () => {
             expect(first?.fields.maxFrameRate).to.equal(30);
         });
 
+        it("narrows its own envelope before taking a stream that is not being used", async () => {
+            // §11.2.1.1 asks commissioners to pre-allocate long-lived streams, so an idle stream is
+            // somebody's reservation. Giving up the server's own envelope costs nobody anything.
+            const idle = { ...CONTAINED_STREAM, videoStreamId: 7, referenceCount: 0 };
+            let allocateAttempts = 0;
+            const { manager, invokes } = managerWith(withStreams([idle]), async invoke => {
+                if (invoke.command !== "videoStreamAllocate") return undefined;
+                allocateAttempts += 1;
+                if (allocateAttempts === 1) throw statusError(Status.ResourceExhausted);
+                return { videoStreamId: 42 };
+            });
+            const resolved = await manager.resolveVideoStream({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                streamUsage: LIVE_VIEW,
+                limits: { codec: H265 },
+                hints: { maxResolution: { width: 1280, height: 720 } },
+            });
+            expect(resolved.streamId).to.equal(42);
+            expect(resolved.evicted).to.equal(undefined);
+            expect(invokes.map(invoke => invoke.command)).to.not.include("videoStreamDeallocate");
+        });
+
+        it("names the stream it took in the result", async () => {
+            const idle = { ...CONTAINED_STREAM, videoStreamId: 7, referenceCount: 0 };
+            let allocateAttempts = 0;
+            const { manager } = managerWith(withStreams([idle]), async invoke => {
+                if (invoke.command !== "videoStreamAllocate") return undefined;
+                allocateAttempts += 1;
+                if (allocateAttempts <= NARROWING_ATTEMPTS) throw statusError(Status.ResourceExhausted);
+                return { videoStreamId: 43 };
+            });
+            const resolved = await manager.resolveVideoStream({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                streamUsage: LIVE_VIEW,
+                limits: { codec: H265 },
+                hints: { maxResolution: { width: 1280, height: 720 } },
+            });
+            expect(resolved.streamId).to.equal(43);
+            expect(resolved.evicted).to.deep.equal([7]);
+            // The envelope is re-derived from the freed capacity rather than left where narrowing
+            // ended it: paying for capacity and then not using it costs the caller picture size for
+            // nothing.
+            expect(requireVideoEnvelope(resolved.envelope).maxResolution).to.deep.equal({
+                width: 1280,
+                height: 720,
+            });
+        });
+
+        it("fails rather than taking a stream when the caller forbade eviction", async () => {
+            const idle = { ...CONTAINED_STREAM, videoStreamId: 7, referenceCount: 0 };
+            const { manager, invokes } = managerWith(withStreams([idle]), async invoke => {
+                if (invoke.command === "videoStreamAllocate") throw statusError(Status.ResourceExhausted);
+                return undefined;
+            });
+            let thrown: unknown;
+            try {
+                await manager.resolveVideoStream({
+                    nodeId: NODE,
+                    endpointId: ENDPOINT,
+                    streamUsage: LIVE_VIEW,
+                    limits: { codec: H265 },
+                    hints: { maxResolution: { width: 1280, height: 720 } },
+                    allowEviction: false,
+                });
+            } catch (error) {
+                thrown = error;
+            }
+            expect((thrown as ServerError).code).to.equal(ServerErrorCode.CameraResourceExhausted);
+            expect(invokes.map(invoke => invoke.command)).to.not.include("videoStreamDeallocate");
+        });
+
         it("counts an encoded-pixels snapshot stream against the video budget", async () => {
             // The other half of the reservation sum, through the manager rather than the policy: a
             // snapshot stream the camera counts in its own pixel rate leaves less for the livestream.
@@ -1143,6 +1228,163 @@ describe("CameraStreamManager", () => {
             expect(invokes.filter(invoke => invoke.command === "videoStreamAllocate")).to.have.length(1);
         });
 
+        it("never takes a stream the degraded rung could have handed out", async () => {
+            // Taking it and then failing costs its holder an id for a request that very stream would
+            // have served — and the restore proves it, since it puts the same parameters back.
+            const usable = {
+                ...CONTAINED_STREAM,
+                videoStreamId: 7,
+                referenceCount: 0,
+                minBitRate: 100000,
+                maxBitRate: 200000,
+            };
+            const { manager, invokes } = managerWith(withStreams([usable]), async invoke => {
+                if (invoke.command === "videoStreamAllocate") throw statusError(Status.ResourceExhausted);
+                return undefined;
+            });
+            const resolved = await manager.resolveVideoStream({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                streamUsage: LIVE_VIEW,
+                limits: { codec: H265 },
+                hints: PINNED_1080P,
+            });
+            expect(resolved.streamId).to.equal(7);
+            expect(resolved.degraded).to.equal(true);
+            expect(resolved.evicted).to.equal(undefined);
+            expect(invokes.map(invoke => invoke.command)).to.not.include("videoStreamDeallocate");
+        });
+
+        it("reports a stream it took even when the degraded rung is what served the caller", async () => {
+            // The taking happened, so the id is gone whichever rung then answered. A response that
+            // said nothing would hand the caller a success and hide the cost.
+            const H264 = 2;
+            const victim = { ...CONTAINED_STREAM, videoStreamId: 20, videoCodec: H264, referenceCount: 0 };
+            const busy = {
+                ...CONTAINED_STREAM,
+                videoStreamId: 7,
+                referenceCount: 1,
+                maxResolution: { width: 3840, height: 2160 },
+            };
+            const { manager, invokes } = managerWith(withStreams([victim, busy]), async invoke => {
+                if (invoke.command === "videoStreamAllocate") throw statusError(Status.ResourceExhausted);
+                return undefined;
+            });
+            const resolved = await manager.resolveVideoStream({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                streamUsage: LIVE_VIEW,
+                limits: { codec: H265 },
+            });
+            expect(resolved.streamId).to.equal(7);
+            expect(resolved.degraded).to.equal(true);
+            expect(resolved.evicted).to.deep.equal([20]);
+            expect(
+                invokes
+                    .filter(invoke => invoke.command === "videoStreamDeallocate")
+                    .map(invoke => invoke.fields.videoStreamId),
+            ).to.deep.equal([20]);
+        });
+
+        it("names every stream it took, not only the first", async () => {
+            const H264 = 2;
+            const idle = (id: number) => ({
+                ...CONTAINED_STREAM,
+                videoStreamId: id,
+                videoCodec: H264,
+                streamUsage: 1,
+                referenceCount: 0,
+            });
+            let allocateAttempts = 0;
+            const { manager } = managerWith(withStreams([idle(20), idle(21)]), async invoke => {
+                if (invoke.command !== "videoStreamAllocate") return undefined;
+                allocateAttempts += 1;
+                // Two evictions before the camera relents, so a result naming one id is a result
+                // hiding the second stream it destroyed.
+                if (allocateAttempts <= NARROWING_ATTEMPTS + 1) throw statusError(Status.ResourceExhausted);
+                return { videoStreamId: 44 };
+            });
+            const resolved = await manager.resolveVideoStream({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                streamUsage: LIVE_VIEW,
+                limits: { codec: H265 },
+                hints: { maxResolution: { width: 1280, height: 720 } },
+            });
+            expect(resolved.streamId).to.equal(44);
+            expect(resolved.evicted).to.deep.equal([20, 21]);
+        });
+
+        it("stops taking streams when no allocate attempt is left to use the capacity", async () => {
+            // The allocate that spends the capacity is inside the loop; the last iteration has none
+            // behind it, so a stream taken there would be destroyed for nothing.
+            const H264 = 2;
+            const idle = (id: number) => ({
+                ...CONTAINED_STREAM,
+                videoStreamId: id,
+                videoCodec: H264,
+                streamUsage: 1,
+                referenceCount: 0,
+            });
+            const { manager, invokes } = managerWith(
+                withStreams([idle(20), idle(21), idle(22), idle(23), idle(24)]),
+                async invoke => {
+                    if (invoke.command === "videoStreamAllocate") throw statusError(Status.ResourceExhausted);
+                    return undefined;
+                },
+            );
+            let thrown: unknown;
+            try {
+                await manager.resolveVideoStream({
+                    nodeId: NODE,
+                    endpointId: ENDPOINT,
+                    streamUsage: LIVE_VIEW,
+                    limits: { codec: H265 },
+                    hints: { maxResolution: { width: 1280, height: 720 } },
+                });
+            } catch (error) {
+                thrown = error;
+            }
+            expect((thrown as ServerError).code).to.equal(ServerErrorCode.CameraResourceExhausted);
+            // Only this request's own attempts: the scope's restores are allocates of the victims'
+            // own stream usage, and there is one per stream taken.
+            const attempts = invokes.filter(
+                invoke => invoke.command === "videoStreamAllocate" && invoke.fields.streamUsage === LIVE_VIEW,
+            );
+            const deallocates = invokes.filter(invoke => invoke.command === "videoStreamDeallocate");
+            // Five candidates, but only the attempts before the last can spend what they buy.
+            expect(attempts.length).to.equal(MAX_ALLOCATE_ATTEMPTS);
+            expect(deallocates.length).to.equal(MAX_ALLOCATE_ATTEMPTS - NARROWING_ATTEMPTS);
+        });
+
+        it("still reaches the degraded rung when the caller forbade eviction", async () => {
+            // allow_eviction stops the taking rung only: handing out a stream that is already there
+            // takes nothing from anyone, so forbidding eviction must not also forbid being served.
+            const H264 = 2;
+            const idle = { ...CONTAINED_STREAM, videoStreamId: 20, videoCodec: H264, referenceCount: 0 };
+            const busy = {
+                ...CONTAINED_STREAM,
+                videoStreamId: 7,
+                referenceCount: 1,
+                maxResolution: { width: 3840, height: 2160 },
+            };
+            const { manager, invokes } = managerWith(withStreams([idle, busy]), async invoke => {
+                if (invoke.command === "videoStreamAllocate") throw statusError(Status.ResourceExhausted);
+                return undefined;
+            });
+            const resolved = await manager.resolveVideoStream({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                streamUsage: LIVE_VIEW,
+                limits: { codec: H265 },
+                allowEviction: false,
+            });
+            expect(resolved.streamId).to.equal(7);
+            expect(resolved.degraded).to.equal(true);
+            expect(resolved.evicted).to.equal(undefined);
+            expect(invokes.map(invoke => invoke.command)).to.not.include("videoStreamDeallocate");
+        });
+
         it("fails typed with the allocated list once the ladder is exhausted", async () => {
             const { manager, invokes } = managerWith(withStreams([CONTAINED_STREAM]), async () => {
                 throw statusError(Status.ResourceExhausted);
@@ -1163,7 +1405,8 @@ describe("CameraStreamManager", () => {
             expect(JSON.parse((thrown as ServerError).message).allocated).to.deep.equal([
                 { kind: "video", stream_id: 7, reference_count: 1 },
             ]);
-            // MAX_NARROWING_ROUNDS = 3, rounds 0..3 inclusive: exactly 4 allocate attempts.
+            // One attempt at the budgeted envelope plus MAX_NARROWING_ROUNDS narrowings, and then
+            // eviction, which finds no candidate here because stream 7 is in use.
             expect(invokes.length).to.equal(4);
         });
 
@@ -4468,7 +4711,7 @@ describe("CameraStreamManager", () => {
                     if (invoke.command === "videoStreamAllocate") {
                         if (invoke.fields.streamUsage !== LIVE_VIEW) return { videoStreamId: 21 };
                         liveViewAllocates += 1;
-                        if (liveViewAllocates === 1) throw statusError(Status.ResourceExhausted);
+                        if (liveViewAllocates <= NARROWING_ATTEMPTS) throw statusError(Status.ResourceExhausted);
                         return { videoStreamId: 20 };
                     }
                     if (invoke.command === "audioStreamAllocate") throw statusError(Status.ConstraintError);

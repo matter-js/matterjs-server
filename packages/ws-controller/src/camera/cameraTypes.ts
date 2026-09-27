@@ -162,6 +162,17 @@ export interface ResolvedStream {
     allocatedByUs: boolean;
     /** The result does not fit the envelope the server would have allocated; set only by the last ladder rung. */
     degraded?: boolean;
+    /**
+     * Ids of streams this request deallocated, absent when it took nothing.
+     *
+     * A stream a caller holds through another controller can be taken while nothing references it
+     * (§11.2.8.7.2 checks use and Internal, not ownership), and the id it held is gone for good, so
+     * the caller is told which ids stopped existing on its behalf. Reported whichever rung then
+     * answered: a request that took a stream and was served by the degraded rung instead destroyed
+     * that id just the same, even though the allocation scope puts an equivalent stream back under a
+     * new one.
+     */
+    evicted?: number[];
 }
 
 /**

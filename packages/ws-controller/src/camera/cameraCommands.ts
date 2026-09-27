@@ -227,6 +227,7 @@ const START_STREAM_ARG_KEY_SET: Record<keyof Required<ArgsOf<"camera_start_strea
     ice_servers: true,
     ice_transport_policy: true,
     metadata_enabled: true,
+    allow_eviction: true,
 };
 
 /** The keys `camera_get_capabilities` takes. @see VIDEO_HINT_KEY_SET */
@@ -373,6 +374,7 @@ export interface ParsedStartStreamArgs extends ParsedCameraTarget {
     iceServers?: WebRtcTransportDefinitions.IceServer[];
     iceTransportPolicy?: string;
     metadataEnabled?: boolean;
+    allowEviction?: boolean;
 }
 
 export function parseStartStreamArgs(args: unknown): ParsedStartStreamArgs {
@@ -393,6 +395,7 @@ export function parseStartStreamArgs(args: unknown): ParsedStartStreamArgs {
                   ICE_SERVER_LIMITS.maxTransportPolicyLength,
               );
     const metadataEnabled = toOptionalBoolean(fields.metadata_enabled, "metadata_enabled");
+    const allowEviction = toOptionalBoolean(fields.allow_eviction, "allow_eviction");
     const video =
         fields.video === undefined ? undefined : fields.video === false ? false : parseVideoHints(fields.video);
     const audio =
@@ -406,6 +409,7 @@ export function parseStartStreamArgs(args: unknown): ParsedStartStreamArgs {
         ...(iceServers === undefined ? {} : { iceServers }),
         ...(iceTransportPolicy === undefined ? {} : { iceTransportPolicy }),
         ...(metadataEnabled === undefined ? {} : { metadataEnabled }),
+        ...(allowEviction === undefined ? {} : { allowEviction }),
     };
 }
 
@@ -593,6 +597,7 @@ function toWireStartStreamVideo(stream: ResolvedStream): CameraStartStreamVideoR
         reused: stream.reused,
         allocated_by_server: stream.allocatedByUs,
         ...(stream.degraded === undefined ? {} : { degraded: stream.degraded }),
+        ...(stream.evicted === undefined ? {} : { evicted_stream_ids: stream.evicted }),
     };
 }
 

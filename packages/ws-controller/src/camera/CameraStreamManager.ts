@@ -54,6 +54,7 @@ import {
     findReusableVideoStream,
     narrowEnvelope,
     satisfiesAudioCallerBounds,
+    satisfiesVideoCallerBounds,
     statedHints,
     trackRequest,
     videoCallerBounds,
@@ -72,6 +73,15 @@ const logger = Logger.get("CameraStreamManager");
 
 /** Bounded so a device that rejects everything fails fast rather than walking to 1x1. */
 const MAX_NARROWING_ROUNDS = 3;
+
+/**
+ * `VideoStreamAllocate` attempts one request may make, narrowing and eviction together.
+ *
+ * Neither rung needs it to terminate — narrowing has its own budget and eviction's candidate set
+ * shrinks with every victim — so this only bounds how long a camera that refuses everything can hold
+ * the endpoint lock.
+ */
+export const MAX_ALLOCATE_ATTEMPTS = 8;
 
 /** What an allocation ladder may do about a device rejection. */
 type LadderReaction =
@@ -503,6 +513,8 @@ export interface StartStreamArgs {
     iceServers?: WebRtcTransportDefinitions.IceServer[];
     iceTransportPolicy?: unknown;
     metadataEnabled?: boolean;
+    /** Defaults to true. @see CameraStreamManager.resolveVideoStreamLocked */
+    allowEviction?: boolean;
 }
 
 /**
@@ -952,6 +964,7 @@ export class CameraStreamManager {
         streamUsage: number;
         limits: SelectedVideoCodecLimits;
         hints?: VideoHints;
+        allowEviction?: boolean;
     }): Promise<ResolvedStream> {
         return this.withEndpointLock(args.nodeId, args.endpointId, () =>
             this.withAllocationScope(scope => this.resolveVideoStreamLocked(args, scope)),
@@ -980,6 +993,14 @@ export class CameraStreamManager {
      * scope: `startStream` calls this directly, under its own lock and scope, to resolve video and
      * audio without releasing the lock between them and the offer round trip that follows, and so
      * that a failure after this returns still gives back what this allocated.
+     *
+     * The rungs run cheapest-for-everyone first: reuse a stream the camera already produces, then
+     * allocate inside the encoder budget the camera has left, then narrow this server's own envelope
+     * as far as it goes, then — only with `allowEviction`, which defaults to true — take a stream
+     * nobody is using and re-derive the envelope from the freed capacity, and last hand out a stream
+     * that fits the caller's bounds but not the envelope, flagged `degraded`. `allowEviction: false`
+     * stops before the taking rung, so such a request fails with error 103 rather than costing
+     * another controller a stream.
      */
     protected async resolveVideoStreamLocked(
         args: {
@@ -988,10 +1009,12 @@ export class CameraStreamManager {
             streamUsage: number;
             limits: SelectedVideoCodecLimits;
             hints?: VideoHints;
+            allowEviction?: boolean;
         },
         scope: AllocationScope,
     ): Promise<ResolvedStream> {
         const { nodeId, endpointId, streamUsage } = args;
+        const allowEviction = args.allowEviction ?? true;
         const codec = args.limits.codec;
         const state = await this.requireState(nodeId, endpointId);
         const deviceCodecs = new Array<number>();
@@ -1065,9 +1088,20 @@ export class CameraStreamManager {
             });
         let envelope = budgeted(liveStreams);
 
+        // A stream the degraded rung could hand out is not a stream to destroy for the same request:
+        // taking it and then failing costs the victim's holder an id for a request the victim itself
+        // would have served. `chooseEvictionVictim` still applies the reference count and Internal.
+        const evictable = liveStreams.filter(stream => !satisfiesVideoCallerBounds(stream, bounds));
+
         let lastStatus: number | undefined;
+        let narrowingsLeft = MAX_NARROWING_ROUNDS;
         const freed = new Array<() => void>();
-        for (let round = 0; round <= MAX_NARROWING_ROUNDS; round++) {
+        const evicted = new Array<number>();
+        // Every way out that hands a stream over goes through this, so a stream destroyed on the
+        // caller's behalf cannot go unreported by the rung that happened to answer.
+        const reporting = (resolved: ResolvedStream): ResolvedStream =>
+            evicted.length === 0 ? resolved : { ...resolved, evicted };
+        for (let attempt = 1; attempt <= MAX_ALLOCATE_ATTEMPTS; attempt++) {
             try {
                 const response = await this.io.invoke({
                     nodeId,
@@ -1103,7 +1137,7 @@ export class CameraStreamManager {
                 });
                 scope.returnOnFailure(() => this.#deallocate(nodeId, endpointId, lease));
                 for (const spend of freed) spend();
-                return { streamId, envelope, reused: false, allocatedByUs: true };
+                return reporting({ streamId, envelope, reused: false, allocatedByUs: true });
             } catch (error) {
                 if (error instanceof ServerError) throw error;
                 lastStatus = deviceStatusOf(error);
@@ -1118,25 +1152,37 @@ export class CameraStreamManager {
                         deviceStatus: lastStatus,
                     });
                 }
-                if (reaction === "make-room") {
-                    const madeRoom = await this.freeAnUnreferencedVideoStream(
-                        nodeId,
-                        endpointId,
-                        liveStreams,
-                        state.streamUsagePriorities,
-                        scope,
-                        envelope.keyFrameInterval,
-                    );
-                    if (madeRoom !== undefined) {
-                        liveStreams = liveStreams.filter(stream => stream.videoStreamId !== madeRoom.streamId);
-                        freed.push(madeRoom.spend);
-                        envelope = budgeted(liveStreams);
+                // Narrowing before eviction: the envelope is the server's own to give up, and a
+                // stream with no listeners still belongs to whoever allocated it. Nothing is taken
+                // while asking for less might still work. An eviction does not refill these rounds —
+                // a camera that refused every narrowing has said that asking smaller is not what it
+                // lacks — which is also what keeps the attempt count bounded.
+                if (narrowingsLeft > 0) {
+                    const narrowed = narrowEnvelope(envelope);
+                    if (narrowed !== undefined) {
+                        narrowingsLeft -= 1;
+                        envelope = narrowed;
                         continue;
                     }
                 }
-                const narrowed = narrowEnvelope(envelope);
-                if (narrowed === undefined) break;
-                envelope = narrowed;
+                if (reaction !== "make-room" || !allowEviction) break;
+                // Nothing is taken on the last attempt: the allocate that would have spent the
+                // capacity is outside the loop, so the victim would be destroyed for nothing.
+                if (attempt === MAX_ALLOCATE_ATTEMPTS) break;
+                const madeRoom = await this.freeAnUnreferencedVideoStream(
+                    nodeId,
+                    endpointId,
+                    evictable.filter(stream => liveStreams.includes(stream)),
+                    state.streamUsagePriorities,
+                    scope,
+                    envelope.keyFrameInterval,
+                );
+                if (madeRoom === undefined) break;
+                // Strictly shrinking, so eviction cannot keep finding the same victim.
+                liveStreams = liveStreams.filter(stream => stream.videoStreamId !== madeRoom.streamId);
+                freed.push(madeRoom.spend);
+                evicted.push(madeRoom.streamId);
+                envelope = budgeted(liveStreams);
             }
         }
 
@@ -1144,13 +1190,13 @@ export class CameraStreamManager {
         // the caller stated.
         const degraded = findDegradedVideoStream([...liveStreams, ...unreported], bounds);
         if (degraded !== undefined) {
-            return {
+            return reporting({
                 streamId: degraded.videoStreamId,
                 envelope: envelopeOfVideoStream(degraded, envelope.keyFrameInterval),
                 reused: true,
                 degraded: true,
                 allocatedByUs: this.leaseReusedVideoStream(nodeId, endpointId, degraded),
-            };
+            });
         }
 
         if (ladderReaction(lastStatus) === "narrow") {
@@ -1612,6 +1658,7 @@ export class CameraStreamManager {
                             streamUsage,
                             limits: videoCodecLimits(sdp, codec),
                             hints: videoHints,
+                            allowEviction: args.allowEviction,
                         },
                         scope,
                     ),

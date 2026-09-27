@@ -1480,6 +1480,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
             iceServers: parsed.iceServers,
             iceTransportPolicy: parsed.iceTransportPolicy,
             metadataEnabled: parsed.metadataEnabled,
+            allowEviction: parsed.allowEviction,
         });
         return toWireStartStreamResult(result);
     }

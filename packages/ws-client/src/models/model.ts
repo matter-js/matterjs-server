@@ -664,6 +664,16 @@ export interface CameraStartStreamVideoResult {
      * still meets every bound the caller stated. Absent when the stream fits.
      */
     degraded?: boolean;
+    /**
+     * Video stream ids this request deallocated, absent when it took nothing.
+     *
+     * The camera lets any controller deallocate a stream nothing references, so an id listed here may
+     * have belonged to another controller and is gone for good: that controller has to allocate
+     * again. Present whether the request was then served by a freshly allocated stream or, after the
+     * retry still failed, by an existing one. Set `allow_eviction: false` to be refused with
+     * `CAMERA_RESOURCE_EXHAUSTED_ERROR_CODE` instead.
+     */
+    evicted_stream_ids?: number[];
 }
 
 export interface CameraStartStreamAudioResult {
@@ -941,6 +951,18 @@ export interface APICommands {
             /** 1 to 16 characters: `ProvideOffer.ICETransportPolicy` states the ceiling, the server the floor. */
             ice_transport_policy?: string;
             metadata_enabled?: boolean;
+            /**
+             * Whether the server may deallocate a stream nothing references in order to serve this
+             * request. Defaults to true.
+             *
+             * It is the last rung of the video ladder: the server reuses, budgets and narrows first,
+             * so taking a stream only happens where the alternative is failing the call. What it took
+             * comes back in `video.evicted_stream_ids`. Set it to false to get
+             * `CAMERA_RESOURCE_EXHAUSTED_ERROR_CODE` instead — a caller that must not disturb another
+             * controller's long-lived allocation (spec §11.2.1.1 asks commissioners to pre-allocate
+             * and keep them) says so here.
+             */
+            allow_eviction?: boolean;
         };
         response: CameraStartStreamResult;
     };

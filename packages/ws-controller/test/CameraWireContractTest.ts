@@ -173,6 +173,7 @@ const START_STREAM: StartStreamResult = {
         reused: true,
         allocatedByUs: true,
         degraded: true,
+        evicted: [9],
     },
     audio: {
         streamId: 2,
@@ -524,6 +525,7 @@ describe("camera wire contract", () => {
                         "ice_servers",
                         "ice_transport_policy",
                         "metadata_enabled",
+                        "allow_eviction",
                     ],
                 },
                 {

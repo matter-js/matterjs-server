@@ -201,6 +201,14 @@ describe("cameraCommands", () => {
             expect(parsed.metadataEnabled).to.equal(true);
         });
 
+        it("reads allow_eviction, and leaves it unstated when the caller says nothing", () => {
+            const base = { node_id: 5, endpoint_id: 1, stream_usage: "LiveView" };
+            expect(parseStartStreamArgs({ ...base, allow_eviction: false }).allowEviction).to.equal(false);
+            // Unstated rather than false: the default belongs to the manager, and a parser that filled
+            // it in here would decide the policy for every caller that never mentioned it.
+            expect(parseStartStreamArgs(base).allowEviction).to.equal(undefined);
+        });
+
         it("keeps a urls list, the credentials and the caid on the struct", () => {
             const parsed = parseStartStreamArgs({
                 node_id: 5,

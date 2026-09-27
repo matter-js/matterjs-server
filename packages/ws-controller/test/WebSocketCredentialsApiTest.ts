@@ -25,7 +25,7 @@ function freshEnv(): Environment {
 
 interface StubCameraStreams {
     releaseConnection(connectionId: string): Promise<void>;
-    startStream?(args: { connectionId: string }): Promise<unknown>;
+    startStream?(args: { connectionId: string; allowEviction?: boolean }): Promise<unknown>;
     forgetSession?(nodeId: bigint, endpointId: number, webRtcSessionId: number): boolean;
     /** Which connections may receive a session's signalling; absent means the manager holds no record. */
     signallingOwners?(nodeId: bigint, endpointId: number, webRtcSessionId: number): ReadonlySet<string> | undefined;
@@ -1141,6 +1141,34 @@ describe("WebSocket camera session tracking on the raw path", () => {
             }
         });
     }
+});
+
+describe("WebSocket camera_start_stream arguments", () => {
+    it("forwards allow_eviction to the stream manager", async () => {
+        // The one hop between the parsed argument and the ladder that decides on it, and the reason a
+        // client can turn eviction off at all.
+        const stated = new Array<boolean | undefined>();
+        const h = await createHarness({
+            async releaseConnection() {},
+            async startStream(args: { connectionId: string; allowEviction?: boolean }) {
+                stated.push(args.allowEviction);
+                return { webRtcSessionId: 1, mode: "solicit_offer" };
+            },
+        });
+        try {
+            const client = await h.openClient();
+            try {
+                const base = { node_id: 1, endpoint_id: 1, stream_usage: "LiveView" };
+                await h.sendOn(client, "camera_start_stream", { ...base, allow_eviction: false });
+                await h.sendOn(client, "camera_start_stream", base);
+                expect(stated).to.deep.equal([false, undefined]);
+            } finally {
+                client.close();
+            }
+        } finally {
+            await h.close();
+        }
+    });
 });
 
 describe("WebSocket camera session cleanup on disconnect", () => {
