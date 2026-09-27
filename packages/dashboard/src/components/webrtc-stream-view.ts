@@ -237,7 +237,7 @@ export class WebRtcStreamView extends LitElement {
                 endpoint_id: this.endpointId,
                 stream_usage: "LiveView",
                 sdp,
-                video,
+                ...(video === undefined ? {} : { video }),
             });
             if (this._pc !== pc) {
                 await this._endSession(client, result.webrtc_session_id, true, streamsToRelease(result));

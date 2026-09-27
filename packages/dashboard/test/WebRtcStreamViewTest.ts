@@ -259,6 +259,17 @@ describe("WebRtcStreamView", () => {
             expect(view.videoStreamId).to.equal(3);
         });
 
+        it("leaves video to the server without capabilities, still offering a video track", async () => {
+            const fake = fakeClient({ camera_start_stream: () => startResult({ video: null }) });
+            const view = createView(fake.client);
+
+            await view.start();
+
+            expect(fake.calls[0].args).to.not.have.property("video");
+            expect(lastPeer().transceivers).to.deep.equal(["video", "audio"]);
+            expect(view.audioOnlySession).to.equal(true);
+        });
+
         it("declines video and offers no video track on an audio-only camera", async () => {
             const fake = fakeClient({ camera_start_stream: () => startResult({ video: null }) });
             const view = createView(fake.client);

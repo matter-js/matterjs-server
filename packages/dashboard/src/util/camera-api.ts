@@ -73,19 +73,21 @@ export function isAudioOnlyCamera(caps: CameraCapabilitiesResult | null): boolea
 }
 
 /**
- * The `video` argument for `camera_start_stream`. Overlay flags are stated only on a camera that
+ * The `video` argument for `camera_start_stream`; undefined means leave the key out. Any object, `{}`
+ * included, demands video, so without a hint the track is left to the server, which then serves an
+ * audio-only camera whose features are not known yet. Overlay flags are stated only on a camera that
  * advertises them, because `true` on any other fails with error 102.
  */
 export function buildVideoRequest(
     caps: CameraCapabilitiesResult | null,
     choices: CameraStreamChoices,
-): CameraVideoHints | false {
+): CameraVideoHints | false | undefined {
     if (isAudioOnlyCamera(caps)) return false;
     const hints: CameraVideoHints = {};
     if (choices.maxResolution) hints.max_resolution = choices.maxResolution;
     if (hasCameraFeature(caps, "Watermark")) hints.watermark_enabled = choices.watermarkEnabled;
     if (hasCameraFeature(caps, "OnScreenDisplay")) hints.osd_enabled = choices.osdEnabled;
-    return hints;
+    return Object.keys(hints).length > 0 ? hints : undefined;
 }
 
 export function buildSnapshotOverlays(

@@ -137,8 +137,8 @@ describe("camera API helpers", () => {
             expect(buildVideoRequest(capabilities({ features: ["Audio"] }), CHOICES)).to.equal(false);
         });
 
-        it("sends no resolution hint for Auto and no overlay flags without the features", () => {
-            expect(buildVideoRequest(capabilities(), CHOICES)).to.deep.equal({});
+        it("leaves the video key out for Auto on a camera without overlay features", () => {
+            expect(buildVideoRequest(capabilities(), CHOICES)).to.equal(undefined);
         });
 
         it("sends the picked resolution as max_resolution", () => {
@@ -154,8 +154,19 @@ describe("camera API helpers", () => {
             expect(buildVideoRequest(caps, CHOICES)).to.deep.equal({ watermark_enabled: true, osd_enabled: false });
         });
 
-        it("leaves video to the server while the features are unknown", () => {
-            expect(buildVideoRequest(null, CHOICES)).to.deep.equal({});
+        it("leaves video to the server while the features are not reported", () => {
+            expect(buildVideoRequest(capabilities({ features: undefined }), CHOICES)).to.equal(undefined);
+        });
+
+        it("leaves video to the server when the capabilities could not be read", () => {
+            expect(buildVideoRequest(null, CHOICES)).to.equal(undefined);
+        });
+
+        it("still sends a picked resolution while the features are not reported", () => {
+            const choices = { ...CHOICES, maxResolution: { width: 640, height: 480 } };
+            expect(buildVideoRequest(capabilities({ features: undefined }), choices)).to.deep.equal({
+                max_resolution: { width: 640, height: 480 },
+            });
         });
     });
 
