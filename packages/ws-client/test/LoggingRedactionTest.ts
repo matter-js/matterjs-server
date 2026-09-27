@@ -240,7 +240,7 @@ describe("redactSensitiveCommandFields", () => {
         expect(args.node_id).to.equal(5);
     });
 
-    it("redacts an ICE server that uses the older singular url spelling", () => {
+    it("redacts an ICE server entry that names its URL in the older singular spelling", () => {
         const message = {
             message_id: "1",
             command: "camera_start_stream",
@@ -252,6 +252,67 @@ describe("redactSensitiveCommandFields", () => {
             username: "[redacted]",
             credential: "[redacted]",
         });
+    });
+
+    // The request is logged before `ice_servers` is validated, so the entry the server is about to
+    // refuse is exactly the one whose secrets the log is read for.
+    it("redacts an ice_servers entry that names no url at all", () => {
+        const message = {
+            message_id: "1",
+            command: "camera_start_stream",
+            args: { node_id: 5, ice_servers: [{ username: "1758700000:user", credential: "turn-secret" }] },
+        };
+        const redacted = redactSensitiveCommandFields(message) as {
+            args: { ice_servers: Array<Record<string, unknown>> };
+        };
+        expect(JSON.stringify(redacted)).to.not.contain("turn-secret");
+        expect(JSON.stringify(redacted)).to.not.contain("1758700000:user");
+        expect(redacted.args.ice_servers[0]).to.deep.equal({ username: "[redacted]", credential: "[redacted]" });
+    });
+
+    it("redacts the ICE servers nested in a send_webrtc_provider_command payload", () => {
+        const message = {
+            message_id: "1",
+            command: "send_webrtc_provider_command",
+            args: {
+                node_id: 5,
+                endpoint_id: 1,
+                command_name: "ProvideOffer",
+                payload: { sdp: "v=0", ice_servers: [{ username: "raw-user", credential: "turn-secret" }] },
+            },
+        };
+        expect(JSON.stringify(redactSensitiveCommandFields(message))).to.not.contain("turn-secret");
+    });
+
+    // The server matches a client's key to a field with every separator dropped, so a spelling it
+    // accepts as the ICE server list and this walk does not is a secret written verbatim.
+    for (const spelling of ["ice_servers", "iceServers", "ICEServers", "ice-servers", "ice.servers", "ICE Servers"]) {
+        it(`redacts an ICE server list spelled ${spelling}`, () => {
+            const message = {
+                message_id: "1",
+                command: "device_command",
+                args: { payload: { [spelling]: [{ credential: "turn-secret", username: "turn-user" }] } },
+            };
+            const logged = JSON.stringify(redactSensitiveCommandFields(message));
+            expect(logged).to.not.contain("turn-secret");
+            expect(logged).to.not.contain("turn-user");
+        });
+    }
+
+    // The Door Lock struct is the reason `credential` is not masked by name, and it is the same
+    // struct wherever it sits.
+    it("keeps a credential struct nested below an ICE server entry readable", () => {
+        const message = {
+            message_id: "1",
+            command: "camera_start_stream",
+            args: {
+                ice_servers: [{ urls: "turn:turn.example.org:3478", extra: { credential: { credentialType: 1 } } }],
+            },
+        };
+        const { args } = redactSensitiveCommandFields(message) as {
+            args: { ice_servers: Array<{ extra: Record<string, unknown> }> };
+        };
+        expect(args.ice_servers[0].extra).to.deep.equal({ credential: { credentialType: 1 } });
     });
 
     it("masks structure nested deeper than the walk goes", () => {
@@ -361,6 +422,14 @@ describe("redactIncomingMessage", () => {
             username: "[redacted]",
             credential: "[redacted]",
         });
+    });
+
+    it("masks a webrtc_callback ICE server that names no url", () => {
+        const event = {
+            event: "webrtc_callback",
+            data: { type: "offer", ice_servers: [{ username: "camera", credential: SECRET }] },
+        };
+        expect(JSON.stringify(redactIncomingMessage(event))).to.not.contain(SECRET);
     });
 
     it("keeps a response's own field names, which are not a request's", () => {

@@ -58,24 +58,28 @@ const SENSITIVE_FIELDS = new Set([
 /**
  * The two secret-bearing members of an ICE server — Matter's `ICEServerStruct` §11.4.5.3.2 and
  * §11.4.5.3.3, which are the WebRTC `RTCIceServer` members of the same names (webrtc-pc §4.6.2).
- * `camera_start_stream` takes a list of them as `ice_servers`. A TURN credential is a shared secret
- * or a time-limited REST token, and the username is the other half of the pair.
+ * A TURN credential is a shared secret or a time-limited REST token, and the username is the other
+ * half of the pair.
  *
- * Masked only beside a URL member, because `credential` is a member name the Door Lock cluster uses
- * as well, for a `{ credentialType, credentialIndex }` struct that is no secret and is worth reading
- * in a log. Nothing validates `ice_servers` before it is logged, so the URL member is read as a hint
- * about the shape and not as an invariant: an entry that carries the pair under some other spelling
- * is logged unmasked, which is why both spellings a caller may send are listed.
+ * Masked only on a value the walk reached through {@link ICE_SERVER_LIST_FIELD}, and not below it,
+ * because `credential` is a member name the Door Lock cluster uses as well, for a
+ * `{ credentialType, credentialIndex }` struct that is no secret and is worth reading in a log. A
+ * struct nested inside an ICE server would be that same struct, so the scope ends at the entry.
  */
 const ICE_SERVER_SECRET_FIELDS = new Set(["username", "credential"]);
 
 /**
- * What marks an object as an ICE server rather than something else carrying a `credential`.
+ * The member that carries a list of ICE servers, in the one form {@link normalize} leaves of every
+ * spelling this API's routes accept for it: `ice_servers` on `camera_start_stream`'s arguments and on
+ * a `webrtc_callback` offer, `ICEServers` on a `device_command` payload, and either of those on a
+ * `send_webrtc_provider_command` payload.
  *
- * `urls` is the Matter member (§11.4.5.3.1) and the current WebRTC one; `url` is the older singular
- * spelling that WebRTC clients still emit, and a caller that sends it sends the same secrets.
+ * Masking by this path rather than by a URL member beside the pair is what covers an entry the
+ * server is about to refuse: the request reaches the log before `ice_servers` is validated, so an
+ * entry missing its `urls` — a client bug, and the one case where the log is read — would otherwise
+ * write both secrets verbatim.
  */
-const ICE_SERVER_MARKERS = new Set(["urls", "url"]);
+const ICE_SERVER_LIST_FIELD = "iceservers";
 
 /**
  * The `a=` lines of an SDP whose value is a credential rather than a published parameter.
@@ -125,17 +129,22 @@ type BeyondDepth = "mask" | "keep";
  *
  * The walk sees the request exactly as the client sent it, and clients disagree on how to spell a
  * field: `setup_pin_code` beside `setupPinCode`, `pinCode` beside the `PINCode` the Python Matter
- * Server clients send. Dropping case and underscores makes one list entry cover all of them.
+ * Server clients send. Dropping case and every separator makes one list entry cover all of them.
+ *
+ * It is `canonicalKey` (`webRtcProviderArguments.ts`) written again here, because that is the widest
+ * rule the server matches a client's key to a field with, and `camelize`, which `device_command`
+ * uses, resolves nothing it does not. A redactor narrower than either would leave the secret in a
+ * spelling the server still accepts as the field.
  */
 function normalize(key: string): string {
-    return key.toLowerCase().replaceAll("_", "");
+    return key.replace(/[^A-Za-z0-9]/g, "").toLowerCase();
 }
 
 /** What a rule answers for something it has nothing to say about, so the walk goes on past it. */
 const DESCEND = Symbol("descend");
 
-/** What one member of an object logs as, decided by its name and the names beside it. */
-type MemberRule = (key: string, value: unknown, keys: readonly string[]) => unknown;
+/** What one member of an object logs as, decided by its name and whether it is an ICE server's own. */
+type MemberRule = (key: string, value: unknown, iceServer: boolean) => unknown;
 
 /** What one value logs as wherever it sits: a member, an array entry, or the message itself. */
 type ValueRule = (value: unknown) => unknown;
@@ -155,9 +164,9 @@ interface LogRules {
 }
 
 /** Every masking this module does to a request's `args`. */
-function commandMember(key: string, value: unknown, keys: readonly string[]): unknown {
+function commandMember(key: string, value: unknown, iceServer: boolean): unknown {
     if (SENSITIVE_FIELDS.has(normalize(key))) return "[redacted]";
-    return webRtcMember(key, value, keys);
+    return webRtcMember(key, value, iceServer);
 }
 
 /** For a walk that judges nothing by the value alone. */
@@ -186,15 +195,13 @@ function bulkValue(value: unknown): unknown {
 /**
  * The secrets of a WebRTC session: a TURN credential, and the ICE credentials inside an SDP.
  *
- * Both are matched by shape rather than by name — an ICE server states a URL member, an SDP is a
+ * Neither is matched by its own name alone — a TURN credential by where it sits, an SDP by being a
  * string under `sdp` — so the same rule holds for a message travelling either way, which the field
  * name list does not.
  */
-function webRtcMember(key: string, value: unknown, keys: readonly string[]): unknown {
+function webRtcMember(key: string, value: unknown, iceServer: boolean): unknown {
     const name = normalize(key);
-    if (ICE_SERVER_SECRET_FIELDS.has(name) && keys.some(other => ICE_SERVER_MARKERS.has(normalize(other)))) {
-        return "[redacted]";
-    }
+    if (iceServer && ICE_SERVER_SECRET_FIELDS.has(name)) return "[redacted]";
     if (name !== "sdp" || typeof value !== "string") return DESCEND;
     return redactSdp(value);
 }
@@ -216,7 +223,7 @@ function define(result: Record<string, unknown>, key: string, value: unknown): v
  * Returning the input unchanged is what lets the caller keep the original message, and it is how
  * each level tells its parent whether anything below it was masked.
  */
-function redactValue(value: unknown, depth: number, rules: LogRules): unknown {
+function redactValue(value: unknown, depth: number, rules: LogRules, iceServer: boolean): unknown {
     const byValue = rules.value(value);
     if (byValue !== DESCEND) return byValue;
     if (typeof value !== "object" || value === null) return value;
@@ -225,7 +232,7 @@ function redactValue(value: unknown, depth: number, rules: LogRules): unknown {
     if (Array.isArray(value)) {
         let masked = false;
         const entries = value.map(entry => {
-            const redacted = redactValue(entry, depth + 1, rules);
+            const redacted = redactValue(entry, depth + 1, rules, iceServer);
             masked ||= redacted !== entry;
             return redacted;
         });
@@ -234,11 +241,10 @@ function redactValue(value: unknown, depth: number, rules: LogRules): unknown {
 
     let masked = false;
     const result: Record<string, unknown> = {};
-    const entries = Object.entries(value);
-    const keys = entries.map(([key]) => key);
-    for (const [key, entry] of entries) {
-        const ruled = rules.member(key, entry, keys);
-        const redacted = ruled === DESCEND ? redactValue(entry, depth + 1, rules) : ruled;
+    for (const [key, entry] of Object.entries(value)) {
+        const ruled = rules.member(key, entry, iceServer);
+        const holdsIceServers = normalize(key) === ICE_SERVER_LIST_FIELD;
+        const redacted = ruled === DESCEND ? redactValue(entry, depth + 1, rules, holdsIceServers) : ruled;
         masked ||= redacted !== entry;
         define(result, key, redacted);
     }
@@ -265,7 +271,7 @@ const INCOMING_RULES: LogRules = { member: webRtcMember, value: bulkValue, beyon
  */
 export function redactSensitiveCommandFields(message: unknown): unknown {
     if (typeof message !== "object" || message === null || !("args" in message)) return message;
-    const redacted = redactValue(message.args, 0, COMMAND_RULES);
+    const redacted = redactValue(message.args, 0, COMMAND_RULES, false);
     if (redacted === message.args) return message;
 
     return { ...message, args: redacted };
@@ -279,11 +285,11 @@ export function redactSensitiveCommandFields(message: unknown): unknown {
  * that walks a request's `args` and masks a list of field names judged against request arguments
  * alone, and several of those names mean something harmless in a response. A `webrtc_callback` offer
  * carries the camera's own ICE credentials, in the SDP and in `ice_servers`, and a `camera_snapshot`
- * response carries the frame. Both are judged by shape, which is the only thing there is to judge by
- * here: a response states its `message_id` and nothing else about the request, so a rule keyed on the
+ * response carries the frame. Both are judged by where the value sits and what it is, which is all
+ * there is to judge by here: a response states its `message_id` and nothing else about the request, so a rule keyed on the
  * command would mean handing the log the pending-command map the client keeps for its promises — and
  * a list of command names kept in step with the server's.
  */
 export function redactIncomingMessage(message: unknown): unknown {
-    return redactValue(message, 0, INCOMING_RULES);
+    return redactValue(message, 0, INCOMING_RULES, false);
 }
