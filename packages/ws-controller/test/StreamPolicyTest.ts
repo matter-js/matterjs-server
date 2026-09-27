@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import { StreamUsage } from "@matter/main/types";
 import type {
     AllocatedSnapshotStream,
     AllocatedVideoStream,
@@ -14,6 +15,7 @@ import type { OverlayBounds } from "../src/camera/overlayPolicy.js";
 import { parseSdpVideoConstraints, videoCodecLimits } from "../src/camera/sdpConstraints.js";
 import {
     budgetVideoEnvelope,
+    chooseEvictionVictim,
     computeAudioEnvelope,
     computeVideoEnvelope,
     findDegradedVideoStream,
@@ -1071,6 +1073,68 @@ describe("streamPolicy", () => {
             // track of a Recording session got something it never asked for.
             const recording = { ...LIVE_VIEW_AUDIO, streamUsage: RECORDING_USAGE };
             expect(satisfiesAudioCallerBounds(recording, { streamUsage: LIVE_VIEW })).to.equal(false);
+        });
+    });
+
+    describe("chooseEvictionVictim", () => {
+        const ANALYSIS_USAGE = 2;
+        /** The camera's own ranking: LiveView highest, then Recording, then Analysis. */
+        const PRIORITIES = [LIVE_VIEW, RECORDING_USAGE, ANALYSIS_USAGE];
+
+        function idle(id: number, streamUsage: number): AllocatedVideoStream {
+            return {
+                videoStreamId: id,
+                overlays: NO_OVERLAYS,
+                streamUsage,
+                videoCodec: H265,
+                minResolution: { width: 1280, height: 720 },
+                maxResolution: { width: 1280, height: 720 },
+                minFrameRate: 1,
+                maxFrameRate: 30,
+                minBitRate: 400000,
+                maxBitRate: 4000000,
+                referenceCount: 0,
+            };
+        }
+
+        const oursBy =
+            (...ids: number[]) =>
+            (stream: AllocatedVideoStream) =>
+                ids.includes(stream.videoStreamId);
+
+        it("takes a stream of its own before a foreign one the camera ranks lower", () => {
+            // The camera ranks Analysis below Recording, so ranking alone would destroy the foreign
+            // stream. StreamUsagePriorities is the camera's guidance for its own arbitration and says
+            // nothing about which controller should pay for a request.
+            const ours = idle(30, RECORDING_USAGE);
+            const foreign = idle(31, ANALYSIS_USAGE);
+            expect(chooseEvictionVictim([ours, foreign], PRIORITIES, oursBy(30))?.videoStreamId).to.equal(30);
+            expect(chooseEvictionVictim([foreign, ours], PRIORITIES, oursBy(30))?.videoStreamId).to.equal(30);
+        });
+
+        it("ranks by the camera's priorities among its own streams", () => {
+            const high = idle(30, RECORDING_USAGE);
+            const low = idle(31, ANALYSIS_USAGE);
+            expect(chooseEvictionVictim([high, low], PRIORITIES, oursBy(30, 31))?.videoStreamId).to.equal(31);
+        });
+
+        it("ranks by the camera's priorities among foreign streams once it holds none of its own", () => {
+            const high = idle(30, RECORDING_USAGE);
+            const low = idle(31, ANALYSIS_USAGE);
+            expect(chooseEvictionVictim([high, low], PRIORITIES, oursBy())?.videoStreamId).to.equal(31);
+        });
+
+        it("takes a usage the camera does not rank last of its own, ahead of no foreign stream", () => {
+            const unranked = idle(30, 9);
+            const foreign = idle(31, ANALYSIS_USAGE);
+            expect(chooseEvictionVictim([unranked, foreign], PRIORITIES, oursBy(30))?.videoStreamId).to.equal(30);
+            expect(chooseEvictionVictim([unranked, foreign], PRIORITIES, oursBy(31))?.videoStreamId).to.equal(31);
+        });
+
+        it("never takes a referenced stream or an Internal one, whoever allocated it", () => {
+            const referenced = { ...idle(30, RECORDING_USAGE), referenceCount: 1 };
+            const internal = idle(31, StreamUsage.Internal);
+            expect(chooseEvictionVictim([referenced, internal], PRIORITIES, oursBy(30, 31))).to.equal(undefined);
         });
     });
 

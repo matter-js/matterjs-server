@@ -635,14 +635,21 @@ export function computeAudioEnvelope(args: AudioEnvelopeArgs): AudioSelection {
  * controller that refused to take one over would let one client pin every encoder with streams
  * nobody is watching.
  *
+ * `ours` is the primary key and `priorities` orders each side of it, so the whole make-room ladder
+ * reads as one rule: **this server gives up its own streams before it takes anybody else's**. That is
+ * the same rule `chooseSnapshotStreamToFree` states, which is why that rung runs first and
+ * offers only streams this server allocated. `StreamUsagePriorities` is the camera's guidance for its
+ * own arbitration between the streams it serves; it says nothing about which controller should pay for
+ * a request, so ranking ahead of ownership would destroy another controller's idle `LiveView`
+ * reservation while an idle `Recording` stream this server allocated sat untouched.
+ *
  * `priorities` is the camera's own `StreamUsagePriorities` (§11.2.7.19), highest priority at index
- * 0, so the victim is the candidate furthest down that list: a stream whose usage this camera ranks
- * higher is never taken while a lower-ranked one is free. Which usage that is belongs to the camera
- * and its administrator, not to this server — §11.2.8.12 lets `SetStreamPriorities` reorder it, so
- * no ordering may be assumed here. A usage the list does not carry is taken last rather than first:
- * the camera states nothing about it, and destroying what cannot be reasoned about is the one
- * outcome with no way back. `ours` breaks a tie the ranking leaves open, so a foreign stream is
- * touched only when an equally ranked one of this server's own is not there to take instead.
+ * 0, so within one side the victim is the candidate furthest down that list: a stream whose usage this
+ * camera ranks higher is never taken while a lower-ranked one of the same ownership is free. Which
+ * usage that is belongs to the camera and its administrator, not to this server — §11.2.8.12 lets
+ * `SetStreamPriorities` reorder it, so no ordering may be assumed here. A usage the list does not
+ * carry is taken last rather than first: the camera states nothing about it, and destroying what
+ * cannot be reasoned about is the one outcome with no way back.
  */
 export function chooseEvictionVictim(
     streams: AllocatedVideoStream[],
@@ -654,5 +661,5 @@ export function chooseEvictionVictim(
     const candidates = streams.filter(
         stream => stream.referenceCount === 0 && stream.streamUsage !== StreamUsage.Internal,
     );
-    return candidates.sort((a, b) => rankOf(b) - rankOf(a) || Number(ours(b)) - Number(ours(a)))[0];
+    return candidates.sort((a, b) => Number(ours(b)) - Number(ours(a)) || rankOf(b) - rankOf(a))[0];
 }

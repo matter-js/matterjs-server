@@ -1287,8 +1287,9 @@ export class CameraStreamManager {
                 // Nothing is taken on the last attempt: the allocate that would have spent the
                 // capacity is outside the loop, so the victim would be destroyed for nothing.
                 if (attempt === MAX_ALLOCATE_ATTEMPTS) break;
-                // Our own snapshot stream goes first, before any video stream and so before anything
-                // another controller holds. The camera's StreamUsagePriorities ranks video usages and
+                // Our own snapshot stream goes first, and the video rung then takes our own video
+                // streams before any foreign one: one rule for both rungs, stated on
+                // `chooseEvictionVictim`. The camera's StreamUsagePriorities ranks video usages and
                 // says nothing about snapshot streams, so there is no ranking to fold this into, and
                 // the next camera_snapshot allocates one again from the camera's own capabilities.
                 const snapshotRoom = await this.freeOwnSnapshotStream(
@@ -1561,10 +1562,11 @@ export class CameraStreamManager {
      * nothing was freed. `streams` is a plain array and the caller's `CameraState` (which may be a
      * cached or subscription-backed snapshot) is never written to.
      *
-     * The victim is chosen by {@link chooseEvictionVictim} from the camera's own ranking, which is
-     * also what decides that a stream this server did not allocate may be taken: the cluster
-     * protects a stream by use and by Internal, not by who created it. A foreign stream is logged,
-     * since the spec recommends commissioners pre-allocate (§11.2.1.1) and such a stream may be
+     * The victim is chosen by {@link chooseEvictionVictim}, which takes this server's own streams
+     * before any foreign one and orders each side by the camera's ranking. A stream this server did not
+     * allocate may be taken at all because the cluster protects a stream by use and by Internal, not by
+     * who created it; it is taken only once nothing of this server's own is left to give up, and it is
+     * logged, since the spec recommends commissioners pre-allocate (§11.2.1.1) and such a stream may be
      * deliberate.
      *
      * The freeing is registered with `scope` so a request that never uses the capacity it bought puts

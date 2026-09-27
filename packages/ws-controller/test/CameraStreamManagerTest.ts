@@ -1778,6 +1778,50 @@ describe("CameraStreamManager", () => {
             ).to.deep.equal([20]);
         });
 
+        it("takes a stream it allocated itself before a foreign one the camera ranks lower", async () => {
+            // STATE ranks LiveView, then Recording, then Analysis, so the camera's own ranking alone
+            // would destroy the foreign Analysis stream and leave ours. Ownership decides first: this
+            // server gives up what it allocated before it costs another controller an id.
+            const RECORDING = 1;
+            const ANALYSIS = 2;
+            const idle = (id: number, streamUsage: number) => ({
+                ...CONTAINED_STREAM,
+                videoStreamId: id,
+                streamUsage,
+                referenceCount: 0,
+            });
+            let allocates = 0;
+            const { manager, holder } = managerWith({ ...STATE, allocatedVideoStreams: [] }, async invoke => {
+                if (invoke.command !== "videoStreamAllocate") return undefined;
+                allocates += 1;
+                // The first allocate is what makes stream 30 this server's own; from then on the
+                // camera is out of capacity until two streams have been taken.
+                if (allocates === 1) return { videoStreamId: 30 };
+                if (allocates <= NARROWING_ATTEMPTS + 2) throw statusError(Status.ResourceExhausted);
+                return { videoStreamId: 44 };
+            });
+            await manager.resolveVideoStream({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                streamUsage: RECORDING,
+                limits: { codec: H265 },
+            });
+
+            holder.state = {
+                ...STATE,
+                allocatedVideoStreams: [idle(31, ANALYSIS), idle(30, RECORDING)],
+            };
+            const resolved = await manager.resolveVideoStream({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                streamUsage: LIVE_VIEW,
+                limits: { codec: H265 },
+                hints: { maxResolution: { width: 1280, height: 720 } },
+            });
+            expect(resolved.streamId).to.equal(44);
+            expect(resolved.evicted).to.deep.equal([30, 31]);
+        });
+
         it("names every stream it took, not only the first", async () => {
             const H264 = 2;
             const idle = (id: number) => ({
