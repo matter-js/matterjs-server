@@ -439,15 +439,15 @@ const stopWatchingStreams = client.addCameraStreamEvictedListener(evicted => {
 
 ### Camera errors
 
-A failed command rejects with `ServerCommandError`. `errorCode` is the wire error code. For the camera error codes, `message` is a JSON string with the details; parse it with `JSON.parse(err.message)`. A malformed argument is error 8 (`INVALID_ARGUMENTS`) with a plain-text message that names the key.
+A failed command rejects with `ServerCommandError`. `errorCode` is the wire error code and `message` the wire `details` string. For the camera error codes and error 100, `details` holds that string parsed as JSON, typed per code in `ServerErrorDetailsByCode`. `err.hasDetails(code)` narrows `details` to that code's type. `details` is undefined for any other code, or when the string is not a JSON object. For error 102, `cameraStreamIncompatibleDetails(err, reason)` returns the details typed to one `reason`, or undefined. A malformed argument is error 8 (`INVALID_ARGUMENTS`) with a plain-text message that names the key.
 
-| Code | Constant                                | Details (`JSON.parse(err.message)`)                                                                     | Meaning                                                                                     |
+| Code | Constant                                | `details` (type)                                                                                        | Meaning                                                                                     |
 | ---- | --------------------------------------- | ------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| 102  | `CAMERA_STREAM_INCOMPATIBLE_ERROR_CODE` | `message`, `reason`, `track?`, `feature?`, `device`, `requested`, `bound?`, `device_status?`            | No stream can meet the request. Branch on `reason`                                          |
-| 103  | `CAMERA_RESOURCE_EXHAUSTED_ERROR_CODE`  | `message`, `allocated` (`CameraOccupyingStream[]`), `max_concurrent_encoders`, `max_encoded_pixel_rate` | The camera has no capacity left. `allocated` lists the streams holding it (see below)       |
-| 104  | `CAMERA_STREAM_IN_USE_ERROR_CODE`       | `message`, `stream_id`, `reference_count?`                                                              | `camera_release_stream` on a stream that is still referenced                                |
-| 105  | `CAMERA_NOT_SUPPORTED_ERROR_CODE`       | `message`, `missing_clusters`                                                                           | The endpoint lacks a cluster the command needs                                              |
-| 106  | `CAMERA_PRIVACY_MODE_ERROR_CODE`        | `message`, `modes` (`CameraPrivacyMode[]`), `device_status`                                             | A privacy switch forbids the session or snapshot. No other argument succeeds while it is on |
+| 102  | `CAMERA_STREAM_INCOMPATIBLE_ERROR_CODE` | `CameraStreamIncompatibleErrorDetails`: `message`, `reason`, `track?`, `feature?`, `device`, `requested`, `bound?`, `device_status?` | No stream can meet the request. Branch on `reason`                                          |
+| 103  | `CAMERA_RESOURCE_EXHAUSTED_ERROR_CODE`  | `CameraResourceExhaustedErrorDetails`: `message`, `allocated` (`CameraOccupyingStream[]`), `max_concurrent_encoders?`, `max_encoded_pixel_rate?` | The camera has no capacity left. `allocated` lists the streams holding it (see below)       |
+| 104  | `CAMERA_STREAM_IN_USE_ERROR_CODE`       | `CameraStreamInUseErrorDetails`: `message`, `stream_id`, `reference_count?`                             | `camera_release_stream` on a stream that is still referenced                                |
+| 105  | `CAMERA_NOT_SUPPORTED_ERROR_CODE`       | `CameraNotSupportedErrorDetails`: `message`, `missing_clusters`                                         | The endpoint lacks a cluster the command needs                                              |
+| 106  | `CAMERA_PRIVACY_MODE_ERROR_CODE`        | `CameraPrivacyModeErrorDetails`: `message`, `modes` (`CameraPrivacyMode[]`), `device_status`            | A privacy switch forbids the session or snapshot. No other argument succeeds while it is on |
 
 The error 102 `reason` is one of `CAMERA_INCOMPATIBLE_REASONS` (type `CameraStreamIncompatibleReason`). Each value has one meaning, so a client never needs a second field to tell two cases apart:
 
@@ -469,6 +469,7 @@ A request that asked for audio and cannot get it can also fail with error 103 (n
 import {
     CAMERA_PRIVACY_MODE_ERROR_CODE,
     CAMERA_STREAM_INCOMPATIBLE_ERROR_CODE,
+    cameraStreamIncompatibleDetails,
     ServerCommandError,
 } from "@matter-server/ws-client";
 
@@ -476,12 +477,13 @@ try {
     await client.sendCommand("camera_start_stream", 14, { node_id: nodeId, endpoint_id: 1, stream_usage: "LiveView" });
 } catch (err) {
     if (!(err instanceof ServerCommandError)) throw err;
-    if (err.errorCode === CAMERA_STREAM_INCOMPATIBLE_ERROR_CODE) {
-        const { reason, bound } = JSON.parse(err.message);
-        console.log(`incompatible: ${reason}`, bound);
-    } else if (err.errorCode === CAMERA_PRIVACY_MODE_ERROR_CODE) {
-        const { modes } = JSON.parse(err.message);
-        console.log(`privacy switch on: ${modes.join(", ")}`);
+    const bounds = cameraStreamIncompatibleDetails(err, "bounds");
+    if (bounds !== undefined) {
+        console.log("bound not met", bounds.bound);
+    } else if (err.hasDetails(CAMERA_STREAM_INCOMPATIBLE_ERROR_CODE)) {
+        console.log(`incompatible: ${err.details.reason}`);
+    } else if (err.hasDetails(CAMERA_PRIVACY_MODE_ERROR_CODE)) {
+        console.log(`privacy switch on: ${err.details.modes.join(", ")}`);
     } else {
         throw err;
     }

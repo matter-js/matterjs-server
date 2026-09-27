@@ -11,6 +11,7 @@ import {
     CAMERA_RESOURCE_EXHAUSTED_ERROR_CODE,
     CAMERA_STREAM_INCOMPATIBLE_ERROR_CODE,
     CAMERA_STREAM_IN_USE_ERROR_CODE,
+    ServerCommandError,
 } from "@matter-server/ws-client";
 import { ServerError, ServerErrorCode } from "../src/types/WebSocketMessageTypes.js";
 import type {
@@ -135,6 +136,61 @@ describe("camera server errors", () => {
             CAMERA_NOT_SUPPORTED_ERROR_CODE,
             CAMERA_PRIVACY_MODE_ERROR_CODE,
         ]).to.deep.equal([102, 103, 104, 105, 106]);
+    });
+
+    it("carries the track and the device status for every reason that has them", () => {
+        for (const reason of CAMERA_INCOMPATIBLE_REASONS) {
+            const base = detailFor(reason);
+            const payload = JSON.parse(
+                ServerError.cameraStreamIncompatible(
+                    base.reason === "no_media"
+                        ? { ...base, deviceStatus: 1 }
+                        : { ...base, track: "audio", deviceStatus: 1 },
+                ).message,
+            );
+            expect(payload.device_status, reason).to.equal(1);
+            expect(payload.track, reason).to.equal(reason === "no_media" ? undefined : "audio");
+        }
+    });
+
+    it("keeps the key order of the details", () => {
+        const feature = ServerError.cameraStreamIncompatible({
+            reason: "feature",
+            track: "video",
+            feature: "Watermark",
+            device: ["H264"],
+            requested: ["H265"],
+            deviceStatus: 0x87,
+        });
+        expect(feature.message).to.equal(
+            '{"message":"Camera does not advertise the feature this request needs","reason":"feature","track":"video","feature":"Watermark","device":["H264"],"requested":["H265"],"device_status":135}',
+        );
+        const bounds = ServerError.cameraStreamIncompatible({
+            reason: "bounds",
+            track: "audio",
+            device: [],
+            requested: [],
+            bound: { field: "sample_rate", requested: "1", limit: "2" },
+            deviceStatus: 1,
+        });
+        expect(bounds.message).to.equal(
+            '{"message":"Camera cannot serve the requested stream parameters","reason":"bounds","track":"audio","device":[],"requested":[],"bound":{"field":"sample_rate","requested":"1","limit":"2"},"device_status":1}',
+        );
+    });
+
+    it("produces details the client parses under the same code", () => {
+        const errors = [
+            ServerError.icdMultiAdmin([4631]),
+            ServerError.cameraStreamIncompatible(detailFor("feature")),
+            ServerError.cameraResourceExhausted({ allocated: [] }),
+            ServerError.cameraStreamInUse({ streamId: 1 }),
+            ServerError.cameraNotSupported({ missingClusters: [0x551] }),
+            ServerError.cameraPrivacyMode({ modes: ["hard_mode_on"], deviceStatus: 0xcb }),
+        ];
+        for (const error of errors) {
+            const clientError = new ServerCommandError(error.message, error.code);
+            expect(clientError.details, String(error.code)).to.deep.equal(JSON.parse(error.message));
+        }
     });
 
     it("names the clusters an endpoint is missing", () => {

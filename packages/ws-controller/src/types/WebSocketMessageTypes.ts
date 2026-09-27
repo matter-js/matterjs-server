@@ -56,10 +56,16 @@ export {
 export type { MatterNodeData as MatterNode } from "@matter-server/ws-client";
 
 import type {
+    CameraNotSupportedErrorDetails,
     CameraPrivacyMode,
+    CameraPrivacyModeErrorDetails,
+    CameraResourceExhaustedErrorDetails,
     CameraStreamIncompatibleBound,
+    CameraStreamIncompatibleErrorDetails,
     CameraStreamIncompatibleReason,
+    CameraStreamInUseErrorDetails,
     CameraStreamKind,
+    IcdMultiAdminErrorDetails,
 } from "@matter-server/ws-client";
 
 /**
@@ -254,78 +260,79 @@ export class ServerError extends Error {
     }
 
     static icdMultiAdmin(adminVendorIds: number[]): ServerError {
-        return new ServerError(
-            ServerErrorCode.IcdMultiAdmin,
-            JSON.stringify({
-                message: "Peer has administrators from other vendors that may not support LIT",
-                admin_vendor_ids: adminVendorIds,
-            }),
-        );
+        const details: IcdMultiAdminErrorDetails = {
+            message: "Peer has administrators from other vendors that may not support LIT",
+            admin_vendor_ids: adminVendorIds,
+        };
+        return new ServerError(ServerErrorCode.IcdMultiAdmin, JSON.stringify(details));
     }
 
     static cameraStreamIncompatible(detail: CameraStreamIncompatibleDetail): ServerError {
-        return new ServerError(
-            ServerErrorCode.CameraStreamIncompatible,
-            JSON.stringify({
-                message: INCOMPATIBLE_MESSAGES[detail.reason],
-                reason: detail.reason,
-                ...("track" in detail && detail.track !== undefined ? { track: detail.track } : {}),
-                ...(detail.reason === "feature" ? { feature: detail.feature } : {}),
-                device: detail.device,
-                requested: detail.requested,
-                ...(detail.reason === "bounds" && detail.bound !== undefined ? { bound: detail.bound } : {}),
-                ...(detail.deviceStatus === undefined ? {} : { device_status: detail.deviceStatus }),
-            }),
-        );
+        const message = INCOMPATIBLE_MESSAGES[detail.reason];
+        const track = "track" in detail && detail.track !== undefined ? { track: detail.track } : {};
+        const facts = { device: detail.device, requested: detail.requested };
+        const status = detail.deviceStatus === undefined ? {} : { device_status: detail.deviceStatus };
+        let details: CameraStreamIncompatibleErrorDetails;
+        switch (detail.reason) {
+            case "feature":
+                details = { message, reason: detail.reason, ...track, feature: detail.feature, ...facts, ...status };
+                break;
+            case "bounds":
+                details = {
+                    message,
+                    reason: detail.reason,
+                    ...track,
+                    ...facts,
+                    ...(detail.bound === undefined ? {} : { bound: detail.bound }),
+                    ...status,
+                };
+                break;
+            case "no_media":
+                details = { message, reason: detail.reason, ...facts, ...status };
+                break;
+            default:
+                details = { message, reason: detail.reason, ...track, ...facts, ...status };
+        }
+        return new ServerError(ServerErrorCode.CameraStreamIncompatible, JSON.stringify(details));
     }
 
     static cameraResourceExhausted(detail: CameraResourceExhaustedDetail): ServerError {
-        return new ServerError(
-            ServerErrorCode.CameraResourceExhausted,
-            JSON.stringify({
-                message: "Camera has no capacity for this stream",
-                allocated: detail.allocated.map(entry => ({
-                    kind: entry.kind,
-                    stream_id: entry.streamId,
-                    reference_count: entry.referenceCount,
-                })),
-                max_concurrent_encoders: detail.maxConcurrentEncoders,
-                max_encoded_pixel_rate: detail.maxEncodedPixelRate,
-            }),
-        );
+        const details: CameraResourceExhaustedErrorDetails = {
+            message: "Camera has no capacity for this stream",
+            allocated: detail.allocated.map(entry => ({
+                kind: entry.kind,
+                stream_id: entry.streamId,
+                reference_count: entry.referenceCount,
+            })),
+            max_concurrent_encoders: detail.maxConcurrentEncoders,
+            max_encoded_pixel_rate: detail.maxEncodedPixelRate,
+        };
+        return new ServerError(ServerErrorCode.CameraResourceExhausted, JSON.stringify(details));
     }
 
     static cameraStreamInUse(detail: CameraStreamInUseDetail, cause?: Error): ServerError {
-        return new ServerError(
-            ServerErrorCode.CameraStreamInUse,
-            JSON.stringify({
-                message: "Stream is in use and cannot be released",
-                stream_id: detail.streamId,
-                ...(detail.referenceCount === undefined ? {} : { reference_count: detail.referenceCount }),
-            }),
-            cause,
-        );
+        const details: CameraStreamInUseErrorDetails = {
+            message: "Stream is in use and cannot be released",
+            stream_id: detail.streamId,
+            ...(detail.referenceCount === undefined ? {} : { reference_count: detail.referenceCount }),
+        };
+        return new ServerError(ServerErrorCode.CameraStreamInUse, JSON.stringify(details), cause);
     }
 
     static cameraPrivacyMode(detail: CameraPrivacyModeDetail, cause?: Error): ServerError {
-        return new ServerError(
-            ServerErrorCode.CameraPrivacyMode,
-            JSON.stringify({
-                message: "Camera privacy mode is enabled",
-                modes: detail.modes,
-                device_status: detail.deviceStatus,
-            }),
-            cause,
-        );
+        const details: CameraPrivacyModeErrorDetails = {
+            message: "Camera privacy mode is enabled",
+            modes: detail.modes,
+            device_status: detail.deviceStatus,
+        };
+        return new ServerError(ServerErrorCode.CameraPrivacyMode, JSON.stringify(details), cause);
     }
 
     static cameraNotSupported(detail: { missingClusters: number[] }): ServerError {
-        return new ServerError(
-            ServerErrorCode.CameraNotSupported,
-            JSON.stringify({
-                message: "Endpoint does not support camera streaming",
-                missing_clusters: detail.missingClusters,
-            }),
-        );
+        const details: CameraNotSupportedErrorDetails = {
+            message: "Endpoint does not support camera streaming",
+            missing_clusters: detail.missingClusters,
+        };
+        return new ServerError(ServerErrorCode.CameraNotSupported, JSON.stringify(details));
     }
 }

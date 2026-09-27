@@ -837,6 +837,77 @@ export interface CameraStreamIncompatibleBound {
     limit: string;
 }
 
+/** The fields every error-102 `details` object carries, whatever its `reason`. */
+interface CameraStreamIncompatibleErrorFacts {
+    message: string;
+    /** The camera's codec names; empty when the camera did not refuse (e.g. the offer did), not "supports nothing". */
+    device: string[];
+    requested: string[];
+    /** Matter status code the device answered with, when a device rejection produced this. */
+    device_status?: number;
+}
+
+/** The fields an error-102 failure about one of `camera_start_stream`'s two tracks can name. */
+interface CameraStreamIncompatibleErrorTrackFacts extends CameraStreamIncompatibleErrorFacts {
+    /** Which `camera_start_stream` track failed. Absent for commands without tracks, such as `camera_snapshot`. */
+    track?: "video" | "audio";
+}
+
+/**
+ * Error 102's `details`. Reason-specific fields exist only on their reason's arm; `no_media` names no
+ * track because it concerns the whole request. @see CAMERA_INCOMPATIBLE_REASONS
+ */
+export type CameraStreamIncompatibleErrorDetails =
+    | (CameraStreamIncompatibleErrorTrackFacts & {
+          reason: "feature";
+          /** The AVSM feature the camera does not advertise, named as `camera_get_capabilities` reports the advertised ones. */
+          feature: string;
+      })
+    | (CameraStreamIncompatibleErrorTrackFacts & {
+          reason: "bounds";
+          /** Present when the server ruled the bound out before asking the device. */
+          bound?: CameraStreamIncompatibleBound;
+      })
+    | (CameraStreamIncompatibleErrorTrackFacts & { reason: "codec" | "capability" | "offer" | "level" })
+    | (CameraStreamIncompatibleErrorFacts & { reason: "no_media" });
+
+/** Error 103's `details`. */
+export interface CameraResourceExhaustedErrorDetails {
+    message: string;
+    allocated: CameraOccupyingStream[];
+    max_concurrent_encoders?: number;
+    max_encoded_pixel_rate?: number;
+}
+
+/** Error 104's `details`. `reference_count` is the count the server last read; absent when that count is zero. */
+export interface CameraStreamInUseErrorDetails {
+    message: string;
+    stream_id: number;
+    reference_count?: number;
+}
+
+/** Error 105's `details`. */
+export interface CameraNotSupportedErrorDetails {
+    message: string;
+    missing_clusters: number[];
+}
+
+/**
+ * Error 106's `details`. `modes` names every switch that forbids the call, since the device answers one
+ * status for all of them; `device_status` is that status.
+ */
+export interface CameraPrivacyModeErrorDetails {
+    message: string;
+    modes: CameraPrivacyMode[];
+    device_status: number;
+}
+
+/** Error 100's `details`. */
+export interface IcdMultiAdminErrorDetails {
+    message: string;
+    admin_vendor_ids: number[];
+}
+
 export interface CameraSnapshotResult {
     /** Base64-encoded image bytes. */
     data: string;
@@ -1557,7 +1628,7 @@ export interface MatterFabricData {
 /**
  * Error code used when ICD registration is rejected because other administrator fabrics may not
  * support LIT. OHF extension (python-matter-server codes stop at 11); the error `details` is a JSON
- * string `{"message": string, "admin_vendor_ids": number[]}`.
+ * string of {@link IcdMultiAdminErrorDetails}.
  */
 export const ICD_MULTI_ADMIN_ERROR_CODE = 100;
 
@@ -1580,9 +1651,9 @@ export const CAMERA_NOT_SUPPORTED_ERROR_CODE = 105;
  * OHF extension: the camera's privacy switch forbids the call.
  *
  * Raised by `camera_start_stream` and `camera_snapshot`; `details` carry
- * `{"message": string, "modes": string[], "device_status": number}`, where `modes` names the
- * switches from `camera_get_capabilities`' `privacy` that forbid the call. No change to the request
- * can make it succeed while a switch is on.
+ * {@link CameraPrivacyModeErrorDetails}, where `modes` names the switches from
+ * `camera_get_capabilities`' `privacy` that forbid the call. No change to the request can make it
+ * succeed while a switch is on.
  */
 export const CAMERA_PRIVACY_MODE_ERROR_CODE = 106;
 

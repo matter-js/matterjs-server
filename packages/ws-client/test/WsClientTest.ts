@@ -356,6 +356,10 @@ describe("ws-client", () => {
                     expect(error).to.be.instanceOf(ServerCommandError);
                     expect((error as ServerCommandError).errorCode).to.equal(100);
                     expect((error as ServerCommandError).message).to.equal(details);
+                    expect((error as ServerCommandError).details).to.deep.equal({
+                        message: "multi admin",
+                        admin_vendor_ids: [4631],
+                    });
                 }
             });
 
