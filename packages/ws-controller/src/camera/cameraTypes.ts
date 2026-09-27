@@ -119,13 +119,15 @@ interface LeaseSubject {
 /**
  * What this server states about one stream it has handed out.
  *
- * A snapshot lease carries no allocation: an adopted snapshot stream is found in device state on
- * every call that wants it, so there is nothing for the lease to stand in for.
+ * Every kind carries the allocation, including snapshot: the make-room rung has to know what a
+ * snapshot stream of this server's holds before it may take it, and the encoder budget has to count a
+ * stream the camera has not reported yet. An adopted stream's allocation is the camera's own report of
+ * it.
  */
 export type LeaseStatement =
     | (LeaseSubject & { kind: "video"; allocation: AllocatedVideoStream })
     | (LeaseSubject & { kind: "audio"; allocation: AllocatedAudioStream })
-    | (LeaseSubject & { kind: "snapshot" });
+    | (LeaseSubject & { kind: "snapshot"; allocation: AllocatedSnapshotStream });
 
 /** A {@link LeaseStatement} plus the facts reconciliation needs. */
 export type StreamLease = LeaseStatement & {

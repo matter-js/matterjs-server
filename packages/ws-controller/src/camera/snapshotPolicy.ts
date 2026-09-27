@@ -55,9 +55,9 @@ export function usesHardwareEncoder(capability: SnapshotCapability): boolean {
  * stream was allocated at. Snapshot streams have to be counted now that no call gives one back:
  * missing them means the ladder walks down a camera whose encoder is already taken and, on hardware
  * whose every snapshot capability needs one, fails with `ResourceExhausted` and no rung left. The
- * price is `AllocatedSnapshotStreams` being a cached view: it lags an allocate, which under-counts
- * and costs one refused allocate the ladder walks down from, and it lags a `camera_release_stream`,
- * which over-counts and costs picture size on the next call until the report catches up.
+ * caller passes what this server allocated and the camera has not reported yet alongside the reported
+ * streams, so the count no longer lags an allocate. It still lags a `camera_release_stream`, which
+ * over-counts and costs picture size on the next call until the report catches up.
  */
 export function encodersExhausted(args: {
     maxConcurrentEncoders: number | undefined;
@@ -96,11 +96,10 @@ export function isDowngradeFrom(chosen: Resolution, best: SnapshotCapability | u
 }
 
 /**
- * The snapshot stream the make-room rung should take, or none worth taking.
+ * The snapshot stream the make-room rung should take, or none whose loss would buy anything.
  *
  * `candidates` are the streams this server allocated in this process run — ownership answers exactly
- * one question, and this is it. Two further conditions decide which of those may be taken and which is
- * worth taking:
+ * one question, and this is it. What decides among them is what each would actually free.
  *
  * `SnapshotStreamDeallocate` (§11.2.8.10.2) refuses an id it does not know and a `ReferenceCount`
  * above 0, and has no `Internal` case — snapshot streams carry no stream usage. The count is what
@@ -108,19 +107,35 @@ export function isDowngradeFrom(chosen: Resolution, best: SnapshotCapability | u
  * server polls snapshots from reads 0, and "unreferenced" therefore means nobody has taken a reference
  * rather than nobody is using it. That is why only this server's own streams are offered here.
  *
- * A stream that holds neither an encoder (§11.2.6.13.9) nor a share of `MaxEncodedPixelRate`
- * (§11.2.6.13.8) frees no capacity, so taking it would be loss with nothing bought.
+ * A candidate has to free capacity the failed allocate could use, which is the two the camera states:
+ * one of `MaxConcurrentEncoders` while `HardwareEncoder` is set (§11.2.6.13.9), and a share of
+ * `MaxEncodedPixelRate` while `EncodedPixels` is (§11.2.6.13.8). The pixel rate counts for nothing on a
+ * camera that states no `MaxEncodedPixelRate`: {@link budgetVideoEnvelope} then leaves the envelope
+ * alone, so the retry would repeat the request that just failed, having destroyed a stream for it.
  *
- * The largest pixel-rate footprint goes first, summed as the reference server sums it
- * (`frameRate × maxResolution`, `IsResourceAvailableForStreamAllocation`): the refusal being reacted to
- * is a capacity refusal, so the biggest holder is the candidate most likely to make the retry succeed.
- * The id breaks a tie so the choice does not depend on the order the camera reported the streams in.
+ * An encoder-holding candidate goes first, whatever its size. `MaxConcurrentEncoders` is small — one on
+ * the hardware this rung exists for — so an encoder is the scarcer of the two, and freeing that stream
+ * frees its pixel rate with it. Only then does size decide, by the sum the reference server uses
+ * (`frameRate × maxResolution`, `IsResourceAvailableForStreamAllocation`), since a capacity refusal
+ * states nothing about which limit it hit. The id breaks a tie, so the choice does not depend on the
+ * order the camera reported the streams in.
  */
-export function chooseSnapshotStreamToFree(candidates: AllocatedSnapshotStream[]): AllocatedSnapshotStream | undefined {
-    const footprint = (stream: AllocatedSnapshotStream): number => pixels(stream.maxResolution) * stream.frameRate;
+export function chooseSnapshotStreamToFree(
+    candidates: AllocatedSnapshotStream[],
+    limits: { maxEncodedPixelRate: number | undefined },
+): AllocatedSnapshotStream | undefined {
+    const freesPixelRate = (stream: AllocatedSnapshotStream): boolean =>
+        stream.encodedPixels && limits.maxEncodedPixelRate !== undefined;
+    const footprint = (stream: AllocatedSnapshotStream): number =>
+        freesPixelRate(stream) ? pixels(stream.maxResolution) * stream.frameRate : 0;
     return candidates
-        .filter(stream => stream.referenceCount === 0 && (stream.hardwareEncoder || stream.encodedPixels))
-        .sort((a, b) => footprint(b) - footprint(a) || a.snapshotStreamId - b.snapshotStreamId)[0];
+        .filter(stream => stream.referenceCount === 0 && (stream.hardwareEncoder || freesPixelRate(stream)))
+        .sort(
+            (a, b) =>
+                Number(b.hardwareEncoder) - Number(a.hardwareEncoder) ||
+                footprint(b) - footprint(a) ||
+                a.snapshotStreamId - b.snapshotStreamId,
+        )[0];
 }
 
 /**

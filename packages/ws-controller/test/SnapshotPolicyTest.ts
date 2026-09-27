@@ -320,6 +320,7 @@ describe("snapshotPolicy", () => {
     });
 
     describe("chooseSnapshotStreamToFree", () => {
+        const BUDGETED = { maxEncodedPixelRate: 248832000 };
         const held = (
             snapshotStreamId: number,
             carried: Partial<AllocatedSnapshotStream> = {},
@@ -337,31 +338,53 @@ describe("snapshotPolicy", () => {
         });
 
         it("takes nothing while every candidate is referenced", () => {
-            expect(chooseSnapshotStreamToFree([held(1, { referenceCount: 1 })])).to.equal(undefined);
+            expect(chooseSnapshotStreamToFree([held(1, { referenceCount: 1 })], BUDGETED)).to.equal(undefined);
         });
 
         it("takes nothing that holds neither an encoder nor a share of the pixel rate", () => {
             // Destroying it would buy the allocate that follows nothing at all.
-            expect(chooseSnapshotStreamToFree([held(1, { encodedPixels: false, hardwareEncoder: false })])).to.equal(
-                undefined,
-            );
+            expect(
+                chooseSnapshotStreamToFree([held(1, { encodedPixels: false, hardwareEncoder: false })], BUDGETED),
+            ).to.equal(undefined);
         });
 
-        it("takes a stream that holds only an encoder, and one that holds only pixel rate", () => {
-            expect(chooseSnapshotStreamToFree([held(1, { encodedPixels: false })])?.snapshotStreamId).to.equal(1);
-            expect(chooseSnapshotStreamToFree([held(2, { hardwareEncoder: false })])?.snapshotStreamId).to.equal(2);
+        it("takes nothing for the pixel rate on a camera that states no budget", () => {
+            // budgetVideoEnvelope leaves the envelope alone without MaxEncodedPixelRate, so the retry
+            // would repeat the request that just failed with one stream fewer to show for it.
+            const pixelRateOnly = held(1, { hardwareEncoder: false });
+            expect(chooseSnapshotStreamToFree([pixelRateOnly], { maxEncodedPixelRate: undefined })).to.equal(undefined);
+            expect(chooseSnapshotStreamToFree([pixelRateOnly], BUDGETED)?.snapshotStreamId).to.equal(1);
         });
 
-        it("takes the largest pixel-rate footprint first, whatever order the camera reported", () => {
+        it("still takes an encoder holder on a camera that states no pixel-rate budget", () => {
+            expect(
+                chooseSnapshotStreamToFree([held(1, { encodedPixels: false })], { maxEncodedPixelRate: undefined })
+                    ?.snapshotStreamId,
+            ).to.equal(1);
+        });
+
+        it("takes the encoder holder before a larger stream that holds no encoder", () => {
+            // MaxConcurrentEncoders is 1 on the hardware this rung exists for, so the encoder is the
+            // scarce resource; taking the big one first destroys a stream and leaves the encoder taken.
+            const big = held(1, {
+                hardwareEncoder: false,
+                maxResolution: { width: 1920, height: 1080 },
+                frameRate: 30,
+            });
+            const encoderHolder = held(2);
+            expect(chooseSnapshotStreamToFree([big, encoderHolder], BUDGETED)?.snapshotStreamId).to.equal(2);
+        });
+
+        it("takes the largest pixel-rate footprint among equals, whatever order the camera reported", () => {
             const small = held(1);
             const large = held(2, { maxResolution: { width: 1920, height: 1080 } });
             const fast = held(3, { frameRate: 30 });
-            expect(chooseSnapshotStreamToFree([small, large, fast])?.snapshotStreamId).to.equal(3);
-            expect(chooseSnapshotStreamToFree([large, small])?.snapshotStreamId).to.equal(2);
+            expect(chooseSnapshotStreamToFree([small, large, fast], BUDGETED)?.snapshotStreamId).to.equal(3);
+            expect(chooseSnapshotStreamToFree([large, small], BUDGETED)?.snapshotStreamId).to.equal(2);
         });
 
         it("breaks a tie on the id, so the choice does not depend on the report order", () => {
-            expect(chooseSnapshotStreamToFree([held(9), held(4)])?.snapshotStreamId).to.equal(4);
+            expect(chooseSnapshotStreamToFree([held(9), held(4)], BUDGETED)?.snapshotStreamId).to.equal(4);
         });
     });
 
