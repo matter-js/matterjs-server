@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 import asyncio
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 import pytest
+
+if TYPE_CHECKING:
+    from matter_server.client.client import WebRtcProviderCommandName
 
 from matter_server.client import MatterClient
 from matter_server.client.exceptions import ServerVersionTooOld
@@ -91,7 +95,9 @@ def _signalling_client(schema_version: int) -> MatterClient:
 
 
 @pytest.mark.parametrize("command_name", ["ProvideAnswer", "ProvideIceCandidates"])
-async def test_signalling_variants_require_schema_14(command_name: str) -> None:
+async def test_signalling_variants_require_schema_14(
+    command_name: WebRtcProviderCommandName,
+) -> None:
     """A schema 13 server does not relay them, so the client must refuse before sending."""
     client = _signalling_client(schema_version=13)
     with pytest.raises(ServerVersionTooOld):
@@ -102,7 +108,9 @@ async def test_signalling_variants_require_schema_14(command_name: str) -> None:
 
 
 @pytest.mark.parametrize("command_name", ["ProvideOffer", "SolicitOffer"])
-async def test_offer_variants_still_require_only_schema_12(command_name: str) -> None:
+async def test_offer_variants_still_require_only_schema_12(
+    command_name: WebRtcProviderCommandName,
+) -> None:
     """They have been relayed since schema 12 and must not be gated behind 14."""
     client = _signalling_client(schema_version=12)
     assert await client.send_webrtc_provider_command(1, 1, command_name, {}) is None

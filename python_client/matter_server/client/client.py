@@ -71,6 +71,15 @@ if TYPE_CHECKING:
 
 SUB_WILDCARD: Final = "*"
 
+# The provider commands `send_webrtc_provider_command` relays, named once so a caller and a test
+# state the same set as the method they call.
+WebRtcProviderCommandName = Literal[
+    "ProvideOffer",
+    "SolicitOffer",
+    "ProvideAnswer",
+    "ProvideIceCandidates",
+]
+
 # Relayed by the server only from schema 14 on; the offer variants have been relayed since 12.
 SIGNALLING_PROVIDER_COMMANDS: Final = frozenset({"ProvideAnswer", "ProvideIceCandidates"})
 
@@ -730,12 +739,7 @@ class MatterClient:
         self,
         node_id: int,
         endpoint_id: int,
-        command_name: Literal[
-            "ProvideOffer",
-            "SolicitOffer",
-            "ProvideAnswer",
-            "ProvideIceCandidates",
-        ],
+        command_name: WebRtcProviderCommandName,
         payload: dict,
     ) -> dict[str, Any] | None:
         """Invoke a WebRTCTransportProvider command on a commissioned camera.
