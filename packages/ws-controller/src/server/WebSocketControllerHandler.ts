@@ -111,11 +111,8 @@ const THREAD_DIAGNOSTICS_OPT_IN_COMMANDS = new Set(["get_thread_diagnostics", "g
 // thread-diagnostics opt-in: pre-schema-13 clients never subscribed, so they must not receive it.
 const NETWORK_TOPOLOGY_OPT_IN_COMMANDS = new Set(["get_network_topology"]);
 
-// Every command that can produce an inbound signalling event opts the connection in: the camera's
-// offer, answer, candidates and end arrive on the webrtc_callback channel whichever command started
-// the session. A session with a known owner is routed to it, so what this set decides is only who
-// receives a session no record names, and it stays narrower than the camera set below because a
-// connection that never sent an offer can do nothing with a stray one.
+// Commands that opt the connection in to `webrtc_callback`. Owned sessions are routed to their owner;
+// this set decides who receives signalling for a session no record names.
 const WEBRTC_OPT_IN_COMMANDS = new Set([
     "send_webrtc_provider_command",
     "camera_start_stream",
@@ -123,13 +120,8 @@ const WEBRTC_OPT_IN_COMMANDS = new Set([
     "camera_provide_ice_candidates",
 ]);
 
-// Issuing any camera command (schema 14) opts the connection in to camera_session_ended and
-// camera_stream_evicted, and a connection that has issued none receives neither. A superset of the
-// set above, so the observable difference is that a connection which has only read capabilities,
-// stopped a session, taken a snapshot or released a stream receives these two events and is still
-// not handed signalling for a session nobody owns. camera_session_ended is routed to the session's
-// owner; camera_stream_evicted is not routed at all, because no record says which connection holds a
-// stream, so every camera-aware connection receives every eviction.
+// Any camera command (schema 14) opts the connection in to camera_session_ended and
+// camera_stream_evicted. Evictions go to every opted-in connection: no record says who holds a stream.
 const CAMERA_OPT_IN_COMMANDS = new Set([
     "send_webrtc_provider_command",
     "camera_get_capabilities",
@@ -141,11 +133,7 @@ const CAMERA_OPT_IN_COMMANDS = new Set([
     "camera_provide_ice_candidates",
 ]);
 
-/**
- * The arguments `send_webrtc_provider_command` takes. Its `payload` refuses a key naming no field,
- * so its own arguments do too: a caller whose argument was ignored gets the session it did not ask
- * for either way. A `Record` over the wire model's key set, as the camera commands' sets are.
- */
+/** The arguments `send_webrtc_provider_command` accepts; any other key is refused, like unknown `payload` keys. */
 const SEND_PROVIDER_ARG_KEY_SET: Record<keyof Required<ArgsOf<"send_webrtc_provider_command">>, true> = {
     node_id: true,
     endpoint_id: true,
@@ -155,11 +143,8 @@ const SEND_PROVIDER_ARG_KEY_SET: Record<keyof Required<ArgsOf<"send_webrtc_provi
 
 const SEND_PROVIDER_ARG_KEYS: readonly string[] = Object.keys(SEND_PROVIDER_ARG_KEY_SET);
 
-// Responses the debug log does not write in full: the first three are large enough to bury it (the
-// node/attribute dump, the topology graph, a base64 camera frame), and open_commissioning_window
-// answers with the node's setup passcode and the manual and QR codes that carry it. Nothing masks a
-// response — redactSensitiveCommandFields walks a request's args — so naming the command here is
-// the only thing that keeps that passcode out.
+// Responses the debug log omits: large ones, and open_commissioning_window, whose setup passcode
+// nothing else redacts (redactSensitiveCommandFields covers request args only).
 const skipMessageContentInLogFor = [
     "start_listening",
     "get_network_topology",
@@ -168,19 +153,9 @@ const skipMessageContentInLogFor = [
 ];
 
 /**
- * The arguments of one request, as the object every handler below reads by destructuring.
- *
- * A frame that states no `args` at all, or states `null`, carries an empty argument set: the Python
- * Matter Server reads it that way (`parse_arguments` substitutes `{}`,
- * `matter_server/common/helpers/api.py:53`), so a command whose arguments are all optional answers
- * it, and one with a required argument refuses it as that argument's own error 8. Destructuring
- * `undefined` instead throws a `TypeError` this route can only report as error 0, which is why
- * handlers had begun writing `args ?? {}` and `args?.x` one at a time.
- *
- * Anything else that is not an object is refused with error 8. The reference implementation answers
- * nothing at all there: a non-dict `args` fails while its `CommandMessage` is decoded, with an
- * `AttributeError` (`common/helpers/util.py:156`) that its per-message `except ValueError`
- * (`server/client_handler.py:114`) does not catch, and the connection is closed.
+ * The arguments of one request. Absent or `null` `args` mean an empty argument set, as in the Python
+ * Matter Server (`parse_arguments`, `matter_server/common/helpers/api.py`); any other non-object is
+ * refused with error 8 (the Python server closes the connection there).
  */
 function commandArguments(args: unknown, command: string): Record<string, unknown> {
     return args === undefined || args === null ? {} : requireArgumentObject(args, command);
@@ -199,8 +174,7 @@ function normalizeFabricLabel(label: string | null): string {
  */
 function extractWebRtcSessionId(payload: unknown): number | undefined {
     if (typeof payload !== "object" || payload === null) return undefined;
-    // Keys are matched through the same camelize the invoke normalized the payload with, so every
-    // spelling the device accepted names a session the local records can still drop.
+    // Must use the same camelize the invoke normalized the payload with.
     for (const [key, value] of Object.entries(payload as Record<string, unknown>)) {
         if (camelize(key) !== "webRtcSessionId") continue;
         if (typeof value === "number" && Number.isInteger(value) && value >= 0) {
@@ -280,14 +254,8 @@ export class WebSocketControllerHandler implements WebServerHandler {
     }
 
     /**
-     * The node a command names, branded once its Node ID class is known to name a node a command can
-     * reach.
-     *
-     * For the routes that need one node's answer, which is every route but `write_attribute` and
-     * `device_command` — those take {@link #targetNodeIdOrGroup} — and the camera commands, which
-     * brand theirs in `parseTargetIds`. Without this a class that names an access-control subject or
-     * a set of nodes would be branded and answered as `NODE_NOT_EXISTS`, which tells a client the
-     * node is not commissioned rather than that the argument can never name a node.
+     * The node a command names; refuses a Node ID class that can never name one node with error 8
+     * instead of `NODE_NOT_EXISTS`. Multicast-capable routes use {@link #targetNodeIdOrGroup}.
      */
     #targetNodeId(nodeId: number | bigint, command: string): NodeId {
         const target = NodeId(nodeId);
@@ -301,12 +269,8 @@ export class WebSocketControllerHandler implements WebServerHandler {
     }
 
     /**
-     * The node or group a command names, for the two commands that can multicast.
-     *
-     * `write_attribute` and `device_command` are the only routes matter.js can carry to a group: a
-     * group write and a group invoke are both sent with the response suppressed, and everything else
-     * here needs an answer. `group` is what tells the route to take the multicast path, which takes no
-     * endpoint and reports no device status.
+     * The node or group a command names, for `write_attribute` and `device_command`, the only routes
+     * that can multicast. `group` selects the multicast path, which takes no endpoint and gets no answer.
      */
     #targetNodeIdOrGroup(nodeId: number | bigint, command: string): { nodeId: NodeId; group: boolean } {
         const target = NodeId(nodeId);
@@ -388,7 +352,6 @@ export class WebSocketControllerHandler implements WebServerHandler {
             }
 
             const connId = nextConnectionLogTag();
-            // The log tag wraps; what a connection's device-side resources are keyed on must not.
             const ownerId = nextConnectionOwnerId();
             logger.info(`[${connId}] WebSocket connection established`);
 
@@ -396,9 +359,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
             // thread_diagnostics_updated (schema 12) is sent only to connections that have issued a
             // Thread request, so schema-11 clients (all currently deployed HA installs) never receive an
             // event type they'd crash on. See the schema changelog. network_topology_updated (schema 13)
-            // and webrtc_callback are withheld the same way, so a client that never issued the command
-            // producing them never receives an event it does not know. The WebRTC opt-in is per
-            // connection, not per session: every opted-in connection sees every session's signaling.
+            // and the camera events are withheld the same way.
             const optIns = { threadDiagnostics: false, webRtc: false };
             let topologyObserverRegistered = false;
             let cameraObserversRegistered = false;
@@ -676,26 +637,17 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 });
             };
 
-            // Registered before the camera command is dispatched, like the webrtc_callback opt-in and
-            // for the same reason: that very command can evict a stream or end a session, and an
-            // observer added after it answered has already missed the event. Touching the getter
-            // constructs the manager, which the command about to run does anyway.
             const ensureCameraObservers = () => {
                 if (cameraObserversRegistered || this.#closed || this.#shuttingDown) return;
-                // After the getter, not before: it throws on a stopped controller that never built the
-                // manager, and a connection that then set the flag would stay opted out for good.
+                // Set the flag only after the getter: it can throw, and a set flag would never retry.
                 const camera = this.#controller.cameraStreams;
                 cameraObserversRegistered = true;
                 observers.on(camera.events.sessionEnded, ended => {
                     if (this.#closed || this.#shuttingDown) return;
-                    // The connection that asked has the answer to its own `camera_stop_stream`, and a
-                    // session this server holds a record of concerns only the connection that opened
-                    // it. No record means no owner, and withholding it then tells nobody at all —
-                    // `signallingOwners`' rule, for its reason.
+                    // Skip the requester (it has its response) and non-owners; ownerless ends go to all.
                     if (ended.requestedBy === ownerId) return;
                     if (ended.ownerId !== undefined && ended.ownerId !== ownerId) return;
-                    // Shared Observable: an uncaught throw here aborts the emit and starves the other
-                    // connections, and this one runs on a device release path.
+                    // Shared Observable: an uncaught throw here aborts the emit and starves other connections.
                     try {
                         connection.sendReliable(
                             toBigIntAwareJson({
@@ -735,16 +687,12 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 if (this.#closed || this.#shuttingDown || !optIns.webRtc) return;
                 // WebRTC signaling is control-plane: never coalesced or dropped, so send reliably.
                 try {
-                    // Branded here, not left to the lookup: the registry's key is a template string
-                    // today, so a plain number matches it by coincidence, and a key that compared the
-                    // id itself would then match nothing.
                     const owners = this.#controller.cameraStreamsIfCreated?.signallingOwners(
                         NodeId(data.node_id),
                         EndpointNumber(data.endpoint_id),
                         data.webrtc_session_id,
                     );
-                    // No record means no owner, and withholding such a session's signalling would
-                    // strand a session nothing else can complete.
+                    // Ownerless sessions go to every opted-in connection; withholding would strand them.
                     if (owners !== undefined && !owners.has(ownerId)) return;
                     connection.sendReliable(toBigIntAwareJson({ event: "webrtc_callback", data }));
                 } catch (err) {
@@ -762,9 +710,6 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 logger.info(`[${connId}] WebSocket connection closed`);
                 observers.close();
                 this.#connections.delete(connection);
-                // cameraStreamsIfCreated, not the cameraStreams getter: a connection that never used the
-                // camera subsystem must not construct the manager here, and must not hit the
-                // stopped-controller throw on every disconnect during shutdown.
                 this.#controller.cameraStreamsIfCreated
                     ?.releaseConnection(ownerId)
                     .catch(err => logger.warn(`[${connId}] Failed to release camera sessions on disconnect`, err));
@@ -775,11 +720,8 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 connection.dispose();
             };
 
-            // Before the command is dispatched, never after its response settles: the camera answers
-            // the offer while the command is still in flight, so a webrtc_callback opt-in applied
-            // afterwards drops that answer. The two snapshot events share the point but do not
-            // require it, and neither is ordered against the response: a response bypasses the outbox
-            // a snapshot event queues into.
+            // Must run before the command is dispatched: the camera can answer an offer, end a session
+            // or evict a stream while the command is still in flight.
             const optInToEventsFor = (command: string) => {
                 if (THREAD_DIAGNOSTICS_OPT_IN_COMMANDS.has(command)) optIns.threadDiagnostics = true;
                 if (NETWORK_TOPOLOGY_OPT_IN_COMMANDS.has(command)) ensureTopologyObserver();
@@ -888,8 +830,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
             let args = request.args;
             messageId = request.message_id;
             command = request.command;
-            // request is an unvalidated cast, so a frame can carry no command, or a command that is
-            // not a string; either falls to the switch's default and is answered as an unknown one.
+            // `request` is an unvalidated cast; a non-string command falls to the switch's default.
             if (typeof command === "string") {
                 optInToEventsFor(command);
                 args = commandArguments(args, command);
@@ -1148,9 +1089,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
         connection: WebSocketConnection,
     ): Promise<ResponseOf<"set_default_fabric_label">> {
         const { label } = args;
-        // `null` is the documented reset; an absent label is not a request to rename the fabric, and
-        // the empty argument set a frame without `args` carries would otherwise reach the default
-        // label and write it, claiming the label for this connection for the rest of the session.
+        // `null` is the documented reset; an absent label must not fall through to the default label.
         if (label !== null && typeof label !== "string") {
             throw ServerError.invalidArguments("set_default_fabric_label requires label to be a string or null");
         }
@@ -1481,9 +1420,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
                     "device_command to a Group Node ID takes no endpoint_id: a groupcast carries no endpoint, each node's own group table decides which of its endpoints the command reaches",
                 );
             }
-            // The stated value, not the converted one: a timeout of the wrong type converts to
-            // `undefined`, and dropping a timeout the client asked for is what the refusal exists to
-            // prevent.
+            // Check the stated value: a wrongly typed timeout converts to `undefined` and would pass.
             for (const [name, stated] of [
                 ["timed_request_timeout_ms", timedInteractionTimeoutMs],
                 ["interaction_timeout_ms", interactionTimeoutMs],
@@ -1554,18 +1491,9 @@ export class WebSocketControllerHandler implements WebServerHandler {
     }
 
     /**
-     * Forget a WebRTC session the device is not holding, in both places this server records it.
-     *
-     * Both must go: either one left behind outlives the session and makes a later pass send
-     * `EndSession` for a dead id. Neither can stop the other, and neither reaches the client —
-     * `endedByClient` announces through the camera manager's one guarded emit and
-     * `dropWebRtcSessionTracking` never rejects — which is the contract {@link invokeEndSession} needs,
-     * since a rejection here would replace the device's own answer with a bookkeeping error and invite
-     * a retry it can only answer `NotFound`.
-     *
-     * `requestedBy` is what lets the camera manager report the end without telling the connection that
-     * asked. Without it this route dropped the record silently, and a connection that opened the session
-     * with `camera_start_stream` kept signalling into a session that was gone.
+     * Forget a WebRTC session the device is not holding, in both the camera manager and the requestor.
+     * Never rejects, as {@link invokeEndSession} requires. `requestedBy` is the connection that asked,
+     * so the manager announces the end to the session's owner but not to it.
      */
     async #dropWebRtcSessionRecords(
         nodeId: NodeId,
@@ -1611,7 +1539,6 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 commandName: command_name,
                 fields,
             });
-            // The model gives these commands no response type, so there is no payload to convert.
             return null;
         }
         const response = await this.#commandHandler.invokeWebRtcProviderCommand({
@@ -1626,15 +1553,8 @@ export class WebSocketControllerHandler implements WebServerHandler {
     }
 
     /**
-     * Signal into a WebRTC session in the camera API's own argument style.
-     *
-     * The client states the target and the session id the way every other camera command takes them,
-     * and the command's own argument — the `sdp`, or the `ice_candidates` a `webrtc_callback` event
-     * just reported — in the spelling the wire documents. They reach the camera through the one
-     * boundary that converts a wire payload into provider arguments, so nothing here knows a cluster
-     * field name and no second conversion exists to drift from it.
-     *
-     * Answers `null`: the cluster defines no response payload for either command.
+     * `camera_provide_answer` / `camera_provide_ice_candidates`: signal into a WebRTC session using the
+     * camera API's argument style. Answers `null`; the cluster defines no response payload.
      */
     async #handleCameraSignallingCommand(
         args: unknown,
@@ -1677,8 +1597,6 @@ export class WebSocketControllerHandler implements WebServerHandler {
 
     async #handleCameraStopStream(args: unknown, ownerId: string): Promise<ResponseOf<"camera_stop_stream">> {
         const { nodeId, endpointId, webRtcSessionId } = parseStopStreamArgs(args);
-        // Named so the session's owner is told that somebody else ended it, and this connection is not
-        // told what its own answer already says.
         const ended = await this.#controller.cameraStreams.stopStream(nodeId, endpointId, webRtcSessionId, ownerId);
         return { ended };
     }
@@ -1694,8 +1612,6 @@ export class WebSocketControllerHandler implements WebServerHandler {
             osdEnabled,
         });
         const wire = toWireSnapshotResult(result);
-        // The response is in skipMessageContentInLogFor because it carries the frame, which would
-        // take what the server chose out of the log with it.
         logger.debug(
             `camera_snapshot for node ${nodeId} endpoint ${endpointId}: codec ${wire.codec}, ${wire.resolution.width}x${wire.resolution.height}, ${result.data.length} bytes, degraded ${wire.degraded}, stream ${wire.stream_id}`,
         );

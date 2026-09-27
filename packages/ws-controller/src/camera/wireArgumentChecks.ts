@@ -7,16 +7,11 @@
 import { ServerError } from "../types/WebSocketMessageTypes.js";
 import type { FieldRange } from "./cameraFieldRanges.js";
 
-/** Arrays are excluded: an argument object's keys are named, and an array's are its indices. */
 export function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-/**
- * Every key a caller states is a bound on what it accepts, so a key the server does not know is
- * refused rather than dropped. Dropping it would answer a request nobody made, which is the one
- * thing these commands never do.
- */
+/** Every key a caller states is a bound, so an unknown key is refused: dropping it would answer a different request. */
 export function rejectUnknownKeys(value: object, known: readonly string[], subject: string): void {
     const unknown = Object.keys(value).filter(key => !known.includes(key));
     if (unknown.length > 0) {
@@ -26,13 +21,7 @@ export function rejectUnknownKeys(value: object, known: readonly string[], subje
     }
 }
 
-/**
- * Whether `value` is an integer inside the range the Matter field it becomes accepts.
- *
- * The range comes from the cluster's element definition, not from "is it positive": a value past a
- * field's wire width reaches matter.js's TLV encoder and fails there, with an error that names the
- * encoder rather than the argument the client sent.
- */
+/** Whether `value` is an integer inside the range the Matter field it becomes accepts. */
 export function isInRange(value: unknown, range: FieldRange): value is number {
     return typeof value === "number" && Number.isSafeInteger(value) && value >= range.min && value <= range.max;
 }

@@ -4,10 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-/**
- * What the debug log actually receives for a request and its response, asserted against the text a
- * destination is handed rather than against the redactor being called.
- */
+/** Asserts on the text a log destination receives for a request and its response, not on the redactor. */
 
 import { Environment, FabricId, LogLevel, Logger, MockStorageService, NodeId, Observable } from "@matter/main";
 import { createServer } from "node:http";
@@ -45,8 +42,7 @@ const MANUAL_CODE = "34970112332";
 
 function createFakeCameraStreams() {
     return {
-        // The real manager reports a session ending and a stream taken on these; a connection issuing
-        // a camera command subscribes to them before the command is dispatched.
+        // A connection issuing a camera command subscribes to these before the command is dispatched.
         events: { sessionEnded: new Observable(), streamEvicted: new Observable() },
         async startStream() {
             return { webRtcSessionId: 42, mode: "provide_offer" as const, video: undefined, audio: undefined };
@@ -181,7 +177,6 @@ describe("WebSocketControllerHandler request logging", () => {
         const request = lines.find(line => line.includes("WebSocket request"));
         expect(request).to.not.equal(undefined);
         expect(request).to.contain("camera_start_stream");
-        // The server it points at stays readable: the redaction masks the secret, not the request.
         expect(request).to.contain("turn:turn.example.org:3478");
         for (const line of lines) {
             expect(line).to.not.contain(TURN_CREDENTIAL);
@@ -199,7 +194,7 @@ describe("WebSocketControllerHandler request logging", () => {
 
         const request = lines.find(line => line.includes("WebSocket request"));
         expect(request).to.not.equal(undefined);
-        // The offer is what a failed session is read from, so only the credential lines are masked.
+        // A failed session is debugged from the offer, so only the credential lines are masked.
         expect(request).to.contain("m=video 9 UDP/TLS/RTP/SAVPF 96");
         expect(request).to.contain("a=fmtp:96 max-fs=8160");
         for (const line of lines) {
@@ -213,7 +208,6 @@ describe("WebSocketControllerHandler request logging", () => {
 
         const response = lines.find(line => line.includes("WebSocket response (camera_snapshot)"));
         expect(response).to.not.equal(undefined);
-        // What the server chose stays readable; only the frame goes.
         const chosen = lines.find(line => line.includes("camera_snapshot for node"));
         expect(chosen).to.contain("640x480");
         expect(chosen).to.contain("degraded false");
@@ -226,10 +220,7 @@ describe("WebSocketControllerHandler request logging", () => {
         }
     });
 
-    /**
-     * The request line is written before anything has looked at the command, so these assert on the
-     * log of a command the fake controller cannot serve. What matters is what the line carries.
-     */
+    /** The request line is written before the command is looked at, so a command the fake cannot serve suffices. */
     describe("credential arguments", () => {
         const SECRET = "s3cret-do-not-log";
 

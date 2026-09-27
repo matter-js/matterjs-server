@@ -8,8 +8,6 @@
  * @matter-server/ws-controller - Matter controller Websocket library
  */
 
-// The wire-to-cluster boundary for the WebRTC provider commands: what a caller of
-// `invokeWebRtcProviderCommand` needs to turn a WebSocket payload into its `fields`.
 export {
     establishesWebRtcSession,
     isProviderCommandName,
@@ -22,7 +20,6 @@ export type {
     SignallingCommandName,
 } from "./camera/webRtcProviderArguments.js";
 
-// What `CameraStreamManager.events` emits, so a consumer of the manager can name its payloads.
 export type { CameraSessionEnded, CameraStreamEvicted } from "./camera/cameraTypes.js";
 
 // Export controller components

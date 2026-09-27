@@ -55,8 +55,7 @@ describe("camera server errors", () => {
     });
 
     it("states one message per reason, over the vocabulary the client package publishes", () => {
-        // The emitter and CAMERA_INCOMPATIBLE_REASONS are two statements of one wire vocabulary, and a
-        // reason with no message of its own reaches a client as `undefined`.
+        // Only this test keeps the emitter in sync with CAMERA_INCOMPATIBLE_REASONS.
         const messages = CAMERA_INCOMPATIBLE_REASONS.map(
             reason => JSON.parse(ServerError.cameraStreamIncompatible(detailFor(reason)).message).message,
         );
@@ -67,8 +66,6 @@ describe("camera server errors", () => {
     });
 
     it("carries `feature` for the feature reason and for no other", () => {
-        // The field was the thing telling four meanings of one reason apart, so a client branched
-        // twice. It is a detail of `feature` now, and nothing else may carry it.
         expect(
             JSON.parse(
                 ServerError.cameraStreamIncompatible({
@@ -123,8 +120,7 @@ describe("camera server errors", () => {
     });
 
     it("numbers the camera codes 102 to 106 with no gap, as the ws-client constants spell them", () => {
-        // The enum and the client constants are two statements of one wire contract with nothing but
-        // this test between them, and a client keys its exception classes on the number.
+        // Only this test keeps the enum in sync with the client constants, which key exception classes.
         expect([
             ServerErrorCode.CameraStreamIncompatible,
             ServerErrorCode.CameraResourceExhausted,

@@ -38,12 +38,7 @@ export interface VideoCapabilities {
     maxNetworkBandwidth?: number;
 }
 
-/**
- * The video ranges a caller may state.
- *
- * Every field here is a bound on what the caller is willing to be given, so none of them may be
- * given up on its behalf. An absent field is the opposite: a choice the caller left to the server.
- */
+/** The video ranges a caller may state. A stated field is a hard bound; an absent one is left to the server. */
 export interface VideoRangeBounds {
     minResolution?: Resolution;
     maxResolution?: Resolution;
@@ -58,13 +53,8 @@ export interface VideoHints extends VideoRangeBounds, OverlayBounds {
 }
 
 /**
- * Everything the caller stated about the video stream it asked for.
- *
- * `limits` is what the caller's own offer stated its peer can decode, carrying the codec that
- * `codecs` and the offer already resolved to; `streamUsage` is mandatory on the wire. All three are
- * always stated and all three are checked unconditionally. The offer's limits belong here rather
- * than in the envelope alone because they are a decode ceiling: a rung that gives up the envelope
- * may not hand out video the peer cannot decode.
+ * Everything the caller stated about the video stream it asked for. `limits` is the offer's decode
+ * ceiling for the resolved codec, which no ladder rung may give up.
  */
 export interface VideoCallerBounds extends VideoRangeBounds {
     limits: SelectedVideoCodecLimits;
@@ -92,13 +82,9 @@ export function videoCallerBounds(
 }
 
 /**
- * What the caller stated about one track.
- *
- * Three statements, three values. `declined` is `video: false` / `audio: false`, `deferred` is the
- * key left out, and `demanded` is the key present — an object, however empty — carrying whatever
- * bounds came with it. Collapsing `demanded` into `deferred` is what lets a stated request be
- * answered with a null track and no error, so the three never share a value and
- * {@link statedHints} is the only way to read the bounds back.
+ * What the caller stated about one track: `declined` is `false`, `deferred` is the key left out,
+ * `demanded` is the key present (an object, however empty). A demanded track must not be answered
+ * with a null track and no error.
  */
 export type TrackRequest<Hints> =
     | { readonly state: "declined" | "deferred" }
@@ -121,14 +107,7 @@ export interface VideoEnvelopeArgs {
     /** The codec to allocate for, carrying the offer limits that codec itself stated. */
     limits: SelectedVideoCodecLimits;
     hints: VideoHints | undefined;
-    /**
-     * The overlay fields to allocate with, as `resolveOverlays` resolved them from the hints and the
-     * camera's feature map.
-     *
-     * Required rather than read out of `hints`, because the hints cannot say whether the camera
-     * advertises the feature and a field silently left off a `WMARK` camera's allocate is
-     * `INVALID_COMMAND` (§11.2.8.4).
-     */
+    /** The overlay fields to allocate with, as `resolveOverlays` resolved them; not the raw hints. */
     overlays: OverlayBounds;
 }
 
@@ -144,13 +123,7 @@ function scaleToPixels(resolution: Resolution, maxPixels: number): Resolution {
     return { width: even(resolution.width), height: even(resolution.height) };
 }
 
-/**
- * Clamp `resolution` under `ceiling` on each dimension.
- *
- * `VideoStreamAllocate` validates width and height separately and answers ConstraintError when
- * `minResolution` exceeds `maxResolution` on either; `resolutionContains` below states why comparing
- * pixel areas cannot stand in for that.
- */
+/** Clamp `resolution` under `ceiling` on each dimension; `VideoStreamAllocate` checks width and height separately. */
 function clampDown(resolution: Resolution, ceiling: Resolution): Resolution {
     return {
         width: Math.min(resolution.width, ceiling.width),
@@ -170,15 +143,8 @@ function fitsUnder(resolution: Resolution, ceiling: Resolution): boolean {
 }
 
 /**
- * The frame rate the offer's limits allow at `resolution`, or none when they state neither.
- *
- * Can be 0, which is a resolution the peer cannot decode at any rate an encoder runs at. Rounding
- * that up to 1 was widening a bound the peer stated, and this is a decode ceiling: a stream past it
- * is not a slow picture, it is no picture. {@link computeVideoEnvelope} answers it by shrinking the
- * resolution into the pixel-rate budget first, so the rate it allocates at is never 0;
- * {@link satisfiesVideoCallerBounds} answers it by refusing every candidate at that resolution.
- * Both read this one function so the rate the server allocates at and the rate it accepts a
- * candidate at cannot drift apart.
+ * The frame rate the offer's limits allow at `resolution`, or `undefined` when they state none. Can be
+ * 0; must not be rounded up, since it is a decode ceiling.
  */
 function offerFrameRateCeiling(limits: VideoCodecLimits, resolution: Resolution): number | undefined {
     const ceilings = new Array<number>();
@@ -190,10 +156,8 @@ function offerFrameRateCeiling(limits: VideoCodecLimits, resolution: Resolution)
 }
 
 /**
- * The envelope to allocate in, or the caller floor that nothing available reaches.
- *
- * `limit` is the ceiling in force after every narrowing, whoever stated it — the sensor, the offer or
- * the caller's own ceiling — so it is reported as a limit rather than as something the camera said.
+ * The envelope to allocate in, or the caller floor that nothing available reaches. `limit` is the
+ * ceiling in force after every narrowing (sensor, offer or caller).
  */
 export type VideoSelection =
     | { readonly envelope: VideoEnvelope }
@@ -209,17 +173,11 @@ function resolutionText(resolution: Resolution): string {
 }
 
 /**
- * The range to allocate a video stream in.
+ * The range to allocate a video stream in. Wide by default, so the camera can adapt (spec §11.2.1.2.2);
+ * each step only narrows.
  *
- * Wide by default: the camera is required to use the highest resolution and bitrate the network
- * supports and to adapt for concurrent viewers (spec 15.2.1.2.2), so the server's job is to leave it
- * room rather than pick a point inside the range. Each step narrows only; nothing here widens past
- * what the camera reports.
- *
- * A floor the caller stated is as hard as a ceiling: when the sensor, the offer or the caller's own
- * ceiling puts it out of reach, the request fails instead of silently returning less than was asked
- * for. Floors the server derived — the viewport minimum, a trade-off point's bit rate, frame rate 1 —
- * still clamp down, since giving those up gives up nothing the caller stated.
+ * A caller-stated floor out of reach fails the request. Server-derived floors (viewport minimum,
+ * trade-off point bit rate, frame rate 1) are clamped down instead.
  */
 export function computeVideoEnvelope(args: VideoEnvelopeArgs): VideoSelection {
     const { capabilities, limits, hints, overlays } = args;
@@ -228,8 +186,8 @@ export function computeVideoEnvelope(args: VideoEnvelopeArgs): VideoSelection {
     let maxResolution = capabilities.sensor;
     let maxFrameRate = capabilities.maxFrameRate;
 
-    // Order matters: spending the offer's pixel budget on the sensor's aspect ratio first lands on
-    // dimensions the caller's ceiling then cuts again, failing a request the peer can decode.
+    // Apply the caller's ceiling before the offer's pixel budget, or the budget is spent on dimensions
+    // the ceiling then cuts again.
     if (hints?.maxResolution !== undefined) {
         maxResolution = clampDown(maxResolution, hints.maxResolution);
     }
@@ -237,9 +195,7 @@ export function computeVideoEnvelope(args: VideoEnvelopeArgs): VideoSelection {
         maxResolution = scaleToPixels(maxResolution, limits.maxPixels);
     }
     if (limits.maxPixelsPerSecond !== undefined) {
-        // A stream runs at one frame per second at the very least, so the peer's pixel-rate budget
-        // is a frame-size ceiling too. Spending it on size here is what keeps the rate below from
-        // having to be rounded up past what the peer said it can decode.
+        // At 1 fps minimum, the pixel-rate budget is also a frame-size ceiling.
         maxResolution = scaleToPixels(maxResolution, limits.maxPixelsPerSecond);
     }
     const offerCeiling = offerFrameRateCeiling(limits, maxResolution);
@@ -268,9 +224,6 @@ export function computeVideoEnvelope(args: VideoEnvelopeArgs): VideoSelection {
     }
 
     const codecPoints = capabilities.rateDistortionPoints.filter(point => point.codec === codec);
-    // A floor derived from the trade-off points must be one the camera actually advertised, so this
-    // picks the smallest point by area rather than composing a per-dimension minimum the camera never
-    // stated. The clamp below then makes it fit the ceiling on each dimension.
     const smallestPoint = codecPoints.reduce<Resolution | undefined>(
         (smallest, point) =>
             smallest === undefined || pixels(point.resolution) < pixels(smallest) ? point.resolution : smallest,
@@ -287,8 +240,6 @@ export function computeVideoEnvelope(args: VideoEnvelopeArgs): VideoSelection {
     const applicable = codecPoints
         .filter(point => fitsUnder(point.resolution, maxResolution))
         .sort((a, b) => pixels(b.resolution) - pixels(a.resolution))[0];
-    // Every stated ceiling binds; the default applies only when the camera, the SDP and the caller
-    // all state none.
     const ceilings = [hints?.maxBitRate, limits.maxBitRate, capabilities.maxNetworkBandwidth].filter(
         (value): value is number => value !== undefined,
     );
@@ -301,8 +252,7 @@ export function computeVideoEnvelope(args: VideoEnvelopeArgs): VideoSelection {
             limit: String(maxBitRate),
         };
     }
-    // A trade-off point's floor can exceed the bandwidth the same camera states. Pinning min to max
-    // there takes capacity from every other viewer (spec 15.2.1.2.2) for a bound nobody asked for.
+    // A trade-off point's floor can exceed the camera's bandwidth; drop it rather than pin min to max.
     const derivedBitRateFloor = applicable?.minBitRate ?? 1;
     const minBitRate = hints?.minBitRate ?? (derivedBitRateFloor <= maxBitRate ? derivedBitRateFloor : 1);
 
@@ -341,34 +291,17 @@ export interface BudgetedVideoEnvelope {
 }
 
 /**
- * `envelope` narrowed into the encoded pixel rate the camera has left, and what that narrowing cost.
+ * `envelope` narrowed into the encoded pixel rate the camera has left (`MaxEncodedPixelRate`,
+ * §11.2.7.2), and what that narrowing cost.
  *
- * `MaxEncodedPixelRate` (§11.2.7.2) is what the camera's encoders can produce in total, and the
- * streams it already holds spend it. Asking for the sensor's maximum on top of that asks for
- * something the camera has already said it cannot do, and the only answer the ladder has to that
- * refusal costs another controller a stream — one the spec asks commissioners to pre-allocate and
- * keep (§11.2.1.1). Narrowing here is what makes that refusal not happen.
- *
- * Only the ceilings move. Nothing drops below the envelope's own floors, and those already carry
- * every floor the caller stated, so a caller whose stated bound needs more than the budget has left
- * reaches the device unshrunk and the camera decides — the camera is the arbiter of a parameter
- * conflict (§11.2.1.2.2), not this server.
- *
- * A budget already fully spent narrows nothing: no frame size fits inside it, so the request goes out
- * as computed and the device's own refusal drives the ladder.
- *
- * `narrowed` names the ceilings that moved, so the answer can say so. It is derived from the two
- * ceilings this function computed rather than from whether a budget was applied, which is what keeps a
- * caller floor that clamped a ceiling back up from being reported as a narrowing.
+ * Only ceilings move, never below the envelope's floors; a conflict goes to the device (§11.2.1.2.2).
+ * A budget already fully spent narrows nothing.
  */
 export function budgetVideoEnvelope(envelope: VideoEnvelope, budget: VideoPixelRateBudget): BudgetedVideoEnvelope {
     const { maxEncodedPixelRate } = budget;
     if (maxEncodedPixelRate === undefined) return { envelope };
-    // The cluster states no per-stream formula for MaxEncodedPixelRate; §11.2.6.9.4 states it for a
-    // snapshot *capability* only. This is the reference server's own accounting, verbatim:
-    // CameraAVStreamManagementCluster.cpp, IsResourceAvailableForStreamAllocation sums
-    // maxFrameRate × maxResolution over every allocated video stream, and frameRate × maxResolution
-    // over every snapshot stream whose EncodedPixels is set (§11.2.6.13.8).
+    // The spec states no per-stream formula; this is the reference server's accounting
+    // (CameraAVStreamManagementCluster.cpp, IsResourceAvailableForStreamAllocation).
     const committed =
         budget.videoStreams.reduce((total, stream) => total + pixelRate(stream.maxResolution, stream.maxFrameRate), 0) +
         budget.snapshotStreams
@@ -398,13 +331,7 @@ function contains(outer: { min: number; max: number }, inner: { min: number; max
     return inner.min >= outer.min && inner.max <= outer.max;
 }
 
-/**
- * Whether `inner` fits inside `outer` on both dimensions independently.
- *
- * Pixel-count containment is not enough: a 1920x1080 request and an allocated 1440x1440 stream have
- * the same pixel count but different aspect ratios, so comparing areas would silently hand out square
- * video for a widescreen request.
- */
+/** Whether `inner` fits inside `outer` on both dimensions independently (areas would ignore aspect ratio). */
 function resolutionContains(
     outer: { min: Resolution; max: Resolution },
     inner: { min: Resolution; max: Resolution },
@@ -418,25 +345,13 @@ function resolutionContains(
 }
 
 /**
- * Whether `candidate` satisfies every bound the caller stated.
- *
- * The one gate every rung passes before it may hand a stream out. Which rung found a candidate is
- * not something the caller stated, so it cannot change what the caller is willing to accept: a rung
- * may give up the envelope the server computed and the defaults the server filled in, and nothing
- * here. A bound the caller left unstated is not a bound — that choice was the server's to make.
- *
- * The offer's `a=fmtp` limits are checked here rather than only in the envelope: they state what the
- * peer can decode, so a stream past them is video that arrives and does not play. The envelope is a
- * preference a rung may trade away; a decode ceiling is not.
+ * Whether `candidate` satisfies every bound the caller stated, including the offer's decode ceiling.
+ * Hard at the reuse and degraded rungs; the allocate rungs carry these bounds in the envelope.
  */
 export function satisfiesVideoCallerBounds(candidate: AllocatedVideoStream, bounds: VideoCallerBounds): boolean {
     const limits = bounds.limits;
     if (candidate.videoCodec !== limits.codec) return false;
-    // An overlay is burnt into the picture, so a stated one is as hard as a stated resolution. One the
-    // caller left unstated is the server's own choice and binds in `fitsComputedEnvelope` instead.
     if (!overlaysMatch(candidate.overlays, bounds.overlays)) return false;
-    // stream_usage is the only mandatory argument of camera_start_stream. Handing a Recording stream
-    // to a LiveView caller substitutes the one thing every caller states.
     if (candidate.streamUsage !== bounds.streamUsage) return false;
     if (limits.maxPixels !== undefined && pixels(candidate.maxResolution) > limits.maxPixels) return false;
     const offerCeiling = offerFrameRateCeiling(limits, candidate.maxResolution);
@@ -471,14 +386,8 @@ function fitsComputedEnvelope(candidate: AllocatedVideoStream, envelope: VideoEn
 }
 
 /**
- * An allocated stream as good as the one the server would have allocated, or none.
- *
- * Containment, not overlap: the request's minimum is a floor on delivered quality, so a stream
- * allocated [720p..1080p] does not satisfy a request for 1080p even though the ranges intersect.
- * Covering the request is the device's own dedup rule (spec 15.2.1.2.1), not a client's acceptance
- * rule. A candidate outside the computed envelope but inside the caller's own bounds is not refused
- * outright — it is what {@link findDegradedVideoStream} hands out, flagged, once allocation has
- * failed.
+ * An allocated stream as good as the one the server would have allocated, or none. The candidate's
+ * range must lie inside the envelope, not merely overlap it.
  */
 export function findReusableVideoStream(
     streams: AllocatedVideoStream[],
@@ -494,12 +403,8 @@ export function findReusableVideoStream(
 }
 
 /**
- * A stream to hand out when nothing can be allocated, or none.
- *
- * The rung that gives up the computed envelope and keeps the caller's bounds, which is what
- * `degraded: true` reports. The more the caller stated, the less this rung has left to give up: with
- * everything pinned it accepts only what the sensor narrowed the envelope by, and a caller that
- * stated neither bounds nor an offer is the one that can be handed a stream far outside the request.
+ * A stream to hand out when nothing can be allocated (`degraded: true`). Ignores the envelope, keeps the
+ * caller's bounds.
  */
 export function findDegradedVideoStream(
     streams: AllocatedVideoStream[],
@@ -516,8 +421,7 @@ export function narrowEnvelope(envelope: VideoEnvelope): VideoEnvelope | undefin
     if (!fitsUnder(envelope.maxResolution, envelope.minResolution)) {
         // Quartering the pixel budget halves each linear dimension, matching how encoders step down resolution.
         const halved = scaleToPixels(envelope.maxResolution, pixels(envelope.maxResolution) / 4);
-        // Per dimension, so the ceiling can never drop below the floor on one axis while the areas
-        // still compare the other way — the device rejects that envelope with ConstraintError.
+        // Per dimension: a ceiling below the floor on either axis is a ConstraintError.
         const maxResolution = clampUp(halved, envelope.minResolution);
         if (!fitsUnder(envelope.maxResolution, maxResolution)) {
             return { ...envelope, maxResolution };
@@ -539,13 +443,7 @@ export interface AudioCapabilities {
     supportedBitDepths: number[];
 }
 
-/**
- * The audio values a caller may state.
- *
- * Audio has no ranges: the device states a set of sample rates and a channel maximum, so a caller
- * states one exact value. Each is as hard as a video bound — a value the device cannot meet fails
- * rather than being replaced by one the caller did not ask for.
- */
+/** The audio values a caller may state: exact values, each a hard bound. */
 export interface AudioHints {
     /** Codec names as SDP rtpmap advertises them, e.g. "OPUS" (matches VideoHints.codecs). */
     codecs?: string[];
@@ -559,10 +457,7 @@ export interface AudioCallerBounds extends AudioHints {
     streamUsage: number;
 }
 
-/**
- * Whether `candidate` satisfies every bound the caller stated. The audio counterpart of
- * {@link satisfiesVideoCallerBounds}, and equally the only gate the reuse rung may not skip.
- */
+/** Whether `candidate` satisfies every bound the caller stated; see {@link satisfiesVideoCallerBounds}. */
 export function satisfiesAudioCallerBounds(candidate: AllocatedAudioStream, bounds: AudioCallerBounds): boolean {
     if (candidate.streamUsage !== bounds.streamUsage) return false;
     if (bounds.codecs !== undefined && !bounds.codecs.includes(audioCodecName(candidate.audioCodec))) return false;
@@ -579,12 +474,8 @@ export interface AudioEnvelopeArgs {
 }
 
 /**
- * An audio envelope, no envelope, or the caller value the device cannot meet.
- *
- * `envelope: undefined` means no audio stream can be described — the camera, the offer or the
- * caller's own codec list left no codec. Whether that is a video-only session or a failure is not
- * decided here: it depends on whether the caller asked for audio at all, which
- * {@link CameraStreamManager} knows and this function does not.
+ * An audio envelope, no envelope, or the caller value the device cannot meet. `envelope: undefined`
+ * means no codec is left; the caller decides whether that is a failure.
  */
 export type AudioSelection =
     | { readonly envelope: AudioEnvelope | undefined }
@@ -596,19 +487,11 @@ export type AudioSelection =
           readonly limit: string;
       };
 
-/**
- * Parameters for an audio stream.
- *
- * Every value the caller stated is hard, as every video bound is: a sample rate the device does not
- * list and a channel count above its maximum fail rather than being replaced by a value the caller
- * did not ask for. Those two are checked before any codec narrowing, so a caller learns about the
- * value it can change rather than about a codec list the offer happened to empty first.
- */
+/** Parameters for an audio stream. Every value the caller stated is a hard bound. */
 export function computeAudioEnvelope(args: AudioEnvelopeArgs): AudioSelection {
     const { capabilities, sdp, hints } = args;
 
-    // Ahead of the codec narrowing: a value the camera cannot serve is the caller's to correct
-    // whatever the offer then leaves, and naming the codec instead would send it after the wrong one.
+    // Checked before codec narrowing, so the caller hears about the value it can change.
     if (hints?.sampleRate !== undefined && !capabilities.supportedSampleRates.includes(hints.sampleRate)) {
         return {
             unsatisfiable: "bounds",
@@ -650,38 +533,18 @@ export function computeAudioEnvelope(args: AudioEnvelopeArgs): AudioSelection {
 }
 
 /**
- * A video stream eviction may take over, or none.
+ * A video stream eviction may take over, or none. Candidates are what `VideoStreamDeallocate`
+ * (§11.2.8.7.2) accepts: unreferenced and not `Internal`, whoever allocated them.
  *
- * `VideoStreamDeallocate` (§11.2.8.7.2) refuses exactly three things: an id it does not know,
- * `ReferenceCount > 0`, and StreamUsage Internal. It checks neither who allocated the stream nor
- * which fabric asks, so a stream nobody is using is the camera's to give to whoever needs it — and a
- * controller that refused to take one over would let one client pin every encoder with streams
- * nobody is watching.
- *
- * `ours` is the primary key and `priorities` orders each side of it, so the whole make-room ladder
- * reads as one rule: **this server gives up its own streams before it takes anybody else's**. That is
- * the same rule `chooseSnapshotStreamToFree` states, which is why that rung runs first and
- * offers only streams this server allocated. `StreamUsagePriorities` is the camera's guidance for its
- * own arbitration between the streams it serves; it says nothing about which controller should pay for
- * a request, so ranking ahead of ownership would destroy another controller's idle `LiveView`
- * reservation while an idle `Recording` stream this server allocated sat untouched.
- *
- * `priorities` is the camera's own `StreamUsagePriorities` (§11.2.7.19), highest priority at index
- * 0, so within one side the victim is the candidate furthest down that list: a stream whose usage this
- * camera ranks higher is never taken while a lower-ranked one of the same ownership is free. Which
- * usage that is belongs to the camera and its administrator, not to this server — §11.2.8.12 lets
- * `SetStreamPriorities` reorder it, so no ordering may be assumed here. A usage the list does not
- * carry sorts last **within its own side**, not last overall: the camera states nothing about it, and
- * destroying what cannot be reasoned about is the one outcome with no way back — but an unranked
- * stream of this server's own still goes before any foreign one, because ownership is the key above
- * the ranking.
+ * Order: this server's own streams before anybody else's (the same rule as `chooseSnapshotStreamToFree`),
+ * then lowest in `priorities` (`StreamUsagePriorities`, §11.2.7.19, highest first). A usage missing from
+ * `priorities` goes last within its ownership group.
  */
 export function chooseEvictionVictim(
     streams: AllocatedVideoStream[],
     priorities: number[],
     ours: (stream: AllocatedVideoStream) => boolean,
 ): AllocatedVideoStream | undefined {
-    // -1 for a usage the list does not carry, which sorts it behind every ranked candidate.
     const rankOf = (stream: AllocatedVideoStream): number => priorities.indexOf(stream.streamUsage);
     const candidates = streams.filter(
         stream => stream.referenceCount === 0 && stream.streamUsage !== StreamUsage.Internal,

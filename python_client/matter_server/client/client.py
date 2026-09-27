@@ -71,8 +71,6 @@ if TYPE_CHECKING:
 
 SUB_WILDCARD: Final = "*"
 
-# The provider commands `send_webrtc_provider_command` relays, named once so a caller and a test
-# state the same set as the method they call.
 WebRtcProviderCommandName = Literal[
     "ProvideOffer",
     "SolicitOffer",
@@ -80,10 +78,10 @@ WebRtcProviderCommandName = Literal[
     "ProvideIceCandidates",
 ]
 
-# Relayed by the server only from schema 14 on; the offer variants have been relayed since 12.
+# Relayed from schema 14; the offer commands need only schema 12.
 SIGNALLING_PROVIDER_COMMANDS: Final = frozenset({"ProvideAnswer", "ProvideIceCandidates"})
 
-# Events whose payload names the node they concern, so a node_filter subscriber receives them.
+# Payload carries node_id, so node_filter subscribers receive these events.
 NODE_SCOPED_CAMERA_EVENTS: Final = frozenset(
     {
         EventType.WEBRTC_CALLBACK,
@@ -747,13 +745,10 @@ class MatterClient:
         The server hard-codes the cluster id (0x0553) and injects
         originatingEndpointId — payload should omit both.
 
-        ``ProvideOffer`` and ``SolicitOffer`` establish a session and answer with the
-        camera's response; ``ProvideAnswer`` and ``ProvideIceCandidates`` signal into a
-        session the camera already holds and answer ``None``, because the cluster defines
-        no response payload for them, and are relayed only from schema 14 on. ``EndSession``
-        is deliberately not relayed here:
-        ``camera_stop_stream`` owns it, so one session gets one ``EndSession`` and the
-        server's own records go with that invoke.
+        ``ProvideOffer`` and ``SolicitOffer`` establish a session and return the camera's
+        response. ``ProvideAnswer`` and ``ProvideIceCandidates`` signal into an existing
+        session, return ``None`` and need schema 14. ``EndSession`` is not relayed: use the
+        ``camera_stop_stream`` command, which also clears the server's session records.
         """
         response = await self.send_command(
             APICommand.SEND_WEBRTC_PROVIDER_COMMAND,
@@ -763,8 +758,6 @@ class MatterClient:
             command_name=command_name,
             payload=payload,
         )
-        # None for the two signalling commands: the cluster defines no response payload for them, so
-        # subscripting the result of one of those is what a `dict` return type would have invited.
         return cast("dict[str, Any] | None", response)
 
     def _prepare_message(

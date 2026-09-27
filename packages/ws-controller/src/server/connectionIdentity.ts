@@ -7,12 +7,7 @@
 let logTagCounter = 0;
 let ownerCounter = 0n;
 
-/**
- * A short tag for the log lines of one connection.
- *
- * Always four hex digits, so the tag is one scannable column a human can follow a connection down.
- * It wraps after 0xffff and is therefore not an identity: nothing may key a resource on it.
- */
+/** A four-hex-digit tag for one connection's log lines. It wraps after 0xffff, so never key a resource on it. */
 export function nextConnectionLogTag(): string {
     const tag = logTagCounter;
     logTagCounter = (logTagCounter + 1) & 0xffff;
@@ -20,12 +15,8 @@ export function nextConnectionLogTag(): string {
 }
 
 /**
- * The key a connection's resources are held under, distinct for every connection this process
- * accepts.
- *
- * It never wraps, so releasing one connection cannot release another's sessions. A `bigint` is what
- * makes that unconditional: a number stops counting at `Number.MAX_SAFE_INTEGER` and would hand the
- * same key to every connection after it.
+ * The key a connection's resources are held under, unique for the process lifetime. A `bigint` so it
+ * never repeats: a repeated key would let releasing one connection release another's sessions.
  */
 export function nextConnectionOwnerId(): string {
     ownerCounter += 1n;

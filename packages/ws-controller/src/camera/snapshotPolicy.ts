@@ -22,42 +22,26 @@ function pixels(resolution: Resolution): number {
     return resolution.width * resolution.height;
 }
 
-/** Whether `resolution` fits under `ceiling` on each dimension independently. */
 function fitsUnder(resolution: Resolution, ceiling: Resolution): boolean {
     return resolution.width <= ceiling.width && resolution.height <= ceiling.height;
 }
 
 /**
- * Whether this capability takes one of the camera's `MaxConcurrentEncoders`.
- *
- * The two flags are nested, not equivalent: `RequiresHardwareEncoder` "is only considered if
- * RequiresEncodedPixels is true" (§11.2.6.9.5, quoted in `@matter/types`' SnapshotCapabilitiesStruct).
- * The reference server encodes the same nesting — `CameraAVStreamManagementCluster.cpp` leaves
- * `snapshotStreamArgs.hardwareEncoder` at false and overwrites it only inside
- * `if (requiresEncodedPixels && requiresHardwareEncoder.HasValue())`.
+ * Whether this capability takes one of the camera's `MaxConcurrentEncoders`. `RequiresHardwareEncoder`
+ * "is only considered if RequiresEncodedPixels is true" (§11.2.6.9.5).
  */
 export function usesHardwareEncoder(capability: SnapshotCapability): boolean {
     return capability.requiresEncodedPixels && capability.requiresHardwareEncoder;
 }
 
 /**
- * Whether every one of the camera's encoders is taken.
+ * Whether every one of the camera's encoders is taken. With `MaxConcurrentEncoders` absent, any live
+ * stream counts as the last one.
  *
- * `MaxConcurrentEncoders` is how many streams the camera can encode at once, so one live stream on a
- * camera that states four leaves three encoders free. Treating any live stream as "no encoder left"
- * costs picture size on every multi-encoder camera and reports the loss as a degradation that did not
- * happen. With `MaxConcurrentEncoders` absent the camera states no budget, and any live stream is
- * taken as the last one.
- *
- * A video stream counts while something references it; a snapshot stream counts while it exists,
- * because `HardwareEncoder` states that the stream uses one of the encoders (§11.2.6.13.9) and says
- * nothing about anyone watching. The flag is the camera's own, not derived from the capability the
- * stream was allocated at. Snapshot streams have to be counted now that no call gives one back:
- * missing them means the ladder walks down a camera whose encoder is already taken and, on hardware
- * whose every snapshot capability needs one, fails with `ResourceExhausted` and no rung left. The
- * caller passes what this server allocated and the camera has not reported yet alongside the reported
- * streams, so the count no longer lags an allocate. It still lags a `camera_release_stream`, which
- * over-counts and costs picture size on the next call until the report catches up.
+ * A video stream counts while referenced; a snapshot stream counts while it exists with
+ * `HardwareEncoder` set (§11.2.6.13.9). Callers include streams allocated but not yet reported.
+ * The reference server counts every allocated video stream (`IsResourceAvailableForStreamAllocation`);
+ * this result only orders the snapshot ladder, so an undercount costs one device refusal.
  */
 export function encodersExhausted(args: {
     maxConcurrentEncoders: number | undefined;
@@ -75,21 +59,16 @@ export function encodersExhausted(args: {
 /**
  * The capabilities to try, best first, or which narrowing step left none.
  *
- * `bestWithinCallerBounds` is the largest capability the caller's own bounds allow, whatever the
- * encoder preference then does with the order, so a caller can be told whether it was served a
- * smaller frame than it asked for. It is undefined only when the camera advertises no snapshot
- * capability at all.
+ * `bestWithinCallerBounds` is the largest capability the caller's bounds allow, before the encoder
+ * reordering; undefined only when the camera advertises no snapshot capability.
  */
 export type SnapshotSelection =
     | { readonly capabilities: SnapshotCapability[]; readonly bestWithinCallerBounds: SnapshotCapability | undefined }
     | { readonly unsatisfiable: "codec" | "bounds" };
 
 /**
- * Whether `chosen` is a smaller image than the best capability the caller's bounds allowed.
- *
- * `chosen` is the frame the device returned, not the stream it came from: a snapshot stream is
- * allocated for a range and the device picks a size inside it, so the stream's ceiling would report
- * a size the caller may not have been given.
+ * Whether `chosen` is a smaller image than the best capability the caller's bounds allowed. `chosen`
+ * must be the returned frame's size, not the stream's ceiling: the device picks a size inside the range.
  */
 export function isDegradedFrom(chosen: Resolution, best: SnapshotCapability | undefined): boolean {
     return best !== undefined && pixels(chosen) < pixels(best.resolution);
@@ -98,33 +77,13 @@ export function isDegradedFrom(chosen: Resolution, best: SnapshotCapability | un
 /**
  * The snapshot stream the make-room rung should take, or none whose loss would buy anything.
  *
- * `candidates` are the streams this server allocated in this process run — ownership answers exactly
- * one question, and this is it. What decides among them is what each would actually free.
+ * `candidates` must be only streams this server allocated in this process run: `SnapshotStreamDeallocate`
+ * (§11.2.8.10.2) checks only `ReferenceCount`, which `CaptureSnapshot` does not raise, so a foreign
+ * stream in use can read 0.
  *
- * Which is one half of the make-room ladder's single rule, stated in full on `chooseEvictionVictim`:
- * this server gives up its own streams before it takes anybody else's. That rule is why a foreign
- * snapshot stream is never a candidate here at all. What puts this rung ahead of the video one is a
- * separate reason: `StreamUsagePriorities` ranks video usages and says nothing about snapshot streams,
- * so there is no ranking to fold these candidates into.
- *
- * `SnapshotStreamDeallocate` (§11.2.8.10.2) refuses an id it does not know and a `ReferenceCount`
- * above 0, and has no `Internal` case — snapshot streams carry no stream usage. The count is what
- * something else holding the stream looks like: `CaptureSnapshot` does not raise it, so a stream this
- * server polls snapshots from reads 0, and "unreferenced" therefore means nobody has taken a reference
- * rather than nobody is using it. That is why only this server's own streams are offered here.
- *
- * A candidate has to free capacity the failed allocate could use, which is the two the camera states:
- * one of `MaxConcurrentEncoders` while `HardwareEncoder` is set (§11.2.6.13.9), and a share of
- * `MaxEncodedPixelRate` while `EncodedPixels` is (§11.2.6.13.8). The pixel rate counts for nothing on a
- * camera that states no `MaxEncodedPixelRate`: {@link budgetVideoEnvelope} then leaves the envelope
- * alone, so the retry would repeat the request that just failed, having destroyed a stream for it.
- *
- * An encoder-holding candidate goes first, whatever its size. `MaxConcurrentEncoders` is small — one on
- * the hardware this rung exists for — so an encoder is the scarcer of the two, and freeing that stream
- * frees its pixel rate with it. Only then does size decide, by the sum the reference server uses
- * (`frameRate × maxResolution`, `IsResourceAvailableForStreamAllocation`), since a capacity refusal
- * states nothing about which limit it hit. The id breaks a tie, so the choice does not depend on the
- * order the camera reported the streams in.
+ * A candidate must free an encoder (`HardwareEncoder`, §11.2.6.13.9) or pixel rate (`EncodedPixels`,
+ * §11.2.6.13.8, only when the camera states `MaxEncodedPixelRate`). Encoder holders go first, then the
+ * larger `frameRate × maxResolution` (the reference server's measure), then the lower id.
  */
 export function chooseSnapshotStreamToFree(
     candidates: AllocatedSnapshotStream[],
@@ -146,26 +105,12 @@ export function chooseSnapshotStreamToFree(
 
 /**
  * An already-allocated snapshot stream worth capturing from instead of allocating one, or none.
+ * Reuse avoids the allocation churn §11.2.1.1 asks controllers to avoid.
  *
- * Allocating a snapshot stream per call is the churn §11.2.1.1 asks controllers to avoid, and the
- * stream is a shared resource whoever allocated it: §11.2.8.8's own dedup returns an existing id for
- * a matching request, and `CaptureSnapshot` names any allocated stream. Adopting one also costs no
- * encoder, since the stream already holds whatever it holds — which is why the encoder narrowing
- * that {@link selectSnapshotCapabilities} applies has no say here.
- *
- * `best` is the capability that would otherwise be allocated. The floor is tested against the
- * candidate's `minResolution`, not its ceiling: a snapshot stream is allocated for a range and
- * §11.2.8.13.3 lets the camera answer with any size in it, so the ceiling states what the frame may
- * be rather than what it will be. Both bounds are compared per dimension, because a 3000x700 stream
- * outnumbers a 1920x1080 capability in pixels while being 380 rows shorter. Together that is what
- * makes adoption unable to hand back a smaller frame than allocating would have.
- *
- * The caller's own ceiling and codec are hard, as everywhere else: a stream past either is not a
- * candidate rather than a frame the caller did not ask for.
- *
- * `overlays` is what `resolveOverlays` resolved, not what the caller stated: adoption is this
- * path's only reuse rung and there is no degraded counterpart to give a server default up at, so the
- * value that would have been allocated is the one a candidate has to carry.
+ * `best` is the capability that would otherwise be allocated. It is compared per dimension against the
+ * candidate's `minResolution`, because the camera may answer with any size in the range (§11.2.8.13.3),
+ * so an adopted stream never yields a smaller frame than allocating would. `bounds.overlays` must be
+ * the resolved overlays, not the caller's statement.
  */
 export function findAdoptableSnapshotStream(
     streams: AllocatedSnapshotStream[],
@@ -185,19 +130,9 @@ export function findAdoptableSnapshotStream(
 /**
  * The capabilities to attempt a snapshot stream against, best first.
  *
- * A camera with MaxConcurrentEncoders = 1 has no encoder to spare while a video stream is live, so a
- * concurrent snapshot must use a capability that needs none — on the Aqara G350 that is 640x480, and
- * requesting 1080p there fails with ResourceExhausted rather than degrading. Several are returned so
- * the caller can walk down after a device rejection instead of failing on the first choice.
- *
- * The caller's codec and resolution ceiling are hard and are applied first: a ceiling that excludes
- * every capability reports `unsatisfiable` rather than handing back a snapshot larger than the caller
- * declared it can handle. The encoder preference runs last and is a stable partition, not a filter:
- * with every encoder taken the encoder-free capabilities come first and the encoder-using ones follow
- * them. Removing the latter ended the ladder at the last encoder-free rung, so a device that refused
- * all of those failed the call while capabilities the caller's own bounds allowed had never been
- * tried — and the device is the arbiter of whether an encoder is really free, since
- * `encodersExhausted` reads a subscription-backed view that lags.
+ * The caller's codec and resolution ceiling are hard. With every encoder taken, encoder-free
+ * capabilities are moved first but encoder-using ones stay in the list: `encodersExhausted` reads a
+ * lagging view, so the device decides whether an encoder is really free.
  */
 export function selectSnapshotCapabilities(
     capabilities: SnapshotCapability[],
@@ -218,7 +153,7 @@ export function selectSnapshotCapabilities(
         );
         if (eligible.length === 0 && before.length > 0) return { unsatisfiable: "bounds" };
     }
-    // Array.prototype.sort mutates in place; eligible can still be the caller's own array here.
+    // Copy before sorting: `eligible` can still be the caller's array.
     const largestFirst = (list: SnapshotCapability[]): SnapshotCapability[] =>
         [...list].sort((a, b) => pixels(b.resolution) - pixels(a.resolution));
     const preferred = largestFirst(eligible);

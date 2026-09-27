@@ -32,11 +32,8 @@ interface Capture {
 }
 
 /**
- * A command handler whose matter.js peer lookup is recorded instead of performed.
- *
- * The groupcast paths reach matter.js through `peers.forAddress` and the peer's `interaction`, so a
- * stub at exactly that seam shows which address was built and which request was handed over — the two
- * things that decide whether the group path was taken.
+ * A command handler whose matter.js peer lookup (`peers.forAddress`, then `interaction`) is recorded
+ * instead of performed.
  */
 function stubHandler(capture: Capture): { handler: ControllerCommandHandler; capture: Capture } {
     const peer = {
@@ -89,8 +86,7 @@ describe("groupcast", () => {
     it("keeps a group out of the commissioned node list", () => {
         const { handler } = stubHandler(freshCapture());
 
-        // A groupcast registers the group in the controller's peer set with a peerAddress, which is
-        // all `getCommissionedNodes` filters on, so it would otherwise be interviewed as a node.
+        // A groupcast adds the group to the peer set with a peerAddress, which getCommissionedNodes filters on.
         expect(handler.getCommissionedNodeIds()).to.deep.equal([NodeId(1n), NodeId.fromTemporaryLocalNodeId(3)]);
     });
 

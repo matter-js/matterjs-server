@@ -102,10 +102,7 @@ function statusError(status: number): Error & { code: number } {
     return error;
 }
 
-/**
- * A plain provide-offer: a live video section stating no codec, so it refuses nothing and narrows
- * nothing. What a test that only needs the server to be answering an offer passes.
- */
+/** A provide-offer with one live video section that states no codec, so it refuses and narrows nothing. */
 export const VIDEO_OFFER = [
     "v=0",
     "o=- 0 0 IN IP4 127.0.0.1",
@@ -201,19 +198,16 @@ export interface RecordedInvoke {
     nodeId: NodeId;
     endpointId: EndpointNumber;
     /**
-     * The manager's own id hook, for a test that needs to act in the window it opens: the real
-     * provider path calls it with the answered id and then gives the session to the local requestor,
-     * so a test that calls it and then ends the session is in that window and nowhere else.
-     * Undefined for every command but `provideOffer` / `solicitOffer`.
+     * The manager's id hook. The real provider path calls it with the answered id and then gives the
+     * session to the local requestor. Undefined for every command but `provideOffer` / `solicitOffer`.
      */
     sessionEstablishing?: (webRtcSessionId: number) => void;
 }
 
 /**
- * Call the manager's id hook as the real provider path does — after the response, before anything can
- * route an `End` for the id — so no test double can keep the pre-hook behaviour by accident.
- *
- * Calling it a second time states the same id, so a test that called it itself is not disturbed.
+ * Call the manager's id hook as the real provider path does: after the response, before anything can
+ * route an `End` for the id. A second call states the same id, so a test that called it itself is not
+ * disturbed.
  */
 function announceEstablishingSession(recorded: RecordedInvoke, response: unknown): void {
     if (recorded.command !== "provideOffer" && recorded.command !== "solicitOffer") return;
@@ -488,8 +482,7 @@ describe("CameraStreamManager", () => {
         });
 
         it("reports the reused stream's own bounds, not the wider envelope the request computed", async () => {
-            // No hints: the computed envelope spans the device's full range (640x360..2560x1440),
-            // but CONTAINED_STREAM's own range is the fixed 1920x1080 the client actually gets.
+            // Unhinted, the envelope spans 640x360..2560x1440; CONTAINED_STREAM is a fixed 1920x1080.
             const { manager } = managerWith(withStreams([CONTAINED_STREAM]));
             const resolved = await manager.resolveVideoStream({
                 nodeId: NODE,
@@ -504,7 +497,7 @@ describe("CameraStreamManager", () => {
         });
 
         it("does not reuse a stream whose floor is below the requested floor", async () => {
-            // Issue #1056: [720p..1080p] may deliver 720p, so a 1080p floor is not satisfied.
+            // [720p..1080p] may deliver 720p, so a 1080p floor is not satisfied.
             const wider = { ...CONTAINED_STREAM, minResolution: { width: 1280, height: 720 } };
             const { manager, invokes } = managerWith(withStreams([wider]), async () => ({ videoStreamId: 9 }));
             const resolved = await manager.resolveVideoStream({
@@ -531,8 +524,6 @@ describe("CameraStreamManager", () => {
         });
 
         it("fails typed when the caller's resolution floor exceeds what the camera can deliver", async () => {
-            // Clamping the floor down to the sensor reports success while delivering less than the
-            // caller stated it needs, which is the same silent substitution reuse containment forbids.
             const { manager, invokes } = managerWith(STATE, async () => ({ videoStreamId: 9 }));
             let thrown: unknown;
             try {
@@ -549,8 +540,7 @@ describe("CameraStreamManager", () => {
             expect((thrown as ServerError).code).to.equal(ServerErrorCode.CameraStreamIncompatible);
             const payload = JSON.parse((thrown as ServerError).message);
             expect(payload.reason).to.equal("bounds");
-            // Which bound failed, and against what: `device`/`requested` stay the codec vocabulary
-            // every other 102 uses, so a client can read both without guessing which one it got.
+            // `device`/`requested` keep the vocabulary every other 102 uses.
             expect(payload.bound).to.deep.equal({
                 field: "min_resolution",
                 requested: "3840x2160",
@@ -594,8 +584,7 @@ describe("CameraStreamManager", () => {
         });
 
         it("fails immediately when the device calls the request structurally invalid", async () => {
-            // ConstraintError (0x87) is min > max, a field out of range or an unknown codec. Narrowing
-            // cannot make any of those valid, so the ladder must not spend its rounds on them.
+            // ConstraintError (0x87) is min > max, a field out of range or an unknown codec; narrowing cannot fix it.
             const { manager, invokes } = managerWith(STATE, async () => {
                 throw statusError(Status.ConstraintError);
             });
@@ -661,8 +650,6 @@ describe("CameraStreamManager", () => {
         });
 
         it("never hands out a stream of another usage, however little capacity the camera has", async () => {
-            // stream_usage is the only mandatory argument. A LiveView caller given a Recording stream
-            // has had the one thing it must state substituted, and no rung is allowed to do that.
             const otherUsage = { ...CONTAINED_STREAM, streamUsage: 1, referenceCount: 1 };
             const { manager } = managerWith(withStreams([otherUsage]), async () => {
                 throw statusError(Status.ResourceExhausted);
@@ -683,9 +670,8 @@ describe("CameraStreamManager", () => {
         });
 
         it("hands out a stream outside the computed bit-rate range as degraded, not as a clean reuse", async () => {
-            // The camera's own trade-off point puts 1080p at 800 kbit/s, so a stream capped at
-            // 200 kbit/s delivers less than this server would have allocated. The caller stated no
-            // bit rate, so it is the server's bound being given up — which is what degraded reports.
+            // 1080p's trade-off point is 800 kbit/s and the caller stated no bit rate, so only the server's
+            // bound is given up.
             const starved = { ...CONTAINED_STREAM, minBitRate: 100000, maxBitRate: 200000 };
             const { manager } = managerWith(withStreams([starved]), async () => {
                 throw statusError(Status.ResourceExhausted);
@@ -701,8 +687,6 @@ describe("CameraStreamManager", () => {
         });
 
         it("refuses a stream whose bit-rate ceiling is above the one the caller stated", async () => {
-            // Reported back as reused with bit_rate.max far above the ceiling, this was a stream the
-            // caller had said it could not carry.
             const loud = { ...CONTAINED_STREAM, maxBitRate: 8000000 };
             const { manager, invokes } = managerWith(withStreams([loud]), async () => ({ videoStreamId: 9 }));
             const resolved = await manager.resolveVideoStream({
@@ -723,8 +707,7 @@ describe("CameraStreamManager", () => {
             const { manager, invokes } = managerWith(withStreams([idle]), async invoke => {
                 if (invoke.command === "videoStreamAllocate") {
                     allocateAttempts += 1;
-                    // Refuses every narrowing too, so the request reaches the eviction rung: a camera
-                    // short of capacity is not served by a smaller envelope.
+                    // Refuses every narrowing too, so the request reaches the eviction rung.
                     if (allocateAttempts <= NARROWING_ATTEMPTS) throw statusError(Status.ResourceExhausted);
                     return { videoStreamId: 11 };
                 }
@@ -746,9 +729,6 @@ describe("CameraStreamManager", () => {
         });
 
         it("frees a snapshot stream it allocated itself when that is the only capacity left", async () => {
-            // Round 13 made every snapshot stream outlive its call, so on single-encoder hardware a
-            // client's own snapshot poll blocked its own stream start and only camera_release_stream
-            // could clear it.
             const encoderHolder = {
                 snapshotStreamId: 5,
                 overlays: NO_OVERLAYS,
@@ -801,8 +781,7 @@ describe("CameraStreamManager", () => {
                     .filter(invoke => invoke.command === "snapshotStreamDeallocate")
                     .map(invoke => invoke.fields.snapshotStreamId),
             ).to.deep.equal([5]);
-            // Nothing is put back: the next camera_snapshot allocates one from the camera's own
-            // capabilities, and a replacement here would re-take the encoder this request needed.
+            // No replacement: it would re-take the encoder this request needed.
             expect(invokes.filter(invoke => invoke.command === "snapshotStreamAllocate")).to.have.length(1);
             expect(evicted).to.deep.equal([{ nodeId: NODE, endpointId: ENDPOINT, kind: "snapshot", streamId: 5 }]);
             // The id is not a video stream id, so it stays out of the field that names those.
@@ -810,9 +789,8 @@ describe("CameraStreamManager", () => {
         });
 
         it("puts the pixel rate a freed snapshot stream held back into the envelope", async () => {
-            // The sensor frame at 30 fps is 110.6 Mpx/s. The snapshot stream reserves 62.2 of it,
-            // leaving 48.4, which carries that frame at 13 fps; the request that freed it must get the
-            // whole budget back rather than the envelope the shortage produced.
+            // Sensor frame at 30 fps is 110.6 Mpx/s; the snapshot stream reserves 62.2, leaving 13 fps.
+            // The request that freed it must get the whole budget back.
             const BUDGET = 110592000;
             const snapshotHolder = {
                 snapshotStreamId: 5,
@@ -914,10 +892,7 @@ describe("CameraStreamManager", () => {
         const videoRequest = { nodeId: NODE, endpointId: ENDPOINT, streamUsage: LIVE_VIEW, limits: { codec: H265 } };
 
         it("takes its own snapshot stream before a video stream anyone else allocated", async () => {
-            // The ordering is the whole point: a foreign video stream nothing references is a legitimate
-            // victim, and taking it while a snapshot stream of ours holds the encoder is the unkind order.
-            // A different codec keeps it out of the reuse and degraded rungs, so the ladder reaches the
-            // make-room step with both candidates available.
+            // A different codec keeps the foreign stream out of reuse and degraded, so make-room sees both.
             const foreignIdle = { ...CONTAINED_STREAM, videoStreamId: 21, videoCodec: 2, referenceCount: 0 };
             const { manager, invokes, holder } = cameraShortOfEncoders();
             await manager.snapshot({ nodeId: NODE, endpointId: ENDPOINT });
@@ -938,9 +913,7 @@ describe("CameraStreamManager", () => {
         });
 
         it("takes a snapshot stream of its own the camera has not reported yet", async () => {
-            // The sequence the rung exists for is a camera_snapshot followed straight away by a
-            // camera_start_stream, and AllocatedSnapshotStreams lags it. Reading the reported view alone
-            // left the request failing with 103 while the stream blocking it was this server's own.
+            // AllocatedSnapshotStreams lags, so only the server's own record names the blocking stream.
             const { manager, invokes } = cameraShortOfEncoders();
             await manager.snapshot({ nodeId: NODE, endpointId: ENDPOINT });
             // holder.state is deliberately not updated: the camera has reported nothing.
@@ -970,15 +943,12 @@ describe("CameraStreamManager", () => {
 
             await manager.resolveVideoStream(videoRequest).catch(() => undefined);
 
-            // A refusal it sent once it will send again, so the stream leaves the candidate list and the
-            // video rung gets the remaining attempts.
+            // A refused stream leaves the candidate list; the video rung gets the remaining attempts.
             expect(invokes.filter(invoke => invoke.command === "snapshotStreamDeallocate")).to.have.length(1);
             expect(invokes.map(invoke => invoke.command)).to.include("videoStreamDeallocate");
         });
 
         it("does not name a snapshot stream it destroyed in the capacity it reports as taken", async () => {
-            // `allocated` is what a client releases from; naming a freed id sends it to the camera for a
-            // stream that no longer exists.
             const { manager, holder } = cameraShortOfEncoders(invoke => {
                 if (invoke.command === "videoStreamAllocate") throw statusError(Status.ResourceExhausted);
                 return undefined;
@@ -997,9 +967,7 @@ describe("CameraStreamManager", () => {
         });
 
         it("puts a snapshot stream back when the request that freed it never used the capacity", async () => {
-            // The video rung's rule, for the same reason: a request that bought capacity and then failed
-            // must not leave the camera one stream poorer. The id does not come back — the camera issues
-            // a new one — but the snapshot range does.
+            // The id does not come back (the camera issues a new one); the snapshot range does.
             const { manager, invokes, holder } = cameraShortOfEncoders(invoke => {
                 if (invoke.command === "videoStreamAllocate") throw statusError(Status.ResourceExhausted);
                 return undefined;
@@ -1016,11 +984,7 @@ describe("CameraStreamManager", () => {
         });
 
         it("puts a snapshot stream back when the degraded rung served the caller instead", async () => {
-            // The success that spends nothing: the loop ends, an existing in-use stream meets the
-            // caller's bounds, and the capacity the eviction bought went unused — which is what tells
-            // the difference between a give-back due on failure and one due unless spent.
-            // Wider than the envelope, so reuse passes it over, and referenced, so nothing can take it:
-            // the degraded rung is the only rung left that can answer.
+            // Wider than the envelope (reuse skips it) and referenced (nothing can take it): only degraded answers.
             const inUse = {
                 ...CONTAINED_STREAM,
                 videoStreamId: 7,
@@ -1042,8 +1006,7 @@ describe("CameraStreamManager", () => {
         });
 
         it("leaves the id alone when the camera reports it with parameters this server never asked for", async () => {
-            // The camera reissues an id it has freed, and a lease it never confirmed lives for the
-            // process run, so an id match on its own can name another controller's stream.
+            // The camera reissues freed ids, so an id match alone can name another controller's stream.
             const reissued = {
                 ...SNAPSHOT_HOLDER,
                 minResolution: { width: 640, height: 480 },
@@ -1062,8 +1025,6 @@ describe("CameraStreamManager", () => {
         });
 
         it("stops claiming a snapshot stream the camera answers NotFound for", async () => {
-            // NotFound is the camera stating the lease was wrong, so a later request must not try the
-            // same id again; every other give-back path reads that status the same way.
             const { manager, invokes, holder } = cameraShortOfEncoders(invoke => {
                 if (invoke.command === "snapshotStreamDeallocate") throw statusError(Status.NotFound);
                 if (invoke.command === "videoStreamAllocate") throw statusError(Status.ResourceExhausted);
@@ -1159,8 +1120,6 @@ describe("CameraStreamManager", () => {
         });
 
         it("announces the stream the make-room rung took", async () => {
-            // The request that benefits is told in its own response; the client holding the id that
-            // stopped existing has nothing else to learn it from.
             const idle = { ...CONTAINED_STREAM, videoStreamId: 7, referenceCount: 0 };
             let allocateAttempts = 0;
             const { manager } = managerWith(withStreams([idle]), async invoke => {
@@ -1188,9 +1147,7 @@ describe("CameraStreamManager", () => {
         });
 
         it("reacts to a device status matter.js wrapped in a cause chain", async () => {
-            // matter.js's own callers read a status with StatusResponseError.of, which walks the cause
-            // chain. A bare `code` read misses a wrapped status, every rung reads "rethrow", and the
-            // whole ladder degrades to raising what the SDK raised.
+            // matter.js reads a status through the cause chain (StatusResponseError.of); a bare `code` read misses it.
             const idle = { ...CONTAINED_STREAM, videoStreamId: 7, referenceCount: 0 };
             let allocateAttempts = 0;
             const { manager, invokes } = managerWith(withStreams([idle]), async invoke => {
@@ -1241,8 +1198,8 @@ describe("CameraStreamManager", () => {
         });
 
         it("frees its own unreferenced stream before touching a foreign one", async () => {
-            // A different codec keeps both candidates out of the reuse/relaxed-reuse checks, so the
-            // ladder reaches freeAnUnreferencedVideoStream regardless of which one it would pick.
+            // A different codec keeps both candidates out of the reuse check, so the ladder reaches
+            // freeAnUnreferencedVideoStream.
             const H264 = 2;
             let allocateAttempts = 0;
             const { manager, invokes, holder } = managerWith(STATE, async invoke => {
@@ -1263,8 +1220,7 @@ describe("CameraStreamManager", () => {
             expect(resolved.streamId).to.equal(30);
             const deallocates = invokes.filter(invoke => invoke.command === "videoStreamDeallocate");
             expect(deallocates.map(invoke => invoke.fields.videoStreamId)).to.deep.equal([20]);
-            // freeAnUnreferencedVideoStream must not write back into the CameraState the mock returned:
-            // a real implementation may hand back a cached/subscription-backed object.
+            // The mock's CameraState must not be written to: a real one may be subscription-backed.
             expect(holder.state?.allocatedVideoStreams.map(stream => stream.videoStreamId)).to.deep.equal([21, 20]);
         });
 
@@ -1300,9 +1256,7 @@ describe("CameraStreamManager", () => {
         });
 
         it("takes the lowest-priority unreferenced stream, not the first one it finds", async () => {
-            // StreamUsagePriorities is ranked highest first (§11.2.7.19), so the candidate furthest
-            // down it goes: taking a Recording stream while an Analysis one sits idle would cost
-            // someone a recording the camera itself ranks above what this request is for.
+            // StreamUsagePriorities is ranked highest first (§11.2.7.19), so the lowest-ranked idle stream goes.
             const H264 = 2;
             const recording = {
                 ...CONTAINED_STREAM,
@@ -1342,8 +1296,6 @@ describe("CameraStreamManager", () => {
         });
 
         it("still frees a stream when the camera reports no stream-usage ranking at all", async () => {
-            // With nothing ranked every candidate ties, and the request must still get its capacity
-            // rather than failing because the camera left an optional ordering unreported.
             const H264 = 2;
             const idle = { ...CONTAINED_STREAM, videoStreamId: 20, videoCodec: H264, referenceCount: 0 };
             let allocateAttempts = 0;
@@ -1373,8 +1325,7 @@ describe("CameraStreamManager", () => {
         });
 
         it("never takes an Internal stream to make room, however idle it is", async () => {
-            // The device refuses it with DynamicConstraintError (§11.2.8.7.2), and the stream is one
-            // the camera keeps for itself.
+            // The device refuses it with DynamicConstraintError (§11.2.8.7.2).
             const H264 = 2;
             const internal = {
                 ...CONTAINED_STREAM,
@@ -1404,8 +1355,8 @@ describe("CameraStreamManager", () => {
         });
 
         it("hands out an in-use stream as degraded when the caller stated no bounds", async () => {
-            // Wider than the sensor so it fails plain AND relaxed reuse (both contain-in-envelope
-            // checks); only the degraded rung, which checks caller-stated bounds instead, accepts it.
+            // Wider than the sensor, so it fails the reuse check; only the degraded rung, which checks
+            // caller-stated bounds instead, accepts it.
             const busy = {
                 ...CONTAINED_STREAM,
                 videoStreamId: 7,
@@ -1424,15 +1375,13 @@ describe("CameraStreamManager", () => {
             });
             expect(resolved.streamId).to.equal(7);
             expect(resolved.degraded).to.equal(true);
-            // busy.maxResolution (3840x2160) is well outside the device's own sensor ceiling, so this
-            // only matches if degraded reports the stream's own bounds.
+            // 3840x2160 is past the sensor ceiling, so this matches only the stream's own bounds.
             const envelope = requireVideoEnvelope(resolved.envelope);
             expect(envelope.minResolution).to.deep.equal(busy.minResolution);
             expect(envelope.maxResolution).to.deep.equal(busy.maxResolution);
         });
 
         it("fails rather than degrading when the caller pinned a resolution the stream cannot guarantee", async () => {
-            // Issue #1056 on the degraded path: a pinned caller must never be silently given less.
             const busy = {
                 ...CONTAINED_STREAM,
                 videoStreamId: 7,
@@ -1459,11 +1408,7 @@ describe("CameraStreamManager", () => {
         });
 
         it("hands a pinned caller a stream that meets its pins exactly", async () => {
-            // The stream's bit-rate range sits below the 800 kbit/s floor this camera's own
-            // trade-off point puts on 1080p, so the reuse rung refuses it and the request walks the
-            // whole ladder down to the degraded rung. There the caller's pins are met exactly:
-            // meeting a pin is not a substitution, and the flag reports only that the stream was
-            // already there rather than allocated to the range the server computed.
+            // Bit rate below the 800 kbit/s trade-off floor for 1080p, so only the degraded rung takes it.
             const busy = { ...CONTAINED_STREAM, referenceCount: 1, minBitRate: 100000, maxBitRate: 200000 };
             const { manager } = managerWith(withStreams([busy]), async () => {
                 throw statusError(Status.ResourceExhausted);
@@ -1516,11 +1461,8 @@ describe("CameraStreamManager", () => {
         const HALF_SENSOR_BUDGET = 55296000;
 
         it("reuses a stream the camera already produces although the budget is spent", async () => {
-            // Such a stream is already drawing on the budget, so reusing it costs nothing: budgeting
-            // the reuse check would send a request to a camera that had the answer already allocated.
             const { manager, invokes } = managerWith(
-                // Just past what stream 7 reserves, so the budget would narrow the envelope below that
-                // stream if the reuse check were budgeted, and reuse would turn into an allocate.
+                // Just past stream 7's reservation: a budgeted reuse check would narrow below it and allocate.
                 { ...withStreams([CONTAINED_STREAM]), maxEncodedPixelRate: 1920 * 1080 * 30 + 1000 },
                 async () => {
                     throw new Error("nothing should be invoked");
@@ -1558,9 +1500,7 @@ describe("CameraStreamManager", () => {
         });
 
         it("reports the ceiling the budget lowered, so the caller is not left guessing", async () => {
-            // The budget spends the frame rate first, so a tight one answers a LiveView request at full
-            // sensor size and a low rate. Without this field nothing in the response said that another
-            // stream's reservation was the reason rather than the camera's own limit.
+            // The budget spends the frame rate first, so the request keeps full sensor size at a low rate.
             const { manager } = managerWith(
                 { ...STATE, maxEncodedPixelRate: HALF_SENSOR_BUDGET },
                 encoderBudgetedCamera(HALF_SENSOR_BUDGET),
@@ -1577,8 +1517,6 @@ describe("CameraStreamManager", () => {
         });
 
         it("reports no budget narrowing for a stream it reused", async () => {
-            // A stream the camera already produces carries the camera's own range, which the budget had
-            // no part in — and reuse never reaches the budget at all.
             const { manager } = managerWith(
                 { ...withStreams([CONTAINED_STREAM]), maxEncodedPixelRate: HALF_SENSOR_BUDGET },
                 encoderBudgetedCamera(HALF_SENSOR_BUDGET),
@@ -1595,8 +1533,6 @@ describe("CameraStreamManager", () => {
         });
 
         it("would have been refused by the same camera without the budget", async () => {
-            // The contrast the budget exists for: with MaxEncodedPixelRate unread the request goes out
-            // at the sensor's maximum, and the camera that could have served it first time refuses.
             const { manager, invokes } = managerWith(
                 { ...STATE, maxEncodedPixelRate: undefined },
                 encoderBudgetedCamera(HALF_SENSOR_BUDGET),
@@ -1631,8 +1567,7 @@ describe("CameraStreamManager", () => {
         });
 
         it("sends a floor the caller stated to the device although the budget cannot carry it", async () => {
-            // The budget narrows this server's own defaults and never a bound the caller stated: a
-            // caller that needs 30 fps is not quietly given 15, the camera is asked and answers.
+            // The budget narrows this server's defaults, never a bound the caller stated.
             const { manager, invokes } = managerWith(
                 { ...STATE, maxEncodedPixelRate: HALF_SENSOR_BUDGET },
                 async () => ({
@@ -1653,8 +1588,7 @@ describe("CameraStreamManager", () => {
         });
 
         it("narrows its own envelope before taking a stream that is not being used", async () => {
-            // §11.2.1.1 asks commissioners to pre-allocate long-lived streams, so an idle stream is
-            // somebody's reservation. Giving up the server's own envelope costs nobody anything.
+            // §11.2.1.1 asks commissioners to pre-allocate streams, so an idle stream is someone's reservation.
             const idle = { ...CONTAINED_STREAM, videoStreamId: 7, referenceCount: 0 };
             let allocateAttempts = 0;
             const { manager, invokes } = managerWith(withStreams([idle]), async invoke => {
@@ -1693,9 +1627,7 @@ describe("CameraStreamManager", () => {
             });
             expect(resolved.streamId).to.equal(43);
             expect(resolved.evicted).to.deep.equal([7]);
-            // The envelope is re-derived from the freed capacity rather than left where narrowing
-            // ended it: paying for capacity and then not using it costs the caller picture size for
-            // nothing.
+            // Re-derived from the freed capacity, not left where narrowing ended it.
             expect(requireVideoEnvelope(resolved.envelope).maxResolution).to.deep.equal({
                 width: 1280,
                 height: 720,
@@ -1726,8 +1658,6 @@ describe("CameraStreamManager", () => {
         });
 
         it("counts an encoded-pixels snapshot stream against the video budget", async () => {
-            // The other half of the reservation sum, through the manager rather than the policy: a
-            // snapshot stream the camera counts in its own pixel rate leaves less for the livestream.
             const snapshot = {
                 snapshotStreamId: 4,
                 overlays: NO_OVERLAYS,
@@ -1755,8 +1685,7 @@ describe("CameraStreamManager", () => {
         });
 
         it("never takes a stream the degraded rung could have handed out", async () => {
-            // Taking it and then failing costs its holder an id for a request that very stream would
-            // have served — and the restore proves it, since it puts the same parameters back.
+            // The bit-rate range keeps it out of reuse, so only the degraded rung can serve it.
             const usable = {
                 ...CONTAINED_STREAM,
                 videoStreamId: 7,
@@ -1783,8 +1712,6 @@ describe("CameraStreamManager", () => {
         });
 
         it("reports a stream it took even when the degraded rung is what served the caller", async () => {
-            // The taking happened, so the id is gone whichever rung then answered. A response that
-            // said nothing would hand the caller a success and hide the cost.
             const H264 = 2;
             const victim = { ...CONTAINED_STREAM, videoStreamId: 20, videoCodec: H264, referenceCount: 0 };
             const busy = {
@@ -1815,9 +1742,7 @@ describe("CameraStreamManager", () => {
         });
 
         it("takes a stream it allocated itself before a foreign one the camera ranks lower", async () => {
-            // STATE ranks LiveView, then Recording, then Analysis, so the camera's own ranking alone
-            // would destroy the foreign Analysis stream and leave ours. Ownership decides first: this
-            // server gives up what it allocated before it costs another controller an id.
+            // STATE's ranking alone would take the foreign Analysis stream; ownership decides first.
             const RECORDING = 1;
             const ANALYSIS = 2;
             const idle = (id: number, streamUsage: number) => ({
@@ -1830,8 +1755,7 @@ describe("CameraStreamManager", () => {
             const { manager, holder } = managerWith({ ...STATE, allocatedVideoStreams: [] }, async invoke => {
                 if (invoke.command !== "videoStreamAllocate") return undefined;
                 allocates += 1;
-                // The first allocate is what makes stream 30 this server's own; from then on the
-                // camera is out of capacity until two streams have been taken.
+                // Allocate 1 makes stream 30 ours; then the camera has no room until two streams are taken.
                 if (allocates === 1) return { videoStreamId: 30 };
                 if (allocates <= NARROWING_ATTEMPTS + 2) throw statusError(Status.ResourceExhausted);
                 return { videoStreamId: 44 };
@@ -1871,8 +1795,7 @@ describe("CameraStreamManager", () => {
             const { manager } = managerWith(withStreams([idle(20), idle(21)]), async invoke => {
                 if (invoke.command !== "videoStreamAllocate") return undefined;
                 allocateAttempts += 1;
-                // Two evictions before the camera relents, so a result naming one id is a result
-                // hiding the second stream it destroyed.
+                // Two evictions before the camera relents, so the result must name both ids.
                 if (allocateAttempts <= NARROWING_ATTEMPTS + 1) throw statusError(Status.ResourceExhausted);
                 return { videoStreamId: 44 };
             });
@@ -1888,8 +1811,7 @@ describe("CameraStreamManager", () => {
         });
 
         it("stops taking streams when no allocate attempt is left to use the capacity", async () => {
-            // The allocate that spends the capacity is inside the loop; the last iteration has none
-            // behind it, so a stream taken there would be destroyed for nothing.
+            // The last iteration has no allocate behind it, so a stream taken there is destroyed for nothing.
             const H264 = 2;
             const idle = (id: number) => ({
                 ...CONTAINED_STREAM,
@@ -1918,8 +1840,7 @@ describe("CameraStreamManager", () => {
                 thrown = error;
             }
             expect((thrown as ServerError).code).to.equal(ServerErrorCode.CameraResourceExhausted);
-            // Only this request's own attempts: the scope's restores are allocates of the victims'
-            // own stream usage, and there is one per stream taken.
+            // This request's own attempts only; the restores allocate the victims' own stream usage.
             const attempts = invokes.filter(
                 invoke => invoke.command === "videoStreamAllocate" && invoke.fields.streamUsage === LIVE_VIEW,
             );
@@ -1930,8 +1851,6 @@ describe("CameraStreamManager", () => {
         });
 
         it("still reaches the degraded rung when the caller forbade eviction", async () => {
-            // allow_eviction stops the taking rung only: handing out a stream that is already there
-            // takes nothing from anyone, so forbidding eviction must not also forbid being served.
             const H264 = 2;
             const idle = { ...CONTAINED_STREAM, videoStreamId: 20, videoCodec: H264, referenceCount: 0 };
             const busy = {
@@ -2021,10 +1940,7 @@ describe("CameraStreamManager", () => {
         });
 
         it("allocates once when two callers race for the same endpoint", async () => {
-            // Device state never names the allocation, which is what a real camera's AllocatedVideoStreams
-            // report does for as long as it takes to arrive. The second caller can therefore only avoid a
-            // twin by seeing the first caller's lease; a mock that wrote the allocation into state would
-            // let it reuse through the ordinary device-state path and prove nothing.
+            // Device state never names the allocation, so only the first caller's lease can prevent a twin.
             const ids = [9, 10];
             const { manager, invokes } = managerWith(STATE, async invoke => {
                 if (invoke.command !== "videoStreamAllocate") return undefined;
@@ -2098,8 +2014,7 @@ describe("CameraStreamManager", () => {
         });
 
         it("reports the reused audio stream's own bitRate, not the freshly computed default", async () => {
-            // bitRate/bitDepth are not part of the reuse match, so a stream allocated with a different
-            // bitRate than today's default must still be reported as what it actually is.
+            // An unstated bitRate is not part of the reuse match, so the stream's own rate is reported.
             const customBitRate = { ...EXISTING_AUDIO_STREAM, bitRate: 32000 };
             const { manager } = managerWith(withAudioStreams([customBitRate]));
             const resolved = await manager.resolveAudioStream({
@@ -2112,8 +2027,7 @@ describe("CameraStreamManager", () => {
         });
 
         it("allocates rather than reporting another stream's bit rate as the caller's", async () => {
-            // Matching on usage, codec, channels and sample rate alone handed this stream back with
-            // bit_rate 64000 to a caller that asked for 32000.
+            // Bit rate is part of the match: a caller that asked for 32000 must not get this 64000 stream.
             const { manager, invokes } = managerWith(withAudioStreams([EXISTING_AUDIO_STREAM]), async () => ({
                 audioStreamId: 9,
             }));
@@ -2196,8 +2110,7 @@ describe("CameraStreamManager", () => {
         });
 
         it("fails typed when a caller that asked for audio gets none from the codec narrowing", async () => {
-            // The caller stated OPUS and the camera has it; the offer is what leaves nothing. `device`
-            // reports the camera's own list, so the caller can see the blocker is its own offer.
+            // `device` is the camera's own list, so the caller sees its offer is the blocker.
             const { manager } = managerWith(STATE, async () => ({ audioStreamId: 9 }));
             let thrown: unknown;
             try {
@@ -2242,9 +2155,7 @@ describe("CameraStreamManager", () => {
         });
 
         it("keeps the camera's audio codecs when the offered audio section states none", async () => {
-            // The section carries only statically-mapped payload types, so the peer stated nothing
-            // about what it decodes. Narrowing by that empties the set and refuses a caller for a
-            // codec mismatch the offer never stated.
+            // Only static payload types: the peer stated nothing about what it decodes.
             const { manager } = managerWith(STATE, async () => ({ audioStreamId: 9 }));
             const resolved = await manager.resolveAudioStream({
                 nodeId: NODE,
@@ -2263,9 +2174,7 @@ describe("CameraStreamManager", () => {
         });
 
         it("reads an empty audio object as asking for audio", async () => {
-            // The key being present is the statement, not which fields are inside it. `audio: {}`
-            // used to read as "left to the server" and come back as a video-only session, so a
-            // caller asking for audio without pinning anything was told nothing went wrong.
+            // The key's presence is the statement, whatever fields it holds.
             const { manager } = managerWith({ ...STATE, microphoneCapabilities: undefined });
             let thrown: unknown;
             try {
@@ -2392,8 +2301,6 @@ describe("CameraStreamManager", () => {
         });
 
         it("fails typed when a caller that asked for audio meets a device that rejects the range", async () => {
-            // DynamicConstraintError has no audio ladder to narrow with, so it reports the caller's
-            // bounds against the camera's own codec list rather than the raw SDK error.
             const { manager } = managerWith(STATE, async () => {
                 throw statusError(Status.DynamicConstraintError);
             });
@@ -2424,7 +2331,6 @@ describe("CameraStreamManager", () => {
         });
 
         it("returns undefined rather than computing -Infinity when a capability list is empty", async () => {
-            // An empty supportedSampleRates/supportedBitDepths would otherwise put Math.max(...[]) = -Infinity on the wire.
             const noUsableAudio: CameraState = {
                 ...STATE,
                 microphoneCapabilities: {
@@ -2510,8 +2416,7 @@ describe("CameraStreamManager", () => {
         }
 
         it("puts no video track in a session whose offer rejects the video section", async () => {
-            // The peer refused it. A stream allocated here would hold an encoder and a ReferenceCount
-            // for media that can never flow, and the next request is the one that then fails 103.
+            // A stream allocated here would hold an encoder and a ReferenceCount for media that never flows.
             const { manager, invokes } = managerWith(STATE, async invoke => {
                 if (invoke.command === "audioStreamAllocate") return { audioStreamId: 4 };
                 if (invoke.command === "provideOffer") return { webRtcSessionId: 42 };
@@ -2532,8 +2437,6 @@ describe("CameraStreamManager", () => {
         });
 
         it("tells a caller that asked for video why a rejected video section left it none", async () => {
-            // The audio half of the same situation raises 102. A caller that stated video bounds gets
-            // the same answer, not a session with video: null and no error it could act on.
             const { manager, invokes } = managerWith(STATE, async invoke => {
                 if (invoke.command === "audioStreamAllocate") return { audioStreamId: 4 };
                 if (invoke.command === "provideOffer") return { webRtcSessionId: 42 };
@@ -2592,17 +2495,15 @@ describe("CameraStreamManager", () => {
             }
             expect((thrown as ServerError).code).to.equal(ServerErrorCode.CameraStreamIncompatible);
             const detail = JSON.parse((thrown as ServerError).message);
-            // Not "codec": the camera's codec list is not what ruled audio out, and no codec the
-            // caller could name instead would change the peer's refusal.
+            // Not "codec": no codec the caller could name would change the peer's refusal.
             expect(detail.reason).to.equal("offer");
             expect(detail.device).to.deep.equal([]);
             expect(detail.track).to.equal("audio");
         });
 
         it("names the track when the audio value the caller stated is not a codec list", async () => {
-            // `requested` is a codec list, so a caller that stated only a channel count leaves it
-            // empty. Without `track` the payload is byte-identical to the one that says both tracks
-            // were left out, which is a different problem with a different fix.
+            // `requested` is a codec list and empty here; without `track` the payload matches the one for
+            // both tracks left out.
             const { manager } = allocatingManager();
             let thrown: unknown;
             try {
@@ -2625,8 +2526,7 @@ describe("CameraStreamManager", () => {
         });
 
         it("puts no video track in a session whose offer will not receive video", async () => {
-            // The section is live, but a=inactive says nothing reaches the peer through it. A stream
-            // allocated here holds an encoder and a ReferenceCount for media nobody receives.
+            // a=inactive: the section is live, but nothing reaches the peer through it.
             const { manager, invokes } = managerWith(STATE, async invoke => {
                 if (invoke.command === "audioStreamAllocate") return { audioStreamId: 4 };
                 if (invoke.command === "provideOffer") return { webRtcSessionId: 42 };
@@ -2646,8 +2546,6 @@ describe("CameraStreamManager", () => {
         });
 
         it("tells a caller that asked for video why a section it will not receive left it none", async () => {
-            // Same answer as a rejected section: the caller stated video and must hear why it has
-            // none, rather than reading video: null with no error.
             const { manager, invokes } = managerWith(STATE, async invoke => {
                 if (invoke.command === "audioStreamAllocate") return { audioStreamId: 4 };
                 if (invoke.command === "provideOffer") return { webRtcSessionId: 42 };
@@ -2675,8 +2573,7 @@ describe("CameraStreamManager", () => {
         });
 
         it("puts no audio track in a session whose audio section only asks to send", async () => {
-            // a=sendonly asks for talkback and refuses our audio in one statement. The talkback
-            // request must not be read as permission to send audio back.
+            // a=sendonly asks for talkback and refuses our audio in one statement.
             const { manager, invokes } = allocatingManager();
             const session = await manager.startStream({
                 nodeId: NODE,
@@ -2715,8 +2612,7 @@ describe("CameraStreamManager", () => {
         });
 
         it("puts no video track in a session whose offer carries no video section", async () => {
-            // An answer carries the m-lines of the offer it answers and no others (RFC 3264 §6), so a
-            // stream allocated for a section that is not there could never be attached to anything.
+            // An answer carries only the offer's m-lines (RFC 3264 §6), so such a stream could attach to nothing.
             const { manager, invokes } = managerWith(STATE, async invoke => {
                 if (invoke.command === "audioStreamAllocate") return { audioStreamId: 4 };
                 if (invoke.command === "provideOffer") return { webRtcSessionId: 42 };
@@ -2819,9 +2715,7 @@ describe("CameraStreamManager", () => {
         });
 
         it("allocates both tracks when there is no offer to answer", async () => {
-            // SolicitOffer: the camera writes the m-lines, so nothing has stated that a kind cannot
-            // be carried. A missing section only refuses a track when there is an offer it is
-            // missing from.
+            // SolicitOffer: the camera writes the m-lines, so no missing section refuses a track.
             const { manager, invokes } = managerWith(STATE, async invoke => {
                 if (invoke.command === "videoStreamAllocate") return { videoStreamId: 9 };
                 if (invoke.command === "audioStreamAllocate") return { audioStreamId: 4 };
@@ -2856,18 +2750,13 @@ describe("CameraStreamManager", () => {
             expect([...(manager.signallingOwners(NODE, ENDPOINT, session.webRtcSessionId) ?? [])]).to.deep.equal([
                 "conn-1",
             ]);
-            // A session on the same camera that this server holds no record of names no owner, which
-            // is what the WebSocket route reads as "every opted-in connection".
+            // An unrecorded session names no owner, which the WebSocket route reads as every opted-in connection.
             expect(manager.signallingOwners(NODE, ENDPOINT, session.webRtcSessionId + 1)).to.equal(undefined);
         });
 
         it("names no owner while a session is being established on that camera", async () => {
-            // A session being established is not an owner of every id the registry does not know:
-            // naming it would withhold a raw-route client's own signalling for as long as any
-            // camera_start_stream runs on the camera. What such a rule would buy is one window, since
-            // WebRtcTransportRequestorServer answers NotFound for signalling naming a session it has
-            // not stored — Offer included — so an event can only arrive for a session already
-            // registered with the local requestor.
+            // Owning every unknown id would withhold raw-route signalling during any camera_start_stream. The
+            // local requestor answers NotFound for sessions it has not stored.
             let ownersWhileEstablishing: ReadonlySet<string> | undefined;
             const { manager } = managerWith(STATE, async invoke => {
                 if (invoke.command === "videoStreamAllocate") return { videoStreamId: 9 };
@@ -2927,8 +2816,7 @@ describe("CameraStreamManager", () => {
         }
 
         it("reports an offer asking for talkback on a camera that does not support it", async () => {
-            // The camera never receives that audio and nothing in the response says so, so the log is
-            // the only place the mismatch is visible.
+            // Nothing in the response says so; the log is the only place the mismatch shows.
             const { manager } = allocatingManager();
             const messages = await logged(() =>
                 manager.startStream({
@@ -3045,8 +2933,7 @@ describe("CameraStreamManager", () => {
         });
 
         it("tells the owning connection that its session was stopped, whoever stopped it", async () => {
-            // `camera_stop_stream` names no connection, by design: the camera's PeerNodeID check is the
-            // gate. So the connection that started the session learns of its end nowhere else.
+            // camera_stop_stream names no connection, so the owner learns of the end nowhere else.
             const { manager } = allocatingManager();
             const announced = endingsOf(manager);
             await manager.startStream({
@@ -3104,8 +2991,6 @@ describe("CameraStreamManager", () => {
         });
 
         it("announces a session it holds no record of with no owner, so every client hears it", async () => {
-            // A raw-route session is nobody's as far as this server's records go, and the client
-            // driving it is the one that cannot afford to keep signalling into a session that is gone.
             const { manager } = managerWith(STATE);
             const announced = endingsOf(manager);
             expect(await manager.stopStream(NODE, ENDPOINT, 999, "conn-9")).to.equal(true);
@@ -3152,8 +3037,6 @@ describe("CameraStreamManager", () => {
         });
 
         it("reports the stop even when a listener of the ending throws", async () => {
-            // The EndSession has already happened when the ending is announced, so a listener must not
-            // be able to turn a stop that did happen into a failure.
             const { manager } = allocatingManager();
             manager.events.sessionEnded.on(() => {
                 throw new Error("listener refused");
@@ -3179,8 +3062,7 @@ describe("CameraStreamManager", () => {
         });
 
         it("does not leave an async listener's rejection unhandled", async () => {
-            // Observable.emit awaits an observer that answers with a promise and hands the promise back,
-            // so a guard that only catches a synchronous throw leaves an unhandled rejection behind.
+            // Observable.emit hands back an observer's promise, so a sync-only guard leaves the rejection unhandled.
             const { manager } = allocatingManager();
             manager.events.sessionEnded.on(async () => {
                 await Promise.resolve();
@@ -3197,16 +3079,14 @@ describe("CameraStreamManager", () => {
             });
             const messages = await logged(async () => {
                 expect(await manager.stopStream(NODE, ENDPOINT, 42, "conn-2")).to.equal(true);
-                // The rejection settles a microtask after the emit; an unhandled one would be reported
-                // against whatever test is running by then.
+                // The rejection settles after the emit; wait so an unhandled one is reported against this test.
                 await new Promise(resolve => setImmediate(resolve));
             });
             expect(messages.some(message => message.includes("async listener refused"))).to.equal(true);
         });
 
         it("announces nothing when the peer is the one that ended the session", async () => {
-            // The owner already has it as a webrtc_callback `end`; a second report of the same session
-            // ending would leave a client two events to reconcile and no order between them.
+            // The owner already has the webrtc_callback `end`; a second event would duplicate it.
             const { manager } = allocatingManager();
             const announced = endingsOf(manager);
             await manager.startStream({
@@ -3223,8 +3103,7 @@ describe("CameraStreamManager", () => {
         });
 
         it("ends a session the camera holds that this process run never tracked", async () => {
-            // The way back after an ungraceful restart: the registry is gone, the camera still holds
-            // the session, and only EndSession decrements the stream's ReferenceCount.
+            // After an ungraceful restart the registry is gone, and only EndSession decrements ReferenceCount.
             const { manager, invokes } = managerWith(STATE);
             const ended = await manager.stopStream(NODE, ENDPOINT, 999);
             expect(ended).to.equal(true);
@@ -3354,11 +3233,7 @@ describe("CameraStreamManager", () => {
         });
 
         it("does not let a concurrent startStream evict a session still being established", async () => {
-            // The device raises ReferenceCount only at session establishment (simulated in the
-            // provideOffer branch below), so call 1's stream reads as unreferenced at the device for
-            // the whole resolve -> offer-response window. If startStream released its lock before that
-            // window closed, call 2's ResourceExhausted would see an unreferenced, server-owned stream
-            // and evict it out from under call 1.
+            // ReferenceCount rises only at establishment (provideOffer below): call 2 must not evict call 1's stream.
             let videoAllocateCount = 0;
             let sessionCounter = 0;
             let releaseOffer: () => void = () => {};
@@ -3383,8 +3258,7 @@ describe("CameraStreamManager", () => {
                         };
                         return { videoStreamId: 20 };
                     }
-                    // Call 2 asks for a resolution stream 20 cannot cover, and the one-encoder camera
-                    // has no room until call 1's stream is confirmed unneeded — fails until attempt 4.
+                    // Call 2 needs a size stream 20 cannot cover; the one-encoder camera refuses until attempt 4.
                     if (videoAllocateCount < 4) throw statusError(Status.ResourceExhausted);
                     return { videoStreamId: 30 };
                 }
@@ -3425,9 +3299,7 @@ describe("CameraStreamManager", () => {
                 audio: false,
             });
 
-            // Give a genuinely unlocked call 2 many chances to run before call 1 is ever released. A
-            // call queued behind the endpoint lock cannot execute any of its own body in this window,
-            // no matter how long — its continuation is not scheduled until the lock resolves.
+            // A call queued behind the endpoint lock runs none of its body, however many turns pass.
             for (let flush = 0; flush < 20; flush++) {
                 await new Promise(resolve => setImmediate(resolve));
             }
@@ -3605,8 +3477,7 @@ describe("CameraStreamManager", () => {
             expect((thrown as Error | undefined)?.message).to.equal("device unreachable");
             expect(invokes.filter(invoke => invoke.command === "endSession")).to.have.length(1);
 
-            // The rethrow is only safe because the entry survives the failure: the session is still
-            // reachable, so the client's retry and the shutdown pass both still find it.
+            // The entry survives the failure, so the retry and the shutdown pass still find the session.
             await manager.stopAll();
             expect(invokes.filter(invoke => invoke.command === "endSession")).to.have.length(2);
         });
@@ -3672,8 +3543,6 @@ describe("CameraStreamManager", () => {
         });
 
         it("announces a client's EndSession for an untracked session with no owner, so everyone is told", async () => {
-            // Nothing names the connection driving such a session, and the client that opened it on
-            // the raw route cannot learn it is gone any other way.
             const { manager } = managerWith(STATE);
             const announced = endingsOf(manager);
 
@@ -3692,10 +3561,8 @@ describe("CameraStreamManager", () => {
         });
 
         it("refuses to track a session the peer ended while the registration was still in flight", async () => {
-            // The window this test exists for: the provider has answered the offer and the id has
-            // reached the registration, the local requestor is being given the session and can route
-            // an `End` for it, and no registry entry names it yet. A peer end emitted anywhere else
-            // proves nothing about it.
+            // The window: the provider answered, the local requestor can route an `End` for the id, and no
+            // registry entry names it yet.
             const peerEndFoundNoEntry = new Array<boolean>();
             const { manager, invokes } = managerWith(STATE, async invoke => {
                 if (invoke.command === "videoStreamAllocate") return { videoStreamId: 9 };
@@ -3726,9 +3593,8 @@ describe("CameraStreamManager", () => {
         });
 
         it("refuses to track a session another connection stopped while the registration was in flight", async () => {
-            // camera_stop_stream for an id this server holds no entry for still ends it on the camera,
-            // so it has to reach the registry the same way the peer's End does. Without that the caller
-            // is handed a session another connection has already ended.
+            // camera_stop_stream for an unrecorded id still ends it on the camera, so it must reach the registry
+            // like a peer End.
             const stopped = new Array<boolean>();
             const { manager, invokes } = managerWith(STATE, async invoke => {
                 if (invoke.command === "videoStreamAllocate") return { videoStreamId: 9 };
@@ -3769,9 +3635,8 @@ describe("CameraStreamManager", () => {
         });
 
         it("tracks a reissued id whose earlier session the peer ended, since that end named an entry", async () => {
-            // A camera reissues an id it has freed, so the end of session 42 and a registration about
-            // to be answered with 42 can be the same id and different sessions. An end an entry names
-            // is the first case: the camera cannot have issued 42 again while it still held it.
+            // Ids are reissued, but an end that named an entry was for a session the camera still held, so it
+            // cannot be the new 42.
             let secondInFlight = false;
             const { manager } = managerWith(STATE, async invoke => {
                 if (invoke.command === "videoStreamAllocate") return { videoStreamId: 9 };
@@ -3819,8 +3684,7 @@ describe("CameraStreamManager", () => {
         });
 
         it("gives the video stream back when an audio codec the caller stated cannot be served", async () => {
-            // The audio failure arrives after the video stream is allocated, so the release path is
-            // the only thing keeping the device's ReferenceCount from staying up for good.
+            // Audio fails after the video allocate, so only the release path brings ReferenceCount down.
             const { manager, invokes } = managerWith(STATE, async invoke => {
                 if (invoke.command === "videoStreamAllocate") return { videoStreamId: 9 };
                 return undefined;
@@ -3913,7 +3777,6 @@ describe("CameraStreamManager", () => {
         });
 
         it("fails typed for an audio hint a mic-less camera cannot serve, rather than treating it as no audio", async () => {
-            // Video succeeding must not hide this behind a silent `audio: null`.
             const bare: CameraState = { ...STATE, microphoneCapabilities: undefined };
             const { manager } = managerWith(bare, async invoke => {
                 if (invoke.command === "videoStreamAllocate") return { videoStreamId: 9 };
@@ -4019,8 +3882,7 @@ describe("CameraStreamManager", () => {
             }
             expect((thrown as Error).message).to.equal("provider refused");
 
-            // The lease outlived the failed deallocate, so the caller can still release the stream;
-            // dropping it there would have left an allocation nobody is allowed to touch.
+            // The lease outlives the failed deallocate, so the caller can still release the stream.
             let released: unknown;
             try {
                 await manager.releaseStream({ nodeId: NODE, endpointId: ENDPOINT, kind: "video", streamId: 9 });
@@ -4054,9 +3916,7 @@ describe("CameraStreamManager", () => {
                 return undefined;
             });
 
-            // The rejection is captured the moment the call is made: a `try`/`catch` further down would
-            // leave it unhandled for as long as this test waits, which makes the test's own outcome
-            // depend on when the rejection happens rather than on what the manager did.
+            // Captured at call time, so the rejection is never unhandled while the test waits.
             let thrown: unknown;
             const starting = start(manager, "conn-1").then(
                 () => undefined,
@@ -4076,8 +3936,7 @@ describe("CameraStreamManager", () => {
                 await new Promise(resolve => setImmediate(resolve));
             }
             expect(endedSessions(invokes)).to.deep.equal([{ nodeId: NODE, webRtcSessionId: 42 }]);
-            // releaseConnection is what the disconnect path awaits, so it must not report done while
-            // the EndSession it is responsible for is still in flight.
+            // The disconnect path awaits releaseConnection, so it must not return while its EndSession runs.
             expect(releaseReturned).to.equal(false);
 
             releaseEnd();
@@ -4085,22 +3944,19 @@ describe("CameraStreamManager", () => {
             await releasing;
             expect(releaseReturned).to.equal(true);
             expect((thrown as ServerError).code).to.equal(ServerErrorCode.SDKStackError);
-            // The caller was given an error instead of this stream id, so it can never release the
-            // stream itself; ending the session without giving it back leaves the camera holding it.
+            // The caller got an error instead of the id, so only this path can give the stream back.
             expect(
                 invokes
                     .filter(invoke => invoke.command === "videoStreamDeallocate")
                     .map(invoke => invoke.fields.videoStreamId),
             ).to.deep.equal([9]);
-            // EndSession is what decrements the device's ReferenceCount, so deallocating first would
-            // be refused with INVALID_IN_STATE and the stream would stay allocated.
+            // EndSession decrements ReferenceCount; a deallocate first would get INVALID_IN_STATE.
             expect(
                 invokes
                     .map(invoke => invoke.command)
                     .filter(command => command === "endSession" || command === "videoStreamDeallocate"),
             ).to.deep.equal(["endSession", "videoStreamDeallocate"]);
-            // Nothing is announced for a session that never reached a client: the connection that
-            // asked for it is gone, and its own failure answer is the report.
+            // The requesting connection is gone, and its failure answer is the report.
             expect(announced).to.deep.equal([]);
         });
 
@@ -4147,10 +4003,7 @@ describe("CameraStreamManager", () => {
         });
 
         it("sends one EndSession when a connection release and shutdown claim the same session", async () => {
-            // Shutdown closes the sockets it then waits on, so the connection's own release and the
-            // shutdown pass reach the same session. Two EndSession invokes for one session is the
-            // lesser half; the worse half is shutdown returning while the release it collided with is
-            // still in flight, which is the thing stopAll exists to prevent.
+            // Shutdown closes the sockets it waits on, so both passes reach the session; stopAll waits for the release.
             let releaseEnd: () => void = () => {};
             const endGate = new Promise<void>(resolve => {
                 releaseEnd = resolve;
@@ -4267,9 +4120,7 @@ describe("CameraStreamManager", () => {
         });
 
         it("keeps the best capability while a viewer streams on a camera with encoders to spare", async () => {
-            // One live stream on a camera that states four encoders leaves three. Reading any live
-            // stream as "no encoder left" costs the caller picture size and reports it as a degradation
-            // that did not happen.
+            // Four encoders and one live stream leave three, so the best capability stays.
             const spare: CameraState = {
                 ...STATE,
                 maxConcurrentEncoders: 4,
@@ -4305,9 +4156,7 @@ describe("CameraStreamManager", () => {
         });
 
         it("counts the encoder a snapshot stream of its own holds before the camera reports it", async () => {
-            // Two calls in a row on a camera whose report has not caught up: the first takes the one
-            // encoder, so the second has to start at the capability that needs none. Reading the
-            // reported list alone made the second call ask for the encoder again and be refused.
+            // The report lags: the first call takes the one encoder, so the second starts encoder-free.
             const asked = new Array<unknown>();
             const { manager } = managerWith(STATE, async invoke => {
                 if (invoke.command === "snapshotStreamAllocate") {
@@ -4330,10 +4179,8 @@ describe("CameraStreamManager", () => {
         });
 
         it("keeps the best capability although the device still lists a snapshot stream", async () => {
-            // AllocatedSnapshotStreams is a cached view that lags a deallocate, so the stream the
-            // previous camera_snapshot gave back is still listed. Counting it against the encoder
-            // budget would clamp this call to a smaller capability and report the loss as a
-            // degradation, which is the false report the budget exists to remove.
+            // AllocatedSnapshotStreams lags a deallocate, so the stream the previous camera_snapshot gave
+            // back is still listed; counting it would clamp this call and report a false degradation.
             const stale: CameraState = {
                 ...STATE,
                 allocatedSnapshotStreams: [
@@ -4386,7 +4233,6 @@ describe("CameraStreamManager", () => {
         });
 
         it("fails typed when the caller's resolution ceiling excludes every capability", async () => {
-            // Dropping the ceiling returns an image larger than the caller said it can handle.
             const { manager, invokes } = managerWith(STATE, async () => undefined);
             let thrown: unknown;
             try {
@@ -4404,8 +4250,7 @@ describe("CameraStreamManager", () => {
         });
 
         it("says the camera has no snapshot capability rather than blaming the caller's bounds", async () => {
-            // "bounds" tells a client to relax what it asked for; there is nothing to relax here, so
-            // it would retry forever against a camera that can never answer.
+            // "bounds" would tell the client to relax a request that nothing can serve.
             const { manager, invokes } = managerWith({ ...STATE, snapshotCapabilities: [] }, async () => undefined);
             let thrown: unknown;
             try {
@@ -4551,10 +4396,8 @@ describe("CameraStreamManager", () => {
         });
 
         it("tries an encoder-using capability once the device refuses every encoder-free one", async () => {
-            // A live stream holds the camera's only encoder, so the encoder-free 640x480 capability
-            // is preferred. The device refuses it anyway — the reference count this server reads is
-            // subscription-backed and lags — and the 1920x1080 capability the caller's bounds allow
-            // is what is left. Narrowing the ladder to the encoder-free entries failed the call here.
+            // The live stream holds the only encoder, so 640x480 is preferred. The device refuses it anyway
+            // (the reference count read here lags), which leaves 1920x1080.
             const streaming: CameraState = {
                 ...STATE,
                 allocatedVideoStreams: [
@@ -4593,14 +4436,12 @@ describe("CameraStreamManager", () => {
             ]);
             expect(result.resolution).to.deep.equal({ width: 1920, height: 1080 });
             expect(result.snapshotStreamId).to.equal(3);
-            // 1920x1080 is the largest the caller's own bounds allowed, so reaching it through the
-            // encoder rung is not a degradation.
+            // 1920x1080 is the largest the caller's bounds allow, so this is no degradation.
             expect(result.degraded).to.equal(false);
         });
 
         it("keeps a capability that needs no hardware encoder while a video stream is live", async () => {
-            // requiresEncodedPixels with requiresHardwareEncoder false takes no encoder, so filtering
-            // on requiresEncodedPixels alone would drop the best capability the camera can still serve.
+            // requiresEncodedPixels without requiresHardwareEncoder takes no encoder.
             const softwareEncoded: CameraState = {
                 ...STATE,
                 allocatedVideoStreams: [
@@ -4632,14 +4473,11 @@ describe("CameraStreamManager", () => {
             });
             const result = await manager.snapshot({ nodeId: NODE, endpointId: ENDPOINT });
             expect(result.resolution).to.deep.equal({ width: 1920, height: 1080 });
-            // The live stream cost this caller nothing: 1920x1080 is the largest the camera offers and
-            // it needs no encoder, so reporting a degradation would be a false alarm.
             expect(result.degraded).to.equal(false);
         });
 
         it("reports a degradation when the device refuses the best capability and the next one is smaller", async () => {
-            // Nothing holds the encoder here: the caller still received a 640x480 frame in place of
-            // the 1920x1080 its bounds allowed.
+            // Nothing holds the encoder; the caller got 640x480 where its bounds allowed 1920x1080.
             let allocateAttempts = 0;
             const { manager } = managerWith(STATE, async invoke => {
                 if (invoke.command === "snapshotStreamAllocate") {
@@ -4684,9 +4522,8 @@ describe("CameraStreamManager", () => {
         });
 
         it("names the stream it allocated at a capability that holds the hardware encoder", async () => {
-            // STATE's best capability requires the hardware encoder. The stream stays on the camera:
-            // a deallocate here could be sent but never awaited to an outcome the answer can state,
-            // so the answer would name a stream a late landing may already have removed.
+            // STATE's best capability needs the hardware encoder, so the stream stays: a deallocate could not
+            // be awaited to an outcome the answer can state.
             const { manager, invokes } = managerWith(STATE, async invoke => {
                 if (invoke.command === "snapshotStreamAllocate") return { snapshotStreamId: 3 };
                 if (invoke.command === "captureSnapshot") {
@@ -4700,8 +4537,7 @@ describe("CameraStreamManager", () => {
         });
 
         it("adopts the encoder-holding stream it left behind on the next call", async () => {
-            // The stream stays, so the second call captures from it instead of allocating a twin
-            // that single-encoder hardware would refuse.
+            // Single-encoder hardware would refuse a twin.
             const { manager, holder, invokes } = managerWith(
                 { ...STATE, allocatedSnapshotStreams: [] },
                 async invoke => {
@@ -4736,11 +4572,8 @@ describe("CameraStreamManager", () => {
         });
 
         it("counts a snapshot stream the camera says holds the encoder before choosing a capability", async () => {
-            // The kept stream is what takes the camera's only encoder, and the camera states that per
-            // stream. Reading past it picks the 1080p capability, which the camera must then refuse
-            // for lack of capacity; on hardware whose every capability needs the encoder there is no
-            // rung below it to walk down to. Its range reaches below 1080p, so it is adoptable only
-            // once the encoder count has narrowed the choice to the 640x480 capability.
+            // The kept stream holds the only encoder; ignoring that picks 1080p, which the camera refuses. Its
+            // range reaches below 1080p, so it is adoptable only at the 640x480 capability.
             const encoderTaken: CameraState = {
                 ...STATE,
                 allocatedSnapshotStreams: [
@@ -4771,10 +4604,8 @@ describe("CameraStreamManager", () => {
         });
 
         it("names an adopted stream although the camera's best capability needs the encoder", async () => {
-            // Adoption reads AllocatedSnapshotStreams, which states no encoder flag, so it cannot
-            // tell such a stream apart. Naming it is right anyway: this call allocated nothing and
-            // gives nothing back, so the stream is still there when the answer is sent, and the id
-            // is the only way a client can free the encoder it holds.
+            // AllocatedSnapshotStreams states no encoder flag. Naming the stream is still right: this call
+            // allocated nothing, and the id is how a client frees the encoder.
             const existing: CameraState = {
                 ...STATE,
                 allocatedSnapshotStreams: [
@@ -4803,8 +4634,7 @@ describe("CameraStreamManager", () => {
         });
 
         it("gives a kept-capability stream back when the capture fails", async () => {
-            // A failed call answers with no stream id, so nothing the caller holds could free this
-            // one. Only a call that returns keeps its stream.
+            // A failed call returns no id, so nothing the caller holds could free the stream.
             const softwareOnly: CameraState = { ...STATE, snapshotCapabilities: [STATE.snapshotCapabilities[0]] };
             const { manager, invokes } = managerWith(softwareOnly, async invoke => {
                 if (invoke.command === "snapshotStreamAllocate") return { snapshotStreamId: 3 };
@@ -4820,8 +4650,6 @@ describe("CameraStreamManager", () => {
         });
 
         it("names the stream it kept, and releases that same id on request", async () => {
-            // A kept stream is on the camera until someone frees it, and on a camera whose allocation
-            // report lags it is reachable through no other command.
             const softwareOnly: CameraState = { ...STATE, snapshotCapabilities: [STATE.snapshotCapabilities[0]] };
             const { manager, invokes } = managerWith(softwareOnly, async invoke => {
                 if (invoke.command === "snapshotStreamAllocate") return { snapshotStreamId: 3 };
@@ -4861,9 +4689,7 @@ describe("CameraStreamManager", () => {
         };
 
         it("captures from a snapshot stream the device already holds rather than allocating one", async () => {
-            // Allocating one per call is the churn the cluster asks controllers to avoid, and every
-            // allocate competes for the encoders the livestream needs. Who allocated the stream does
-            // not enter into it: CaptureSnapshot names any allocated stream.
+            // Who allocated the stream does not matter: CaptureSnapshot names any allocated stream.
             const existing: CameraState = { ...STATE, allocatedSnapshotStreams: [EXISTING_SNAPSHOT_STREAM] };
             const { manager, invokes } = managerWith(existing, async invoke => {
                 if (invoke.command === "snapshotStreamAllocate") return { snapshotStreamId: 3 };
@@ -4881,9 +4707,8 @@ describe("CameraStreamManager", () => {
         });
 
         it("does not adopt a stream whose range reaches below the capability it would allocate", async () => {
-            // The ceiling states what the frame may be, not what it will be: the camera may answer with
-            // any size in the stream's range (§11.2.8.13.3), so the floor is what has to cover the
-            // capability. Adopting on the ceiling would hand back a smaller frame than allocating.
+            // The camera may answer with any size in the stream's range (§11.2.8.13.3), so the floor must
+            // cover the capability.
             const ranged: CameraState = {
                 ...STATE,
                 allocatedSnapshotStreams: [{ ...EXISTING_SNAPSHOT_STREAM, minResolution: { width: 640, height: 480 } }],
@@ -4901,8 +4726,6 @@ describe("CameraStreamManager", () => {
         });
 
         it("reports the degradation from the frame the device delivered, not from the stream it used", async () => {
-            // The response reports what arrived. A device that answers below the size it was asked for
-            // is out of spec, and the caller still needs to know the frame is small.
             const existing: CameraState = { ...STATE, allocatedSnapshotStreams: [EXISTING_SNAPSHOT_STREAM] };
             const { manager } = managerWith(existing, async invoke => {
                 if (invoke.command === "captureSnapshot") {
@@ -4916,7 +4739,6 @@ describe("CameraStreamManager", () => {
         });
 
         it("allocates rather than adopting a stream smaller than the capability it would have used", async () => {
-            // Adoption saves an allocate; it may not cost the caller picture size to do so.
             const existing: CameraState = {
                 ...STATE,
                 allocatedSnapshotStreams: [
@@ -4957,8 +4779,7 @@ describe("CameraStreamManager", () => {
         });
 
         it("allocates when the device answers NotFound for the stream its reported state still lists", async () => {
-            // Device state is a cached view, so a stream it lists may have been deallocated since.
-            // The device's own answer is the only statement about that worth acting on.
+            // Device state is cached; only the device's NotFound says the stream is gone.
             const existing: CameraState = { ...STATE, allocatedSnapshotStreams: [EXISTING_SNAPSHOT_STREAM] };
             const { manager, invokes } = managerWith(existing, async invoke => {
                 if (invoke.command === "snapshotStreamAllocate") return { snapshotStreamId: 3 };
@@ -4978,8 +4799,7 @@ describe("CameraStreamManager", () => {
         });
 
         it("leaves a snapshot stream in place when its capability needs no hardware encoder", async () => {
-            // Such a stream holds none of MaxConcurrentEncoders, so keeping it costs the livestream
-            // nothing and the next call adopts it instead of allocating again.
+            // Such a stream holds none of MaxConcurrentEncoders, so keeping it costs the livestream nothing.
             const encoderFreeOnly: CameraState = {
                 ...STATE,
                 snapshotCapabilities: [
@@ -5121,8 +4941,7 @@ describe("CameraStreamManager", () => {
                 stream_id: 1,
                 reference_count: 1,
             });
-            // The camera decides, so the deallocate goes out even for a count the server reads as
-            // nonzero: a count behind the device would otherwise refuse a release it would accept.
+            // The camera decides: a count behind the device must not block a release it would accept.
             expect(invokes.map(invoke => invoke.command)).to.deep.equal(["videoStreamDeallocate"]);
         });
 
@@ -5176,9 +4995,8 @@ describe("CameraStreamManager", () => {
         });
 
         it("answers the camera's own INVALID_IN_STATE with the in-use error, not the generic one", async () => {
-            // The cached count is 0 and the camera disagrees: the state a subscription feeds can be
-            // behind a reference another controller took. Without the mapping the handler sees a
-            // plain device error and answers error_code 0, for the fact the API documents as 104.
+            // The cached count is 0 but the camera disagrees (the subscription lags another controller's
+            // reference). Unmapped, the handler answers error_code 0 instead of 104.
             const stale: CameraState = {
                 ...STATE,
                 allocatedVideoStreams: [
@@ -5206,16 +5024,14 @@ describe("CameraStreamManager", () => {
             } catch (error) {
                 thrown = error;
             }
-            // `instanceof ServerError` is what WebSocketControllerHandler reads for `error_code`, so
-            // anything else here is the 0 this test exists to rule out.
+            // WebSocketControllerHandler reads `error_code` only from a ServerError.
             expect(thrown).to.be.instanceOf(ServerError);
             expect((thrown as ServerError).code).to.equal(ServerErrorCode.CameraStreamInUse);
             expect(JSON.parse((thrown as ServerError).message)).to.deep.equal({
                 message: "Stream is in use and cannot be released",
                 stream_id: 1,
             });
-            // A camera answering INVALID_IN_STATE for a reason of its own is indistinguishable from
-            // a reference-count refusal unless its own error stays reachable.
+            // INVALID_IN_STATE may have another cause, so the camera's own status stays reachable.
             expect(deviceStatusOf((thrown as ServerError).cause)).to.equal(Status.InvalidInState);
         });
 
@@ -5267,11 +5083,8 @@ describe("CameraStreamManager", () => {
         };
 
         /**
-         * The bounds that make FOREIGN_STREAM reusable for an unhinted LiveView request.
-         *
-         * The bit-rate range is part of that: the computed envelope for this camera runs from the
-         * trade-off point's 800 kbit/s to MaxNetworkBandwidth, and a stream outside it reaches only
-         * the degraded rung.
+         * The bounds that make FOREIGN_STREAM reusable for an unhinted LiveView request, including the
+         * bit-rate range from the 800 kbit/s trade-off point to MaxNetworkBandwidth.
          */
         const CONTAINED_FOREIGN = {
             streamUsage: LIVE_VIEW,
@@ -5301,8 +5114,7 @@ describe("CameraStreamManager", () => {
         });
 
         it("leases a foreign stream it hands out, without claiming to own it", async () => {
-            // The lease map records every stream this server handed out, so a reuse decision can be
-            // made from it rather than from device state that lags the allocation.
+            // Leased because device state lags the allocation.
             const reusable = { ...FOREIGN_STREAM, ...CONTAINED_FOREIGN };
             const { manager, invokes } = probeWith(
                 { ...STATE, allocatedVideoStreams: [reusable] },
@@ -5400,8 +5212,7 @@ describe("CameraStreamManager", () => {
         });
 
         it("treats a stream id reissued to a fresh allocation as its own", async () => {
-            // The device reuses an id once the stream it named is deallocated. A lease still saying the
-            // id is foreign would make the stream this server just allocated unreleasable.
+            // The device reuses a deallocated id; a lease still calling it foreign would make ours unreleasable.
             const reusable = { ...FOREIGN_STREAM, ...CONTAINED_FOREIGN };
             const { manager, holder } = probeWith({ ...STATE, allocatedVideoStreams: [reusable] }, async invoke =>
                 invoke.command === "videoStreamAllocate" ? { videoStreamId: 7 } : undefined,
@@ -5428,7 +5239,6 @@ describe("CameraStreamManager", () => {
         });
 
         it("still calls a stream its own when a later request reuses it rather than allocating", async () => {
-            // Every other reuse assertion in this file names a stream the server did not allocate.
             const { manager, holder, invokes } = probeWith({ ...STATE, allocatedVideoStreams: [] }, async invoke =>
                 invoke.command === "videoStreamAllocate" ? { videoStreamId: 9 } : undefined,
             );
@@ -5456,8 +5266,7 @@ describe("CameraStreamManager", () => {
         });
 
         it("does not stand in for a device report of a stream it only reused", async () => {
-            // A foreign stream was read out of device state, so device state is the only evidence it
-            // ever had. Shadowing it would hand the next request a stream the camera has dropped.
+            // A foreign stream's only evidence is device state; shadowing it would hand out a dropped stream.
             const reusable = { ...FOREIGN_STREAM, ...CONTAINED_FOREIGN };
             const { manager, holder } = probeWith({ ...STATE, allocatedVideoStreams: [reusable] }, async invoke =>
                 invoke.command === "videoStreamAllocate" ? { videoStreamId: 11 } : undefined,
@@ -5482,8 +5291,6 @@ describe("CameraStreamManager", () => {
         });
 
         it("drops the lease for a foreign stream once the device stops naming it", async () => {
-            // A stream read out of device state is reported by definition, so its disappearance is the
-            // camera having dropped it and the lease has nothing left to describe.
             const reusable = { ...FOREIGN_STREAM, ...CONTAINED_FOREIGN };
             const { manager, holder } = probeWith(
                 { ...STATE, allocatedVideoStreams: [reusable] },
@@ -5586,8 +5393,7 @@ describe("CameraStreamManager", () => {
         });
 
         it("holds no entry for an endpoint that only ever gave up a foreign stream", async () => {
-            // The ladder deallocates the foreign stream to make room and drops a lease that never
-            // existed; every allocate fails, so nothing of ours is ever leased on this endpoint.
+            // The foreign stream is freed to make room and every allocate fails, so nothing of ours is leased.
             const { manager, invokes } = probeWith(
                 { ...STATE, allocatedVideoStreams: [FOREIGN_STREAM] },
                 async invoke => {
@@ -5617,9 +5423,6 @@ describe("CameraStreamManager", () => {
         });
 
         it("puts back a stream it freed to make room when the request succeeds without the capacity", async () => {
-            // The degraded rung hands out a stream that was already there, so the freeing bought this
-            // request nothing. "The request succeeded" is the wrong question; "was the capacity used"
-            // is the right one.
             const inUse = {
                 ...FOREIGN_STREAM,
                 ...CONTAINED_FOREIGN,
@@ -5659,9 +5462,7 @@ describe("CameraStreamManager", () => {
         });
 
         it("puts back a stream it freed to make room when the request fails after the allocate", async () => {
-            // The allocate that spends the freed capacity is not the end of the request: audio, the
-            // offer and the registration all follow it. A request that fails there deallocates the
-            // stream the capacity bought, so the camera is a stream poorer until the victim goes back.
+            // Audio, the offer and registration follow the allocate; a failure there deallocates the bought stream.
             let liveViewAllocates = 0;
             const { manager, invokes } = probeWith(
                 { ...STATE, allocatedVideoStreams: [FOREIGN_STREAM] },
@@ -5707,8 +5508,6 @@ describe("CameraStreamManager", () => {
         });
 
         it("puts back a stream it freed to make room when the request fails anyway", async () => {
-            // Freeing someone else's unreferenced stream buys capacity for this request. A request that
-            // then fails has spent that stream for nothing, so an equivalent one goes back.
             const { manager, invokes } = probeWith(
                 { ...STATE, allocatedVideoStreams: [FOREIGN_STREAM] },
                 async invoke => {
@@ -5740,8 +5539,7 @@ describe("CameraStreamManager", () => {
             );
             expect(restore?.fields.maxResolution).to.deep.equal(FOREIGN_STREAM.maxResolution);
             expect(restore?.fields.videoCodec).to.equal(FOREIGN_STREAM.videoCodec);
-            // The replacement exists because this server allocated it, so it must be this server's to
-            // release; a stream nothing records as releasable is the leak the lease map prevents.
+            // This server allocated the replacement, so it must be releasable.
             await manager.releaseStream({ nodeId: NODE, endpointId: ENDPOINT, kind: "video", streamId: 20 });
             expect(manager.endpointsWithLeases).to.equal(0);
         });
@@ -5791,14 +5589,12 @@ describe("CameraStreamManager reuse before the device has reported", () => {
         expect(second.streamId).to.equal(9);
         expect(second.provenance).to.not.equal("allocated");
         expect(invokes.filter(invoke => invoke.command === "videoStreamAllocate")).to.have.length(1);
-        // The reuse is reported from the lease's own description of the allocation, so it has to be
-        // the range that was allocated rather than a default.
+        // Reported from the lease, so it must be the allocated range, not a default.
         expect(second.envelope).to.deep.equal(first.envelope);
     });
 
     it("refuses an unreported stream whose overlays the caller did not ask for", async () => {
-        // The lease's stand-in allocation has to record the overlays that were asked for, or the
-        // shadow window hands a watermarked stream to the next request that wants none.
+        // The lease's stand-in must record the requested overlays.
         const overlayState: CameraState = {
             ...STATE,
             features: cameraFeatures("video", "snapshot", "watermark", "onScreenDisplay"),
@@ -5878,8 +5674,7 @@ describe("CameraStreamManager reuse before the device has reported", () => {
         const { manager, invokes } = allocatingManager({ ...STATE, allocatedVideoStreams: [] }, [9]);
         await liveView(manager);
 
-        // The unreported stream is LiveView; this caller asks for another usage, so no rung may hand
-        // it over and the camera's refusal to allocate a second one is the answer.
+        // The unreported stream is LiveView and this caller wants another usage, so the refusal is the answer.
         let thrown: unknown;
         try {
             await liveView(manager, { streamUsage: 1 });
@@ -5896,9 +5691,8 @@ describe("CameraStreamManager reuse before the device has reported", () => {
         const { manager, holder } = allocatingManager({ ...STATE, allocatedVideoStreams: [] }, [9]);
         await liveView(manager);
 
-        // The bandwidth the camera states drops, so the stream's bit-rate ceiling now sits outside the
-        // envelope the server computes. That envelope is the server's own, and giving it up is what
-        // this rung is for; the caller stated no bound of its own to violate.
+        // Lower bandwidth puts the stream's bit-rate ceiling outside the server's envelope; the caller stated
+        // no bound of its own.
         holder.state = { ...STATE, allocatedVideoStreams: [], maxNetworkBandwidth: 2000000 };
         const second = await liveView(manager);
         expect(second.streamId).to.equal(9);
@@ -5909,9 +5703,7 @@ describe("CameraStreamManager reuse before the device has reported", () => {
         const { manager } = allocatingManager({ ...STATE, allocatedVideoStreams: [] }, [9]);
         await liveView(manager);
 
-        // The stream's 2560x1440 ceiling is past the offer's own max-fs budget. That is a decode
-        // ceiling, not the server's preference, so no rung may trade it away: video the peer cannot
-        // decode is not a degraded picture, it is no picture.
+        // The 2560x1440 ceiling is past the offer's max-fs, a decode limit no rung may trade away.
         let thrown: unknown;
         try {
             await liveView(manager, {
@@ -5930,9 +5722,7 @@ describe("CameraStreamManager reuse before the device has reported", () => {
     });
 
     it("lets the device's own report replace its record of a stream it allocated", async () => {
-        // The lease describes what was asked for. Once the device names the stream it is the device
-        // that says what was allocated, and a request the device's version does not satisfy must not
-        // be answered from the older description.
+        // Once the device names the stream, its report replaces the lease's description.
         const { manager, holder } = allocatingManager({ ...STATE, allocatedVideoStreams: [] }, [9]);
         const first = await liveView(manager);
         const envelope = requireVideoEnvelope(first.envelope);
@@ -6035,8 +5825,7 @@ describe("CameraStreamManager reuse before the device has reported", () => {
     });
 
     it("keeps a stream it allocated releasable although the device never names it", async () => {
-        // Ownership is not evidence that the stream exists, and it must not expire with that evidence:
-        // the lease is the only record that says this server may deallocate the stream.
+        // Ownership must not expire: the lease is the only record that this server may deallocate the stream.
         MockTime.reset();
         try {
             const invokes = new Array<RecordedInvoke>();
@@ -6082,8 +5871,7 @@ describe("CameraStreamManager reuse before the device has reported", () => {
     }
 
     it("keeps the lease when the camera refuses the release as in use", async () => {
-        // The stream is still on the camera, so the record that says this server may deallocate it
-        // has to survive: without it a retry has nothing to release the stream by.
+        // The stream is still on the camera, so a retry needs the lease.
         const probe = leasedProbe(Status.InvalidInState);
         await liveView(probe);
         expect(probe.endpointsWithLeases).to.equal(1);
@@ -6099,8 +5887,7 @@ describe("CameraStreamManager reuse before the device has reported", () => {
     });
 
     it("drops the lease when the camera states it has no such stream", async () => {
-        // NOT_FOUND says the stream the lease claims is gone. Keeping the lease would report it as
-        // this server's for the rest of the process run, and let a reissued id be matched to it.
+        // A kept lease would call the stream ours for the rest of the run and match a reissued id to it.
         const probe = leasedProbe(Status.NotFound);
         await liveView(probe);
         expect(probe.endpointsWithLeases).to.equal(1);
@@ -6169,9 +5956,6 @@ describe("CameraStreamManager reuse before the device has reported", () => {
     });
 
     it("keeps a stream it allocated its own to give back, however long the device never names it", async () => {
-        // Ownership records one thing: that this process run allocated the stream. Nothing about the
-        // passing of time makes that less true, and a lease dropped on silence alone leaves a stream
-        // this server allocated with nothing recording that it may give it back unasked.
         MockTime.reset();
         try {
             const { manager, invokes } = leaseProbeAllocating(9);
@@ -6190,8 +5974,6 @@ describe("CameraStreamManager reuse before the device has reported", () => {
     });
 
     it("keeps a lease the device has reported, however long the endpoint then stays quiet", async () => {
-        // A reported stream stays ours until the device stops naming it; the endpoint going quiet is
-        // not the device saying the stream is gone.
         MockTime.reset();
         try {
             const { manager, invokes, holder } = leaseProbeAllocating(9);
@@ -6228,8 +6010,7 @@ describe("CameraStreamManager reuse before the device has reported", () => {
     });
 
     it("does not extend the window of a stream it hands out again", async () => {
-        // Handing a stream out is not a report from the camera, so it says nothing about whether the
-        // stream still exists. A window that renewed itself here could never close.
+        // Handing a stream out is not a camera report; a window renewed here could never close.
         MockTime.reset();
         try {
             const { manager, invokes } = allocatingManager({ ...STATE, allocatedVideoStreams: [] }, [9, 10]);
@@ -6287,7 +6068,6 @@ describe("preferredVideoCodec", () => {
     });
 
     it("fails typed when the offer names no codec the camera supports", () => {
-        // An H.264-only peer handed an H.265 stream sees a session it cannot decode and no error.
         const offer = {
             video: { state: "receiving" as const, codecs: ["H264"] },
             audio: { state: "absent" as const },
@@ -6302,9 +6082,8 @@ describe("preferredVideoCodec", () => {
     });
 
     it("refuses a codec whose level it cannot read rather than treating it as unconstrained", () => {
-        // The camera and the peer both offer H.264 and nothing else. The level states the frame size
-        // the peer can decode and this one names no row of Table A-1, so there is no ceiling to hold
-        // the stream to — selecting H.264 anyway is what hands the peer a picture it cannot decode.
+        // Both offer only H.264, but the level names no row of Table A-1, so there is no frame-size
+        // ceiling to hold the stream to.
         const offer = {
             video: { state: "receiving" as const, codecs: ["H264"] },
             audio: { state: "absent" as const },
@@ -6314,8 +6093,7 @@ describe("preferredVideoCodec", () => {
         };
         const failure = incompatible(() => preferredVideoCodec([H264], offer, undefined));
         expect(failure.code).to.equal(ServerErrorCode.CameraStreamIncompatible);
-        // Not "codec": the two do have a codec in common, so sending the client to change its codec
-        // list would send it to change the one thing that is not the problem.
+        // Not "codec": the two share a codec.
         expect(failure.payload.reason).to.equal("level");
         expect(failure.payload.requested).to.deep.equal(["H264"]);
         expect(failure.payload.device).to.deep.equal(["H264"]);
@@ -6333,10 +6111,7 @@ describe("preferredVideoCodec", () => {
     });
 
     it("reports a codec mismatch, not a level failure, when the unreadable codec was never shared", () => {
-        // Characterization: this is the pre-existing codec narrowing, asserted here so the level
-        // branch cannot start claiming a failure the codec lists already explain. The peer's
-        // unreadable codec is one the camera does not offer either, so the level is not what
-        // emptied the set and naming it would send the client after the wrong thing.
+        // The unreadable codec is not the camera's either, so the codec lists explain the failure.
         const offer = {
             video: { state: "receiving" as const, codecs: ["H264"] },
             audio: { state: "absent" as const },
@@ -6350,8 +6125,6 @@ describe("preferredVideoCodec", () => {
     });
 
     it("reports the set the failing step narrowed, not the camera's full list", () => {
-        // After the offer has ruled H.265 out, "the camera supports H.265" is not the answer the
-        // client needs to act on.
         const offer = {
             video: { state: "receiving" as const, codecs: ["H264"] },
             audio: { state: "absent" as const },
@@ -6375,8 +6148,7 @@ describe("preferredVideoCodec", () => {
     });
 
     it("honours the caller's codec when the camera advertises no trade-off point", () => {
-        // Nothing was narrowed away, so the caller's choice is the only statement there is; the
-        // allocate call is what a camera that cannot serve it rejects.
+        // Nothing was narrowed away; the allocate is where a camera that cannot serve it refuses.
         expect(preferredVideoCodec(new Array<number>(), undefined, ["H265"])).to.equal(H265);
     });
 
@@ -6385,8 +6157,7 @@ describe("preferredVideoCodec", () => {
     });
 
     it("keeps a video m-line with no rtpmap from failing the request", () => {
-        // An m-line carrying only static payload types parses to hasVideo with an empty codec list;
-        // that states nothing about what the peer can decode.
+        // Static payload types only: hasVideo with an empty codec list states nothing about decoding.
         const offer = {
             video: { state: "receiving" as const },
             audio: { state: "absent" as const },
@@ -6437,9 +6208,8 @@ describe("CameraStreamManager device cleanup budget", () => {
             await MockTime.advance(DEVICE_CLEANUP_BUDGET_MS);
 
             await stopping;
-            // The session the budget gave up on is still this server's to end, so the next release
-            // pass must still find it. Probed with forgetSession, which reports the entry without
-            // invoking the camera that is not answering.
+            // The next release pass must still find the session. forgetSession reports the entry without
+            // invoking the silent camera.
             expect(manager.forgetSession(NODE, ENDPOINT, 42)).to.equal(true);
         } finally {
             MockTime.disable();
@@ -6514,8 +6284,6 @@ describe("CameraStreamManager device cleanup budget", () => {
 
             await manager.startStream({ ...START, connectionId: "conn-2" });
             answerSilentEndSession();
-            // A macrotask boundary: every microtask the answered invoke queued, including the
-            // give-back's own continuation, has run by the time this resolves.
             await new Promise<void>(resolve => setImmediate(resolve));
 
             expect(manager.forgetSession(NODE, ENDPOINT, 42)).to.equal(true);
@@ -6566,8 +6334,6 @@ describe("CameraStreamManager device cleanup budget", () => {
             expect(retaken.provenance).to.equal("allocated");
 
             answerSilentDeallocate();
-            // A macrotask boundary: every microtask the answered invoke queued, including the
-            // give-back's own continuation, has run by the time this resolves.
             await new Promise<void>(resolve => setImmediate(resolve));
 
             holder.state = {
@@ -6656,8 +6422,7 @@ describe("CameraStreamManager device cleanup budget", () => {
             answerSilentDeallocate();
             await new Promise<void>(resolve => setImmediate(resolve));
 
-            // The camera still reports the stream, so reconciliation cannot be what drops the lease:
-            // only the give-back that freed it can.
+            // The camera still reports the stream, so only the give-back can drop the lease.
             const capabilities = await manager.getCapabilities(NODE, ENDPOINT);
             expect(capabilities.allocated.video.map(stream => stream.allocatedByServer)).to.deep.equal([false]);
         } finally {
@@ -6731,8 +6496,7 @@ describe("CameraStreamManager device cleanup budget", () => {
         }
 
         it("reports the advertised features in the spec's bit order", async () => {
-            // The flags are written in the reverse of the spec's order, so the order in the report is
-            // the model's and not the order the read bitmap happens to carry its keys in.
+            // Flags are written in reverse spec order, so the report's order is the model's own.
             const features: CameraFeatures = {
                 nightVision: true,
                 onScreenDisplay: true,
@@ -6752,8 +6516,7 @@ describe("CameraStreamManager device cleanup budget", () => {
             const capabilities = await managerWith(state).manager.getCapabilities(NODE, ENDPOINT);
             expect(capabilities.privacy.softLivestreamModeEnabled).to.equal(true);
             expect(capabilities.privacy.softRecordingModeEnabled).to.equal(false);
-            // Absent is not "off": HardPrivacyModeOn is optional, and a camera without the physical
-            // switch states nothing about it.
+            // HardPrivacyModeOn is optional; absent is not "off".
             expect(capabilities.privacy.hardModeOn).to.equal(undefined);
         });
 
@@ -6769,9 +6532,8 @@ describe("CameraStreamManager device cleanup budget", () => {
         });
 
         it("opens an audio-only session on a camera with no Video feature when video was left to it", async () => {
-            // The offer carries a live video section, so nothing but the feature map says the camera
-            // cannot serve it. VideoStreamAllocate is not in such a camera's AcceptedCommandList and
-            // answers UnsupportedCommand, which no ladder rung recovers from.
+            // The offer has a live video section, so only the feature map says the camera cannot serve it;
+            // VideoStreamAllocate would answer UnsupportedCommand.
             const { manager, invokes } = audioOnlyManager();
 
             const session = await manager.startStream({
@@ -6810,8 +6572,7 @@ describe("CameraStreamManager device cleanup budget", () => {
             const detail = JSON.parse((thrown as ServerError).message);
             expect(detail.reason).to.equal("feature");
             expect(detail.track).to.equal("video");
-            // The fact that distinguishes this from a peer that rejected the section, which names no
-            // feature: no codec, bound or offer the caller could send instead makes it work.
+            // `feature` is what separates this from a peer that rejected the section.
             expect(detail.feature).to.equal("Video");
             expect(invokes.some(invoke => invoke.command === "videoStreamAllocate")).to.equal(false);
             expect(invokes.some(invoke => invoke.command === "provideOffer")).to.equal(false);
@@ -6848,9 +6609,8 @@ describe("CameraStreamManager device cleanup budget", () => {
         });
 
         it("refuses audio on a camera that reports a microphone without advertising the feature", async () => {
-            // The attribute is gated on the feature, so this camera contradicts itself — and its
-            // AudioStreamAllocate is not in its AcceptedCommandList either. The feature is read beside
-            // the attribute so the refusal happens here rather than at the allocate.
+            // The attribute is gated on the feature, so this camera contradicts itself; refuse before
+            // AudioStreamAllocate.
             const state: CameraState = { ...STATE, features: cameraFeatures("video") };
             const { manager, invokes } = managerWith(state, async invoke => {
                 if (invoke.command === "videoStreamAllocate") return { videoStreamId: 9 };
@@ -6890,10 +6650,8 @@ describe("CameraStreamManager device cleanup budget", () => {
         });
 
         it("refuses a snapshot on a camera that lists capabilities without advertising the feature", async () => {
-            // SnapshotCapabilities is gated on the feature, so this camera contradicts itself and its
-            // SnapshotStreamAllocate is not in its AcceptedCommandList. Without the gate the request
-            // walks the whole capability ladder and the device's UnsupportedCommand reaches the client
-            // untyped.
+            // SnapshotCapabilities is gated on the feature; without the gate the device's UnsupportedCommand
+            // reaches the client untyped.
             const state: CameraState = { ...STATE, features: cameraFeatures("video") };
             const { manager, invokes } = managerWith(state, async invoke => {
                 if (invoke.command === "snapshotStreamAllocate") return { snapshotStreamId: 3 };
@@ -6912,9 +6670,8 @@ describe("CameraStreamManager device cleanup budget", () => {
 
         it("does not gate a track on a feature map the camera has not stated", async () => {
             // matter.js fills the feature map from the device's own report and it reads all-false
-            // until that arrives. At least one of Audio, Video and Snapshot is mandatory (§11.2.5),
-            // so none of the three is "not stated yet": gating on it would strand a real camera in an
-            // audio-only session, which is worse than the UnsupportedCommand the gate prevents.
+            // The feature map reads all-false until the device reports it. One of Audio, Video and Snapshot
+            // is mandatory (§11.2.5), so none of the three means not stated yet.
             const unstated: CameraState = { ...STATE, features: cameraFeatures("highDynamicRange") };
             const { manager, invokes } = managerWith(unstated, async invoke => {
                 if (invoke.command === "videoStreamAllocate") return { videoStreamId: 9 };
@@ -6939,8 +6696,7 @@ describe("CameraStreamManager device cleanup budget", () => {
         });
 
         it("reports no feature list at all when the camera has not stated its feature map", async () => {
-            // A list is the complete set the camera advertises, so one that cannot be complete is not
-            // reported: an empty or partial list would be read as a camera that has no video.
+            // A partial or empty list would read as a camera with no video.
             const unstated: CameraState = { ...STATE, features: cameraFeatures("highDynamicRange") };
             const capabilities = await managerWith(unstated).manager.getCapabilities(NODE, ENDPOINT);
             expect(capabilities.features).to.equal(undefined);
@@ -6971,8 +6727,7 @@ describe("CameraStreamManager device cleanup budget", () => {
             const detail = JSON.parse((thrown as ServerError).message);
             expect(detail.modes).to.deep.equal(["hard_mode_on"]);
             expect(detail.device_status).to.equal(Status.InvalidInState);
-            // The stream allocated for the refused session goes back; the switch turning off must not
-            // leave an encoder held by a session that never existed.
+            // The stream allocated for the refused session goes back.
             expect(invokes.some(invoke => invoke.command === "videoStreamDeallocate")).to.equal(true);
         });
 
@@ -7000,8 +6755,7 @@ describe("CameraStreamManager device cleanup budget", () => {
         });
 
         it("does not blame the livestream switch for a Recording session it does not cover", async () => {
-            // The switch covers LiveView only (§11.2.7.21). Reporting it for another usage would name
-            // a switch that is not what the camera refused on.
+            // The livestream switch covers LiveView only (§11.2.7.21).
             const state: CameraState = {
                 ...STATE,
                 features: cameraFeatures("audio", "video", "privacy"),
@@ -7048,9 +6802,8 @@ describe("CameraStreamManager device cleanup budget", () => {
         });
 
         it("does not blame the recording switch for a LiveView session it does not cover", async () => {
-            // The camera answers INVALID_IN_STATE for several things that are not privacy at all — a
-            // `turns:` ICE server on a camera whose UTCTime is null, among others. A switch that does
-            // not cover this usage is not an explanation, and claiming it would be a false one.
+            // The camera answers INVALID_IN_STATE for non-privacy reasons too (e.g. a `turns:` ICE server
+            // with null UTCTime), so a switch that does not cover the usage explains nothing.
             const state: CameraState = {
                 ...STATE,
                 features: cameraFeatures("audio", "video", "privacy"),
@@ -7099,9 +6852,8 @@ describe("CameraStreamManager device cleanup budget", () => {
             };
             const { manager } = managerWith(state, async invoke => {
                 if (invoke.command === "videoStreamAllocate") return { videoStreamId: 9 };
-                // Wrapping a device INVALID_IN_STATE is the case the guard exists for: `deviceStatusOf`
-                // walks the cause chain, so an error that already says what happened would otherwise be
-                // replaced by a privacy explanation it never claimed.
+                // `deviceStatusOf` walks the cause chain, so a wrapped INVALID_IN_STATE must not be replaced by a
+                // privacy explanation.
                 if (invoke.command === "provideOffer") {
                     throw ServerError.sdkStackError(
                         "provider relay failed",
@@ -7164,9 +6916,7 @@ describe("CameraStreamManager device cleanup budget", () => {
         });
 
         it("keeps the device's refusal when the state read that would explain it fails", async () => {
-            // The node can go away between the refused offer and the read that would name the switch.
-            // The camera's own answer is the one to report; an unrelated read failure in its place
-            // would tell the client nothing about what happened.
+            // The node can go away before the explaining read; the camera's own refusal is what gets reported.
             const privacyState: CameraState = {
                 ...STATE,
                 features: cameraFeatures("audio", "video", "privacy"),
@@ -7395,8 +7145,7 @@ describe("CameraStreamManager overlays", () => {
     });
 
     it("does not reuse a watermarked stream for a caller that stated nothing either", async () => {
-        // An unstated overlay resolves to false, which is what the reuse rung then requires: two
-        // identical calls may not get visibly different pictures depending on what is allocated.
+        // An unstated overlay resolves to false, which the reuse rung then requires.
         const state = {
             ...OVERLAY_STATE,
             allocatedVideoStreams: [videoStream({ watermarkEnabled: true, osdEnabled: false })],
@@ -7416,8 +7165,7 @@ describe("CameraStreamManager overlays", () => {
     });
 
     it("reports a reused stream's own overlays, not the ones the request resolved to", async () => {
-        // The reported envelope is the camera's statement about the stream, so a feature map that has
-        // not arrived cannot turn a watermarked stream into an unwatermarked report.
+        // The reported envelope is the camera's statement about the stream, whatever the feature map says.
         const state: CameraState = {
             ...STATE,
             features: {},
@@ -7456,10 +7204,8 @@ describe("CameraStreamManager overlays", () => {
     });
 
     it("puts a taken stream's overlays back although the camera has not stated its feature map", async () => {
-        // The replacement carries what the camera reported for the victim. Deriving it from the feature
-        // map instead dropped the fields here, which both changes the picture and, on a camera that does
-        // have the feature, is INVALID_COMMAND for the replacement allocate.
-        // osdEnabled absent, as a camera without OSD reports it: the replacement must not send it.
+        // The replacement carries the victim's reported overlays; dropping one is INVALID_COMMAND on a
+        // camera with the feature. osdEnabled absent, as a camera without OSD reports it.
         const victim = { ...videoStream({ watermarkEnabled: true }), videoStreamId: 11 };
         const state: CameraState = { ...STATE, features: {}, allocatedVideoStreams: [victim] };
         let allocates = 0;
@@ -7490,8 +7236,7 @@ describe("CameraStreamManager overlays", () => {
     });
 
     it("hands out a stream with an unasked-for overlay only from the degraded rung, flagged", async () => {
-        // The degraded rung gives up the server's own choices, and an unstated overlay is one of
-        // them. A stated one is a caller bound and stays hard here too, which the next test shows.
+        // An unstated overlay is the server's choice, which only degraded gives up; a stated one stays hard.
         const state = {
             ...OVERLAY_STATE,
             allocatedVideoStreams: [
@@ -7540,15 +7285,13 @@ describe("CameraStreamManager overlays", () => {
     });
 
     it("puts a taken stream's own overlays back on the replacement", async () => {
-        // The restore does not undo the eviction, but it may not change the picture it puts back.
         const victim = { ...videoStream({ watermarkEnabled: true, osdEnabled: true }), videoStreamId: 11 };
         const state = { ...OVERLAY_STATE, allocatedVideoStreams: [victim] };
         let allocates = 0;
         const { manager, invokes } = managerWith(state, async invoke => {
             if (invoke.command === "videoStreamAllocate") {
                 allocates += 1;
-                // Every attempt for this request fails, so the capacity it bought goes unused and
-                // the scope restores the victim; the restore's own allocate then succeeds.
+                // Every attempt fails, so the scope restores the victim and that allocate succeeds.
                 if (allocates <= MAX_ALLOCATE_ATTEMPTS) throw statusError(Status.ResourceExhausted);
                 return { videoStreamId: 12 };
             }
@@ -7665,8 +7408,6 @@ describe("CameraStreamManager overlays", () => {
     });
 
     it("sends only what the caller stated while the camera has not stated its feature map", async () => {
-        // Nothing is gated on a map that has not arrived, so the caller's own statement reaches
-        // the device and the device answers for itself.
         const state: CameraState = { ...STATE, features: {} };
         const { invokes } = await resolve(state, { osdEnabled: true });
         const allocate = invokes.find(invoke => invoke.command === "videoStreamAllocate");

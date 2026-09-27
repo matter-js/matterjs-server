@@ -87,9 +87,8 @@ const OFFER_H265_8160_H264_3600 = [
 ].join("\r\n");
 
 /**
- * An offer that states its ceiling through the H.264 level alone, which is how a peer usually states
- * it: level 3.1 (`level_idc` 0x1f) is MaxFS 3600 macroblocks in H.264 Table A-1, so 1920x1080 is
- * past what this peer can decode.
+ * An offer that states its ceiling through the H.264 level alone: level 3.1 (`level_idc` 0x1f) is MaxFS
+ * 3600 macroblocks in H.264 Table A-1, so 1920x1080 is past what this peer can decode.
  */
 const OFFER_H264_LEVEL_3_1_ONLY = [
     "v=0",
@@ -146,9 +145,6 @@ describe("streamPolicy", () => {
         });
 
         it("narrows by a level the offer states with no max-fs beside it", () => {
-            // The camera offers H.264 at 1920x1080 and the peer states level 3.1 and nothing else.
-            // Reading the level as no statement leaves that 1920x1080 envelope standing and hands
-            // the peer a picture it cannot decode.
             const sdp = parseSdpVideoConstraints(OFFER_H264_LEVEL_3_1_ONLY);
             const envelope = videoEnvelope({
                 capabilities: CAPABILITIES,
@@ -161,18 +157,14 @@ describe("streamPolicy", () => {
         });
 
         it("spends the peer's pixel-rate budget on frame size rather than allocating past it", () => {
-            // Level 1 (level_idc 0x0a) with max-fs raised to 8160: RFC 6184 §8.1 lets a peer raise
-            // one parameter without the other, so the frame size allows 1920x1080 while the level's
-            // MaxMBPS allows 380160 pixels a second — under one frame per second there. Rounding the
-            // rate up to 1 handed the peer 5.5x the pixel rate it stated it can decode.
+            // Level 1 (level_idc 0x0a) with max-fs raised to 8160 (RFC 6184 §8.1): the frame size allows
+            // 1920x1080, but the level's MaxMBPS of 380160 pixels a second is under one frame per second there.
             const sdp = parseSdpVideoConstraints(offerWithFmtp("H264", "profile-level-id=42e00a;max-fs=8160"));
             const limits = videoCodecLimits(sdp, H264);
             expect(limits.maxPixels).to.equal(8160 * 256);
             expect(limits.maxPixelsPerSecond).to.equal(1485 * 256);
             const envelope = videoEnvelope({ capabilities: CAPABILITIES, limits, hints: undefined });
             const area = envelope.maxResolution.width * envelope.maxResolution.height;
-            // Both halves matter: the budget has to hold, and it has to hold at a rate an encoder
-            // runs at, which is what spending it on frame size first buys.
             expect(envelope.maxFrameRate).to.be.at.least(1);
             expect(area * envelope.maxFrameRate).to.be.at.most(1485 * 256);
         });
@@ -190,8 +182,7 @@ describe("streamPolicy", () => {
         });
 
         it("ignores a trade-off point that fits the ceiling by pixel count but not by dimension", () => {
-            // 1440x1440 and 1920x1080 have the same pixel count, so an area test would take the square
-            // point's minBitRate for a stream that can never be that tall.
+            // 1440x1440 has the same pixel count as 1920x1080, so an area test would take its minBitRate.
             const square = {
                 ...CAPABILITIES,
                 sensor: { width: 1920, height: 1080 },
@@ -219,8 +210,7 @@ describe("streamPolicy", () => {
         });
 
         it("ignores another codec's trade-off point when it derives the bit-rate floor", () => {
-            // A floor taken from H.264 on an H.265 allocation reserves bandwidth the stream does not
-            // need, and spec 15.2.1.2.2 takes that from every other viewer on the camera.
+            // Over-reserved bandwidth is taken from every other viewer on the camera (§11.2.1.2.2).
             const mixed = {
                 ...CAPABILITIES,
                 rateDistortionPoints: [
@@ -256,8 +246,6 @@ describe("streamPolicy", () => {
         });
 
         it("fails a caller minBitRate above every stated ceiling instead of lowering it", () => {
-            // Clamping the floor down reports success while delivering a stream the caller said was
-            // too thin to be useful.
             expect(
                 videoSelection({
                     capabilities: CAPABILITIES,
@@ -312,8 +300,7 @@ describe("streamPolicy", () => {
         });
 
         it("keeps the caller's ceiling out of the offer's pixel budget", () => {
-            // A 4:3 sensor scaled to a 1920x1080 pixel budget lands on 4:3 dimensions narrower than
-            // 1920, which would fail a 1080p floor the peer can in fact decode.
+            // A 4:3 sensor scaled to a 1920x1080 pixel budget is narrower than 1920 and would fail a 1080p floor.
             const envelope = videoEnvelope({
                 capabilities: { ...CAPABILITIES, sensor: { width: 2592, height: 1944 } },
                 limits: { codec: H265, maxPixels: 1920 * 1080 },
@@ -324,8 +311,7 @@ describe("streamPolicy", () => {
         });
 
         it("drops a trade-off floor the camera's own bandwidth cannot carry, instead of pinning min to max", () => {
-            // Pinning min == max would take capacity from every other viewer (spec 15.2.1.2.2) to
-            // honour a floor the caller never asked for.
+            // Pinning min == max would take capacity from every other viewer (§11.2.1.2.2).
             const envelope = videoEnvelope({
                 capabilities: { ...CAPABILITIES, maxNetworkBandwidth: 500000 },
                 limits: { codec: H265 },
@@ -347,8 +333,7 @@ describe("streamPolicy", () => {
         });
 
         it("still clamps a server-derived floor down to the ceiling", () => {
-            // The viewport minimum is the camera's statement, not the caller's, so giving it up
-            // gives up nothing anyone asked for.
+            // The viewport minimum is the camera's statement, not the caller's, so it may give.
             const envelope = videoEnvelope({
                 capabilities: CAPABILITIES,
                 limits: { codec: H265 },
@@ -454,9 +439,6 @@ describe("streamPolicy", () => {
         });
 
         it("fails a floor that exceeds the ceiling on one dimension while fitting it on pixel count", () => {
-            // A 1440x1440 floor has fewer pixels than a 1920x1080 ceiling, so an area test finds
-            // nothing wrong with it. Clamping it per dimension instead would return 1440x1080, which
-            // is not the floor the caller asked for.
             expect(
                 videoSelection({
                     capabilities: CAPABILITIES,
@@ -475,8 +457,7 @@ describe("streamPolicy", () => {
         });
 
         it("clamps a caller ceiling that binds on one dimension only", () => {
-            // 2560x1440 against a 3840x1080 ceiling: the area comparison keeps the sensor size whole
-            // and leaves a height the caller ruled out.
+            // 2560x1440 against a 3840x1080 ceiling: an area comparison would keep a height the caller ruled out.
             const envelope = videoEnvelope({
                 capabilities: CAPABILITIES,
                 limits: { codec: H265 },
@@ -556,7 +537,7 @@ describe("streamPolicy", () => {
         });
 
         it("refuses a stream whose floor is below the requested floor", () => {
-            // Issue #1056: [720p..1080p] may deliver 720p, so it does not satisfy a 1080p floor.
+            // [720p..1080p] may deliver 720p, so it does not satisfy a 1080p floor.
             const candidate = stream({ minResolution: { width: 1280, height: 720 } });
             expect(findReusableVideoStream([candidate], REQUEST, LIVE_VIEW_H265)).to.equal(undefined);
         });
@@ -579,8 +560,7 @@ describe("streamPolicy", () => {
         });
 
         it("refuses a stream whose bit-rate ceiling is above the one the caller stated", () => {
-            // The caller's ceiling is what its link can carry. The envelope here is deliberately wide
-            // enough to admit the stream, so the caller's own bound is the only thing refusing it.
+            // The envelope admits the stream, so only the caller's own bound refuses it.
             const wide = { ...REQUEST, maxBitRate: 8000000 };
             const bounds = videoCallerBounds({ codec: H265 }, LIVE_VIEW, { maxBitRate: 500000 });
             expect(findReusableVideoStream([stream({ maxBitRate: 8000000 })], wide, bounds)).to.equal(undefined);
@@ -609,8 +589,7 @@ describe("streamPolicy", () => {
         });
 
         it("refuses a stream whose overlays are not the ones the envelope asked for", () => {
-            // The envelope carries what the server resolved, so the reuse rung requires it even where
-            // the caller stated nothing: an unstated overlay resolves to false, not to "either will do".
+            // An unstated overlay resolves to false, not to "either will do".
             const watermarked = stream({ overlays: { watermarkEnabled: true, osdEnabled: false } });
             const asked = { ...REQUEST, overlays: { watermarkEnabled: false, osdEnabled: false } };
             expect(findReusableVideoStream([watermarked], asked, LIVE_VIEW_H265)).to.equal(undefined);
@@ -623,7 +602,7 @@ describe("streamPolicy", () => {
         });
 
         it("refuses a stream with the same pixel count but a different aspect ratio", () => {
-            // 1440x1440 has the same area as 1920x1080 (2,073,600px) but is square, not widescreen.
+            // 1440x1440 has the same area as 1920x1080 but is square.
             const square = stream({
                 minResolution: { width: 1440, height: 1440 },
                 maxResolution: { width: 1440, height: 1440 },
@@ -658,9 +637,7 @@ describe("streamPolicy", () => {
         });
 
         it("refuses a stream whose size leaves the offer's pixel rate no whole frame per second", () => {
-            // 2560x1440 at the peer's 380160 pixels a second is 0.10 frames a second, and the stream
-            // runs at 1. Rounding the ceiling up to 1 accepted it, which hands the peer ten times the
-            // pixel rate it stated it can decode.
+            // 2560x1440 at 380160 pixels a second is 0.10 frames a second; the stream runs at 1.
             const slowest = { ...STREAM, minFrameRate: 1, maxFrameRate: 1 };
             const bounds = videoCallerBounds({ codec: H265, maxPixelsPerSecond: 380160 }, LIVE_VIEW, undefined);
             expect(satisfiesVideoCallerBounds(slowest, bounds)).to.equal(false);
@@ -726,7 +703,7 @@ describe("streamPolicy", () => {
         });
 
         it("refuses a stream below a floor the caller stated", () => {
-            // The caller pinned 1080p, so [720p..1080p] may deliver less than asked — issue #1056.
+            // The caller pinned 1080p, so [720p..1080p] may deliver less than asked.
             expect(
                 findDegradedVideoStream(
                     [IN_USE_WIDE],
@@ -810,15 +787,13 @@ describe("streamPolicy", () => {
         });
 
         it("refuses a stream whose usage is not the one the caller asked for", () => {
-            // stream_usage is the only mandatory argument, so no rung may substitute it: a LiveView
-            // caller handed a Recording stream got something it never asked for.
+            // stream_usage is the only mandatory argument, so no rung may substitute it.
             const recording = { ...IN_USE_WIDE, streamUsage: RECORDING_USAGE };
             expect(findDegradedVideoStream([recording], bounds())).to.equal(undefined);
         });
 
         it("accepts a stream that matches pinned bounds exactly", () => {
-            // Pinning leaves nothing for this rung to give up, so the one stream it can hand out is
-            // the one that meets the pins — which is not a degradation of anything the caller stated.
+            // Matching the pins exactly is not a degradation of anything the caller stated.
             const pinned = {
                 ...IN_USE_WIDE,
                 minResolution: { width: 1920, height: 1080 },
@@ -842,7 +817,7 @@ describe("streamPolicy", () => {
         });
 
         it("refuses a stream with the same pixel count but a different aspect ratio than the pinned bounds", () => {
-            // 1440x1440 has the same area as 1920x1080 (2,073,600px) but is square, not widescreen.
+            // 1440x1440 has the same area as 1920x1080 but is square.
             const square = {
                 ...IN_USE_WIDE,
                 minResolution: { width: 1440, height: 1440 },
@@ -988,8 +963,7 @@ describe("streamPolicy", () => {
         });
 
         it("reports the frame rate it lowered, and what it would have asked for", () => {
-            // The whole point of the field: the caller sees 15 fps and the 30 it would have had, so it
-            // can tell another stream's reservation from a camera that cannot do more.
+            // With both values the caller can tell another stream's reservation from a camera limit.
             expect(
                 budgetVideoEnvelope(SENSOR, { maxEncodedPixelRate: SENSOR_RATE / 2, ...NO_STREAMS }).narrowed,
             ).to.deep.equal({ maxFrameRate: 30 });
@@ -1002,8 +976,7 @@ describe("streamPolicy", () => {
         });
 
         it("reports nothing narrowed when a caller floor clamped the ceiling back up", () => {
-            // The budget did the arithmetic and the floors undid it, so the envelope that goes out is
-            // the one the caller asked for: reporting a narrowing here would name a cost nobody paid.
+            // The floors undid the budget's narrowing, so the envelope is the one the caller asked for.
             const pinned = {
                 ...SENSOR,
                 minResolution: { width: 2560, height: 1440 },
@@ -1025,8 +998,6 @@ describe("streamPolicy", () => {
         });
 
         it("never narrows a ceiling below the envelope's own floor", () => {
-            // The floors carry whatever the caller stated, so this is what keeps a stated bound from
-            // being quietly shrunk into the budget.
             const pinned = {
                 ...SENSOR,
                 minResolution: { width: 2560, height: 1440 },
@@ -1070,9 +1041,8 @@ describe("streamPolicy", () => {
         });
 
         it("moves to the frame rate rather than reporting a resolution ceiling it did not lower", () => {
-            // The even-dimension floor can leave the halved ceiling where it already was. Returning
-            // it unchanged would spend a ladder round on an identical request; the contract is that
-            // each call gives something up or reports exhaustion.
+            // Each call gives something up or reports exhaustion; the even-dimension floor can leave the
+            // halved ceiling unchanged.
             const degenerate = {
                 ...WIDE,
                 minResolution: { width: 1, height: 2 },
@@ -1111,9 +1081,7 @@ describe("streamPolicy", () => {
         });
 
         it("refuses a stream whose usage is not the one the caller asked for", () => {
-            // stream_usage is the only mandatory argument of camera_start_stream, so the audio rung
-            // may no more substitute it than the video one: a LiveView caller handed the microphone
-            // track of a Recording session got something it never asked for.
+            // stream_usage is the only mandatory argument, so the audio rung may not substitute it either.
             const recording = { ...LIVE_VIEW_AUDIO, streamUsage: RECORDING_USAGE };
             expect(satisfiesAudioCallerBounds(recording, { streamUsage: LIVE_VIEW })).to.equal(false);
         });
@@ -1146,9 +1114,7 @@ describe("streamPolicy", () => {
                 ids.includes(stream.videoStreamId);
 
         it("takes a stream of its own before a foreign one the camera ranks lower", () => {
-            // The camera ranks Analysis below Recording, so ranking alone would destroy the foreign
-            // stream. StreamUsagePriorities is the camera's guidance for its own arbitration and says
-            // nothing about which controller should pay for a request.
+            // StreamUsagePriorities guides the camera's own arbitration, not which controller pays for a request.
             const ours = idle(30, RECORDING_USAGE);
             const foreign = idle(31, ANALYSIS_USAGE);
             expect(chooseEvictionVictim([ours, foreign], PRIORITIES, oursBy(30))?.videoStreamId).to.equal(30);
@@ -1224,9 +1190,7 @@ describe("streamPolicy", () => {
         });
 
         it("keeps the camera's codecs when an offered audio section states none", () => {
-            // A section carrying only statically-mapped payload types states nothing about what the
-            // peer decodes. Filtering by that empty statement drops every codec the camera has, and a
-            // caller that asked for audio is then refused for a codec mismatch that was never stated.
+            // Static payload types state no codec, so they must not filter out the camera's codecs.
             const envelope = audioEnvelope(
                 computeAudioEnvelope({
                     capabilities: { ...AUDIO_CAPABILITIES, supportedCodecs: [OPUS, AAC] },
@@ -1255,8 +1219,7 @@ describe("streamPolicy", () => {
         });
 
         it("describes no envelope when the caller's codec preference leaves the camera nothing", () => {
-            // Whether that is a failure or a video-only session is the manager's to decide: it knows
-            // whether the caller asked for audio at all, and this function does not.
+            // Only the manager knows whether the caller asked for audio, so failing is its decision.
             expect(
                 computeAudioEnvelope({
                     capabilities: AUDIO_CAPABILITIES,
@@ -1277,8 +1240,7 @@ describe("streamPolicy", () => {
         });
 
         it("reports nothing, without failing, when the offer shares no codec with the camera", () => {
-            // The offer states what the peer can decode; with no codec stated by the caller, an
-            // audio-less session drops nothing the caller asked for.
+            // The caller stated no codec, so an audio-less session drops nothing it asked for.
             expect(
                 computeAudioEnvelope({
                     capabilities: AUDIO_CAPABILITIES,
@@ -1295,8 +1257,7 @@ describe("streamPolicy", () => {
         });
 
         it("reports a sample rate the camera cannot serve ahead of a codec the offer ruled out", () => {
-            // Both are unmet. Naming the codec would send the caller after its offer when the value
-            // it can actually change is the sample rate.
+            // Both are unmet; the sample rate is the value the caller can actually change.
             expect(
                 computeAudioEnvelope({
                     capabilities: AUDIO_CAPABILITIES,
@@ -1335,7 +1296,6 @@ describe("streamPolicy", () => {
         });
 
         it("fails a channel count above what the camera states, rather than clamping it", () => {
-            // Clamping reports success while delivering mono to a caller that asked for 8 channels.
             expect(
                 computeAudioEnvelope({
                     capabilities: AUDIO_CAPABILITIES,

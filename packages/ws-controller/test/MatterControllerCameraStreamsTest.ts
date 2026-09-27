@@ -12,8 +12,7 @@ import { ServerError, ServerErrorCode } from "../src/types/WebSocketMessageTypes
 function freshEnv(): Environment {
     const env = new Environment("test");
     new MockStorageService(env);
-    // Reuse the default environment's Crypto service (stateless, safe to share) rather than pull in
-    // a platform crypto package this workspace doesn't otherwise depend on.
+    // Crypto is stateless, so the default environment's instance is safe to share.
     env.set(Crypto, Environment.default.get(Crypto));
     return env;
 }
@@ -102,9 +101,7 @@ describe("MatterController.cameraStreamsIfCreated", () => {
             fabric_index: 1,
             data: { reason: 0 },
         });
-        // Not during the emit: every WebSocket connection resolves the session's owning connection
-        // from its own observer of this same event, and the entry is what names it. A drop inside the
-        // emit hands the end of one connection's session to every observer registered behind this one.
+        // Observers behind this one still need the entry to find the session's owner, so the drop runs after the emit.
         expect(forgotten).to.deep.equal([]);
         await Promise.resolve();
         expect(forgotten).to.deep.equal(["5/1/7"]);
@@ -113,9 +110,7 @@ describe("MatterController.cameraStreamsIfCreated", () => {
     });
 
     it("keeps the shared callback emitting when one carries an endpoint id out of range", async () => {
-        // The emit is shared with every WebSocket connection's signaling observer, and matter.js
-        // rethrows an observer error, which aborts the rest of the emit. The id conversion runs after
-        // the emit, so such a callback cannot abort it; the failed drop is logged and nothing else.
+        // matter.js rethrows an observer error, which would abort the shared emit for every other connection.
         const controller = await MatterController.create(freshEnv(), config, {});
         const manager = controller.cameraStreams;
         const forgotten = new Array<number>();
@@ -146,8 +141,8 @@ describe("MatterController.cameraStreamsIfCreated", () => {
 
     it("stop() waits for every open camera session to be released before closing connections", async () => {
         const controller = await MatterController.create(freshEnv(), config, {});
-        const manager = controller.cameraStreams; // force construction
-        const handler = controller.commandHandler; // force construction
+        const manager = controller.cameraStreams;
+        const handler = controller.commandHandler;
         const order = new Array<string>();
         manager.stopAll = async () => {
             order.push("stopAll entered");

@@ -83,10 +83,7 @@ describe("redactSensitiveCommandFields", () => {
         expect(payload.userIndex).to.equal(3);
     });
 
-    /**
-     * One entry per masked field name, each written out rather than read from the source list, so
-     * removing a name from that list turns exactly one of these red.
-     */
+    /** One entry per masked field name, written out rather than read from the source list. */
     const SECRET_ARGUMENTS: Array<{ what: string; command: string; args: Record<string, unknown> }> = [
         { what: "commission_with_code's setup code", command: "commission_with_code", args: { code: SECRET } },
         {
@@ -176,8 +173,7 @@ describe("redactSensitiveCommandFields", () => {
             const message = { message_id: "1", command, args: { ...args, node_id: 5 } };
             const text = JSON.stringify(redactSensitiveCommandFields(message));
             expect(text).to.not.contain(SECRET);
-            // A redactor that masked or dropped everything would satisfy the line above, and would
-            // leave nobody able to debug the request.
+            // Guards against a redactor that masks or drops everything.
             expect(text).to.contain('"node_id":5');
             expect(text).to.contain(`"command":"${command}"`);
         });
@@ -192,11 +188,7 @@ describe("redactSensitiveCommandFields", () => {
         expect(JSON.stringify(redactSensitiveCommandFields(message))).to.not.contain(SECRET);
     });
 
-    /**
-     * Names that look like the masked ones and carry nothing secret. Over-masking is the failure the
-     * Door Lock `credential` struct already demonstrated: a request the log cannot show is a request
-     * nobody can debug.
-     */
+    /** Names that look like the masked ones but carry nothing secret, such as the Door Lock `credential` struct. */
     it("leaves a lookalike that carries no secret in the log", () => {
         const message = {
             message_id: "1",
@@ -235,7 +227,6 @@ describe("redactSensitiveCommandFields", () => {
             username: "[redacted]",
             credential: "[redacted]",
         });
-        // Everything that is not a secret still reaches the log, or the log cannot be debugged with.
         expect(args.ice_servers[0]).to.deep.equal({ urls: "stun:stun.example.org:3478" });
         expect(args.node_id).to.equal(5);
     });
@@ -254,8 +245,7 @@ describe("redactSensitiveCommandFields", () => {
         });
     });
 
-    // The request is logged before `ice_servers` is validated, so the entry the server is about to
-    // refuse is exactly the one whose secrets the log is read for.
+    // The request is logged before `ice_servers` is validated.
     it("redacts an ice_servers entry that names no url at all", () => {
         const message = {
             message_id: "1",
@@ -284,8 +274,7 @@ describe("redactSensitiveCommandFields", () => {
         expect(JSON.stringify(redactSensitiveCommandFields(message))).to.not.contain("turn-secret");
     });
 
-    // The server matches a client's key to a field with every separator dropped, so a spelling it
-    // accepts as the ICE server list and this walk does not is a secret written verbatim.
+    // The server matches a client's key to a field with every separator dropped, so the walk must too.
     for (const spelling of ["ice_servers", "iceServers", "ICEServers", "ice-servers", "ice.servers", "ICE Servers"]) {
         it(`redacts an ICE server list spelled ${spelling}`, () => {
             const message = {
@@ -299,8 +288,7 @@ describe("redactSensitiveCommandFields", () => {
         });
     }
 
-    // The Door Lock struct is the reason `credential` is not masked by name, and it is the same
-    // struct wherever it sits.
+    // The Door Lock `credential` struct is why `credential` is not masked by name.
     it("keeps a credential struct nested below an ICE server entry readable", () => {
         const message = {
             message_id: "1",
@@ -369,7 +357,7 @@ describe("redactSensitiveCommandFields", () => {
         expect(args.sdp).to.not.contain(ICE_PWD);
         expect(args.sdp).to.contain("a=ice-ufrag:[redacted]");
         expect(args.sdp).to.contain("a=ice-pwd:[redacted]");
-        // The rest of the offer is what a failed session is read from, so it has to survive.
+        // A failed session is debugged from the rest of the offer.
         expect(args.sdp).to.contain("m=video 9 UDP/TLS/RTP/SAVPF 96");
         expect(args.sdp).to.contain(`a=fingerprint:sha-256 ${FINGERPRINT}`);
         expect(args.sdp).to.contain("a=fmtp:96 max-fs=8160");
@@ -386,8 +374,7 @@ describe("redactSensitiveCommandFields", () => {
     });
 
     it("logs a bulk argument in full, however long it is", () => {
-        // An argument is the record of what the caller asked for; an `import_test_node` dump is the
-        // whole record of a refused import. The length rule is the incoming path's alone.
+        // The length rule applies only to the incoming path.
         const message = { message_id: "1", command: "import_test_node", args: { dump: BULK_STRING } };
         expect(redactSensitiveCommandFields(message)).to.equal(message);
     });
@@ -467,8 +454,7 @@ describe("redactIncomingMessage", () => {
     });
 
     it("states a bulk array entry by its length, where no field name names it", () => {
-        // `attribute_updated` reports `[node_id, path, value]`, so the value has no member name of its
-        // own and only the walk itself can reach it.
+        // `attribute_updated` reports `[node_id, path, value]`, so the value has no field name.
         const event = { event: "attribute_updated", data: [5, "1/1111/0", BULK_STRING] };
         const { data } = redactIncomingMessage(event) as { data: [number, string, string] };
         expect(data[2]).to.equal(`[${BULK_STRING.length} chars omitted]`);

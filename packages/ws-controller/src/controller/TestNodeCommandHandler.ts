@@ -32,7 +32,6 @@ export class TestNodeCommandHandler implements NodeCommandHandler {
     /** Observable for node removed events */
     readonly nodeRemoved = new Observable<[nodeId: NodeId]>();
 
-    /** Check if a node ID is in the test node range, which the released `isTestNodeId` defines. */
     static isTestNodeId(nodeId: number | bigint): boolean {
         return isTestNodeId(nodeId);
     }

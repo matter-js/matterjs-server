@@ -16,17 +16,8 @@ import { isRecord, rejectUnknownKeys, toBoundedString, toRequiredNumber } from "
 const logger = Logger.get("webRtcProviderArguments");
 
 /**
- * The `WebRtcTransportProvider` commands this boundary converts a payload for.
- *
- * `ProvideOffer` and `SolicitOffer` establish a session; `ProvideAnswer` and `ProvideIceCandidates`
- * signal for one that exists. A command is on this list because a client needs a checked route for
- * it, not because the server tracks anything for it — {@link establishesWebRtcSession} is what tells
- * the two groups apart. `EndSession` is deliberately absent: `camera_stop_stream` owns it, because
- * one session gets one `EndSession` and the records this server holds go with it.
- *
- * All four are reachable through `send_webrtc_provider_command`, which names the command in its
- * request. The two signalling ones are also what `camera_provide_answer` and
- * `camera_provide_ice_candidates` send, each naming one.
+ * The `WebRtcTransportProvider` commands this boundary converts a payload for. `EndSession` is absent
+ * on purpose: `camera_stop_stream` owns it, so the server's session records end with it.
  */
 export const PROVIDER_COMMAND_NAMES = [
     "ProvideOffer",
@@ -46,12 +37,7 @@ export function isProviderCommandName(value: string): value is ProviderCommandNa
 /** The commands that create a session, as against signaling for one the camera already holds. */
 export type SessionEstablishingCommandName = "ProvideOffer" | "SolicitOffer";
 
-/**
- * The commands that signal into a session the camera already holds.
- *
- * Neither carries an `OriginatingEndpointID`, neither states a stream, and the cluster gives neither
- * a response payload, so they share one invoke path and one `null` answer.
- */
+/** The commands that signal into a session the camera already holds; neither has a response payload. */
 export type SignallingCommandName = Exclude<ProviderCommandName, SessionEstablishingCommandName>;
 
 const SESSION_ESTABLISHING: ReadonlySet<string> = new Set<SessionEstablishingCommandName>([
@@ -60,13 +46,8 @@ const SESSION_ESTABLISHING: ReadonlySet<string> = new Set<SessionEstablishingCom
 ]);
 
 /**
- * Whether invoking `name` produces a session this server has to complete and track.
- *
- * An establishing command needs the requestor's own endpoint injected, its stream fields reconciled
- * against the camera's cluster revision and the resulting session registered with the local
- * requestor, without which no `webrtc_callback` can be routed for it. `ProvideIceCandidates` needs
- * none of that and creates nothing, so sending it down the establishing path would look for a
- * session id in a response that carries none.
+ * Whether invoking `name` produces a session this server has to complete and track (originating
+ * endpoint injected, stream fields reconciled, session registered with the local requestor).
  */
 export function establishesWebRtcSession(name: ProviderCommandName): name is SessionEstablishingCommandName {
     return SESSION_ESTABLISHING.has(name);
@@ -76,31 +57,14 @@ export function establishesWebRtcSession(name: ProviderCommandName): name is Ses
 type FieldConverter = (value: unknown, field: string) => unknown;
 
 /**
- * The form a wire key and the matter.js property it names are compared in.
- *
- * `camelize` cannot answer this: it reads `webrtc_session_id` as one word and returns
- * `webrtcSessionId` where the field is `webRtcSessionId`, and it leaves the W3C `sdpMLineIndex`
- * unchanged where `ICECandidateStruct`'s field is `sdpmLineIndex`. Both spellings are ones this API
- * hands a client — `camera_start_stream` reports `webrtc_session_id`, the `webrtc_callback`
- * `ice_candidates` event emits `sdpMLineIndex` — so matching by `camelize` refused the client's echo
- * of the server's own words. Case and the separators between words are all that separate a
- * documented wire key from the field it names, so they are all this drops.
- *
- * Dropping every separator, not only underscores, is what keeps this wider than `camelize` in every
- * case rather than most: `camelize` splits on dashes, dots and spaces too, and it never adds or
- * removes a letter or a digit, so a key it resolved to a field has the same canonical form as that
- * field.
+ * The form a wire key and the matter.js property it names are compared in: case and separators
+ * dropped, so `webrtc_session_id` matches `webRtcSessionId` and `sdpMLineIndex` matches `sdpmLineIndex`.
  */
 function canonicalKey(key: string): string {
     return key.replace(/[^A-Za-z0-9]/g, "").toLowerCase();
 }
 
-/**
- * The keys one `ice_servers` entry takes, in the W3C `RTCIceServer` spelling the wire uses.
- *
- * Tied to the wire model the same way the hint key sets are: a field added to `CameraIceServer` and
- * not listed here does not compile, rather than being refused although the reference documents it.
- */
+/** The keys one `ice_servers` entry takes, in the W3C `RTCIceServer` spelling the wire uses. */
 const ICE_SERVER_KEY_SET: Record<keyof Required<CameraIceServer>, true> = {
     urls: true,
     username: true,
@@ -111,18 +75,8 @@ const ICE_SERVER_KEY_SET: Record<keyof Required<CameraIceServer>, true> = {
 const ICE_SERVER_KEYS: readonly string[] = Object.keys(ICE_SERVER_KEY_SET);
 
 /**
- * One wire `ice_servers` entry as the `ICEServerStruct` matter.js encodes.
- *
- * The wire keeps the W3C `RTCIceServer` spelling — `urls`, a single URL or a list of them — while the
- * struct's field is `URLs`, always a list, which matter.js camelizes to `urLs`. Forwarding the wire
- * object unchanged leaves the mandatory field unset and puts a string where a list belongs, so the
- * translation happens here, and an entry whose shape or whose stated lengths are wrong is refused
- * with error 8 instead of failing inside the TLV encoder, where the message names the encoder rather
- * than the argument the client sent.
- *
- * Its keys are the documented ones exactly, not {@link canonicalKey} matches: this entry is not the
- * cluster's struct under another spelling — `urls` may be one string where `URLs` is always a list —
- * so the shape it names is this API's own and has one spelling.
+ * One wire `ice_servers` entry (W3C `RTCIceServer`: `urls` is one URL or a list) as the `ICEServerStruct`
+ * matter.js encodes (`urLs`, always a list). Keys are matched exactly, not by {@link canonicalKey}.
  *
  * @see Matter spec § 11.4.5.3 (ICEServerStruct)
  */
@@ -153,12 +107,8 @@ function toIceServer(value: unknown, field: string): WebRtcTransportDefinitions.
 }
 
 /**
- * The whole `ice_servers` list, bounded by what the command's own field takes.
- *
- * `camera_start_stream` reaches the entries through here and the raw route reaches them through
- * {@link listConverter}, so the refusal is worded as that one words it: the same list refused on two
- * routes must read the same, or the contract a client reads differs by route even where the bound
- * does not.
+ * The whole `ice_servers` list, bounded by what the command's own field takes. Keep the refusal text in
+ * line with {@link listConverter}, which the raw route uses for the same list.
  */
 export function toIceServers(value: unknown, field: string): WebRtcTransportDefinitions.IceServer[] {
     if (!Array.isArray(value) || value.length > ICE_SERVER_LIMITS.maxServers) {
@@ -171,13 +121,8 @@ const ICE_SERVER_STRUCT = "WebRtcTransportDefinitions.ICEServerStruct";
 const ICE_CANDIDATE_STRUCT = "WebRtcTransportDefinitions.ICECandidateStruct";
 
 /**
- * How each struct these commands carry is built from a wire object, keyed by the struct the model
- * names rather than by the field carrying it, so a field that happens to share a name with another
- * cannot inherit its conversion.
- *
- * A struct absent from here throws in {@link converterFor} at module load. Whether a struct's wire
- * shape is the cluster's under another spelling, or this API's own, is a decision a human makes once
- * for both routes; it is not something a model states.
+ * How each struct these commands carry is built from a wire object, keyed by struct type. A struct
+ * missing here throws in {@link converterFor} at module load.
  */
 const STRUCT_CONVERTERS = new Map<string, (entry: ValueModel) => FieldConverter>([
     [ICE_SERVER_STRUCT, () => toIceServer],
@@ -187,15 +132,7 @@ const STRUCT_CONVERTERS = new Map<string, (entry: ValueModel) => FieldConverter>
 /** Server-owned: `establishWebRtcProviderSession` injects the requestor's own endpoint over any value here. */
 const ORIGINATING_ENDPOINT_ID = canonicalKey("originatingEndpointId");
 
-/**
- * Both ends of the length its own constraint states, and neither invented.
- *
- * A field stating a ceiling keeps the 1-to-max rule `toBoundedString` applies to the ICE strings on
- * both routes. A field stating only a floor — `ICECandidateStruct.SdpMid` is `min 1` — is held to it
- * and nothing more, because an empty string there is one the struct forbids and the camera would be
- * the one to say so. A field stating neither takes any string, `ProvideOffer.sdp` and
- * `ICECandidateStruct.Candidate` among them, which is why a length is never assumed.
- */
+/** A string checked against only the length bounds its own constraint states. */
 function stringConverter(field: ValueModel): FieldConverter {
     const { min, max } = field.constraint;
     if (typeof max === "number") return (value, name) => toBoundedString(value, name, max);
@@ -236,14 +173,7 @@ function listConverter(field: ValueModel): FieldConverter {
     };
 }
 
-/**
- * The conversion `field`'s own definition states.
- *
- * A struct no {@link STRUCT_CONVERTERS} entry names raises here and a scalar type with no known width
- * raises in `fieldRange`, so a field this cannot describe stops the import instead of being forwarded
- * raw. The same throw covers a struct reached through a list, because {@link listConverter} converts
- * its entry through here.
- */
+/** The conversion `field`'s own definition states. Throws for a field it cannot describe, which stops the import. */
 function converterFor(field: ValueModel): FieldConverter {
     switch (field.metabase?.name) {
         case "struct": {
@@ -274,26 +204,14 @@ interface FieldContract {
     readonly convert: FieldConverter;
     readonly mandatory: boolean;
     readonly nullable: boolean;
-    /**
-     * The canonical keys of the fields whose null this field's conformance is conditioned on, empty
-     * for a field whose conformance names no such condition. Read from the command's own contract
-     * only; a struct member's conformance names no sibling of the command.
-     */
+    /** Canonical keys of the fields whose null this field's conformance is conditioned on. */
     readonly nullGates: readonly string[];
 }
 
 /**
- * The names a conformance names as having to be null for a clause of it to apply.
- *
- * `ProvideOffer` states `StreamUsage` as `WebRTCSessionID == NULL, O`, `MetadataEnabled` as
- * `METADATA & (WebRTCSessionID == NULL)` and `VideoStreams` / `AudioStreams` as
- * `[(Rev >= v2) & (WebRTCSessionID == NULL)].d+, O` (spec § 11.5.6.3). What this reads out is which
- * fields the cluster describes for a request whose named field is null — not whether the field may
- * appear at all, which a trailing `otherwise` clause answers and which nothing here refuses.
- *
- * Only the forms that keep that meaning are descended into: the clause wrappers, `&`, and the
- * comparison itself. Under `!` or `|` a name compared to null says the opposite or says nothing, so
- * such an expression contributes no name rather than one this would read backwards.
+ * The names a conformance requires to be null for a clause of it to apply, e.g. `ProvideOffer.StreamUsage`
+ * is `WebRTCSessionID == NULL, O` (§ 11.5.6.3). Does not descend into `!` or `|`, where the meaning
+ * would invert or vanish.
  */
 function nullComparedNames(ast: Conformance.Ast, into: Set<string>): void {
     switch (ast.type) {
@@ -331,13 +249,7 @@ interface FieldsContract {
     readonly dropped?: string;
 }
 
-/**
- * What a set of model fields accepts from a wire object.
- *
- * Two fields whose canonical keys collide would make one of them unreachable, and the walk would
- * refuse the second spelling as a duplicate of the first, so the model is checked for that here
- * rather than leaving it to be met on a device.
- */
+/** What a set of model fields accepts from a wire object. Throws if two fields share a canonical key. */
 function contractFor(fields: Iterable<ValueModel>, subject: string, skip?: string): FieldsContract {
     const byKey = new Map<string, FieldContract>();
     const mandatory = new Array<string>();
@@ -380,13 +292,7 @@ function structConverter(entry: ValueModel): FieldConverter {
     };
 }
 
-/**
- * One wire object as the fields `contract` describes.
- *
- * A key that resolves to no field, and a second key resolving to a field another already filled, are
- * both refused rather than forwarded or overwritten: matter.js drops what it cannot place, and a
- * caller whose argument was ignored gets the session it did not ask for.
- */
+/** One wire object as the fields `contract` describes. Unknown and duplicate keys are refused. */
 function toFields(
     contract: FieldsContract,
     payload: Record<string, unknown>,
@@ -394,8 +300,7 @@ function toFields(
     keyPrefix?: string,
 ): Record<string, unknown> {
     const fields: Record<string, unknown> = {};
-    // Every key the walk has decided about, including one whose null was dropped: a field is stated
-    // twice whether or not the first spelling put a value in `fields`.
+    // Includes keys whose null was dropped, so a duplicate is caught even then.
     const stated = new Set<string>();
     for (const [key, value] of Object.entries(payload)) {
         const canonical = canonicalKey(key);
@@ -410,11 +315,9 @@ function toFields(
             throw ServerError.invalidArguments(`${subject} states ${field.property} twice, last as ${key}`);
         }
         stated.add(canonical);
-        // A member's refusal names the entry it was in, which is how a client tells which of a
-        // list's entries is wrong.
         const named = keyPrefix === undefined ? key : `${keyPrefix}.${key}`;
         if (value === null) {
-            // A client that sends null for an unset optional field means it unset, not null.
+            // null on a non-nullable optional field means "unset".
             if (!field.mandatory && !field.nullable) continue;
             if (!field.nullable) throw ServerError.invalidArguments(`${named} must not be null`);
             fields[field.property] = null;
@@ -433,13 +336,7 @@ function contractForCommand(name: ProviderCommandName): FieldsContract {
     return contractFor(command.children, name, ORIGINATING_ENDPOINT_ID);
 }
 
-/**
- * Every permitted command's contract, built at module load, so a model this boundary cannot describe
- * fails the import rather than the first offer. The import is the server's, not the camera
- * subsystem's, so such a model stops startup — the same trade `cameraFieldRanges` already takes: a
- * `@matter/model` whose provider commands this code cannot describe is a build mismatch, and a loud
- * start beats a command that fails on a device the operator will blame instead.
- */
+/** Built at module load, so a Matter model this boundary cannot describe stops server startup. */
 const PROVIDER_CONTRACTS: Readonly<Record<ProviderCommandName, FieldsContract>> = {
     ProvideOffer: contractForCommand("ProvideOffer"),
     SolicitOffer: contractForCommand("SolicitOffer"),
@@ -448,19 +345,11 @@ const PROVIDER_CONTRACTS: Readonly<Record<ProviderCommandName, FieldsContract>> 
 };
 
 /**
- * A whole `send_webrtc_provider_command` payload as the named command's arguments; the fields
- * `camera_start_stream` takes from its caller reach the same converters through {@link toIceServers}.
+ * A provider command payload as the named command's arguments. Keys are matched by {@link canonicalKey}.
+ * `originatingEndpointId` is dropped, because the server injects its own requestor endpoint.
  *
- * A key is matched by {@link canonicalKey}, so the Python Matter Server spelling (`webRtcSessionID`),
- * this API's own snake spelling (`webrtc_session_id`, `ice_servers`) and the W3C spelling the
- * `webrtc_callback` events emit (`sdpMLineIndex`) all resolve to the field they name.
- *
- * `originatingEndpointId` is dropped: the server injects its own requestor endpoint downstream, so a
- * value here is overwritten and validating it would refuse a payload nothing reads.
- *
- * `subject` names what a refusal is about. A camera command passes its own name, so a client that
- * never wrote a cluster command name is not refused in one; `send_webrtc_provider_command`, whose
- * caller did name the command, leaves it out and gets the command's own payload named.
+ * `target` names the device in logs. `subjectName` names what a refusal is about; defaults to
+ * "<command> payload".
  */
 export function toProviderCommandFields(
     commandName: ProviderCommandName,
@@ -477,18 +366,8 @@ export function toProviderCommandFields(
 }
 
 /**
- * Log the fields a request states although the cluster describes them for a new session only.
- *
- * A `ProvideOffer` naming an existing `WebRTCSessionID` is a re-offer, and the provider's Effect on
- * Receipt runs its whole stream-selection block under `WebRTCSessionID` being null (§ 11.5.6.3), so
- * `VideoStreams`, `AudioStreams`, `StreamUsage` and `MetadataEnabled` change nothing there.
- *
- * None of them is refused, and the camera is what decides: three of the four end their conformance in
- * a clause that leaves them optional whatever the session id, so refusing those would state a rule the
- * cluster does not. `MetadataEnabled` is the one that does not (`METADATA & (WebRTCSessionID ==
- * NULL)`, so a re-offer states a field that does not apply) — it is still forwarded, because what a
- * device does with a field it did not ask for is the device's answer to give. The log is the only
- * place the mismatch is visible, since the response says nothing about a field the camera ignored.
+ * Log the fields a request states although the cluster describes them for a new session only (a
+ * re-offer ignores them, § 11.5.6.3). They are forwarded, not refused: the camera decides.
  */
 function reportFieldsPastTheirGate(
     commandName: ProviderCommandName,

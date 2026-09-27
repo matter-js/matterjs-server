@@ -192,9 +192,7 @@ describe("WebRtcCallbackBridge", () => {
         if (event.event_type !== "ice_candidates" || event.data === null) {
             throw new Error(`expected an ice_candidates event with data, got ${JSON.stringify(event)}`);
         }
-        // The payload a client echoes back is the event's own, spelled as the event spelled it, and
-        // the ids are the ones the wire reports. Nothing here is written in the cluster's spelling,
-        // so the round trip is what is asserted rather than the conversion restating itself.
+        // Input is the event's own wire payload, so this asserts the round trip, not the conversion against itself.
         const fields = toProviderCommandFields("ProvideIceCandidates", {
             webrtc_session_id: event.webrtc_session_id,
             ice_candidates: event.data.ice_candidates,

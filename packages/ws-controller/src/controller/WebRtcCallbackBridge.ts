@@ -12,8 +12,7 @@ import type { WebRtcTransportRequestorServer } from "@matter/node/behaviors/web-
 const logger = Logger.get("WebRtcCallbackBridge");
 
 /**
- * The struct's `URLs` list under the `urls` key the wire uses in both directions, so an ICE server
- * a client reads from an offer is one it can send back to `camera_start_stream` unchanged.
+ * Maps the struct's `URLs` to the wire's `urls` key, the same shape `camera_start_stream` accepts.
  *
  * @see Matter spec § 11.4.5.3 (ICEServerStruct)
  */

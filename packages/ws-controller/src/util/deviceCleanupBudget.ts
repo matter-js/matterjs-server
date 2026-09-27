@@ -6,29 +6,23 @@
 
 import { Logger, Millis, withTimeout } from "@matter/main";
 
-// Operator log-level filters key on the facility name, so these warnings share the camera manager's.
+// Shares the camera manager's facility so operator log-level filters cover these warnings.
 const logger = Logger.get("CameraStreamManager");
 
 /**
- * How long one request's give-backs, or one release pass, may wait on the device in total.
- *
- * The usual reason anything is being given back is that the camera stopped answering, and the
- * callers cannot wait for that: a request holds the endpoint lock while it gives back, and shutdown
- * runs a release pass before the connections close.
+ * Total time one request's give-backs, or one release pass, may wait on the device. Bounded because
+ * a request holds the endpoint lock while it gives back, and shutdown waits for the release pass.
  */
 export const DEVICE_CLEANUP_BUDGET_MS = 10000;
 
 /**
- * Await `work` for at most {@link DEVICE_CLEANUP_BUDGET_MS}, then stop waiting for it.
+ * Await `work` for at most {@link DEVICE_CLEANUP_BUDGET_MS}, then log and stop waiting.
  *
- * The invokes underneath cannot be cancelled and run on unattended, so what they still change on
- * this side must be safe to apply late: see `CameraSessionRegistry.forgetEstablished` and the lease
- * generation on `StreamLease`. `forgetEstablished` also announces the session's end, so a client can
- * hear about one this pass abandoned after the pass returned; the announcement names the session, and
- * a later report of a session that is really gone is still true. What they change on the DEVICE cannot be guarded from here — an
- * abandoned deallocate still reaches the camera, after the endpoint lock is gone, and the id it
- * names may by then be a stream a later request allocated. Closing that needs an invoke this server
- * can abort, and `Invoke` carries no abort signal.
+ * The invokes underneath cannot be cancelled and keep running, so their late local effects must be
+ * safe: see `CameraSessionRegistry.forgetEstablished` and the lease generation on `StreamLease`.
+ * Late device effects are not guarded: an abandoned deallocate can reach the camera after the
+ * endpoint lock is released and hit a stream id a later request reallocated. `Invoke` takes no
+ * abort signal, so this cannot be closed here.
  */
 export async function withCleanupBudget(what: string, work: () => Promise<void>): Promise<void> {
     try {

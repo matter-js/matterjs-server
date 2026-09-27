@@ -5,11 +5,8 @@
  */
 
 /**
- * The decode ceiling a codec level states, in the units {@link VideoCodecLimits} uses.
- *
- * A level is a statement about what the peer's decoder can do, not a preference, so these are hard
- * bounds exactly as an explicit `max-fs` is. `maxBitRate` is absent for a codec whose level tables
- * this module does not read a bit rate out of.
+ * The decode ceiling a codec level states, in the units {@link VideoCodecLimits} uses. These are hard
+ * bounds, like an explicit `max-fs`. `maxBitRate` is absent where no bit rate is read from the level.
  */
 export interface CodecLevelLimits {
     readonly maxPixels: number;
@@ -24,12 +21,10 @@ const BITS_PER_KILOBIT = 1000;
 
 /**
  * ITU-T H.264 (V15, 08/2021) Annex A, Table A-1 "Level limits": MaxMBPS (macroblocks per second),
- * MaxFS (macroblocks) and MaxBR, keyed by the level this module resolves `level_idc` to.
+ * MaxFS (macroblocks) and MaxBR (kbit/s).
  *
- * MaxBR is the value for the profiles whose `cpbBrVclFactor` is 1000 — Baseline, Constrained
- * Baseline, Main and Extended. The High profiles scale it by 1.25, so a High-profile peer can decode
- * more than the number taken here; taking the unscaled one is the tighter bound and never exceeds
- * what the peer stated it can do, which is the direction this bound has to err in.
+ * MaxBR is the Baseline/Main/Extended value (`cpbBrVclFactor` 1000). High profiles allow 1.25x, so
+ * this is the tighter bound, which is the safe side.
  */
 const H264_LEVEL_LIMITS = new Map<string, { maxMbps: number; maxFs: number; maxBr: number }>([
     ["1", { maxMbps: 1485, maxFs: 99, maxBr: 64 }],
@@ -55,11 +50,8 @@ const H264_LEVEL_LIMITS = new Map<string, { maxMbps: number; maxFs: number; maxB
 ]);
 
 /**
- * `level_idc` as H.264 Table A-1 numbers the levels, for every value but 11, which two levels share.
- *
- * 9 is level 1b as well: H.264 §A.3.1 gives level 1b two spellings, `level_idc` 9 for the profiles
- * whose `constraint_set3_flag` means something else, and `level_idc` 11 with that flag set for
- * Baseline, Main and Extended.
+ * `level_idc` -> Table A-1 level. 11 is missing because it means 1.1 or 1b depending on the profile;
+ * 9 is the other spelling of 1b (H.264 §A.3.1).
  */
 const H264_LEVEL_IDC_NAMES = new Map<number, string>([
     [9, "1b"],
@@ -87,22 +79,14 @@ const H264_LEVEL_IDC_NAMES = new Map<number, string>([
 const CONSTRAINT_SET3_FLAG = 0x10;
 
 /**
- * The profiles for which `constraint_set3_flag` distinguishes level 1b from level 1.1.
- *
- * RFC 6184 §8.1: with `profile_idc` 66 (Baseline), 77 (Main) or 88 (Extended) and `level_idc` 11,
- * `constraint_set3_flag` equal to 1 indicates level 1b. The same flag on any other profile means
- * something else entirely, so the level there is 1.1.
+ * RFC 6184 §8.1: for `profile_idc` 66 (Baseline), 77 (Main) and 88 (Extended), `level_idc` 11 with
+ * `constraint_set3_flag` set is level 1b. For any other profile it is 1.1.
  */
 const H264_LEVEL_1B_PROFILES = new Set<number>([66, 77, 88]);
 
 /**
- * The limits H.264's `profile-level-id` states, or none when this server cannot read it.
- *
- * `profile-level-id` is exactly three bytes of base16 — `profile_idc`, `profile_iop`, `level_idc`
- * (RFC 6184 §8.1) — and only the last of them is the level, except that `level_idc` 11 is read with
- * the `profile_iop` byte beside it. Anything else is a value this server
- * cannot map to a row of Table A-1, and that is reported rather than read as "no limit": a wrong
- * level hands the peer a stream it cannot decode, which is not a degraded picture but no picture.
+ * The limits H.264's `profile-level-id` (RFC 6184 §8.1) states, or `undefined` when it maps to no row
+ * of Table A-1. `undefined` means unreadable, not unlimited.
  */
 export function h264ProfileLevelIdLimits(profileLevelId: string): CodecLevelLimits | undefined {
     if (!/^[0-9a-fA-F]{6}$/.test(profileLevelId)) return undefined;
@@ -125,14 +109,10 @@ export function h264ProfileLevelIdLimits(profileLevelId: string): CodecLevelLimi
 }
 
 /**
- * ITU-T H.265 (V5, 02/2018) Annex A: MaxLumaPs from Table A.8 "General tier and level limits" and
- * MaxLumaSr from Table A.9 "Tier and level limits for the video profiles", keyed by
- * `general_level_idc`, which is thirty times the level number.
+ * ITU-T H.265 (V5, 02/2018) Annex A: MaxLumaPs from Table A.8 and MaxLumaSr from Table A.9, keyed by
+ * `general_level_idc` (thirty times the level number).
  *
- * Both are already in luma samples and luma samples per second, so neither needs the macroblock
- * conversion H.264 does. No bit rate is read: H.265 states MaxBR per tier, and the tier is a second
- * parameter whose default would have to stand in wherever an offer leaves it out, so a bit rate
- * bound is not derived from an H.265 level at all rather than derived from a guessed tier.
+ * No bit rate: H.265 states MaxBR per tier, and offers often leave the tier out.
  */
 const H265_LEVEL_LIMITS = new Map<number, { maxLumaPs: number; maxLumaSr: number }>([
     [30, { maxLumaPs: 36864, maxLumaSr: 552960 }],
@@ -151,11 +131,8 @@ const H265_LEVEL_LIMITS = new Map<number, { maxLumaPs: number; maxLumaSr: number
 ]);
 
 /**
- * The limits H.265's `level-id` states, or none when this server cannot read it.
- *
- * `level-id` carries `general_level_idc` (RFC 7798 §7.1), so it is decimal digits naming a row of
- * the level tables. A value outside them is reported rather than read as "no limit", for the same
- * reason {@link h264ProfileLevelIdLimits} reports one.
+ * The limits H.265's `level-id` (`general_level_idc`, RFC 7798 §7.1) states, or `undefined` when it
+ * names no row of the level tables. `undefined` means unreadable, not unlimited.
  */
 export function h265LevelIdLimits(levelId: string): CodecLevelLimits | undefined {
     if (!/^\d{1,3}$/.test(levelId)) return undefined;

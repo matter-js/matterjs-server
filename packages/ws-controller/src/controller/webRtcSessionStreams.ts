@@ -20,12 +20,9 @@ function isStreamId(value: unknown): value is number {
 /**
  * Read the video/audio stream membership of one media kind out of what a device stated.
  *
- * Its inputs are device data: a `WebRTCSessionStruct` the camera reports, or the request this server
- * already narrowed together with the provider's deprecated stream-id echo, which exists only to
- * report the provider's choice for a rev-1 null (auto-select) request (spec §11.5.6.4). Reading it
- * tolerantly is right for that: a device entry this server cannot parse is one it reports nothing
- * about, not one it can refuse. A caller's own request is read by {@link selectWebRtcStreamFields},
- * which refuses what it cannot send rather than narrowing it.
+ * Inputs are device data (a reported `WebRTCSessionStruct`, or an already-narrowed request plus the
+ * provider's deprecated stream-id echo, spec §11.5.6.4), so invalid entries are skipped, not refused.
+ * A caller's own request is validated by {@link selectWebRtcStreamFields}.
  *
  *   - `requestList` (rev-2): the valid ids from a non-empty list are used verbatim.
  *   - `requestId` (rev-1): a valid id is an explicit request; `null` requests auto-selection, so the
@@ -63,29 +60,17 @@ const STREAM_FIELDS = [
 /**
  * Put the caller's video/audio stream request into the form this camera's provider takes, in place.
  *
- * VideoStreams/AudioStreams (cluster revision 2) deprecate the singular VideoStreamID/AudioStreamID
- * (revision 1), and a provider fails the command with INVALID_COMMAND when a list is present beside
- * a singular id — the test spans both media kinds rather than each on its own (§11.5.6.1 and
- * §11.5.6.3, Effect on Receipt). So a request stating both forms is refused here. Dropping one of
- * them would change what the caller asked for: `{ videoStreams: [5], audioStreamId: null }` states
- * a video stream and auto-selected audio, and dropping the id establishes a video-only session.
+ * A request stating both a list (VideoStreams/AudioStreams, revision 2) and a singular id
+ * (VideoStreamID/AudioStreamID, revision 1), across either media kind, is refused: the provider fails
+ * it with INVALID_COMMAND (§11.5.6.1, §11.5.6.3), and dropping one form would change what was asked.
+ * This also applies to a re-offer, where the device skips that check (§11.5.6.3); a re-offer does
+ * not reselect streams, so nothing is lost.
  *
- * The refusal is unconditional, which is stricter than a `ProvideOffer` re-offer: the device runs
- * that test only under `WebRTCSessionID == NULL` (§11.5.6.3). It costs a re-offer nothing it could
- * have used, because the provider's whole stream-selection step runs under that same condition, so
- * neither form changes the session a re-offer names. A re-offer that states the lists is not refused
- * here — the provider boundary logs it and forwards it (`reportFieldsPastTheirGate`).
+ * Lists go to a provider not known to be at revision 2 (revision 1, or not yet read) as singular ids,
+ * because such a provider drops lists on receipt. A single-entry list converts; a longer one is refused.
+ * `camera_start_stream` relies on this conversion for revision-1 cameras.
  *
- * A stated form the provider takes is sent as stated. The one rewrite is a list going to a provider
- * this server does not know to be at revision 2 — one stating revision 1, and one whose revision has
- * not been read yet, which is the same position, since a list such a provider does not understand is
- * dropped on receipt and the session comes up with streams the caller did not choose. Such a
- * provider carries one id per media kind, so a single-entry list says exactly what the singular id
- * says and converts, while a longer one cannot be said at all and is refused rather than truncated.
- * `camera_start_stream` builds single-entry lists, so that conversion is what keeps it working
- * against a revision-1 camera.
- *
- * Nothing is written until every media kind has passed, so a refusal leaves the request as it was.
+ * Throws before writing anything, so a refusal leaves `fields` unchanged.
  */
 export function selectWebRtcStreamFields(fields: Record<string, unknown>, clusterRevision: number | undefined): void {
     const listed = STREAM_FIELDS.filter(field => fields[field.list] !== undefined);
@@ -101,15 +86,13 @@ export function selectWebRtcStreamFields(fields: Record<string, unknown>, cluste
     }
     const requested = listed.map(field => ({ field, ids: requestedStreamIds(fields[field.list], field.list) }));
     for (const { field, ids } of requested) {
-        // The field takes 1 to 16 entries (§11.5.6.1.8, §11.5.6.1.9), so an empty list asks for
-        // nothing it can carry; leaving the field out is how a caller asks for no stream of a kind.
+        // The field takes 1 to 16 entries (§11.5.6.1.8, §11.5.6.1.9).
         if (ids.length === 0) {
             throw ServerError.invalidArguments(
                 `${field.list} names no stream. Leave it out to ask for no ${field.kind} stream.`,
             );
         }
     }
-    // A client cluster's globals come from the device, so the typed number can still be absent here.
     if (typeof clusterRevision === "number" && clusterRevision >= STREAM_LIST_MIN_REVISION) return;
     const why =
         clusterRevision === undefined
@@ -163,15 +146,10 @@ export function isTrackableWebRtcSession(
 }
 
 /**
- * Whether the requestor's entry for `webRtcSessionId` is the session established with this node and
- * endpoint.
+ * Whether the requestor's entry for `webRtcSessionId` belongs to this node and endpoint.
  *
- * `WebRTCSessionID` is allocated per provider, so two cameras both issuing id 1 is ordinary, while
- * matter.js's requestor keys `CurrentSessions` by that id alone: `upsertSession` replaces on a
- * collision and `removeSession` takes nothing but the id. Only one of the two can be tracked at a
- * time — that much is upstream — but a removal keyed on the id alone would additionally drop
- * whichever camera's entry currently holds it, ending one camera's session and answering the other
- * camera's Answer and ICECandidates with NotFound.
+ * `WebRTCSessionID` is allocated per provider, but matter.js's requestor keys `CurrentSessions` by
+ * the id alone, so a removal must check the peer or it can drop another camera's session.
  */
 export function tracksSessionOf(
     sessions: readonly WebRtcTransportDefinitions.WebRtcSession[],
@@ -202,30 +180,18 @@ export interface WebRtcProviderSessionArgs {
     clusterRevision: number | undefined;
     formatNode: (nodeId: NodeId) => string;
     /**
-     * Called with the id the provider answered with, before the local requestor is given the session.
-     *
-     * The requestor answers `NotFound` for every signalling command naming a session it has not
-     * stored, the peer's `End` included, so nothing can be routed for this id until `upsertSession`
-     * has run — and after it has, a caller that needs to know its own id already does. That ordering
-     * is the whole point of the hook: it is the one place a caller can learn the id while it is still
-     * true that no `End` for it can have arrived.
+     * Called with the provider's session id before `upsertSession`. Until then the requestor answers
+     * `NotFound` to every signalling command for the id, so no peer `End` for it can have arrived yet.
      */
     sessionEstablishing?: (webRtcSessionId: number) => void;
 }
 
 /**
  * End a session this call established but cannot hand back, waiting at most
- * {@link DEVICE_CLEANUP_BUDGET_MS} for the device.
+ * {@link DEVICE_CLEANUP_BUDGET_MS} for the device, because the caller may hold the endpoint lock.
  *
- * A provider that creates the session and then stops answering would otherwise hold this call for as
- * long as it stays silent — on `camera_start_stream`'s route that is the endpoint lock, the request's
- * streams unreturned and the error this teardown precedes never raised.
- *
- * The budget is the camera manager's because the failure is the same one, and the wait is its own
- * because the session is not one of the request's registered give-backs: nothing outside this call
- * knows the id. So a `camera_start_stream` that reaches here can spend this budget and then the one
- * `AllocationScope.settle` spends, which is what the 10 seconds bounds — each wait on a silent
- * camera, not the request.
+ * This wait is separate from `AllocationScope.settle`'s, so one `camera_start_stream` can spend the
+ * budget twice.
  */
 async function endSessionWithinBudget(
     io: WebRtcProviderSessionIo,
@@ -249,14 +215,12 @@ async function endSessionWithinBudget(
 }
 
 /**
- * Invoke ProvideOffer/SolicitOffer and track the resulting session in the local requestor.
+ * Invoke ProvideOffer/SolicitOffer and track the resulting session in the local requestor, which
+ * answers NotFound to Answer/ICECandidates for sessions it has not stored.
  *
- * WebRtcTransportRequestorServer rejects Answer/ICECandidates with NotFound for a session it never
- * stored, so a caller that skips `io.upsertSession` gets back a session id whose signaling can never be
- * routed — the peer's response is silently dropped, not just delayed. An untrackable session (no stream
- * usage, or no video/audio stream — e.g. an auto-select/deferred SolicitOffer whose provider reports no
- * stream id yet) is torn down on the device and the command fails instead, rather than handing back an
- * id that will silently never deliver media. Deferred/auto-select is thus unsupported for now.
+ * A session that cannot be tracked (no stream usage, or no video/audio stream, e.g. a deferred
+ * auto-select SolicitOffer) is ended on the device and the command fails. Deferred/auto-select
+ * streaming is not supported.
  */
 export async function establishWebRtcProviderSession(
     io: WebRtcProviderSessionIo,
@@ -319,8 +283,7 @@ export async function establishWebRtcProviderSession(
     try {
         await io.upsertSession(session);
     } catch (error) {
-        // The device has the session and only this scope knows its id, so raising without ending it
-        // leaves a session nothing can name again and its streams pinned at ReferenceCount > 0.
+        // Only this scope knows the id; not ending it here would pin its streams on the device.
         logger.warn(
             `Tearing down WebRTC session id=${webRtcSessionId} for node ${formatNode(
                 nodeId,
@@ -330,8 +293,6 @@ export async function establishWebRtcProviderSession(
         throw error;
     }
 
-    // Verified above: `response` carries a numeric webRtcSessionId. The rest of the assertion is the
-    // residual TS can't express — an object narrowed to specific known keys via `in` has no general
-    // string index signature, even though every real object satisfies one at runtime.
+    // `in` narrowing gives no string index signature, so TS cannot express this shape without a cast.
     return response as { webRtcSessionId: number } & Record<string, unknown>;
 }

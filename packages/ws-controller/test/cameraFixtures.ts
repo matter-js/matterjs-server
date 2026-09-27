@@ -24,12 +24,7 @@ const NO_FEATURES: MutableFeatures = {
     nightVision: false,
 };
 
-/**
- * A `FeatureMap` advertising exactly `advertised`.
- *
- * The names are the model's own feature keys, so a fixture cannot advertise a feature this cluster
- * does not have, and a feature a spec revision adds fails to compile here until it is stated above.
- */
+/** A `FeatureMap` advertising exactly `advertised`, named by the model's own feature keys. */
 export function cameraFeatures(...advertised: (keyof CameraFeatures)[]): CameraFeatures {
     const features: MutableFeatures = { ...NO_FEATURES };
     for (const name of advertised) features[name] = true;

@@ -47,9 +47,7 @@ describe("toCameraState", () => {
         expect(state.supportedStreamUsages).to.not.equal(source);
     });
 
-    // HDRModeEnabled has no test of its own because it is no longer read, which is the point: it is
-    // the switch and not the capability, so a camera with the feature and HDR switched off still
-    // reports hdrCapable.
+    // HDRModeEnabled is the on/off switch, not the capability, so hdrCapable must not read it.
     it("renames maxHdrfps to maxHdrFps and reads hdrCapable from the feature map", () => {
         const state = toCameraState(
             {
@@ -205,8 +203,7 @@ describe("toCameraState", () => {
                 minBitRate: 100000,
                 maxBitRate: 8000000,
                 referenceCount: 2,
-                // osdEnabled is left out of the input and stays absent: a camera reports the flag only
-                // where it has the feature, and that absence is what keeps the field off a re-allocate.
+                // Absent means the camera lacks the OSD feature, which keeps the field off a re-allocate.
                 overlays: { watermarkEnabled: true, osdEnabled: undefined },
             },
         ]);
@@ -465,8 +462,7 @@ describe("MatterCameraDeviceIo.invoke (webrtcProvider routing)", () => {
     });
 
     it("untracks the session when the device answers NotFound, as the manager does", async () => {
-        // Both registries have to reach the same verdict: the manager drops its entry on NotFound, so
-        // an entry kept here would name a session nothing can ever reach again.
+        // Must match the manager, which drops its entry on NotFound.
         const untracked = new Array<number>();
         const io = new MatterCameraDeviceIo(
             makeHandler({
@@ -497,8 +493,7 @@ describe("MatterCameraDeviceIo.invoke (webrtcProvider routing)", () => {
     });
 
     it("reports a successful EndSession even when dropping the local tracking fails", async () => {
-        // The manager forgets its own entry only once this resolves. Raising the tracking failure here
-        // would make a session the device has already ended stay in the manager's registry for good.
+        // The manager drops its entry only after this resolves, so a tracking failure must not reject it.
         const io = new MatterCameraDeviceIo(
             makeHandler({
                 invokeCommand: async () => ({ ok: true }),
@@ -520,8 +515,6 @@ describe("MatterCameraDeviceIo.invoke (webrtcProvider routing)", () => {
     });
 
     it("reports the device's status even when dropping the local tracking fails", async () => {
-        // The manager decides what to drop from the device's status, so that status is what has to
-        // reach it.
         const io = new MatterCameraDeviceIo(
             makeHandler({
                 invokeCommand: async () => {

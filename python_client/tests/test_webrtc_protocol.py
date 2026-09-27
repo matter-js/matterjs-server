@@ -32,11 +32,7 @@ def test_api_command_send_webrtc_provider_command_value():
 
 
 def test_api_command_covers_every_camera_command():
-    """The server's seven camera commands all need a name here.
-
-    A command missing from the enum is one a caller can only reach by writing the
-    string out, which is what let the two signalling commands go unnoticed.
-    """
+    """The server's seven camera commands all need a name here."""
     assert {command.value for command in APICommand if command.value.startswith("camera_")} == {
         "camera_get_capabilities",
         "camera_start_stream",

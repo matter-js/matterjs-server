@@ -20,62 +20,29 @@ const FRAME_RATE_PERIOD_SECONDS = 100;
 /**
  * What one video codec's `a=fmtp` lines state it can decode.
  *
- * An `a=fmtp` record binds its own payload type and nothing else, so an offer carrying H.264 at
- * `max-fs=3600` beside H.265 at `max-fs=8160` states two limits, not one. Every record naming the
- * same codec is folded to the tighter value — several payload types in one section, and several
- * sections — since which of them the camera picks is not this server's to decide.
- *
- * Within one record the codec's own level states these same ceilings, and the codec's own
- * capability-extension parameters override the level's value rather than being folded against it:
- * RFC 6184 §8.1 (`max-fs`, `max-mbps`, `max-br`) and RFC 7798 §7.1 (`max-lps`, `max-lsr`, `max-br`)
- * both define them as signalling a capability at or above the level's, so where both are stated the
- * explicit one is the peer's real ceiling. The names are per codec, never shared: an H.264 `max-fs`
- * on an H.265 record names no parameter H.265 defines, and reading it would let an unrecognised
- * token lift the level the peer did state.
+ * Several records for the same codec are folded to the tighter value. Within one record an explicit
+ * capability parameter replaces the level's value, because RFC 6184 §8.1 and RFC 7798 §7.1 define it
+ * as at or above the level.
  */
 export interface VideoCodecLimits {
     readonly maxPixels?: number;
     readonly maxPixelsPerSecond?: number;
-    /**
-     * From `max-fr` in whole frames per second (RFC 7741 §6.1), or from H.265's `max-fps`, which
-     * RFC 7798 §7.1 counts over 100 seconds and which is converted here. No codec level states a
-     * frame rate, so this one has no level to fall back on.
-     */
+    /** Whole frames per second, from `max-fr` (RFC 7741 §6.1) or H.265's `max-fps` (per 100 s, RFC 7798 §7.1). */
     readonly maxFrameRate?: number;
     readonly maxBitRate?: number;
 }
 
-/**
- * {@link VideoCodecLimits} carrying the codec that stated them.
- *
- * The codec travels inside the limits rather than beside them, so the codec an envelope is computed
- * for is always the codec whose limits narrowed it. {@link videoCodecLimits} is what produces one.
- */
+/** {@link VideoCodecLimits} carrying the codec that stated them, so the two cannot be paired wrongly. */
 export interface SelectedVideoCodecLimits extends VideoCodecLimits {
     readonly codec: number;
 }
 
 /**
- * What an offer states about one media kind.
+ * What an offer states about one media kind: no section (`absent`), rejected with port 0, RFC 3264 §6
+ * (`refused`), `a=sendonly` / `a=inactive` (`notReceiving`), or `a=recvonly` / `a=sendrecv` / no
+ * direction, RFC 4566 §6 (`receiving`).
  *
- * Four statements, four values, none of which can stand in for another. No section of this kind
- * leaves the answer no place to carry it (`absent`); a section the peer rejected (`m=` port 0, RFC 3264 §6) states that no
- * track of this kind may be put in the answer at all (`refused`); a live section the peer will not
- * receive on — `a=sendonly` or `a=inactive` — states that a track put in it would hold an encoder
- * and a reference count for media nobody receives (`notReceiving`); a live section the peer will
- * receive on — `a=recvonly`, `a=sendrecv`, or no direction at all, which is `sendrecv` per RFC 4566
- * §6 — states that this kind reaches the peer through it (`receiving`).
- *
- * A live section states two independent things and its port answers neither: whether the peer will
- * receive our media, and whether it asks to send us audio, which
- * {@link SdpVideoConstraints.wantsTalkback} reads. `a=sendonly` says no to the first and yes to the
- * second.
- *
- * `codecs` on a `receiving` section is what the peer stated it decodes, and it is absent — never
- * empty — when the peer stated nothing, which is a section carrying only statically-mapped payload
- * types (`sdp-transform` builds `media.rtp` from `a=rtpmap` lines only). The two are different
- * statements and an empty list would collapse them, so the parser never stores one and
- * {@link receivableCodecs} is the only way to read the list back.
+ * `codecs` is absent, never empty, when the section has no `a=rtpmap` lines (static payload types only).
  */
 export type MediaDisposition =
     | { readonly state: "absent" }
@@ -94,14 +61,8 @@ export interface SdpVideoConstraints {
     /** Per-codec fmtp limits, keyed by upper-cased codec name. A codec absent here stated none. */
     limitsByCodec: ReadonlyMap<string, VideoCodecLimits>;
     /**
-     * Video codecs whose stated decode ceiling this server cannot read — a level it cannot map to
-     * the codec's level tables, or a capability parameter whose value is not a whole number.
-     *
-     * Such a codec is not one this server may select: the ceiling bounds the frame size and the
-     * processing rate the peer can decode, so one it cannot read is a ceiling it cannot honour,
-     * and handing the peer a stream past it produces no picture at all. It is kept here rather than
-     * dropped from the section's codec list, because a list narrowed to empty reads as "the peer
-     * stated no codec", which is the opposite statement — the unconstrained one.
+     * Video codecs whose stated decode ceiling this server cannot read; they must not be selected. Kept
+     * apart from the codec list, because an empty list would read as "no codec stated", i.e. unconstrained.
      */
     unreadableCeilingCodecs: ReadonlySet<string>;
 }
@@ -109,16 +70,8 @@ export interface SdpVideoConstraints {
 /**
  * Why a track of this kind may not be put in the answer to `offer`, or `undefined` when it may.
  *
- * The one read path for both kinds, so no consumer can read "the section is there" as "we may send
- * media into it": a nonzero port is not permission, the direction is.
- *
- * No offer is not a refusal of anything. The server is then soliciting an offer from the camera,
- * which writes its own m-lines for the streams it is given, so every kind is still open. An offer
- * with no section of this kind is a refusal: an answer carries exactly the m-lines of the offer it
- * answers, in the same order (RFC 3264 §6), so there is no section to attach the track to and a
- * stream allocated for it would hold an encoder and a reference count for media that can never be
- * sent. The asymmetry is answered here rather than at each call site, because reading "no statement"
- * as "no objection" is correct on one path and wrong on the other.
+ * No offer (the server solicits one) refuses nothing. An offer with no section of this kind refuses
+ * it, because the answer can only carry the offer's m-lines (RFC 3264 §6).
  */
 export function mediaRefusal(
     offer: SdpVideoConstraints | undefined,
@@ -137,38 +90,23 @@ export function mediaRefusal(
 }
 
 /**
- * The codecs the peer stated it can receive for this kind, or none when it stated nothing to narrow
- * by.
- *
- * The one read path for both kinds, so video and audio cannot disagree about what a receiving
- * section carrying no codec means. A section the peer will not receive on answers "nothing to narrow
- * by" as well: narrowing a set to empty is not how a caller learns its peer declined the media, so
- * {@link mediaRefusal} is answered where the track is decided, ahead of any narrowing.
+ * The codecs the peer stated it can receive for this kind, or `undefined` when there is nothing to
+ * narrow by (also for a non-receiving section; check {@link mediaRefusal} first).
  */
 export function receivableCodecs(disposition: MediaDisposition): readonly string[] | undefined {
     return disposition.state === "receiving" ? disposition.codecs : undefined;
 }
 
 /**
- * `key`'s value in an `a=fmtp` parameter list, or none when the list does not state it.
- *
- * The name is matched without regard to case: `a=fmtp` carries media type parameters (RFC 8866
- * §6.15), whose names are case-insensitive (RFC 6838 §4.3), so `MAX-FS` states the same ceiling as
- * `max-fs`. Missing one is not a parse failure the caller sees — it silently drops the peer's decode
- * limit and lets a stream it cannot decode be allocated.
+ * `key`'s value in an `a=fmtp` parameter list, or `undefined`. Case-insensitive: media type parameter
+ * names are (RFC 8866 §6.15, RFC 6838 §4.3).
  */
 function fmtpValue(params: string, key: string): string | undefined {
     const match = new RegExp(`(?:^|;)\\s*${key}=([^;\\s]+)`, "i").exec(params);
     return match?.[1];
 }
 
-/**
- * What an `a=fmtp` parameter list says about one numeric key.
- *
- * A value that is not a whole number is its own state and never `absent`: the peer stated a ceiling
- * in a spelling this server cannot read, and reading that as no statement at all raises the ceiling
- * instead of holding it, which is the one direction a decode bound may not move in.
- */
+/** What an `a=fmtp` parameter list says about one numeric key. `unreadable` must never be treated as `absent`. */
 type FmtpReading =
     | { readonly state: "absent" }
     | { readonly state: "read"; readonly value: number }
@@ -183,12 +121,10 @@ function fmtpNumber(params: string, key: string): FmtpReading {
     return { state: "read", value: Number(value) };
 }
 
-/** The number a reading states, or none for every state that states no number. */
 function statedNumber(reading: FmtpReading): number | undefined {
     return reading.state === "read" ? reading.value : undefined;
 }
 
-/** The first parameter of a record whose value this server cannot read, or none when it can read them all. */
 function unreadableParameter(
     readings: Readonly<Record<string, FmtpReading>>,
 ): { readonly name: string; readonly value: string } | undefined {
@@ -198,20 +134,14 @@ function unreadableParameter(
     return undefined;
 }
 
-/** Both payload formats spell the bit-rate capability this way, in units of 1000 bits per second. */
 const MAX_BIT_RATE_PARAMETER = "max-br";
 
 /**
- * How one codec spells the `a=fmtp` parameters this server reads, and how to read its level.
+ * How one codec spells the `a=fmtp` parameters this server reads (RFC 6184 §8.1, RFC 7798 §7.1), and
+ * how to read its level. Names are per codec and never shared.
  *
- * Every parameter name belongs to one codec's own RTP payload format, so the set is per codec and
- * never shared: H.264's frame size is `max-fs` in macroblocks (RFC 6184 §8.1) while H.265's is
- * `max-lps` in luma samples (RFC 7798 §7.1), and reading an H.264 name on an H.265 record would take
- * a token that codec never defined as a licence to exceed the level it did state.
- *
- * `pixelsPerUnit` converts that codec's frame-size and rate units to pixels; `frameRatePerUnit`
- * converts its frame-rate parameter to whole frames per second — 1 for `max-fr` and 1/100 for
- * H.265's `max-fps`, which RFC 7798 §7.1 counts over 100 seconds.
+ * `pixelsPerUnit` converts frame-size and sample-rate units to pixels; `frameRatePerUnit` converts the
+ * frame-rate parameter to frames per second.
  */
 interface CodecFmtpParameters {
     readonly level?: { readonly name: string; readonly read: (value: string) => CodecLevelLimits | undefined };
@@ -222,13 +152,7 @@ interface CodecFmtpParameters {
     readonly frameRatePerUnit: number;
 }
 
-/**
- * The reading for a codec this server has no payload format for.
- *
- * H.264's names and units, because that is what every earlier release read for every codec and
- * dropping them would widen a bound an offer already states. No level is read, so such a codec is
- * bounded by whatever it states explicitly and by nothing else.
- */
+/** The reading for a codec with no entry in {@link FMTP_PARAMETERS}: H.264's names and units, no level. */
 const DEFAULT_FMTP_PARAMETERS: CodecFmtpParameters = {
     maxFrameSize: "max-fs",
     maxSampleRate: "max-mbps",
@@ -259,13 +183,9 @@ const FMTP_PARAMETERS = new Map<string, CodecFmtpParameters>([
 ]);
 
 /**
- * What one `a=fmtp` record states about its codec's level.
- *
- * `none` covers both a codec whose level parameter this server does not read — H.266 and AV1 have
- * no table here — and one that states no level at all. The RFC-inferred defaults for an absent
- * level are deliberately not applied: H.264's is `42000A`, Baseline level 1, whose MaxMBPS bounds a
- * 1080p stream below one frame per second, so inferring it from a record that states only `max-fs`
- * would refuse offers no peer meant to restrict.
+ * What one `a=fmtp` record states about its codec's level. `none` also covers codecs with no level
+ * table here. The RFC default for an absent level (H.264: `42000A`, level 1) is not applied, because
+ * it would bound 1080p below one frame per second.
  */
 type LevelStatement =
     | { readonly state: "none" }
@@ -305,24 +225,13 @@ function tighten(into: Map<string, VideoCodecLimits>, codec: string, limits: Vid
 /** What the sections of one media kind stated, before {@link disposition} reduces them to one value. */
 interface MediaSections {
     receiving: boolean;
-    /**
-     * The direction of the first live section the peer will not receive on, if there is one.
-     *
-     * Both values forbid a track of this kind equally, so which one is reported changes no decision
-     * and exists to be named in a log line.
-     */
+    /** The direction of the first live section the peer will not receive on; reported only, decides nothing. */
     notReceiving?: "sendonly" | "inactive";
     refused: boolean;
     codecs: string[];
 }
 
-/**
- * One section the peer will receive on makes the kind receiving, whatever the other sections say.
- *
- * A live section the peer will not receive on outranks a rejected one, because it is the section
- * that still exists in the negotiation. Both forbid the track, so the order decides only which
- * statement is reported.
- */
+/** One receiving section makes the kind receiving, whatever the other sections say. */
 function disposition(sections: MediaSections): MediaDisposition {
     if (sections.receiving) {
         return sections.codecs.length === 0 ? { state: "receiving" } : { state: "receiving", codecs: sections.codecs };
@@ -334,13 +243,8 @@ function disposition(sections: MediaSections): MediaDisposition {
 }
 
 /**
- * How the offer's video codec list splits into the codecs this server may select and the ones it
- * must refuse, or none when the offer stated no codec list to narrow by.
- *
- * The one read path for the split, so the codec a stream is requested in and the codec whose limits
- * bound it cannot come from different rules. A codec whose ceiling could not be read is reported
- * rather than quietly dropped: it is what tells the caller why a list the peer did state narrowed to
- * nothing, and "no codec in common" would be an untrue answer to that.
+ * How the offer's video codec list splits into codecs this server may select and ones whose ceiling it
+ * cannot read, or `undefined` when the offer stated no codec list.
  */
 export function decodableVideoCodecs(
     sdp: SdpVideoConstraints,
@@ -353,27 +257,15 @@ export function decodableVideoCodecs(
     };
 }
 
-/**
- * The offer's limits on `codec`, or none when the offer stated none for it.
- *
- * Reads an offer's limits into a {@link SelectedVideoCodecLimits}, which carries the codec they were
- * read for: everything downstream receives the two as one value and cannot pair them differently.
- *
- * A codec the offer names with no `a=fmtp` record of its own states nothing here, so the offer
- * places no limit on it. Its own record is the bound to read, never another codec's `max-fs`.
- */
+/** The offer's limits on `codec`, read only from that codec's own `a=fmtp` records. */
 export function videoCodecLimits(sdp: SdpVideoConstraints | undefined, codec: number): SelectedVideoCodecLimits {
     const limits = sdp?.limitsByCodec.get(videoCodecName(codec));
     return { codec, ...limits };
 }
 
 /**
- * Constraints an SDP offer places on a stream.
- *
- * The SDP is a filter, not a selector: it states an upper bound on what the caller can decode and
- * says nothing about what it wants. An unparseable offer states nothing for either kind rather than
- * throwing here, which {@link mediaRefusal} answers the same way as an offer that carries no section
- * of a kind: the request fails instead of putting a stream into an offer the server could not read.
+ * Constraints an SDP offer places on a stream: upper bounds on what the caller can decode, not
+ * preferences. An unparseable offer reads as `absent` for both kinds, so {@link mediaRefusal} refuses it.
  */
 export function parseSdpVideoConstraints(sdp: string): SdpVideoConstraints {
     const limitsByCodec = new Map<string, VideoCodecLimits>();
@@ -386,8 +278,6 @@ export function parseSdpVideoConstraints(sdp: string): SdpVideoConstraints {
     try {
         parsed = parse(sdp);
     } catch (error) {
-        // The refusal this produces names the missing sections, so without this line the caller is
-        // told its offer carries no media when the real answer is that none of it could be read.
         logger.notice("Ignoring unparseable SDP offer; no media section can be read from it", error);
         return {
             video: { state: "absent" },
@@ -403,22 +293,15 @@ export function parseSdpVideoConstraints(sdp: string): SdpVideoConstraints {
         if (sections === undefined) continue;
         if (media.port === 0) {
             sections.refused = true;
-            // A rejected section states only that the peer refused the kind. Its codecs, its limits
-            // and its direction describe media that will never flow.
             continue;
         }
-        // RFC 4566 §5.13 makes a session-level attribute apply to every section that does not
-        // restate it, and §6 makes a section stating no direction `sendrecv` — which offers to send,
-        // so such an audio section asks for talkback.
-
+        // Session-level direction applies where a section states none (RFC 4566 §5.13); default sendrecv (§6).
         const direction = media.direction ?? parsed.direction ?? "sendrecv";
         if (media.type === "audio" && (direction === "sendonly" || direction === "sendrecv")) {
             wantsTalkback = true;
         }
         if (direction === "sendonly" || direction === "inactive") {
             sections.notReceiving ??= direction;
-            // The peer will not receive this kind here, so this section's codecs and `a=fmtp` limits
-            // describe media that cannot reach it.
             continue;
         }
         sections.receiving = true;
@@ -430,15 +313,11 @@ export function parseSdpVideoConstraints(sdp: string): SdpVideoConstraints {
         if (media.type === "video") {
             for (const entry of media.fmtp ?? []) {
                 const codec = codecsByPayload.get(entry.payload);
-                // An `a=fmtp` line whose payload type has no `a=rtpmap` names no codec in this
-                // section. Every codec this server can select is dynamically mapped, so there is no
-                // codec to attribute the limit to and guessing one would clamp the wrong stream.
+                // No `a=rtpmap` for this payload type; every selectable codec is dynamically mapped.
                 if (codec === undefined) continue;
                 const parameters = FMTP_PARAMETERS.get(codec) ?? DEFAULT_FMTP_PARAMETERS;
                 const level = statedLevel(parameters, entry.config);
                 if (level.state === "unreadable") {
-                    // Reading this as "no limit" is what the hard-bound rule forbids: the peer
-                    // stated a decode ceiling and the server would allocate past it.
                     unreadableCeilingCodecs.add(codec);
                     logger.notice(
                         `Offer states ${codec} ${level.parameter}=${level.value}, which is no level this server can bound a stream by; ${codec} is not selectable for it`,
@@ -454,19 +333,13 @@ export function parseSdpVideoConstraints(sdp: string): SdpVideoConstraints {
                 };
                 const unreadable = unreadableParameter(readings);
                 if (unreadable !== undefined) {
-                    // A value this server cannot read is not a ceiling it can hold the codec to, and
-                    // there is nothing to fall back to: an explicit parameter states a capability at
-                    // or above the level's, so the level it stands beside is not the peer's ceiling
-                    // any more, and where no level stands beside it, falling back is no bound at all.
+                    // No fallback to the level: an explicit parameter overrides it.
                     unreadableCeilingCodecs.add(codec);
                     logger.notice(
                         `Offer states ${codec} ${unreadable.name}=${unreadable.value}, which is no decode ceiling this server can read; ${codec} is not selectable for it`,
                     );
                     continue;
                 }
-                // Read by the parameter's own name, never by position: every reading has the same
-                // type, so an order the list and the reads disagree on would swap a frame size into
-                // the frame-rate ceiling with nothing to catch it.
                 const frameSizeUnits = statedNumber(readings[parameters.maxFrameSize]);
                 const sampleRateUnits = statedNumber(readings[parameters.maxSampleRate]);
                 const frameRateUnits = statedNumber(readings[parameters.maxFrameRate]);

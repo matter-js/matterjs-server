@@ -95,7 +95,7 @@ export enum ServerErrorCode {
     IcdMultiAdmin = 100,
     /** OHF extension (not python-matter-server): OTA firmware image upload failed (corrupt file / store failure). */
     OtaUploadError = 101,
-    /** OHF extension: no codec or range both sides can serve, or the camera states no such capability. */
+    /** OHF extension: the camera, the offer or the request rules the stream out; `details.reason` says which. */
     CameraStreamIncompatible = 102,
     /** OHF extension: the camera refused the allocation for lack of capacity. */
     CameraResourceExhausted = 103,
@@ -109,11 +109,7 @@ export enum ServerErrorCode {
 
 /** The facts every {@link CameraStreamIncompatibleDetail} carries, whatever its reason. */
 interface CameraStreamIncompatibleFacts {
-    /**
-     * The camera's own codec names, empty when the camera is not what refused — an offer that
-     * rejects a media section, or a request that asked for no track at all. Never a statement that
-     * the camera supports nothing.
-     */
+    /** The camera's codec names; empty when the camera did not refuse (e.g. the offer did), not "supports nothing". */
     device: string[];
     requested: string[];
     /** Matter status code the device answered with, when a device rejection produced this. */
@@ -122,20 +118,13 @@ interface CameraStreamIncompatibleFacts {
 
 /** The facts a failure about one of `camera_start_stream`'s two tracks can name. */
 interface CameraStreamIncompatibleTrackFacts extends CameraStreamIncompatibleFacts {
-    /**
-     * Which `camera_start_stream` track the failure is about, so a caller learns which of its two
-     * statements could not be met. Absent for a command that resolves no track, such as
-     * `camera_snapshot`.
-     */
+    /** Which `camera_start_stream` track failed. Absent for commands without tracks, such as `camera_snapshot`. */
     track?: "video" | "audio";
 }
 
 /**
- * What a client learns about a request the camera or the offer cannot serve.
- *
- * Each field that belongs to one reason lives on that reason's arm alone, so a combination the
- * documents rule out cannot be written: `feature` is carried by `feature`, `bound` by `bounds`, and
- * `no_media` names no track, because it is the request as a whole that carried no media.
+ * What a client learns about a request the camera or the offer cannot serve. Reason-specific fields
+ * exist only on their reason's arm; `no_media` names no track because it concerns the whole request.
  */
 export type CameraStreamIncompatibleDetail =
     | (CameraStreamIncompatibleTrackFacts & {
@@ -145,11 +134,7 @@ export type CameraStreamIncompatibleDetail =
       })
     | (CameraStreamIncompatibleTrackFacts & {
           reason: "bounds";
-          /**
-           * The single caller bound that could not be met, when the server decided that before asking the
-           * device. `field` is typed to the wire vocabulary so a hint key can only be reported in the
-           * spelling `camera_start_stream` accepts it back in.
-           */
+          /** The caller bound that could not be met, when the server decided it before asking the device. */
           bound?: CameraStreamIncompatibleBound;
       })
     | (CameraStreamIncompatibleTrackFacts & { reason: "codec" | "capability" | "offer" | "level" })
@@ -171,10 +156,8 @@ export interface CameraAllocatedStreamDetail {
 }
 
 /**
- * What a client learns about a release the camera refused with `INVALID_IN_STATE`.
- *
- * `referenceCount` is the count the server last read, and is absent when that cached count is zero:
- * the camera's answer carries no count of its own, so there is nothing else to report.
+ * What a client learns about a release the camera refused with `INVALID_IN_STATE`. `referenceCount`
+ * is the count the server last read; absent when that cached count is zero.
  */
 export interface CameraStreamInUseDetail {
     streamId: number;
@@ -182,21 +165,16 @@ export interface CameraStreamInUseDetail {
 }
 
 /**
- * A stream that holds capacity the refused request needed.
- *
- * `kind` is on the entry because the list is not always the kind the request asked for: a refused
- * snapshot allocation reports the video streams, which are what hold the camera's encoders.
+ * A stream that holds capacity the refused request needed. Its `kind` can differ from the request's:
+ * a refused snapshot allocation reports the video streams, which hold the encoders.
  */
 export interface CameraOccupyingStreamDetail extends CameraAllocatedStreamDetail {
     kind: CameraStreamKind;
 }
 
 /**
- * What a client learns about a call the camera's privacy switches refused.
- *
- * `modes` names every switch that forbids this call, and never only the one the camera answered on:
- * the device reports one status for all of them and the spec does not say which it tested first.
- * `deviceStatus` is that status, always present, because only a device refusal raises this error.
+ * What a client learns about a call the camera's privacy switches refused. `modes` names every switch
+ * that forbids the call, since the device answers one status for all of them. `deviceStatus` is that status.
  */
 export interface CameraPrivacyModeDetail {
     modes: CameraPrivacyMode[];

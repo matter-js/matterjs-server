@@ -318,8 +318,6 @@ describe("sdpConstraints", () => {
         });
 
         it("reads an fmtp parameter name written in upper case", () => {
-            // Dropping these leaves the codec unconstrained, and the peer is handed a stream past
-            // the ceiling it stated it can decode.
             const limits = videoCodecLimits(parseSdpVideoConstraints(OFFER_UPPER_CASE_FMTP), H264);
             expect(limits.maxPixels).to.equal(3600 * 256);
             expect(limits.maxPixelsPerSecond).to.equal(108000 * 256);
@@ -328,9 +326,7 @@ describe("sdpConstraints", () => {
         });
 
         it("bounds a codec offered at a level alone by that level, not by another codec's max-fs", () => {
-            // H265 is offered at level-id=93 alone, and H264 beside it states max-fs=8160. Folding
-            // that in would clamp an H265 stream to a bound H265 never stated; reading the level as
-            // no statement at all would leave H265 unbounded, which is the worse of the two.
+            // H265 states only level-id=93; the max-fs=8160 beside it belongs to H264.
             expect(videoCodecLimits(parseSdpVideoConstraints(OFFER_H265_THEN_H264), H265)).to.deep.equal({
                 codec: H265,
                 maxPixels: 983040,
@@ -340,15 +336,13 @@ describe("sdpConstraints", () => {
 
         it("keeps each codec's level cap apart instead of folding them into one", () => {
             const constraints = parseSdpVideoConstraints(OFFER_TWO_VIDEO_LEVEL_CAPS);
-            // H.265 states its frame size in luma samples (`max-lps`), H.264 in macroblocks
-            // (`max-fs`), so the same ceiling is written two ways and neither reads the other's.
+            // H.265 states frame size in luma samples (`max-lps`), H.264 in macroblocks (`max-fs`).
             expect(videoCodecLimits(constraints, H265).maxPixels).to.equal(2088960);
             expect(videoCodecLimits(constraints, H264).maxPixels).to.equal(3600 * 256);
         });
 
         it("takes the tighter of two payload types of the same codec", () => {
-            // Which profile the camera encodes in is not this server's to pick, so only the value both
-            // payload types can decode is a bound it may rely on.
+            // The server does not pick the profile the camera encodes in, so only the tighter bound is safe.
             expect(videoCodecLimits(parseSdpVideoConstraints(OFFER_SAME_CODEC_TWO_PAYLOADS), H264).maxPixels).to.equal(
                 3600 * 256,
             );
@@ -366,8 +360,7 @@ describe("sdpConstraints", () => {
         });
 
         it("lets an explicit max-fs raise the level's frame size", () => {
-            // RFC 6184 §8.1 defines max-fs as signalling a capability at or above the level's, so the
-            // explicit value is the peer's real ceiling and the level fills in what it leaves unsaid.
+            // RFC 6184 §8.1: max-fs signals a capability at or above the level's.
             const limits = videoCodecLimits(
                 parseSdpVideoConstraints(offerWithFmtp("H264", "profile-level-id=42e01f;max-fs=8160")),
                 H264,
@@ -384,8 +377,7 @@ describe("sdpConstraints", () => {
         });
 
         it("refuses the codec when a malformed fmtp value stands beside no level at all", () => {
-            // The direction that matters: reading the value as no statement leaves the codec
-            // unbounded, which is what a decode ceiling may never become.
+            // Reading the malformed value as absent would leave the codec unbounded.
             const sdp = parseSdpVideoConstraints(offerWithFmtp("H264", "max-fs=8160px"));
             expect(decodableVideoCodecs(sdp)).to.deep.equal({ decodable: [], unreadable: ["H264"] });
             expect(videoCodecLimits(sdp, H264).maxPixels).to.equal(undefined);
@@ -427,8 +419,7 @@ describe("sdpConstraints", () => {
         });
 
         it("reads level_idc 9 as level 1b, which is how the other profiles spell it", () => {
-            // H.264 §A.3.1 gives level 1b two spellings; a High-profile offer uses this one, and
-            // refusing it would reject a conformant peer for a level Table A-1 does define.
+            // H.264 §A.3.1 gives level 1b two spellings.
             const limits = videoCodecLimits(
                 parseSdpVideoConstraints(offerWithFmtp("H264", "profile-level-id=640009")),
                 H264,
@@ -438,8 +429,7 @@ describe("sdpConstraints", () => {
         });
 
         it("reads H.265 max-fps as frames per 100 seconds", () => {
-            // RFC 7798 §7.1 states max-fps in frames per 100 seconds, unlike max-fr's whole frames
-            // per second, so taking the digits as they stand is a 100x overstatement of the ceiling.
+            // RFC 7798 §7.1 states max-fps in frames per 100 seconds.
             const limits = videoCodecLimits(
                 parseSdpVideoConstraints(offerWithFmtp("H265", "level-id=93;max-fps=1500")),
                 H265,
@@ -454,8 +444,7 @@ describe("sdpConstraints", () => {
         });
 
         it("reads no H.264 parameter name on an H.265 record", () => {
-            // `max-fs` and `max-fr` are RFC 6184 / RFC 7741 names H.265 never defines. Reading them
-            // here would let an unrecognised token lift the ceiling `level-id` did state.
+            // `max-fs` and `max-fr` are RFC 6184 / RFC 7741 names that H.265 does not define.
             const offer = offerWithFmtp("H265", "level-id=93;max-fs=1000000;max-fr=60");
             expect(videoCodecLimits(parseSdpVideoConstraints(offer), H265)).to.deep.equal({
                 codec: H265,
@@ -526,9 +515,7 @@ describe("sdpConstraints", () => {
         });
 
         it("separates an offered section that names no codec from one that names some", () => {
-            // sdp-transform builds media.rtp from a=rtpmap lines only, so a section using statically
-            // mapped payload types states nothing about what the peer decodes. An empty codec list
-            // would say the peer decodes nothing, and every consumer then narrows its set to empty.
+            // sdp-transform builds media.rtp from a=rtpmap lines only, so static payload types name no codec.
             const offer = [
                 "v=0",
                 "o=- 0 0 IN IP4 127.0.0.1",
@@ -582,8 +569,7 @@ describe("sdpConstraints", () => {
         });
 
         it("reports the live statement when one section is rejected and another will not receive", () => {
-            // Both forbid the track, so the answer is the same either way; the live section is the
-            // one still in the negotiation, so it is the one reported.
+            // Both forbid the track; the live section is the one still in the negotiation.
             const constraints = parseSdpVideoConstraints(OFFER_VIDEO_REJECTED_AND_SENDONLY);
             expect(constraints.video).to.deep.equal({ state: "notReceiving", direction: "sendonly" });
         });
@@ -595,8 +581,7 @@ describe("sdpConstraints", () => {
         });
 
         it("refuses our video for a sendonly section, with no codecs and no limits from it", () => {
-            // A nonzero port is not permission to send: the peer states it will only send on this
-            // section, so a stream allocated for it would hold an encoder nobody receives from.
+            // A nonzero port is not permission to send: the peer will only send on this section.
             const constraints = parseSdpVideoConstraints(OFFER_VIDEO_SENDONLY);
             expect(constraints.video).to.deep.equal({ state: "notReceiving", direction: "sendonly" });
             expect(receivableCodecs(constraints.video)).to.equal(undefined);
@@ -609,8 +594,7 @@ describe("sdpConstraints", () => {
         });
 
         it("treats a section with no direction as sendrecv", () => {
-            // RFC 4566 §6: a section stating none of the four direction attributes is sendrecv, so
-            // the peer will receive on it.
+            // RFC 4566 §6: a section with no direction attribute is sendrecv.
             const constraints = parseSdpVideoConstraints(OFFER_VIDEO_NO_DIRECTION);
             expect(constraints.video.state).to.equal("receiving");
             expect(receivableCodecs(constraints.video)).to.deep.equal(["H264"]);
@@ -622,8 +606,6 @@ describe("sdpConstraints", () => {
         });
 
         it("refuses our audio for a sendonly section while still reading its talkback request", () => {
-            // The two questions the direction answers pull apart here: the peer will not receive our
-            // audio, and it asks to send us its own.
             const constraints = parseSdpVideoConstraints(OFFER_AUDIO_SENDONLY);
             expect(constraints.audio).to.deep.equal({ state: "notReceiving", direction: "sendonly" });
             expect(receivableCodecs(constraints.audio)).to.equal(undefined);
@@ -631,8 +613,7 @@ describe("sdpConstraints", () => {
         });
 
         it("applies a session-level direction to a section that restates none", () => {
-            // RFC 4566 §5.13: a session-level attribute holds for every section that does not
-            // override it, so the video section here is inactive and the audio section is not.
+            // RFC 4566 §5.13: a session-level attribute applies to every section that does not override it.
             const constraints = parseSdpVideoConstraints(OFFER_SESSION_INACTIVE);
             expect(constraints.video).to.deep.equal({ state: "notReceiving", direction: "inactive" });
             expect(constraints.audio.state).to.equal("receiving");
@@ -648,8 +629,7 @@ describe("sdpConstraints", () => {
         });
 
         it("states no limit for an fmtp line whose payload type has no rtpmap", () => {
-            // Every codec this server can select is dynamically mapped, so such a line names no
-            // codec in the section and its limit belongs to none of them.
+            // Every codec the server can select is dynamically mapped, so this limit belongs to none of them.
             const offer = [
                 "v=0",
                 "o=- 0 0 IN IP4 127.0.0.1",
@@ -669,8 +649,7 @@ describe("sdpConstraints", () => {
 
     describe("decodableVideoCodecs", () => {
         it("refuses a codec whose level_idc names no row of the level table", () => {
-            // 0xff is not a level H.264 Table A-1 defines. Reading it as "no limit" is what lets a
-            // stream past the peer's real ceiling be allocated, and a wrong guess is worse than none.
+            // 0xff is not an H.264 Table A-1 level; reading it as "no limit" could exceed the peer's ceiling.
             const sdp = parseSdpVideoConstraints(offerWithFmtp("H264", "profile-level-id=42e0ff"));
             expect(decodableVideoCodecs(sdp)).to.deep.equal({ decodable: [], unreadable: ["H264"] });
             expect(videoCodecLimits(sdp, H264)).to.deep.equal({ codec: H264 });
@@ -679,8 +658,7 @@ describe("sdpConstraints", () => {
         it("refuses a profile-level-id that is not three bytes of base16", () => {
             const short = parseSdpVideoConstraints(offerWithFmtp("H264", "profile-level-id=42e0"));
             expect(decodableVideoCodecs(short)).to.deep.equal({ decodable: [], unreadable: ["H264"] });
-            // A fourth byte leaves the first three readable, so the length anchor is the only thing
-            // refusing this one: its third byte is 0x1f, which names level 3.1.
+            // The third byte 0x1f is a valid level (3.1), so only the length check refuses this one.
             const long = parseSdpVideoConstraints(offerWithFmtp("H264", "profile-level-id=42e01f0"));
             expect(decodableVideoCodecs(long)).to.deep.equal({ decodable: [], unreadable: ["H264"] });
         });
@@ -691,8 +669,7 @@ describe("sdpConstraints", () => {
         });
 
         it("refuses a level-id that is not decimal digits, where Number would still read a level", () => {
-            // Number("93.0") is 93, a row of Table A.8, so the digit anchor is the only thing that
-            // refuses a level-id no `general_level_idc` can spell.
+            // Number("93.0") is 93, a Table A.8 row, so only the digit check refuses it.
             const sdp = parseSdpVideoConstraints(offerWithFmtp("H265", "level-id=93.0"));
             expect(decodableVideoCodecs(sdp)).to.deep.equal({ decodable: [], unreadable: ["H265"] });
         });
@@ -719,8 +696,7 @@ describe("sdpConstraints", () => {
         });
 
         it("states nothing to narrow by when the section named no codec", () => {
-            // A section carrying only statically-mapped payload types states no codec at all, which
-            // an empty decodable list would be indistinguishable from.
+            // Static payload types name no codec; an empty decodable list would read as "decodes nothing".
             const offer = [
                 "v=0",
                 "o=- 1 1 IN IP4 127.0.0.1",

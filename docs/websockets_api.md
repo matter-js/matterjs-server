@@ -819,13 +819,32 @@ A LIT peer re-registers automatically once subscribed.
 
 ### Camera Streaming (schema 14+)
 
-Seven commands cover a Matter camera's stream lifecycle. The server computes the `VideoStreamAllocate` envelope, reuses or allocates streams, walks the device's rejections and tracks the WebRTC session, so a client does not have to. The raw `send_webrtc_provider_command` / `device_command` path keeps working for a client doing its own allocation.
+A convenience camera API: seven `camera_*` commands and two events, `camera_session_ended` and `camera_stream_evicted` (see [Server Events](#server-events)). It includes stream management — allocation, reuse, eviction and release — and WebRTC session handling. The server computes the `VideoStreamAllocate` envelope, walks the device's rejections and tracks each WebRTC session for the client.
 
-A session opened with `camera_start_stream` is driven to its end with these commands alone: `camera_provide_answer` and `camera_provide_ice_candidates` carry the client's half of the signalling, `camera_stop_stream` ends it. Every one of them takes `node_id`, `endpoint_id` and `webrtc_session_id` in the spelling the rest of this API uses, so a client never has to reach for a cluster field name or the raw route in the middle of a session.
+The official Matter commands stay available for a client that wants to do this itself: `send_webrtc_provider_command` (below) for the WebRTC Provider commands, and `device_command` with the cluster's own commands.
 
-All seven require the message's `args` to be an object, and refuse a message that leaves it out, sends `null`, or sends anything else with error 8 naming the command. All seven refuse an argument key they do not know with error 8, rather than dropping it: a dropped key would answer a request the client did not make. The refusal names the key and lists the ones the command takes. All seven also check their target: `node_id` is an integer, sent as a number or a bigint, 0 to 18446744073709551615 — the 64 bits a node id is — and `endpoint_id` an integer 0 to 65534. Neither is passed on to matter.js unchecked. A `node_id` that arrives as a number must also be no greater than 9007199254740991: past that a JSON number cannot be trusted to be the integer the client wrote, since a double no longer holds every integer there — `9.007199254740993e15` arrives as 9007199254740992 and would address that node instead. A plain integer literal larger than the safe range is read as a bigint, so only a number in exponent form gets that far. Send a node id above the safe range as a bigint. `node_id` must also name one node: a Group Node ID, a CASE Authenticated Tag, a PAKE key identifier, the Unspecified Node ID and the reserved ranges around them are refused with error 8 naming the class (Matter Core specification § 2.5.5, Table 4). Each of these identifies an access-control subject, a set of nodes, or nothing at all, and every one of these commands reports a single device's answer — `camera_start_stream` returns the `WebRTCSessionID` the camera sent back. Accepting one would fail later as a node that is not commissioned, which says the node is missing rather than that the argument can never name a node.
+A session opened with `camera_start_stream` is driven to its end with these commands alone:
 
-Every codec on these commands is a **name**, not a number: `H264`, `H265`, `H266`, `AV1` (video), `OPUS`, `AAC` (audio), `JPEG`, `HEIC` (snapshot). Stream usages are names too: `Internal`, `Recording`, `Analysis`, `LiveView`, and so is `two_way_talk_support` (`NotSupported`, `HalfDuplex`, `FullDuplex`). All these names are matched case-insensitively. The codec set is open: a codec the cluster enum does not define is reported as its decimal digits and accepted back in that spelling. The stream usages are closed only for requests, not for reports: `camera_start_stream` takes only the four names above and refuses `Internal`, which marks a stream the device keeps for itself, but `camera_get_capabilities` still reports a usage the enum does not define as its decimal digits, and a stream carrying it cannot be requested back. `two_way_talk_support` is reported the same way — a value the enum does not define comes back as its decimal digits — and has no request side at all: talkback is asked for in the SDP offer, not by a hint. An audio section whose direction is `a=sendrecv` or `a=sendonly` asks for it, and so does one stating no direction at all, which is `sendrecv` (RFC 4566 §6). `a=sendonly` asks for talkback and refuses the camera's audio in one statement, so such a section gets no audio stream. An `sdp` that carries no section of a kind at all refuses that kind as well: the answer carries exactly the m-lines of the offer it answers (RFC 3264 §6), so there is nothing for such a track to be sent in. Without `sdp` the camera writes the offer itself and no kind is refused.
+- `camera_provide_answer` and `camera_provide_ice_candidates` send the client's half of the signalling.
+- `camera_stop_stream` ends the session.
+
+Each of them takes `node_id`, `endpoint_id` and `webrtc_session_id` in the spelling the rest of this API uses. A client never needs a cluster field name or the raw route in the middle of a session.
+
+**Argument rules for all seven commands**
+
+- `args` must be an object when stated. A message that leaves it out or sends `null` has an empty argument set, so it fails with error 8 for the missing `node_id`. A string, number, boolean or array is refused with error 8 naming the command.
+- An unknown argument key is refused with error 8, not dropped: a dropped key would answer a request the client did not make. The refusal names the key and lists the keys the command takes.
+- `node_id` is an integer, sent as a number or a bigint, 0 to 18446744073709551615 (the 64 bits of a node id). `endpoint_id` is an integer 0 to 65534. Neither is passed to matter.js unchecked.
+- A `node_id` sent as a JSON number must be no greater than 9007199254740991. Above that a double does not hold every integer, so the value can differ from what the client wrote: `9.007199254740993e15` arrives as 9007199254740992 and would address that node. A plain integer literal above the safe range is read as a bigint, so only a number in exponent form reaches this check. Send a node id above the safe range as a bigint.
+- `node_id` must name one node. A Group Node ID, a CASE Authenticated Tag, a PAKE key identifier, the Unspecified Node ID and the reserved ranges around them are refused with error 8 naming the class (Matter Core specification § 2.5.5, Table 4). Each of these identifies an access-control subject, a set of nodes, or nothing. Every camera command reports one device's answer — `camera_start_stream` returns the `WebRTCSessionID` the camera sent back. Accepted, such an id would fail later as a node that is not commissioned, which says the node is missing instead of saying the argument can never name a node.
+
+**Names**
+
+Codecs, stream usages and talkback modes are names, not numbers. All names are matched case-insensitively.
+
+- Codecs: `H264`, `H265`, `H266`, `AV1` (video), `OPUS`, `AAC` (audio), `JPEG`, `HEIC` (snapshot). The codec set is open: a codec the cluster enum does not define is reported as its decimal digits and accepted back in that spelling.
+- Stream usages: `Internal`, `Recording`, `Analysis`, `LiveView`. They are closed for requests only. `camera_start_stream` refuses `Internal`, which marks a stream the device keeps for itself, and any name not in this list. `camera_get_capabilities` still reports a usage the enum does not define as its decimal digits; a stream carrying it cannot be requested back.
+- `two_way_talk_support`: `NotSupported`, `HalfDuplex`, `FullDuplex`. A value the enum does not define is reported as its decimal digits. It has no request side: talkback is asked for in the SDP offer, not by a hint (see **The offer's media sections** under `camera_start_stream`).
 
 A name is the same string in both directions, but a reported key is not always a hint key. These are the values `camera_get_capabilities` reports that a later command takes back:
 
@@ -838,9 +857,11 @@ A name is the same string in both directions, but a reported key is not always a
 | `limits.supported_stream_usages` | `camera_start_stream`'s `stream_usage`, any name but `Internal` |
 | `snapshot.capabilities[].image_codec` | `camera_snapshot`'s `codec` |
 
-Everything else the command reports is a fact about the camera rather than a value to send back. `audio.bit_depths` has no hint: `AudioStreamAllocate` takes one bit depth and the server picks it from that list. A key a hint object does not take is refused with error 8 instead of being ignored, so a bound can never be dropped without the caller hearing about it.
+Everything else the command reports is a fact about the camera, not a value to send back. `audio.bit_depths` has no hint: `AudioStreamAllocate` takes one bit depth and the server picks it from that list. A key a hint object does not take is refused with error 8 instead of being ignored, so a bound is never dropped without the caller hearing about it.
 
-Every `resolution`, `min_resolution`, `max_resolution` and `sensor` on these commands is an object `{ "width": number, "height": number }`. On an argument — `camera_start_stream`'s `video.min_resolution` / `max_resolution` and `camera_snapshot`'s `max_resolution` — both fields must be an integer 1 to 65535, the range `VideoResolutionStruct` encodes them in, and a negative, zero, fractional, `NaN`, infinite or larger value is refused with error 8 instead of reaching the camera.
+**Resolutions**
+
+Every `resolution`, `min_resolution`, `max_resolution` and `sensor` on these commands is an object `{ "width": number, "height": number }`. On an argument — `camera_start_stream`'s `video.min_resolution` / `max_resolution` and `camera_snapshot`'s `max_resolution` — both fields must be an integer 1 to 65535, the range `VideoResolutionStruct` encodes them in. A negative, zero, fractional, `NaN`, infinite or larger value is refused with error 8 instead of reaching the camera.
 
 **camera_get_capabilities** - Report what the camera states, and what is allocated on it
 
@@ -855,11 +876,22 @@ Every `resolution`, `min_resolution`, `max_resolution` and `sensor` on these com
 }
 ```
 
-Allocates nothing. The response has `features` and `privacy` — what the camera can do and whether it will do it right now — then four capability groups plus `allocated` and `sessions`. Optional fields are absent when the camera states nothing for them.
+Allocates nothing. The response has:
 
-`features` is an array of the AVSM features the camera advertises in its `FeatureMap`, spelled as the specification's Feature column spells them: `Audio`, `Video`, `Snapshot`, `Privacy`, `Speaker`, `ImageControl`, `Watermark`, `OnScreenDisplay`, `LocalStorage`, `HighDynamicRange`, `NightVision`. The list is in the specification's own bit order, and a name missing from it is a kind of stream the camera does not have at all: an audio doorbell advertises `Audio` without `Video`, and its `VideoStreamAllocate` answers `UnsupportedCommand`. Read this list instead of the cluster's `FeatureMap` — that is what it is for.
+- `features` and `privacy`: what the camera can do, and whether it will do it right now.
+- Four capability groups: `video`, `audio`, `snapshot`, `limits`.
+- `allocated` and `sessions`: what is on the camera now.
 
-The key is **absent** when the camera has not reported its `FeatureMap` yet, which is not the same as a camera that advertises nothing: at least one of `Audio`, `Video` and `Snapshot` is mandatory (§11.2.5), so a list that could not be complete is not reported at all rather than reported short. A present list is the complete set. The server reads it the same way and gates nothing on an unreported map, so such a camera gets the request and answers for itself; `hdr_capable` comes from the same map, so it reads `false` in that window. `camera_start_stream` answers a **demanded** video or audio track on a camera that does not advertise the feature with error 102, `reason: "feature"`, naming it in `feature`, and resolves a track the caller **left to the server** to absent, so a caller that states no `video` key gets an audio-only session from such a camera rather than an error. `camera_snapshot` is refused the same way on a camera that does not advertise `Snapshot`, before any capability is tried.
+Optional fields are absent when the camera states nothing for them.
+
+`features` is an array of the AVSM features the camera advertises in its `FeatureMap`, spelled as the specification's Feature column spells them: `Audio`, `Video`, `Snapshot`, `Privacy`, `Speaker`, `ImageControl`, `Watermark`, `OnScreenDisplay`, `LocalStorage`, `HighDynamicRange`, `NightVision`. Read this list instead of the cluster's `FeatureMap`.
+
+- The list is in the specification's own bit order.
+- A name missing from it is a kind of stream the camera does not have at all. An audio doorbell advertises `Audio` without `Video`, and its `VideoStreamAllocate` answers `UnsupportedCommand`.
+- The key is **absent** while the camera has not reported its `FeatureMap`. That is not a camera that advertises nothing: at least one of `Audio`, `Video` and `Snapshot` is mandatory (§11.2.5), so a list that could not be complete is left out instead of reported short. A present list is the complete set.
+- The server gates nothing on an unreported map: such a camera gets the request and answers for itself. `hdr_capable` comes from the same map, so it reads `false` in that window.
+- On a camera that does not advertise a feature, `camera_start_stream` answers a **demanded** video or audio track with error 102, `reason: "feature"`, naming it in `feature`. A track the caller **left to the server** resolves to absent instead, so a caller that states no `video` key gets an audio-only session from such a camera, not an error.
+- `camera_snapshot` is refused the same way on a camera that does not advertise `Snapshot`, before any capability is tried.
 
 `privacy` reports the camera's privacy switches, which are what a camera entity's on/off state is:
 
@@ -869,7 +901,9 @@ The key is **absent** when the camera has not reported its `FeatureMap` yet, whi
 | `soft_livestream_mode_enabled` | boolean, optional | `SoftLivestreamPrivacyModeEnabled` (§11.2.7.21). Blocks a session of stream usage `LiveView`, and every snapshot |
 | `soft_recording_mode_enabled` | boolean, optional | `SoftRecordingPrivacyModeEnabled` (§11.2.7.20). Blocks a session of stream usage `Recording` or `Analysis` |
 
-A field is absent when the camera states no such switch: the two soft switches are gated on the `Privacy` feature and `hard_mode_on` is optional on its own, so absence means there is no switch, never that the switch is off. While a switch that covers the call is on, `camera_start_stream` and `camera_snapshot` fail with error 106 naming it; `camera_get_capabilities` keeps answering, because this report is how a client learns why. The two soft switches are writable (§11.2.7.20, §11.2.7.21) and this API has no command for that yet — use `write_attribute` on the AV Stream Management cluster to turn one off.
+- A field is absent when the camera states no such switch. The two soft switches are gated on the `Privacy` feature and `hard_mode_on` is optional on its own, so absence means there is no switch, never that the switch is off.
+- While a switch that covers the call is on, `camera_start_stream` and `camera_snapshot` fail with error 106 naming it. `camera_get_capabilities` keeps answering, because this report is how a client learns why.
+- The two soft switches are writable (§11.2.7.20, §11.2.7.21). This API has no command for that; use `write_attribute` on the AV Stream Management cluster to turn one off.
 
 `video`:
 
@@ -883,7 +917,7 @@ A field is absent when the camera states no such switch: the two soft switches a
 | `rate_distortion_points` | array | `{ codec, resolution, min_bit_rate }` per entry: the bit rate a codec needs at a resolution |
 | `codecs` | array of names | The distinct codecs found in `rate_distortion_points` |
 
-There is deliberately no resolution list: the camera does not state one. `codecs` is derived from `rate_distortion_points`, so a camera that states no trade-off point reports an **empty** list. That is what the camera says, not a statement that it can encode nothing — `camera_start_stream` then accepts any of `H264`, `H265`, `H266` and `AV1` and lets the device answer.
+There is no resolution list, because the camera does not state one. `codecs` is derived from `rate_distortion_points`, so a camera that states no trade-off point reports an **empty** list. That is what the camera says, not a statement that it can encode nothing: `camera_start_stream` then accepts any of `H264`, `H265`, `H266` and `AV1` and lets the device answer.
 
 `audio`:
 
@@ -895,7 +929,7 @@ There is deliberately no resolution list: the camera does not state one. `codecs
 | `bit_depths` | array of numbers | Bit depths the camera accepts |
 | `two_way_talk_support` | name, optional | `NotSupported`, `HalfDuplex` or `FullDuplex` |
 
-`snapshot.capabilities` is an array of `{ resolution, max_frame_rate, image_codec, requires_encoded_pixels, requires_hardware_encoder }`. A capability takes one of the camera's encoders only when both flags are true. `requires_hardware_encoder` is always present as a boolean; the underlying Matter field is optional, and the server reports a camera that leaves it unstated as `false`.
+`snapshot.capabilities` is an array of `{ resolution, max_frame_rate, image_codec, requires_encoded_pixels, requires_hardware_encoder }`. A capability takes one of the camera's encoders only when both flags are true. `requires_hardware_encoder` is always present as a boolean: the underlying Matter field is optional, and a camera that leaves it unstated is reported as `false`.
 
 `limits`:
 
@@ -907,7 +941,7 @@ There is deliberately no resolution list: the camera does not state one. `codecs
 | `supported_stream_usages` | array of names | Usages the camera accepts |
 | `stream_usage_priorities` | array of names | The camera's own ordering of them |
 
-`allocated` lists what is on the camera now, per kind. `reference_count` is the device's own count of listeners. `allocated_by_server` says this server allocated the stream during its current run, which is what decides whether it may deallocate the stream unasked. It is not a precondition for `camera_release_stream`, and it is false again after a server restart. It is this server's own record rather than a device fact: a camera that reports its allocations late or not at all can reissue a stream id the server still has an allocation recorded under, and the flag is then true for a stream someone else allocated.
+`allocated` lists what is on the camera now, per kind:
 
 | Group | Fields |
 |---|---|
@@ -915,21 +949,28 @@ There is deliberately no resolution list: the camera does not state one. `codecs
 | `allocated.audio[]` | `audio_stream_id`, `stream_usage`, `audio_codec`, `channel_count`, `sample_rate`, `bit_rate`, `bit_depth`, `reference_count`, `allocated_by_server` |
 | `allocated.snapshot[]` | `snapshot_stream_id`, `image_codec`, `min_resolution`, `max_resolution`, `reference_count`, `allocated_by_server`, `frame_rate`, `encoded_pixels`, `hardware_encoder`, `watermark_enabled`, `osd_enabled` |
 
-`encoded_pixels` on a snapshot stream is the camera's own statement that the stream counts towards `max_encoded_pixel_rate` (spec §11.2.6.13.8), and it reserves `max_resolution` times `frame_rate` of that budget. The server subtracts those reservations, and every allocated video stream's `max_resolution` times `max_frame_rate`, from `max_encoded_pixel_rate` before it asks for a video stream, so a client doing its own budgeting can compute the same figure.
+- `reference_count` is the device's own count of listeners.
+- `allocated_by_server` says this server allocated the stream during its current run. It decides whether the server may deallocate the stream unasked. It is not a precondition for `camera_release_stream`, and it is `false` again after a server restart. It is this server's own record, not a device fact: a camera that reports its allocations late or not at all can reissue a stream id the server still has an allocation recorded under, and the flag is then `true` for a stream someone else allocated.
+- `encoded_pixels` on a snapshot stream is the camera's statement that the stream counts towards `max_encoded_pixel_rate` (spec §11.2.6.13.8). It reserves `max_resolution` times `frame_rate` of that budget. The server subtracts those reservations, and every allocated video stream's `max_resolution` times `max_frame_rate`, from `max_encoded_pixel_rate` before it asks for a video stream (see **The encoder budget** under `camera_start_stream`). A client doing its own budgeting can compute the same figure.
+- `hardware_encoder` on a snapshot stream is the camera's statement that the stream uses one of its `max_concurrent_encoders`. Such a stream holds that encoder for as long as it exists, whatever its `reference_count` says. It is what a client releases when `camera_start_stream` or `camera_snapshot` answers error 103, and error 103's `allocated` names it for that reason. The server counts it when choosing a snapshot capability, and `camera_start_stream` may take it under the rules in **Making room** under `camera_start_stream`.
+- `watermark_enabled` and `osd_enabled` are the camera's statement of which overlays it draws on that stream: a manufacturer watermark (spec §11.2.5.7), and text such as date, time and device name (spec §11.2.5.8). Both are always present as booleans. `false` means the camera states no such overlay for that stream; a camera advertising neither `Watermark` nor `OnScreenDisplay` in `features` states that for every stream, since it has none to draw. How these flags affect reuse is described under **The overlays** in `camera_start_stream`. For a snapshot stream this is the authoritative outcome: at a capability whose `requires_hardware_encoder` is false the camera may ignore what `camera_snapshot` asked for and apply the source video stream's setting instead (spec §11.2.8.8.6), so read the result here instead of assuming the request was honoured.
 
-`hardware_encoder` on a snapshot stream is the camera's own statement that the stream uses one of its `max_concurrent_encoders`. Such a stream holds that encoder for as long as it exists, whatever its `reference_count` says, so it is what a client releases when `camera_start_stream` or `camera_snapshot` answers error 103, and error 103's `allocated` names it for that reason. The server counts it when choosing a snapshot capability. `camera_start_stream`'s make-room step may deallocate such a stream, but only one this server allocated in its current run (`allocated_by_server`) that nothing references and whose loss frees capacity the refused allocate can use: an encoder, or a share of `max_encoded_pixel_rate` on a camera that states one. It is taken before any video stream, so a snapshot stream of this server's no longer blocks this server's own stream start, and a stream this server allocated moments ago counts even before the camera reports it. A snapshot stream another controller allocated is never taken. The taken id is reported as a `camera_stream_evicted` event rather than in `video.evicted_stream_ids`, which carries video stream ids; if the request then does not use the capacity, the server allocates a snapshot stream of the same range back, under a new id.
-
-`watermark_enabled` and `osd_enabled` are the camera's own statement of which overlays it draws on that stream — a manufacturer watermark (spec §11.2.5.7) and text such as date, time and device name (spec §11.2.5.8). Both are always present as booleans; `false` means the camera states no such overlay for that stream, which is what a camera advertising neither `Watermark` nor `OnScreenDisplay` in `features` states for every stream, since it has none to draw. They are part of what makes two otherwise identical streams different pictures, so `camera_start_stream` will not reuse a stream whose flags differ from what the request resolved to — for a camera that advertises the feature. On a camera advertising neither, and while a camera has not reported its `FeatureMap` at all (`features` absent), nothing about the overlays is compared, because there is nothing the server could compare against without inventing it. For a snapshot stream this is also the authoritative outcome: at a capability whose `requires_hardware_encoder` is false the camera may ignore what `camera_snapshot` asked for and apply the source video stream's setting instead (spec §11.2.8.8.6), so read the result here rather than assuming the request was honoured.
-
-`sessions` lists the WebRTC sessions the camera itself holds, read from its `CurrentSessions` attribute. That list — not this server's own tracking — is what a `reference_count` above zero is held by, and it is the only place a session id can be learned after this server restarted: sessions are tracked in memory and a restart takes that with it, while the camera keeps holding them and only `EndSession` decrements a stream's reference count. So a session listed here can be ended with `camera_stop_stream` whether or not this server established it in its current run, and the stream it pins can then be released. The attribute is fabric-sensitive, so only sessions on this server's own fabric appear at all; within the fabric, `established_by_this_server` says the camera recorded this server as the session's peer, which is exactly when `camera_stop_stream` can end it — a camera answers `NOT_FOUND` for any other peer's session. A session another controller on the fabric holds is still listed, because it explains a reference count this server cannot free.
+`sessions` lists the WebRTC sessions the camera itself holds, read from its `CurrentSessions` attribute:
 
 | Group | Fields |
 |---|---|
 | `sessions[]` | `webrtc_session_id`, `peer_node_id`, `peer_endpoint_id`, `stream_usage`, `video_stream_ids`, `audio_stream_ids`, `established_by_this_server` |
 
+- This list, not this server's own tracking, is what holds a `reference_count` above zero.
+- It is the only place to learn a session id after this server restarted. The server tracks sessions in memory, so a restart loses them, while the camera keeps holding them. Only `EndSession` decrements a stream's reference count.
+- A session listed here can be ended with `camera_stop_stream` whether or not this server established it in its current run. The stream it pins can then be released.
+- The attribute is fabric-sensitive, so only sessions on this server's own fabric appear.
+- Within the fabric, `established_by_this_server` says the camera recorded this server as the session's peer. That is exactly when `camera_stop_stream` can end it: a camera answers `NOT_FOUND` for any other peer's session.
+- A session another controller on the fabric holds is still listed, because it explains a reference count this server cannot free.
+
 **camera_start_stream** - Allocate or reuse a stream and open a WebRTC session
 
-`ProvideOffer` when `sdp` is given, `SolicitOffer` otherwise.
+Sends `ProvideOffer` when `sdp` is given, `SolicitOffer` otherwise.
 
 ```json
 {
@@ -953,63 +994,157 @@ There is deliberately no resolution list: the camera does not state one. `codecs
 | Argument | Type | Meaning |
 |---|---|---|
 | `stream_usage` | name, required | Any reported usage but `Internal` |
-| `sdp` | string, optional | The offer; absent means `SolicitOffer`. The `a=ice-ufrag` and `a=ice-pwd` values are masked in the server's debug log; every other line of the offer is logged as sent. The offer a `webrtc_callback` reports is masked the same way in the TypeScript client library's console output, together with its `ice_servers` credentials |
+| `sdp` | string, optional | The offer; absent means `SolicitOffer`. See **The offer's media sections** and **The offer's decode ceiling** below |
 | `video` | object or `false` | Range hints, or `false` to leave the track out |
 | `audio` | object or `false` | Exact-value hints, or `false` to leave the track out |
-| `ice_servers` | array of objects, optional | The list takes 0 to 10 entries, the ceiling `ProvideOffer`'s `ICEServers` field states — a separate limit from the URLs one entry may name, so a client combining several TURN providers is refused with error 8 above ten of them. Each entry is `{ urls, username?, credential?, caid? }`. `urls` is one URL string or a list of 1 to 10 URLs, each 1 to 2000 characters; `username` is 1 to 508 characters and `credential` 1 to 512; `caid` is an integer 0 to 65534. The struct states the ceilings; the floor of one character is this server's, which refuses an empty string wherever the struct takes one. Any other key, an entry naming no URL, or a value past those limits is refused with error 8, and the refusal names the field and both ends of its range. The server translates each entry into the cluster's `ICEServerStruct` (spec § 11.4.5.3), whose field is `URLs` and always a list. `username` and `credential` are masked in the server's debug log |
-| `ice_transport_policy` | string, optional | Passed to the WebRTC session setup unchanged, but not unbounded: `ProvideOffer`'s `ICETransportPolicy` field states a ceiling of 16 characters, and this server refuses an empty string as well, so the accepted length is 1 to 16 and anything else is error 8 before the camera is asked |
+| `ice_servers` | array of objects, optional | ICE servers for the session; limits below |
+| `ice_transport_policy` | string, optional | Passed to the WebRTC session setup unchanged. Length 1 to 16: `ProvideOffer`'s `ICETransportPolicy` field states the ceiling of 16, and this server refuses an empty string. Anything else is error 8 before the camera is asked |
 | `metadata_enabled` | boolean, optional | Passed to the WebRTC session setup; absent is `false` |
-| `allow_eviction` | boolean, optional | Whether the server may deallocate a stream nothing references to serve this request — a video stream, whoever allocated it, or a snapshot stream this server allocated. The server takes nothing of another controller's while it still holds an idle stream of its own that this step could take: its own snapshot streams first, then its own video streams, and a foreign video stream last, with the camera's `stream_usage_priorities` ordering each of those groups. Absent is `true`. `false` answers error 103 instead, so a caller that must not disturb a long-lived allocation says so here. Note that the flag governs this request alone: another client's request with the default still takes what it needs, and no record says which connection a stream belongs to. A taken video stream comes back in `video.evicted_stream_ids`; a taken snapshot stream is reported by the `camera_stream_evicted` event |
+| `allow_eviction` | boolean, optional | Whether the server may deallocate a stream nothing references to serve this request. Absent is `true`; `false` skips that step. See **Making room** below |
 
-`video` takes **ranges**: `codecs`, `min_resolution`, `max_resolution`, `min_frame_rate`, `max_frame_rate`, `min_bit_rate`, `max_bit_rate`, plus the two overlay booleans `watermark_enabled` and `osd_enabled`. `audio` takes **exact values**, not ranges: `codecs`, `channel_count`, `sample_rate`, `bit_rate`. Any other key under either object is refused with error 8. The command's own arguments are refused the same way, so a range hint sent at the top level instead of under `video` is an error rather than a silently dropped bound. Every numeric hint value must be a positive integer, the same rule a resolution's `width` and `height` follow; a negative, zero, fractional, `NaN`, or infinite value is refused with error 8 rather than reaching the camera. Each is also bounded by the range the cluster field it becomes encodes in, rather than by a number chosen here: `channel_count` is 1 to 8, `min_frame_rate` and `max_frame_rate` are 1 to 65535, and `min_bit_rate`, `max_bit_rate`, `bit_rate` and `sample_rate` are 1 to 4294967295. A value outside its range is refused with error 8 as well, naming the field and both ends of it. `channel_count` is the one whose two refusals differ: above 8 it is error 8, and above the `audio.channels` the camera reports but within 8 it is error 102. A floor above its own ceiling — `min_bit_rate` above `max_bit_rate`, `min_frame_rate` above `max_frame_rate` — states a relation between two arguments rather than a bound on one value, so it passes these checks and the camera is what refuses it.
+`ice_servers`:
 
-**The encoder budget.** The server asks for a stream that fits inside `max_encoded_pixel_rate` (spec §11.2.7.2) minus what the camera's own allocated streams reserve — `max_resolution` times `max_frame_rate` per video stream, plus the same for a snapshot stream whose `encoded_pixels` is set. Without that the first request went out at the sensor's maximum, which a camera short of encoder capacity refuses, and the refusal is what used to cost another controller a stream. The budget narrows the server's own defaults only: a floor the caller stated reaches the camera unshrunk, and the camera answers, since it is the arbiter of a parameter conflict (spec §11.2.1.2.2). A stream already on the camera is never measured against the budget, because it is already drawing on it: reuse costs nothing however wide the stream is.
+- The list takes 0 to 10 entries, the ceiling `ProvideOffer`'s `ICEServers` field states. This is separate from the URL limit per entry, so a client combining several TURN providers is refused with error 8 above ten of them.
+- Each entry is `{ urls, username?, credential?, caid? }`.
+- `urls` is one URL string or a list of 1 to 10 URLs, each 1 to 2000 characters.
+- `username` is 1 to 508 characters, `credential` 1 to 512.
+- `caid` is an integer 0 to 65534.
+- The struct states the ceilings. The floor of one character is this server's: it refuses an empty string wherever the struct takes one.
+- Any other key, an entry naming no URL, or a value past those limits is refused with error 8. The refusal names the field and both ends of its range.
+- The server translates each entry into the cluster's `ICEServerStruct` (spec § 11.4.5.3), whose field is `URLs` and always a list.
 
-**The rung order.** Reuse a stream the camera already produces; allocate inside the encoder budget; narrow the server's own range as far as it goes; take a video stream nothing references and allocate again with the freed capacity; and last hand out an existing stream that meets every bound the caller stated but not the range the server computed (`degraded`). Narrowing runs before anything is taken, because the range is the server's to give up while an idle stream is somebody's reservation — spec §11.2.1.1 asks commissioners to pre-allocate streams and keep them. A stream that the last rung could hand out — one meeting every bound the caller stated — is never a candidate for taking: destroying it and then failing would cost its holder an id for a request that very stream would have served. Once a stream has been taken the range is re-derived from the freed capacity rather than left where narrowing ended it, so paying for capacity and not using it cannot cost the caller picture size.
+Debug-log masking:
 
-**The overlays.** `video.watermark_enabled` and `video.osd_enabled` say whether the camera burns its watermark, or a date/time/name banner, into the picture. Both fields are mandatory on `VideoStreamAllocate` for a camera that advertises the matching feature and forbidden for one that does not (spec §11.2.8.4, conformance `WMARK` / `OSD`), so the server sends them exactly when `features` from `camera_get_capabilities` names `Watermark` / `OnScreenDisplay`. There is a third state, and the server gates nothing on it: while the camera has not reported its `FeatureMap` at all — the state in which `features` is absent — a flag the caller stated is sent as stated and the camera answers for itself, and a flag the caller left out is not sent. Stating `true` for a feature the camera does not advertise fails with error 102, `reason: "feature"`, naming it in `feature`; `false` is accepted there, because such a camera has no overlay to apply. Left unset, the server asks for no overlay — `VideoStreamStruct`'s own fallback for both flags is 0 — and will not *reuse* a stream that has one; only the last-resort `degraded` rung may hand out a stream whose overlays differ from that, and it says so with `degraded: true`. State the field to have it honoured at every rung. `video.watermark_enabled` / `video.osd_enabled` in the response are the camera's own statement for a reused or degraded stream, and what the server asked for on a freshly allocated one — which the camera accepted, so it applied it, with one exception: the cluster's own deduplication may answer an allocate with the id of an existing stream whose overlays differ, and the reference implementation's dedup adjusts the range parameters only. Read `allocated.video[]` from `camera_get_capabilities` if the distinction matters.
+- In the offer, the `a=ice-ufrag` and `a=ice-pwd` values are masked in the server's debug log. Every other line of the offer is logged as sent.
+- `username` and `credential` of each ICE server are masked in the server's debug log.
+- The TypeScript client library masks the offer a `webrtc_callback` reports the same way in its console output, together with its `ice_servers` credentials.
 
-Every bound the caller states is hard in both directions: a codec list, floor or ceiling that nothing satisfies fails with error 102 rather than returning something else. Setting `min_resolution == max_resolution` pins an exact value, and takes that capacity from every other client sharing the camera (spec §15.2.1.2.2), so leave a bound unset unless an exact value is required.
+**Hints.** `video` takes **ranges**: `codecs`, `min_resolution`, `max_resolution`, `min_frame_rate`, `max_frame_rate`, `min_bit_rate`, `max_bit_rate`, plus the two overlay booleans `watermark_enabled` and `osd_enabled`. `audio` takes **exact values**, not ranges: `codecs`, `channel_count`, `sample_rate`, `bit_rate`.
 
-`video` and `audio` each make one of three statements, and both keys work the same way. Present with an object — `{}` included — asks for that track: if it cannot be resolved the call fails with the error that says why, rather than answering `null` for it. `false` declines the track. Left out leaves the track to the server: `audio` then reports `null` for any reason no audio stream could be resolved, while `video` reports `null` only when the offer rejects the video section, states a direction that will not receive it (`a=sendonly`, `a=inactive`), or carries no video section at all — a camera that refuses a video allocation still fails the call, since video is what the session is for. A track that was asked for and could not be resolved fails with error 102 when no capability, codec or range fits, error 103 when the camera refused the allocation for lack of capacity, or error 7 (`SDKStackError`) when the device accepts the allocation but never returns a stream id. A device status the allocation ladder does not recognize — anything other than `DynamicConstraintError`, `ResourceExhausted` or `ConstraintError` — is not translated into one of those codes and surfaces as error 0 (`UnknownError`) instead.
+- Any other key under either object is refused with error 8. A range hint sent at the top level instead of under `video` is refused as an unknown argument, not dropped.
+- Every numeric hint must be a positive integer, the same rule a resolution's `width` and `height` follow. A negative, zero, fractional, `NaN` or infinite value is refused with error 8.
+- Each is bounded by the range of the cluster field it becomes: `channel_count` 1 to 8, `min_frame_rate` and `max_frame_rate` 1 to 65535, `min_bit_rate`, `max_bit_rate`, `bit_rate` and `sample_rate` 1 to 4294967295. A value outside its range is refused with error 8 naming the field and both ends of it.
+- `channel_count` has two different refusals: above 8 it is error 8; within 8 but above the `audio.channels` the camera reports it is error 102.
+- A floor above its own ceiling — `min_bit_rate` above `max_bit_rate`, `min_frame_rate` above `max_frame_rate` — is a relation between two arguments, not a bound on one value. It passes these checks, and the camera refuses it.
+- Every bound the caller states is hard in both directions: a codec list, floor or ceiling that nothing satisfies fails with error 102 instead of returning something else.
+- `min_resolution == max_resolution` pins an exact value. It takes that capacity from every other client sharing the camera (spec §11.2.1.2.2), so leave a bound unset unless an exact value is required.
 
-A request that leaves nothing for the offer to carry fails with error 102, `reason: "no_media"`, no `track`, and `device` and `requested` both empty, rather than sending an offer with neither track. That happens when `video: false` and `audio: false` are both stated, and when one track is declined and the other was left to the server and could not be resolved — no microphone, no codec match, a section the offer rejects or will not receive, or a refused allocate all end there the same way. A track the caller *asked for* that the offer refuses is `reason: "offer"` instead, naming the track. Asking for at least one track succeeds with everything else about the request unchanged.
+**Track statements.** `video` and `audio` each make one of three statements, and both keys work the same way:
 
-The offer's `a=fmtp` lines are read as the peer's decode ceiling, per codec, and every rung of the allocation is bound by them. Both the explicit parameters and the codec's own level are read, each under that codec's own payload format. H.264 states `profile-level-id` (mapped through ITU-T H.264 Table A-1 MaxFS / MaxMBPS / MaxBR) plus `max-fs` and `max-mbps` in macroblocks, `max-fr` in frames per second and `max-br` in units of 1000 bits per second (RFC 6184 §8.1). H.265 states `level-id` (mapped through ITU-T H.265 Table A.8 MaxLumaPs and Table A.9 MaxLumaSr) plus `max-lps` and `max-lsr` in luma samples, `max-fps` in frames per 100 seconds and `max-br` in the same units (RFC 7798 §7.1). Where a record states both a level and an explicit parameter, the explicit one wins, because both RFCs define it as signalling a capability at or above the level's. A name one codec defines is never read on another's record. Because every browser offers H.264 at level 3.1 with no `max-fs`, an offer from one now bounds the stream at 1280x720 rather than 1920x1080; a client that wants more offers a higher level. A codec whose stated decode ceiling the server cannot read is not selectable for that session. That covers a level it cannot map to those tables — a `profile-level-id` that is not three bytes of base16, or a level value the tables do not list — and a capability parameter whose value is not a whole number, such as `max-fs=8160px`: the parameter overrides the level, so the level is no longer a ceiling the peer still states, and reading the parameter as no statement at all would leave the codec unbounded. If that leaves no codec the camera and the peer share, the call fails with error 102 and `reason: "level"` rather than being served a stream no bound was held against. A codec that states no level and no explicit parameter is unbounded by the offer, as before: the RFC-inferred defaults for an absent level are not applied, since H.264's is Baseline level 1 and inferring it would refuse offers no peer meant to restrict.
+- **Present with an object** (`{}` included) asks for the track. If it cannot be resolved, the call fails with the error that says why; the response never answers `null` for it.
+- **`false`** declines the track.
+- **Left out** leaves the track to the server. `audio` then reports `null` for any reason no audio stream could be resolved. `video` reports `null` only when the offer rejects the video section, states a direction that will not receive it (`a=sendonly`, `a=inactive`), or carries no video section at all. A camera that refuses a video allocation still fails the call, since video is what the session is for.
 
-Response: `{ webrtc_session_id, mode, video, audio }`. `mode` is `"provide_offer"` or `"solicit_offer"`. A track is `null` when the caller declined it with `false`, and when the caller left it out and no stream could be resolved for it. A track the caller asked for is never `null`: the call fails instead. A `webrtc_session_id` the response carries names a session that had not ended by the time the server recorded it: a session ended between the camera answering the offer and that record — by the camera itself, or by another connection's `camera_stop_stream` or `EndSession` for the id the camera has just issued — fails the call with error 7 and gives the streams back, rather than answering with an id whose signalling would reach nothing.
+A track that was asked for and could not be resolved fails with:
+
+- error 102 when the camera, the offer or the request rules the track out; `reason` says which;
+- error 103 when the camera refused the allocation for lack of capacity;
+- error 7 (`SDKStackError`) when the device accepts the allocation but never returns a stream id;
+- error 0 (`UnknownError`) for a device status the allocation ladder does not recognize — anything other than `DynamicConstraintError`, `ResourceExhausted` or `ConstraintError`.
+
+A request that leaves nothing for the offer to carry fails with error 102, `reason: "no_media"`, no `track`, and `device` and `requested` both empty; no offer with neither track is sent. That happens when:
+
+- `video: false` and `audio: false` are both stated;
+- one track is declined and the other was left to the server and could not be resolved. No microphone, no codec match, a section the offer rejects or will not receive, and a refused allocate all end there the same way.
+
+A track the caller *asked for* that the offer refuses is `reason: "offer"` instead, naming the track. Asking for at least one track succeeds with everything else about the request unchanged.
+
+**The offer's media sections.** Talkback is asked for in the offer:
+
+- An audio section with `a=sendrecv` or `a=sendonly` asks for talkback. So does one stating no direction at all, which is `sendrecv` (RFC 4566 §6).
+- `a=sendonly` asks for talkback and refuses the camera's audio in one statement, so such a section gets no audio stream.
+- An `sdp` with no section of a kind refuses that kind as well. The answer carries exactly the m-lines of the offer it answers (RFC 3264 §6), so there is nothing to send such a track in.
+- Without `sdp` the camera writes the offer itself, and no kind is refused.
+
+**The offer's decode ceiling.** The offer's `a=fmtp` lines are read as the peer's decode ceiling, per codec, and every rung of the allocation is bound by them. Both the explicit parameters and the codec's own level are read, each under that codec's own payload format:
+
+- H.264: `profile-level-id` (mapped through ITU-T H.264 Table A-1 MaxFS / MaxMBPS / MaxBR), plus `max-fs` and `max-mbps` in macroblocks and `max-br` in units of 1000 bits per second (RFC 6184 §8.1). `max-fr` in frames per second is read on an H.264 record as well; RFC 6184 does not define it, it is the VP8 parameter of RFC 7741 §6.1.
+- H.265: `level-id` (mapped through ITU-T H.265 Table A.8 MaxLumaPs and Table A.9 MaxLumaSr), plus `max-lps` and `max-lsr` in luma samples, `max-fps` in frames per 100 seconds and `max-br` in the same units (RFC 7798 §7.1).
+- Where a record states both a level and an explicit parameter, the explicit one wins: both RFCs define it as signalling a capability at or above the level's.
+- A name one codec defines is never read on another codec's record.
+- Every browser offers H.264 at level 3.1 with no `max-fs`, so an offer from a browser bounds the stream at 1280x720. A client that wants more offers a higher level.
+- A codec whose stated decode ceiling the server cannot read is not selectable for that session. That covers a level the tables do not map — a `profile-level-id` that is not three bytes of base16, or a level value the tables do not list — and a capability parameter whose value is not a whole number, such as `max-fs=8160px`. The parameter overrides the level, so the level does not bound the codec either, and treating the parameter as absent would leave the codec unbounded.
+- If that leaves no codec the camera and the peer share, the call fails with error 102 and `reason: "level"`, instead of serving a stream with no bound held against it.
+- A codec that states no level and no explicit parameter is unbounded by the offer. The RFC defaults for an absent level are not applied: H.264's is Baseline level 1, and inferring it would refuse offers no peer meant to restrict.
+
+**The encoder budget.** The server asks for a stream that fits inside `max_encoded_pixel_rate` (spec §11.2.7.2) minus what the camera's allocated streams reserve: `max_resolution` times `max_frame_rate` per video stream, plus the same for a snapshot stream whose `encoded_pixels` is set. A request at the sensor's maximum would be refused by a camera short of encoder capacity, and that refusal is what leads to taking another controller's stream.
+
+- The budget narrows only the server's own defaults. A floor the caller stated reaches the camera unshrunk, and the camera answers, since it is the arbiter of a parameter conflict (spec §11.2.1.2.2).
+- A stream already on the camera is never measured against the budget, because it already draws on it. Reuse costs nothing, however wide the stream is.
+
+**The rung order.** The server tries, in this order:
+
+1. Reuse a stream the camera already produces, or one this server allocated that the camera has not reported yet.
+2. Allocate inside the encoder budget.
+3. Narrow the server's own range, for at most three rounds per request.
+4. Take a stream nothing references and allocate again with the freed capacity (see making room below).
+5. Hand out an existing stream that meets every bound the caller stated, but not the range the server computed (`degraded`).
+
+- Narrowing runs before anything is taken: the range is the server's to give up, while an idle stream is somebody's reservation. Spec §11.2.1.1 asks commissioners to pre-allocate streams and keep them.
+- A stream that rung 5 could hand out — one meeting every bound the caller stated — is never taken. Destroying it and then failing would cost its holder an id for a request that very stream would have served.
+- Once a stream has been taken, the range is re-derived from the freed capacity instead of left where narrowing ended it. Paying for capacity and not using it therefore cannot cost the caller picture size.
+
+**Making room (eviction).** With `allow_eviction` absent or `true`, the server may deallocate a stream nothing references:
+
+- A video stream, whoever allocated it.
+- A snapshot stream this server allocated in its current run (`allocated_by_server`), nothing references, and whose loss frees capacity the refused allocate can use: an encoder (`hardware_encoder`), or a share of `max_encoded_pixel_rate` on a camera that states one. A snapshot stream this server allocated moments ago counts even before the camera reports it. A snapshot stream another controller allocated is never taken.
+
+Order: the server takes nothing of another controller's while it still holds an idle stream of its own that this step could take. Its own snapshot streams go first, then its own video streams, and a foreign video stream last. The camera's `stream_usage_priorities` orders each of those groups.
+
+Reporting:
+
+- A taken video stream comes back in the response's `video.evicted_stream_ids`.
+- A taken snapshot stream is reported by the `camera_stream_evicted` event, not in `video.evicted_stream_ids`, which carries video stream ids.
+- If the request then does not use the capacity a taken snapshot stream freed, the server allocates a snapshot stream of the same range back, under a new id.
+
+`allow_eviction: false` skips this step, for a caller that must not disturb a long-lived allocation. The degraded rung still runs, so the call can still succeed with `degraded: true`; otherwise the camera's `ResourceExhausted` fails it with error 103. The flag governs this request alone: another client's request with the default still takes what it needs, and no record says which connection a stream belongs to.
+
+**The overlays.** `video.watermark_enabled` and `video.osd_enabled` say whether the camera burns its watermark, or a date/time/name banner, into the picture.
+
+- Both fields are mandatory on `VideoStreamAllocate` for a camera that advertises the matching feature, and forbidden for one that does not (spec §11.2.8.4, conformance `WMARK` / `OSD`). The server sends them exactly when `features` names `Watermark` / `OnScreenDisplay`.
+- While the camera has not reported its `FeatureMap` (`features` absent), the server gates nothing: a flag the caller stated is sent as stated and the camera answers for itself, and a flag the caller left out is not sent.
+- `true` for a feature the camera does not advertise fails with error 102, `reason: "feature"`, naming it in `feature`. `false` is accepted there, because such a camera has no overlay to apply.
+- Left unset, the server asks for no overlay (`VideoStreamStruct`'s own fallback for both flags is 0).
+- The server does not *reuse* a stream whose flags differ from what the request resolved to, for a camera that advertises the feature. On a camera advertising neither feature, and while `features` is absent, nothing about the overlays is compared, because there is nothing to compare against.
+- Only the `degraded` rung may hand out a stream whose overlays differ, and it says so with `degraded: true`. State the field to have it honoured at every rung.
+- In the response, `video.watermark_enabled` / `video.osd_enabled` are the camera's own statement for a reused or degraded stream, and what the server asked for on a freshly allocated one, which the camera accepted and applied. One exception: the cluster's deduplication may answer an allocate with the id of an existing stream whose overlays differ, because the reference implementation's dedup adjusts the range parameters only. Read `allocated.video[]` from `camera_get_capabilities` if the distinction matters.
+
+**Response:** `{ webrtc_session_id, mode, video, audio }`. `mode` is `"provide_offer"` or `"solicit_offer"`.
+
+- A track is `null` when the caller declined it with `false`, or left it out and no stream could be resolved. A track the caller asked for is never `null`: the call fails instead.
+- The `webrtc_session_id` names a session that had not ended when the server recorded it. A session ended between the camera answering the offer and that record — by the camera itself, or by another connection's `camera_stop_stream` or `EndSession` for the id the camera just issued — fails the call with error 7 and gives the streams back. An id whose signalling would reach nothing is never returned.
+- Any failed call deallocates the streams it allocated for the attempt. The caller never receives their ids, so it could not release them itself.
 
 | Field | On | Meaning |
 |---|---|---|
-| `stream_id` | both | The id `camera_release_stream` takes for this track's `kind`. A stream this call allocated can also be reached later through `camera_get_capabilities`'s matching `video_stream_id` / `audio_stream_id` |
+| `stream_id` | both | The id `camera_release_stream` takes for this track's `kind`. A stream this call allocated can also be found later through `camera_get_capabilities`'s matching `video_stream_id` / `audio_stream_id` |
 | `codec` | both | Codec name |
 | `resolution` | video | `{ min, max }`, each a resolution |
 | `frame_rate` | video | `{ min, max }` |
 | `bit_rate` | video | `{ min, max }` |
 | `channel_count`, `sample_rate`, `bit_rate`, `bit_depth` | audio | The allocated values |
-| `provenance` | both | Where the stream came from: `allocated` (this call allocated it on the camera), `reused` (it was already there and this server allocated it earlier in this run) or `adopted` (it was already there and this server did not allocate it, which `camera_get_capabilities` reports as `allocated_by_server: false`). None of the three decides whether `camera_release_stream` can free the stream — the camera decides that, by reference count and by the `Internal` stream usage, never by who allocated it |
-| `degraded` | video | `true` when the stream does not fit the range the server computed while still meeting every bound the caller stated. Always present, `false` when the stream fits. `camera_snapshot` reports the same class of decision under the same name, for a frame smaller than the best capability the request's bounds allowed |
-| `watermark_enabled`, `osd_enabled` | video | Which overlays the stream this session uses carries: the camera's own statement for a reused or degraded stream, the accepted request for a freshly allocated one. Worth reading even when the request stated neither: unstated asks for no overlay, but the `degraded` rung may hand out a stream that has one. Both `false` for a camera advertising neither feature |
-| `evicted_stream_ids` | video, optional | Video stream ids this request deallocated, whichever rung then served it. Absent when it took nothing. An id listed here may have belonged to another controller and is gone for good — that controller has to allocate again |
-| `narrowed_by_encoder_budget` | video, optional | The ceilings the camera's encoder budget lowered, as `{ "max_frame_rate"?, "max_resolution"? }`, each carrying what the server would have asked for had the budget been free. Absent when it lowered nothing, and reported for a freshly allocated stream only — a reused or degraded stream carries the camera's own range, which the budget had no part in. `max_encoded_pixel_rate` is what the camera's encoders can produce in total and every stream the camera holds spends it, and the budget gives up frame rate before frame size, so a tight one answers with the full sensor frame at a low rate: `{"max_frame_rate": 30}` beside a `frame_rate.max` of 1 says another stream's reservation is the reason, not the camera's own limit. This is not `degraded`: the stream fits the range the server computed, and it is that range which was narrowed. A caller that wants motion rather than frame size states `min_frame_rate`, which the budget may not narrow past; freeing a stream of its own with `camera_release_stream` or `camera_stop_stream` gives the budget back. The ladder may narrow the range again after a device refusal, so `frame_rate.max` can be lower still than what the budget left; these values are the unbudgeted ceilings, not a measure of the whole gap. |
+| `provenance` | both | `allocated` (this call allocated it on the camera), `reused` (already there, and this server allocated it earlier in this run) or `adopted` (already there, not allocated by this server; `camera_get_capabilities` reports it as `allocated_by_server: false`). None of the three decides whether `camera_release_stream` can free the stream: the camera decides, by reference count and by the `Internal` stream usage, never by who allocated it |
+| `degraded` | video | `true` when the stream does not fit the range the server computed but meets every bound the caller stated. Always present, `false` when the stream fits. `camera_snapshot` uses the same name for the same class of decision |
+| `watermark_enabled`, `osd_enabled` | video | Which overlays the stream carries; see **The overlays** above. Worth reading even when the request stated neither: unstated asks for no overlay, but the `degraded` rung may hand out a stream that has one. Both `false` for a camera advertising neither feature |
+| `evicted_stream_ids` | video, optional | Video stream ids this request deallocated, whichever rung then served it. Absent when it took nothing. An id listed here may have belonged to another controller and is gone for good; that controller has to allocate again |
+| `narrowed_by_encoder_budget` | video, optional | The ceilings the encoder budget lowered, as `{ "max_frame_rate"?, "max_resolution"? }`, each carrying what the server would have asked for with a free budget. See below |
 
-The camera's half of the signalling arrives on the `webrtc_callback` event, which for a session opened this way reaches the connection that opened it and no other. `mode` says which half the client owes next: after `"provide_offer"` the camera answers with an `answer` event and the client only trickles candidates, while after `"solicit_offer"` the camera sends an `offer` event and the client owes the SDP answer, through `camera_provide_answer`.
+`narrowed_by_encoder_budget`:
 
-**Signalling can arrive before this response does.** The server applies the `webrtc_callback` opt-in
-before it dispatches the command, precisely because the camera answers the offer while
-`camera_start_stream` is still in flight: for `mode: "provide_offer"` the camera's `answer` and its first
-ICE candidates can reach the connection before the response frame carrying `webrtc_session_id`. A client
-that installs its handlers keyed on the id from the response drops them. Register the `webrtc_callback`
-handler before sending the command and buffer events by their own `webrtc_session_id` until the response
-lands, then attach the buffered ones to the session it names. There is no ordering guarantee either way —
-a response bypasses the outbox an event queues into — so a client must cope with both orders.
+- Absent when the budget lowered nothing. Reported for a freshly allocated stream only: a reused or degraded stream carries the camera's own range, which the budget had no part in.
+- `max_encoded_pixel_rate` is what the camera's encoders can produce in total, and every stream the camera holds spends it. The budget gives up frame rate before frame size, so a tight budget answers with the full sensor frame at a low rate. `{"max_frame_rate": 30}` beside a `frame_rate.max` of 1 says another stream's reservation is the reason, not the camera's own limit.
+- It is not `degraded`: the stream fits the range the server computed, and it is that range which was narrowed.
+- A caller that wants motion more than frame size states `min_frame_rate`, which the budget may not narrow past. Freeing one of its own streams with `camera_release_stream` or `camera_stop_stream` gives the budget back.
+- The ladder may narrow the range again after a device refusal, so `frame_rate.max` can be lower still. These values are the unbudgeted ceilings, not a measure of the whole gap.
 
-**A re-offer is the one thing this command cannot do.** An ICE restart, or a change to the tracks a live
-session carries, is a second `ProvideOffer` naming the session id that already exists (§11.5.6.3, with
-`WebRTCSessionID` stated rather than null). `camera_start_stream` always opens a new session, so a
-re-offer goes through `send_webrtc_provider_command` with `command_name: "ProvideOffer"` and the existing
-`webRtcSessionId` in the payload. The session stays the server's as far as teardown goes:
-`camera_stop_stream` still ends it and `camera_session_ended` still reports another connection ending it.
+**Signalling.** The camera's half of the signalling arrives on the `webrtc_callback` ([Server Events](#server-events)) event. For a session opened with this command it reaches the connection that opened it and no other. `mode` says what the client owes next:
+
+- After `"provide_offer"` the camera answers with an `answer` event, and the client only trickles candidates with `camera_provide_ice_candidates`.
+- After `"solicit_offer"` the camera sends an `offer` event, and the client owes the SDP answer through `camera_provide_answer`.
+
+**Signalling can arrive before this response.** The server applies the `webrtc_callback` opt-in before it dispatches the command, because the camera answers the offer while `camera_start_stream` is still in flight. For `mode: "provide_offer"`, the camera's `answer` and its first ICE candidates can reach the connection before the response frame carrying `webrtc_session_id`. A client that installs its handlers keyed on the id from the response drops them. Register the `webrtc_callback` handler before sending the command, buffer events by their own `webrtc_session_id` until the response lands, then attach the buffered ones to the session it names. There is no ordering guarantee either way — a response bypasses the outbox an event queues into — so a client must handle both orders.
+
+**Re-offers.** An ICE restart, or a change to the tracks a live session carries, is a second `ProvideOffer` naming the existing session id (§11.5.6.3, with `WebRTCSessionID` stated instead of null). `camera_start_stream` always opens a new session, so a re-offer goes through `send_webrtc_provider_command` with `command_name: "ProvideOffer"` and the existing `webRtcSessionId` in the payload. For teardown the session stays the server's: `camera_stop_stream` still ends it, and `camera_session_ended` still reports another connection ending it.
 
 **camera_provide_answer** - Answer the offer a camera sent
 
@@ -1026,13 +1161,14 @@ re-offer goes through `send_webrtc_provider_command` with `command_name: "Provid
 }
 ```
 
-The other half of a `camera_start_stream` that stated no `sdp`: the camera writes the offer, delivers it as a `webrtc_callback` `offer` event, and this is the route the answer to it goes back on. `webrtc_session_id` is the id that event carries, which is the one `camera_start_stream` answered with.
+The other half of a `camera_start_stream` that stated no `sdp`. The camera writes the offer and delivers it as a `webrtc_callback` `offer` event; this command sends the answer back. `webrtc_session_id` is the id that event carries, which is the one `camera_start_stream` answered with.
 
-Both arguments are required, and both are checked against the cluster's own `ProvideAnswer` definition before the camera is asked: the id against the range its field encodes in — a uint16, so 0 to 65535 — and the `sdp` for being a string, which that field states no length for. A missing one is error 8 naming `camera_provide_answer`.
+- Both arguments are required. A missing one is error 8 naming `camera_provide_answer`.
+- Both are checked against the cluster's `ProvideAnswer` definition before the camera is asked: the id against its field's range — a uint16, so 0 to 65535 — and `sdp` for being a string (the field states no length).
+- The id does not have to be one this server established in its current run, for the same reason as for `camera_stop_stream`: the camera holds the session and decides. It answers `NOT_FOUND` for anything that is not its own session with this server on this fabric.
+- The sending connection does not have to be the one that opened the session. Session ownership decides which `webrtc_callback` events a connection receives, not which commands it may send.
 
-Response: `null`. The cluster defines no response payload for `ProvideAnswer`, so there is nothing to report but the absence of an error. A session id the camera cannot resolve to one of its own comes back as the camera's own error.
-
-The id does not have to be one this server established in its current run, for the same reason `camera_stop_stream`'s does not: the camera holds the session and decides, and it answers `NOT_FOUND` for anything that is not its own session with this server on this fabric. Nor does the sending connection have to be the one that opened the session; what a connection's ownership decides is which `webrtc_callback` events it receives, not which commands it may send.
+Response: `null`. The cluster defines no response payload for `ProvideAnswer`. A session id the camera cannot resolve to one of its own comes back as the camera's own error.
 
 **camera_provide_ice_candidates** - Trickle ICE candidates into a session
 
@@ -1049,9 +1185,14 @@ The id does not have to be one this server established in its current run, for t
 }
 ```
 
-An entry is `{ candidate, sdpMid, sdpMLineIndex }`, the W3C `RTCIceCandidateInit` spelling a `webrtc_callback` `ice_candidates` event reports, so a candidate read from that event goes back unchanged. `sdpMid` and `sdpMLineIndex` are stated on every entry and may be `null`; the list takes at least one entry, the floor `ProvideIceCandidates`' own field states. Without trickled candidates a camera learns its peer's addresses from the initial SDP alone, which is the difference between a session that connects through a relay after the first round and one that does not connect at all.
+- An entry is `{ candidate, sdpMid, sdpMLineIndex }`, the W3C `RTCIceCandidateInit` spelling a `webrtc_callback` `ice_candidates` event reports. A candidate read from that event goes back unchanged.
+- `sdpMid` and `sdpMLineIndex` are stated on every entry and may be `null`.
+- The list takes at least one entry, the floor `ProvideIceCandidates`' own field states.
+- `webrtc_session_id` and the sending connection follow the same rules as for `camera_provide_answer`.
 
-Response: `null`, as for `camera_provide_answer`, and for the same reason.
+Without trickled candidates a camera learns its peer's addresses from the initial SDP alone. That can decide whether a session connects through a relay after the first round or does not connect at all.
+
+Response: `null`, as for `camera_provide_answer`.
 
 **camera_stop_stream** - End the WebRTC session, keep the allocation
 
@@ -1067,15 +1208,17 @@ Response: `null`, as for `camera_provide_answer`, and for the same reason.
 }
 ```
 
-`webrtc_session_id` is a uint16, so an integer 0 to 65535: a value outside that names no session the camera can have and is refused with error 8 rather than answered as an unknown session.
+- `webrtc_session_id` is a uint16, so an integer 0 to 65535. A value outside that names no session the camera can have and is refused with error 8, not answered as an unknown session.
+- The id does not have to be one this server established in its current run. A session `camera_get_capabilities` lists can be ended too. That is the way back after an ungraceful restart: the server's own tracking is gone, the camera still holds the session, and its streams stay pinned at `reference_count` above zero until it is ended.
+- The camera checks the server, not the WebSocket connection: any connection can end any session this server holds on that camera, including one another connection started.
+- There is one `EndSession` per session, however many paths reach it. A closing connection and the shutdown pass end the sessions they own. A `camera_stop_stream` naming a session one of them is already ending waits on that same invoke and reports its outcome.
 
-The id does not have to be one this server established in its current run. A session `camera_get_capabilities` lists is ended too, which is the way back after an ungraceful restart: the server's own tracking is gone, the camera still holds the session, and its streams stay pinned at `reference_count` above zero until it is ended. The camera's check is about the server, not the WebSocket connection: any connection can end any session this server holds on that camera, including one another connection started, which was already so for a session started in this run and now also holds for one it did not.
+Response: `{ "ended": true }`.
 
-Response: `{ "ended": true }`. `ended` is `false` when the camera answered `NOT_FOUND`, which is an id it could not resolve to one of its own sessions with this server — one the peer had already ended, one it never held, or one belonging to another controller. In that case the server drops its local records for the id as well; ending a session through `device_command` with `EndSession` drops the same records.
+- `ended` is `false` when the camera answered `NOT_FOUND`: an id it could not resolve to one of its own sessions with this server — one the peer had already ended, one it never held, or one belonging to another controller. The server then drops its local records for the id as well.
+- An `EndSession` the camera refuses for any other reason is an error response, not `ended: false`. Because of the shared invoke above, the error can report an `EndSession` this request did not send itself. Either way the session is still open on the camera, so sending `camera_stop_stream` again is the retry.
 
-An `EndSession` the camera refuses for any other reason is an error response, not `ended: false`. That now also covers an `EndSession` another path sent first: a closing connection and the shutdown pass end the sessions they own, there is one `EndSession` per session however many paths reach it, and a `camera_stop_stream` naming a session one of them is already ending waits on that same invoke and reports its outcome. So the error can report an `EndSession` this request did not itself send. Either way the session is still open on the camera, so sending `camera_stop_stream` again is the retry.
-
-Ending a session with `device_command` and `EndSession` drops the same two local records, in that order: this server's camera session registry, then the requestor-side session tracking. A failure of the second is logged and does not fail the command — the `EndSession` already succeeded on the camera, and reporting an error would invite a retry the camera can only answer `NOT_FOUND`.
+Ending a session with `device_command` and `EndSession` drops the same two local records, in this order: this server's camera session registry, then the requestor-side session tracking. A failure of the second is logged and does not fail the command: the `EndSession` already succeeded on the camera, and an error would invite a retry the camera can only answer with `NOT_FOUND`.
 
 **camera_snapshot** - Capture one still frame
 
@@ -1094,11 +1237,28 @@ Ending a session with `device_command` and `EndSession` drops the same two local
 }
 ```
 
-`max_resolution`, `codec`, `watermark_enabled` and `osd_enabled` are the only arguments besides `node_id` and `endpoint_id`; any other key is refused with error 8, the same as an unknown hint key on `camera_start_stream`.
+`max_resolution`, `codec`, `watermark_enabled` and `osd_enabled` are the only arguments besides `node_id` and `endpoint_id`. Any other key is refused with error 8.
 
-`watermark_enabled` and `osd_enabled` work as they do under `camera_start_stream`'s `video`: mandatory on `SnapshotStreamAllocate` for a camera advertising the matching feature and forbidden for one that does not (spec §11.2.8.8, conformance `WMARK` / `OSD`), `true` for a feature the camera does not advertise fails with error 102 naming it, `false` is accepted there, and unset asks for no overlay. A snapshot stream whose overlays differ from what the request resolved to is not adopted. One thing is weaker here than for video: at a capability whose `requires_hardware_encoder` is false the camera **may** ignore both fields and apply the source video stream's setting instead (spec §11.2.8.8.6), so the request is not a guarantee — `camera_get_capabilities`'s `allocated.snapshot` reports what the camera actually did.
+Overlays work as under `camera_start_stream`'s `video` (see **The overlays** there):
 
-Response: `{ data, codec, resolution, degraded, stream_id }`. `data` is base64-encoded image bytes. When the camera's encoders are all taken, the server prefers a capability that needs no hardware encoder; how many are taken is counted from the referenced video streams against `max_concurrent_encoders`, so one viewer on a camera that states four encoders costs nothing. `degraded: true` says the frame is smaller than the best capability the request's own bounds allowed. `stream_id` names the snapshot stream the frame came from. A successful call always leaves that stream on the camera, so the id is the one `camera_release_stream` takes; that release can still fail with error 104 while something references the stream. The call captures from a snapshot stream the camera already has, whoever allocated it, whenever one fits the request's own bounds and is no smaller than the capability it would otherwise allocate; allocating a stream per call is what the cluster asks controllers to avoid. A stream it does allocate is left in place for the next call, whatever capability it came from. A stream allocated at a capability that requires the hardware encoder holds one of `max_concurrent_encoders` while it exists. `camera_snapshot` itself never gives it back — a deallocate it cannot await to a conclusion would make this response name a stream that is being removed — but a later `camera_start_stream` that runs out of capacity takes it rather than failing, provided it is unreferenced and this server allocated it, and reports the id in a `camera_stream_evicted` event. So the client no longer has to release it to start a stream, and the next `camera_snapshot` allocates one again. A stream left in place shows under `camera_get_capabilities`'s `allocated.snapshot` and `camera_release_stream` frees it, both of which read what the camera reports: on a camera that never reports its allocated snapshot streams the stream is there but neither command can name it. At most one such stream exists per snapshot capability, because `SnapshotStreamAllocate` answers a matching request with the id it already issued.
+- Mandatory on `SnapshotStreamAllocate` for a camera advertising the matching feature, forbidden for one that does not (spec §11.2.8.8, conformance `WMARK` / `OSD`).
+- `true` for a feature the camera does not advertise fails with error 102 naming it; `false` is accepted there; unset asks for no overlay.
+- A snapshot stream whose overlays differ from what the request resolved to is not adopted.
+- Weaker than for video: at a capability whose `requires_hardware_encoder` is false the camera **may** ignore both fields and apply the source video stream's setting instead (spec §11.2.8.8.6). The request is not a guarantee; `camera_get_capabilities`'s `allocated.snapshot` reports what the camera actually did.
+
+Response: `{ data, codec, resolution, degraded, stream_id }`.
+
+- `data` is the image bytes, base64-encoded.
+- `degraded: true` says the frame is smaller than the best capability the request's own bounds allowed.
+- `stream_id` names the snapshot stream the frame came from. A successful call always leaves that stream on the camera, so this is the id `camera_release_stream` takes. That release can still fail with error 104 while something references the stream.
+
+Choosing a stream:
+
+- The call captures from a snapshot stream the camera already has, whoever allocated it, whenever one fits the request's own bounds and is no smaller than the capability it would otherwise allocate. Allocating a stream per call is what the cluster asks controllers to avoid.
+- When the camera's encoders are all taken, the server prefers a capability that needs no hardware encoder. How many are taken is counted from the referenced video streams plus the snapshot streams with `hardware_encoder` set, against `max_concurrent_encoders`. So one viewer on a camera that states four encoders costs nothing.
+- A stream the call allocates is left in place for the next call, whatever capability it came from. A call that fails deallocates the stream it allocated for the attempt. At most one such stream exists per snapshot capability, because `SnapshotStreamAllocate` answers a matching request with the id it already issued.
+- A stream allocated at a capability that requires the hardware encoder holds one of `max_concurrent_encoders` while it exists. After a successful capture `camera_snapshot` never gives it back itself: a deallocate it cannot await to the end would make this response name a stream that is being removed. A later `camera_start_stream` that runs out of capacity takes it instead of failing, under the rules in **Making room** under `camera_start_stream`, and reports it in a `camera_stream_evicted` event. The client therefore does not have to release it to start a stream, and the next `camera_snapshot` allocates one again.
+- A stream left in place shows under `camera_get_capabilities`'s `allocated.snapshot`, and `camera_release_stream` frees it. Both read what the camera reports: on a camera that never reports its allocated snapshot streams, the stream is there but neither command can name it.
 
 **camera_release_stream** - Deallocate a stream nothing references
 
@@ -1115,9 +1275,14 @@ Response: `{ data, codec, resolution, degraded, stream_id }`. `data` is base64-e
 }
 ```
 
-`kind` is `"video"`, `"audio"` or `"snapshot"`. `stream_id` is the `stream_id` a `camera_start_stream` response carried for that track, or a `video_stream_id` / `audio_stream_id` / `snapshot_stream_id` from `camera_get_capabilities`. The stream need not be one this server allocated: the cluster protects a stream by its reference count and by the `Internal` stream usage, not by who created it, so the command forwards to the camera and reports what it answers. Every stream id is a uint16, so a `stream_id` outside 0 to 65535 is refused with error 8 before the camera is asked. The camera decides whether the stream can go: the deallocate always goes out, and its `INVALID_IN_STATE` is reported as error 104, because that is what the reference implementation answers for a reference count above 0 and for nothing else. The reference count the server holds is a cached, subscription-backed view that can be behind the device in either direction, so it decides nothing; it only fills in `reference_count` in the error detail when it is above zero, and is absent from the detail otherwise. A stream the server reads as referenced is therefore still released when the camera accepts it. A missing AV Stream Management cluster is still 105 and a malformed argument still 8. An id the camera does not know, or a video or audio stream marked `Internal`, comes back as the device's own error.
+- `kind` is `"video"`, `"audio"` or `"snapshot"`.
+- `stream_id` is the `stream_id` a `camera_start_stream` or `camera_snapshot` response carried, or a `video_stream_id` / `audio_stream_id` / `snapshot_stream_id` from `camera_get_capabilities`. Every stream id is a uint16, so a `stream_id` outside 0 to 65535 is refused with error 8 before the camera is asked.
+- The stream need not be one this server allocated. The cluster protects a stream by its reference count and by the `Internal` stream usage, not by who created it, so the command forwards to the camera and reports what it answers.
+- The camera decides whether the stream can go: the deallocate always goes out. Its `INVALID_IN_STATE` is reported as error 104, because that is what the reference implementation answers for a reference count above 0, and for nothing else.
+- The reference count the server holds is a cached, subscription-backed view that can be behind the device in either direction, so it decides nothing. It only fills in `reference_count` in the error detail when it is above zero, and is absent from the detail otherwise. A stream the server reads as referenced is still released when the camera accepts it.
+- A missing AV Stream Management cluster is error 105, a malformed argument error 8. An id the camera does not know, or a video or audio stream marked `Internal`, comes back as the device's own error.
 
-Response: `null`. A failure throws — error 104 while a listener still references the stream, and the camera's own status otherwise — so a success has nothing to report.
+Response: `null`. A failure is an error response — error 104 while a listener still references the stream, the camera's own status otherwise — so a success has nothing to report.
 
 **send_webrtc_provider_command** - Send `ProvideOffer`, `SolicitOffer`, `ProvideAnswer` or `ProvideIceCandidates` yourself
 
@@ -1140,27 +1305,44 @@ Response: `null`. A failure throws — error 104 while a listener still referenc
 }
 ```
 
-For a client that allocates its own streams, and for the signalling of any session, whichever command opened it. `command_name` is `ProvideOffer`, `SolicitOffer`, `ProvideAnswer` or `ProvideIceCandidates`; no other provider command is reachable this way. `EndSession` is not: `camera_stop_stream` owns it, because one session gets one `EndSession` and the local records this server holds for it go with that invoke.
+The official WebRTC Provider commands, for a client that allocates its own streams, and for the signalling of any session, whichever command opened it.
 
-`ProvideOffer` and `SolicitOffer` establish a session: the server fills in the originating endpoint, reconciles the stream fields against the camera's cluster revision and registers the session with its local WebRTC requestor, and the response carries the camera's answer. `ProvideAnswer` and `ProvideIceCandidates` signal for a session the camera already holds — they establish nothing, and the response is `null`, because the cluster defines no response payload for either. An id the camera cannot resolve to one of its own sessions comes back as the camera's own error. The two offer variants have been relayed since schema 12; the two signalling variants are schema 14, and a server below that refuses them as an unsupported `command_name`.
+`command_name` is one of:
 
-A client that opened its session with `camera_start_stream` does not need this command for either of them: `camera_provide_answer` and `camera_provide_ice_candidates` send the same two commands with the same checks, in this API's own argument style.
+- `ProvideOffer`, `SolicitOffer` (schema 12+): establish a session. The server fills in the originating endpoint, reconciles the stream fields against the camera's cluster revision and registers the session with its local WebRTC requestor. The response carries the camera's answer.
+- `ProvideAnswer`, `ProvideIceCandidates` (schema 14+): signal for a session the camera already holds. They establish nothing. The response is `null`, because the cluster defines no response payload for either. An id the camera cannot resolve to one of its own sessions comes back as the camera's own error. A server below schema 14 refuses them as an unsupported `command_name`.
 
-An `ice_candidates` entry is `{ candidate, sdpMid, sdpMLineIndex }`, the W3C `RTCIceCandidateInit` spelling the `webrtc_callback` `ice_candidates` event reports, so a candidate read from that event is sent back unchanged. `sdpMid` and `sdpMLineIndex` are stated on every entry and may be `null`; the list takes at least one entry.
+No other provider command is reachable this way. `EndSession` is not: `camera_stop_stream` owns it, because one session gets one `EndSession` and this server's local records for the session go with that invoke. A client that opened its session with `camera_start_stream` does not need this command for signalling: `camera_provide_answer` and `camera_provide_ice_candidates` send the same two commands with the same checks.
 
-`payload` carries the command's own fields. A key is matched to a field with case and the separators between words ignored, so `ice_servers`, `iceServers` and `IceServers` all name the same field, and so do `webrtc_session_id` — the spelling every other command in this API uses for that id — `webRtcSessionId` and the Python Matter Server's `webRtcSessionID`. The same matching applies inside an `ice_candidates` entry, which is how the event's `sdpMLineIndex` reaches the cluster's `SDPMLineIndex`. `ice_servers` takes the shape `camera_start_stream` and the `webrtc_callback` `offer` event use — `{ urls, username?, credential?, caid? }` with the limits listed there — so ICE servers read from an offer can be sent straight back. `originatingEndpointId` is the server's own and is dropped.
+**Top-level arguments.** Only `node_id`, `endpoint_id`, `command_name` and `payload` are accepted. Any other key is refused with error 8, and so is an `args` that is not an object. A missing or `null` `args` is an empty argument set and fails with error 8 for the missing `command_name`. `node_id` and `endpoint_id` follow the [argument rules of the camera commands](#camera-streaming-schema-14): a fractional, negative or out-of-range `node_id` is error 8.
 
-Every field is checked against the cluster's own definition before the camera is asked: each number against the range its field encodes in, each string against the length its field states (1 to the ceiling where it states one, at least the floor where it states only that; a field stating neither, such as `sdp` and a candidate's `candidate`, takes any string), each list against the entry count its field takes, and each field the command states as mandatory for being present at all. A value that fails is refused with error 8 naming the key as sent, rather than reaching the TLV encoder and coming back as an encoder error. What the cluster makes conditional stays the camera's to answer: `streamUsage` is optional on `ProvideOffer` because a re-offer of an existing session does not restate it, so a first offer that omits it is refused by the server only after the camera has answered. A key naming no field of the command is refused too, and so is a second key resolving to a field another already filled — matter.js drops what it cannot place, and a duplicate would overwrite silently, so a caller whose argument was ignored gets the session it did not ask for. `streamUsage` is bounded by its width rather than by the enum's defined values: on this route the client owns the allocation, so the camera answers for a usage it does not serve.
+**Payload keys.** `payload` carries the command's own fields.
 
-`ProvideOffer` and `SolicitOffer` state the session's streams in one of two forms, and never both: the `videoStreams` / `audioStreams` lists of cluster revision 2, or the `videoStreamId` / `audioStreamId` the lists deprecate. A camera fails the command with `INVALID_COMMAND` when a list is present beside a singular id, and the test spans both media kinds rather than each on its own (§11.5.6.1 and §11.5.6.3, Effect on Receipt). A payload stating both forms is therefore refused with error 8 rather than having one of them dropped: `{"videoStreams": [5], "audioStreamId": null}` asks for video stream 5 and auto-selected audio, and sending the list alone would open a video-only session for it.
+- A key is matched to a field with case and word separators ignored. `ice_servers`, `iceServers` and `IceServers` name the same field. So do `webrtc_session_id` (the spelling the rest of this API uses), `webRtcSessionId` and the Python Matter Server's `webRtcSessionID`.
+- The same matching applies inside an `ice_candidates` entry, which is how the event's `sdpMLineIndex` reaches the cluster's `SDPMLineIndex`. Entries take the form described under `camera_provide_ice_candidates`.
+- `ice_servers` takes the shape `camera_start_stream` and the `webrtc_callback` `offer` event use — `{ urls, username?, credential?, caid? }` with the limits listed under `camera_start_stream` — so ICE servers read from an offer can be sent straight back.
+- `originatingEndpointId` is the server's own and is dropped.
+- A key naming no field of the command is refused with error 8. So is a second key resolving to a field another key already filled. matter.js drops what it cannot place, and a duplicate would overwrite silently, so the caller would get a session it did not ask for.
 
-A form the camera takes is sent as stated. The one conversion is a list going to a camera whose WebRTC Provider does not state cluster revision 2, or whose revision this server has not read yet — the same position, since a list such a camera does not understand is dropped on receipt and the session comes up with streams nobody chose. Such a provider carries a single id per media kind: a one-entry list says exactly what the singular id says and is converted, while any other length is refused with error 8 instead of being cut down to its first entry, and the refusal says whether the camera stated a revision below 2 or none has been read. An empty list is refused at every revision, because the field takes 1 to 16 entries.
+**Field checks.** Every field is checked against the cluster's own definition before the camera is asked:
 
-Any other top-level argument beside `node_id`, `endpoint_id`, `command_name` and `payload` is refused with error 8 as well, for the reason the payload's own keys are, and so is a message whose `args` is missing, `null` or not an object at all. `node_id` and `endpoint_id` are checked the way the camera commands check them, so a fractional, negative or out-of-range `node_id` is error 8 rather than an uncaught conversion failure or a node lookup that reports a target no node id could name as one this server does not hold.
+- each number against the range its field encodes in;
+- each string against the length its field states: 1 to the ceiling where it states one, at least the floor where it states only that; a field stating neither, such as `sdp` and a candidate's `candidate`, takes any string;
+- each list against the entry count its field takes;
+- each field the command states as mandatory for being present.
 
-Payloads that reached the camera before and are refused now: one carrying a key the command does not state, one stating the same field twice under two spellings, one omitting a mandatory field, one that is not an object at all, and an ICE server spelled in the cluster's `URLs` rather than `urls`.
+A value that fails is refused with error 8 naming the key as sent, instead of failing in the TLV encoder. What the cluster makes conditional stays the camera's to answer: `streamUsage` is optional on `ProvideOffer`, because a re-offer of an existing session does not restate it, so the server refuses a first offer that omits it only after the camera has answered. `streamUsage` is bounded by its width, not by the enum's defined values: on this route the client owns the allocation, so the camera answers for a usage it does not serve.
 
-The generic `device_command` route is not an alternative way to start a session or to signal for one. It serves every cluster, takes each payload in that cluster's own field names — so an ICE server sent that way uses the cluster's `URLs` spelling and a candidate its `SDPMLineIndex` — and invokes nothing else: it does not fill in the originating endpoint, does not reconcile the singular `videoStreamId` against the `videoStreams` list, and does not register the session with the local WebRTC requestor. A `ProvideOffer` sent that way therefore produces a session no `webrtc_callback` can be routed for and streams that stay referenced with no way to end it but `EndSession` by hand.
+**Stream forms.** `ProvideOffer` and `SolicitOffer` state the session's streams in one of two forms, never both: the `videoStreams` / `audioStreams` lists of cluster revision 2, or the `videoStreamId` / `audioStreamId` the lists deprecate.
+
+- A camera fails the command with `INVALID_COMMAND` when a list is present beside a singular id, and the test spans both media kinds, not each on its own (§11.5.6.1 and §11.5.6.3, Effect on Receipt). A payload stating both forms is refused with error 8, instead of having one of them dropped: `{"videoStreams": [5], "audioStreamId": null}` asks for video stream 5 and auto-selected audio, and sending the list alone would open a video-only session.
+- A form the camera takes is sent as stated.
+- The one conversion: a list sent to a camera whose WebRTC Provider does not state cluster revision 2, or whose revision this server has not read yet. Such a camera drops a list on receipt, and the session comes up with streams nobody chose. It carries a single id per media kind, so a one-entry list is converted to the singular id. Any other length is refused with error 8 instead of being cut to its first entry; the refusal says whether the camera stated a revision below 2 or none has been read.
+- An empty list is refused at every revision, because the field takes 1 to 16 entries.
+
+**Changes for existing clients.** These payloads reached the camera on servers below schema 14 and are now refused with error 8: a key the command does not state, the same field twice under two spellings, a missing mandatory field, a payload that is not an object, and an ICE server spelled with the cluster's `URLs` instead of `urls`. A `node_id` that is fractional, negative or out of range was an uncaught conversion failure, or a node lookup reporting a node this server does not hold.
+
+**Not through `device_command`.** The generic `device_command` route is not an alternative way to start a session or to signal for one. It serves every cluster and takes each payload in that cluster's own field names, so an ICE server sent that way uses the cluster's `URLs` spelling and a candidate its `SDPMLineIndex`. It invokes nothing else: it does not fill in the originating endpoint, does not reconcile the singular `videoStreamId` against the `videoStreams` list, and does not register the session with the local WebRTC requestor. A `ProvideOffer` sent that way produces a session no `webrtc_callback` can be routed for, and streams that stay referenced with no way to end them but `EndSession` by hand.
 
 ### Vendor Information
 
@@ -1460,22 +1642,16 @@ registration.
 }
 ```
 
-Any connection may end any of this server's sessions — with `camera_stop_stream`, or with `EndSession`
-through the generic `device_command` route — because the camera's own `PeerNodeID` and fabric check is
-what decides that, not this server's records. So a session can end without the client that opened it
-doing anything. This is how that client learns, instead of from its next command failing.
+Any connection may end any of this server's sessions, with `camera_stop_stream` or with `EndSession` through the generic `device_command` route. The camera's own `PeerNodeID` and fabric check decides that, not this server's records. So a session can end without the client that opened it doing anything. This event tells that client, instead of its next command failing.
 
-**Delivered only to connections that have issued a camera command** — any `camera_*` command, or
-`send_webrtc_provider_command` — so a pre-schema-14 client never receives an event type it does not
-know. Among those it is **routed to the connection that opened the session**, and never to the
-connection whose `camera_stop_stream` or `device_command` `EndSession` ended it: that one has the answer
-to its own command, and a second report of the same fact would leave a client two events with no order
-between them. A session
-this server holds no record of — one opened on the raw `send_webrtc_provider_command` route — is
-announced to every other such connection instead, for the reason `webrtc_callback` broadcasts such a
-session's signalling: nothing names an owner, so withholding it tells nobody.
+Delivery:
 
-Four endings send nothing, each because the client already knows or cannot be told:
+- **Only to connections that have issued a camera command** — any `camera_*` command, or `send_webrtc_provider_command`. A pre-schema-14 client never receives an event type it does not know.
+- Among those, **to the connection that opened the session**.
+- Never to the connection whose `camera_stop_stream` or `device_command` `EndSession` ended it. That connection has the answer to its own command, and a second report of the same fact would give it two messages with no order between them.
+- A session this server holds no record of — one opened on the raw `send_webrtc_provider_command` route — is announced to every other such connection instead. Nothing names an owner, so withholding it would tell nobody; `webrtc_callback` broadcasts such a session's signalling for the same reason.
+
+Four endings send nothing, because the client already knows or cannot be told:
 
 | Ending | Why no event |
 |---|---|
@@ -1484,10 +1660,12 @@ Four endings send nothing, each because the client already knows or cannot be to
 | The owning connection closed | The only connection this concerns is the one that went away |
 | The server is shutting down | Every socket is closed before the sessions are ended; the `server_shutdown` event is what a client sees |
 
-A session whose `EndSession` failed with anything but the camera's `NOT_FOUND` is still open and is not
-announced; the next stop, disconnect or shutdown reaches it again. `NOT_FOUND` is the camera stating it
-holds no such session, so the server's records go and the owner is told even though the command failed —
-for an id no record named, nothing is announced, because there was no session on either side to report.
+When `EndSession` fails:
+
+- With anything but the camera's `NOT_FOUND`: the session is still open and is not announced. The next stop, disconnect or shutdown reaches it again.
+- With `NOT_FOUND`: the camera states it holds no such session. The server's records go, and the owner is told even though the command failed.
+- For an id no record named, nothing is announced, because there was no session on either side to report.
+
 `send_webrtc_provider_command` cannot send `EndSession` at all.
 
 **camera_stream_evicted** *(schema 14+)* - The server deallocated a stream to make room for a request
@@ -1499,15 +1677,12 @@ for an id no record named, nothing is announced, because there was no session on
 }
 ```
 
-`kind` is `"video"` or `"snapshot"` — the two kinds the make-room rung can take, since an audio stream
-holds neither an encoder nor a share of the camera's encoded pixel rate. The id is gone for good: where
-the server allocates a replacement for the same range, the camera issues a new id, and a client still
-holding the old one has to allocate again.
+- `kind` is `"video"` or `"snapshot"`, the two kinds the make-room step can take. An audio stream holds neither an encoder nor a share of the camera's encoded pixel rate.
+- The id is gone for good. Where the server allocates a replacement for the same range, the camera issues a new id, and a client still holding the old one has to allocate again.
+- Sent to every connection that has issued a camera command, including the one the room was made for: no record says which connection holds a stream.
+- For a video stream, that caller also reads the same ids in its `camera_start_stream` response under `video.evicted_stream_ids`. For a snapshot stream this event is the only report, because that field carries video stream ids.
 
-Sent to every connection that has issued a camera command, the one the room was made for included — no
-record says which connection holds a stream. For a video stream that caller also reads the same ids in
-its own `camera_start_stream` response under `video.evicted_stream_ids`; for a snapshot stream this
-event is the only report, because that field carries video stream ids.
+When the server takes a stream is described under **Making room** in `camera_start_stream`.
 
 ## Attribute Path Format
 
@@ -1567,11 +1742,72 @@ Error codes match the [Python Matter Server](https://github.com/home-assistant-l
 | 11 | UpdateError | OTA update failed |
 | 100 | IcdMultiAdmin | OHF extension (not in Python Matter Server). ICD registration rejected because other-vendor administrator fabrics may not support LIT. `details` is a JSON string: `{"message": string, "admin_vendor_ids": number[]}` |
 | 101 | OtaUploadError | OHF extension (not in Python Matter Server). `initiate_ota_upload` or `POST /ota-upload/<upload_id>` failed: corrupt image, unknown/expired/already-used upload id, disabled OTA support, or store failure |
-| 102 | CameraStreamIncompatible | OHF extension. No codec or stream range suits both the camera and the caller. `details` is a JSON string: `{"message": string, "reason": "codec" \| "bounds" \| "feature" \| "capability" \| "offer" \| "no_media" \| "level", "track"?: "video" \| "audio", "feature"?: string, "device": string[], "requested": string[], "bound"?: {"field": string, "requested": string, "limit": string}, "device_status"?: number}`. **`reason` states one thing per value**, so no sibling field has to be read to tell two failures apart, and where a client can act on each is fixed: `codec` and `bounds` are answered in the command's arguments, `offer` and `level` in the SDP the client sends, and `feature`, `capability` and `no_media` in neither — no narrowing of this request reaches them. `codec` means the codec lists do not overlap. `bounds` means the requested range cannot be served; `bound` names the single caller bound when the server ruled it out before asking the camera. `feature` means the camera's `FeatureMap` does not advertise what the request needs, and `feature` names it exactly as `camera_get_capabilities`'s `features` spells it: `Video`, `Audio` or `Snapshot` for a demanded track, `Watermark` / `OnScreenDisplay` for a demanded overlay. The `feature` field is carried by this reason and by no other. An overlay refusal carries `track: "video"` on `camera_start_stream` and no `track` on `camera_snapshot`, and is answered by not asking for that overlay. `capability` means the camera advertises the feature and states no capability the request could use: an empty `snapshot.capabilities`, or `audio` capabilities naming no codec, sample rate or bit depth. `offer` means the `sdp` the caller sent rejects this track's media section (`m=` line with port 0), states a direction that will not receive it (`a=sendonly`, `a=inactive`), or carries no such section at all; `track` names the kind and `requested` carries the caller's own codec list for it, empty when it stated none. `no_media` means a `camera_start_stream` request left nothing for the offer to carry: `video: false` with `audio: false`, or one track declined while the other was left to the server and could not be resolved. It carries no `track` and reports `device` and `requested` both empty, and is answered by asking for at least one track — unless the camera advertises neither `Audio` nor `Video`, where the same shape answers a request that left both tracks to the server and no track can be asked for at all; `features` from `camera_get_capabilities` is what tells the two apart. `level` means the camera and the peer do share a codec, but for every shared one the `a=fmtp` record states a decode ceiling the server cannot read — a level outside the codec's level tables, or a capability parameter whose value is not a whole number — so no ceiling could be held against the stream; `requested` names the offered codecs whose ceiling could not be read. `track` names which `camera_start_stream` track the failure is about, and is absent when the failure is about the request as a whole (`no_media`) or about a command that resolves no track. `device`/`requested` are codec names otherwise — `requested` is the codec the request resolved to, which is the caller's own choice when it stated one. `bound` is reported by `camera_start_stream` only; a `camera_snapshot` ceiling that excludes every capability answers `reason: "bounds"` without it. `bound.field` is the hint key in the spelling `camera_start_stream` takes it back in: `min_resolution`, `min_frame_rate` or `min_bit_rate` under `video`, `sample_rate` or `channel_count` under `audio`. `bound.requested` is the value the caller stated and `bound.limit` what it ran into — the ceiling in force after every narrowing, or the set of values the device lists when it answers with a set, such as for `sample_rate`. An offer's `a=fmtp` limits narrow only the codec that stated them, so the same offer can produce a different `bound.limit` for a different codec. `device_status` is the Matter status a device rejection answered with. A caller that asks for audio and gets none can also see error 103 (capacity), error 7 (`SDKStackError`, the device answered with no stream id), or error 0 (`UnknownError`, an unrecognized device status) instead of this code |
-| 103 | CameraResourceExhausted | OHF extension. The camera refused the allocation for lack of capacity — it answered `ResourceExhausted` and the allocation ladder found nothing else to try. `ResourceExhausted` is all the camera states; which resource ran out is not part of it, so the message names none. `details` is a JSON string: `{"message": string, "allocated": [{"kind": "video" \| "audio" \| "snapshot", "stream_id": number, "reference_count": number}], "max_concurrent_encoders"?: number, "max_encoded_pixel_rate"?: number}`; the two limits are the camera's own attributes, reported whatever kind was refused and only when the camera states them. `allocated` lists the streams that hold the capacity, which is not always the kind that was asked for: a refused snapshot reports the video streams, because a referenced video stream is what holds an encoder, while a refused audio allocation reports the audio streams |
-| 104 | CameraStreamInUse | OHF extension. `camera_release_stream` targeted a stream a listener still references. `details` is a JSON string: `{"message": string, "stream_id": number, "reference_count"?: number}`. The refusal is always the camera's own `INVALID_IN_STATE`; `reference_count` is the count the server last read, present only when that cached count is above zero. Every other outcome about the stream is the camera's answer forwarded |
-| 105 | CameraNotSupported | OHF extension. `camera_start_stream` requires both the AV Stream Management cluster and the WebRTC Provider cluster, and raises this when either is missing. `camera_get_capabilities`, `camera_snapshot` and `camera_release_stream` check only the AV Stream Management cluster, so a camera missing just the WebRTC Provider cluster still answers those three normally. `camera_provide_answer` and `camera_provide_ice_candidates` check neither and never raise this code: they invoke a provider command on a session the camera already holds, so an endpoint without the WebRTC Provider cluster fails exactly as it does for the same command sent through `send_webrtc_provider_command`, which is the invoke path both routes share. `details` is a JSON string: `{"message": string, "missing_clusters": number[]}`; `missing_clusters` names the cluster ids that are absent, so one entry means the other cluster is there |
-| 106 | CameraPrivacyMode | OHF extension. The camera's privacy switch forbids the call: `camera_start_stream` and `camera_snapshot` raise it. `details` is a JSON string: `{"message": string, "modes": string[], "device_status": number}`. `modes` names every switch from `camera_get_capabilities`'s `privacy` that forbids this call — `hard_mode_on`, `soft_livestream_mode_enabled`, `soft_recording_mode_enabled` — and not only the one the camera answered on: the device reports one status for all of them and states no order between them. It is a device state and not a request the client can change — no other stream usage, codec or bound succeeds while the switch is on — which is why it is not error 102. The refusal is always the camera's own `INVALID_IN_STATE`, reported in `device_status`: the server checks no switch ahead of the invoke, because the switches are read from a subscription-backed view that can lag in either direction and a refusal decided on a stale "on" would leave no path that reaches the device. That status also answers several things that are not privacy at all — a `turns:` ICE server on a camera whose `UTCTime` is null, among others — so an `INVALID_IN_STATE` no reported switch covers is answered as error 0 with the device's own status rather than blamed on privacy |
+| 102 | CameraStreamIncompatible | OHF extension. The camera, the offer or the request rules the stream out; `reason` says which. `details` is a JSON string: `{"message": string, "reason": "codec" \| "bounds" \| "feature" \| "capability" \| "offer" \| "no_media" \| "level", "track"?: "video" \| "audio", "feature"?: string, "device": string[], "requested": string[], "bound"?: {"field": string, "requested": string, "limit": string}, "device_status"?: number}`. See [camera error details](#camera-error-details) |
+| 103 | CameraResourceExhausted | OHF extension. The camera refused the allocation for lack of capacity. `details` is a JSON string: `{"message": string, "allocated": [{"kind": "video" \| "audio" \| "snapshot", "stream_id": number, "reference_count": number}], "max_concurrent_encoders"?: number, "max_encoded_pixel_rate"?: number}`. See [camera error details](#camera-error-details) |
+| 104 | CameraStreamInUse | OHF extension. `camera_release_stream` targeted a stream a listener still references. `details` is a JSON string: `{"message": string, "stream_id": number, "reference_count"?: number}`. See [camera error details](#camera-error-details) |
+| 105 | CameraNotSupported | OHF extension. The endpoint lacks a cluster the camera command needs. `details` is a JSON string: `{"message": string, "missing_clusters": number[]}`. See [camera error details](#camera-error-details) |
+| 106 | CameraPrivacyMode | OHF extension. The camera's privacy switch forbids the call. `details` is a JSON string: `{"message": string, "modes": string[], "device_status": number}`. See [camera error details](#camera-error-details) |
+
+### Camera error details
+
+**102 CameraStreamIncompatible.**
+
+`reason` states one thing per value, so no other field has to be read to tell two failures apart. Where a client can act on each is fixed:
+
+- `codec` and `bounds`: in the command's arguments.
+- `offer` and `level`: in the SDP the client sends.
+- `feature`, `capability` and `no_media`: in neither; no narrowing of this request reaches them.
+
+| `reason` | Meaning |
+|---|---|
+| `codec` | The codec lists do not overlap |
+| `bounds` | The requested range cannot be served. `bound` names the single caller bound when the server ruled it out before asking the camera |
+| `feature` | The camera's `FeatureMap` does not advertise what the request needs. The `feature` field names it as `camera_get_capabilities`'s `features` spells it: `Video`, `Audio` or `Snapshot` for a demanded track, `Watermark` / `OnScreenDisplay` for a demanded overlay. An overlay refusal carries `track: "video"` on `camera_start_stream` and no `track` on `camera_snapshot`; it is answered by not asking for that overlay |
+| `capability` | The camera advertises the feature but states no capability the request could use: an empty `snapshot.capabilities`, or `audio` capabilities naming no codec, sample rate or bit depth |
+| `offer` | The `sdp` the caller sent rejects this track's media section (`m=` line with port 0), states a direction that will not receive it (`a=sendonly`, `a=inactive`), or carries no such section at all. `track` names the kind; `requested` carries the caller's own codec list for it, empty when it stated none |
+| `no_media` | A `camera_start_stream` request left nothing for the offer to carry: `video: false` with `audio: false`, or one track declined while the other was left to the server and could not be resolved. No `track`; `device` and `requested` both empty. Answered by asking for at least one track — unless the camera advertises neither `Audio` nor `Video`: then the same shape answers a request that left both tracks to the server, and no track can be asked for at all. `features` from `camera_get_capabilities` tells the two apart |
+| `level` | The camera and the peer share a codec, but for every shared one the `a=fmtp` record states a decode ceiling the server cannot read: a level outside the codec's level tables, or a capability parameter whose value is not a whole number. No ceiling could be held against the stream. `requested` names the offered codecs whose ceiling could not be read |
+
+Fields:
+
+- `feature` is carried by `reason: "feature"` only.
+- `track` names which `camera_start_stream` track the failure is about. It is absent when the failure is about the request as a whole (`no_media`) or about a command that resolves no track.
+- `device` / `requested` are codec names in the other cases. `requested` is the codec the request resolved to, which is the caller's own choice when it stated one.
+- `bound` is reported by `camera_start_stream` only. A `camera_snapshot` ceiling that excludes every capability answers `reason: "bounds"` without it.
+- `bound.field` is the hint key in the spelling `camera_start_stream` takes back: `min_resolution`, `min_frame_rate` or `min_bit_rate` under `video`, `sample_rate` or `channel_count` under `audio`.
+- `bound.requested` is the value the caller stated. `bound.limit` is what it ran into: the ceiling in force after every narrowing, or the set of values the device lists when it answers with a set, such as for `sample_rate`.
+- An offer's `a=fmtp` limits narrow only the codec that stated them, so the same offer can produce a different `bound.limit` for a different codec.
+- `device_status` is the Matter status a device rejection answered with.
+
+A caller that asks for audio and gets none can also see error 103 (capacity), error 7 (`SDKStackError`, the device answered with no stream id), or error 0 (`UnknownError`, an unrecognized device status) instead of this code.
+
+**103 CameraResourceExhausted.** The camera answered `ResourceExhausted` and the allocation ladder found nothing else to try.
+
+- `ResourceExhausted` is all the camera states. Which resource ran out is not part of it, so the message names none.
+- `max_concurrent_encoders` and `max_encoded_pixel_rate` are the camera's own attributes, reported whatever kind was refused, and only when the camera states them.
+- `allocated` lists the streams that hold the capacity, which is not always the kind that was asked for:
+  - A refused video or snapshot allocation lists every allocated video stream, referenced or not, plus the snapshot streams with `hardware_encoder` set. For a video allocation, a stream the request itself deallocated is not listed.
+  - A refused audio allocation lists the audio streams.
+
+**104 CameraStreamInUse.** Raised by `camera_release_stream`.
+
+- The refusal is always the camera's own `INVALID_IN_STATE`.
+- `reference_count` is the count the server last read, present only when that cached count is above zero.
+- Every other outcome about the stream is the camera's answer, forwarded.
+
+**105 CameraNotSupported.**
+
+- `camera_start_stream` requires both the AV Stream Management cluster and the WebRTC Provider cluster, and raises this when either is missing.
+- `camera_get_capabilities`, `camera_snapshot` and `camera_release_stream` check only the AV Stream Management cluster. A camera missing just the WebRTC Provider cluster still answers those three normally.
+- `camera_provide_answer` and `camera_provide_ice_candidates` check neither and never raise this code. They invoke a provider command on a session the camera already holds, through the same invoke path as `send_webrtc_provider_command`, so an endpoint without the WebRTC Provider cluster fails exactly as it does there.
+- `missing_clusters` names the absent cluster ids, so one entry means the other cluster is there.
+
+**106 CameraPrivacyMode.** Raised by `camera_start_stream` and `camera_snapshot`.
+
+- `modes` names every switch from `camera_get_capabilities`'s `privacy` that forbids this call — `hard_mode_on`, `soft_livestream_mode_enabled`, `soft_recording_mode_enabled` — not only the one the camera answered on. The device reports one status for all of them and states no order between them.
+- It is a device state, not a request the client can change: no other stream usage, codec or bound succeeds while the switch is on. That is why it is not error 102.
+- The refusal is always the camera's own `INVALID_IN_STATE`, reported in `device_status`. The server checks no switch before the invoke: the switches are read from a subscription-backed view that can lag in either direction, and a refusal decided on a stale "on" would leave no path that reaches the device.
+- `INVALID_IN_STATE` also answers several things that are not privacy — a `turns:` ICE server on a camera whose `UTCTime` is null, among others. An `INVALID_IN_STATE` that no reported switch covers is answered as error 0 with the device's own status, not blamed on privacy.
 
 ## Python Matter Server Compatibility
 
@@ -1602,7 +1838,7 @@ These commands are available only in the Matter.js server and not in the Python 
 | `camera_start_stream` | Allocate or reuse a video/audio stream and open a WebRTC session on it (schema 14+) |
 | `camera_provide_answer` | Answer the offer a camera sent for a session, as `ProvideAnswer` (schema 14+) |
 | `camera_provide_ice_candidates` | Trickle ICE candidates into a session, as `ProvideIceCandidates` (schema 14+) |
-| `camera_stop_stream` | End a WebRTC session started that way, keeping the stream allocation (schema 14+) |
+| `camera_stop_stream` | End a WebRTC session, keeping the stream allocation (schema 14+) |
 | `camera_snapshot` | Capture one still frame from a camera endpoint (schema 14+) |
 | `camera_release_stream` | Deallocate a stream nothing references (schema 14+) |
 

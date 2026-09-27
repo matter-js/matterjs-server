@@ -62,12 +62,7 @@ interface StubCommandHandlerOverrides {
 /** Well under the 2000 ms per-test timeout, so a frame that never comes fails as this error. */
 const FRAME_WAIT_MS = 1000;
 
-/**
- * Resolve on the first frame the predicate accepts.
- *
- * Armed before the frame is provoked, never after: waiting a fixed time instead turns a slow machine
- * into a failure that reads like a regression.
- */
+/** Resolve on the first frame the predicate accepts. Arm it before provoking the frame. */
 function nextFrame(ws: WebSocket, what: string, wanted: (msg: WireFrame) => boolean): Promise<WireFrame> {
     return new Promise((resolve, reject) => {
         const timer = setTimeout(() => {
@@ -128,8 +123,7 @@ function makeStubController(
     cameraStreams?: StubCameraStreams,
     commandHandler?: StubCommandHandlerOverrides,
 ) {
-    // The routing lookup is a method on the real manager, so every stub answers it: an unowned
-    // session is what the WebSocket route reads as "send to every opted-in connection".
+    // An unowned session is what the WebSocket route reads as "send to every opted-in connection".
     const stubCameraStreams: StubCameraStreams = {
         async releaseConnection() {},
         signallingOwners: () => undefined,
@@ -595,8 +589,7 @@ describe("WebSocket Credentials API", () => {
                 order.push("webrtc_callback");
                 return msg;
             });
-            // Settled, not awaited directly: the callback assertion below can throw first, and an
-            // unobserved rejection here would surface as an unhandled rejection instead of the failure.
+            // Settled, not awaited: the callback assertion below can throw first and orphan this rejection.
             const answer = nextFrame(ws, "response", msg => msg.message_id === "req-in-flight")
                 .then(msg => {
                     order.push("response");
@@ -624,16 +617,14 @@ describe("WebSocket Credentials API", () => {
             ws.close();
             return { order, response: outcome.frame };
         } finally {
-            // Also released here: a callback that never arrives would otherwise leave the command
-            // parked at the device and the harness unable to close.
+            // Also released here, or a missing callback leaves the command parked and the harness unable to close.
             releaseDevice();
             await h.close();
         }
     }
 
     it("delivers a webrtc_callback emitted while camera_start_stream is still in flight", async () => {
-        // The camera answers the offer while the command is still running: signaling for this session
-        // starts at ProvideOffer, not at the command's response.
+        // Signaling for this session starts at ProvideOffer, not at the command's response.
         const { order, response } = await webRtcAnswerDuring(
             "camera_start_stream",
             { node_id: 1, endpoint_id: 1, stream_usage: "LiveView" },
@@ -654,8 +645,7 @@ describe("WebSocket Credentials API", () => {
     });
 
     it("delivers a webrtc_callback emitted while send_webrtc_provider_command is still in flight", async () => {
-        // The raw provider route is where the answer most reliably lands mid-invoke: the session is
-        // tracked before ProvideOffer returns.
+        // On the raw provider route the session is tracked before ProvideOffer returns.
         const { order, response } = await webRtcAnswerDuring(
             "send_webrtc_provider_command",
             {
@@ -733,8 +723,6 @@ describe("WebSocket Credentials API", () => {
     });
 
     it("relays ProvideAnswer on the raw route and answers null", async () => {
-        // The answer to a SolicitOffer used to be reachable only through device_command in the
-        // cluster's own field names, which is not a route for signalling a session.
         let seen: { commandName: string; fields: Record<string, unknown> } | undefined;
         await h.close();
         h = await createHarness(undefined, {
@@ -760,8 +748,7 @@ describe("WebSocket Credentials API", () => {
                 seen = { commandName: args.commandName, fields: args.fields };
             },
         });
-        // Every argument in the camera API's own style: the session id as camera_start_stream
-        // answered it, and no cluster field name anywhere.
+        // Camera API style only: the session id as camera_start_stream answered it, no cluster field names.
         const result = await h.handle("camera_provide_answer", {
             node_id: 1,
             endpoint_id: 1,
@@ -1080,9 +1067,7 @@ describe("WebSocket camera session tracking on the raw path", () => {
         const harness = createHarness(
             {
                 async releaseConnection() {},
-                // `requestedBy` and `deviceHeldSession` are deliberately not read here: these tests
-                // are about which records are dropped and in what order. What the route does with
-                // those arguments is covered by `harnessWithRawEndAnnouncing`.
+                // `requestedBy` and `deviceHeldSession` are covered by `harnessWithRawEndAnnouncing`.
                 endedByClient(nodeId, endpointId, webRtcSessionId) {
                     drops.push("registry");
                     targets.push({ nodeId, endpointId, webRtcSessionId });
@@ -1180,8 +1165,7 @@ describe("WebSocket camera session tracking on the raw path", () => {
         }
     });
 
-    // The raw path must recognize every spelling camelize maps to webRtcSessionId, since that is what
-    // the invoke itself accepted; these are the four a client plausibly sends.
+    // The spellings camelize maps to webRtcSessionId that a client plausibly sends.
     for (const spelling of ["WebRtcSessionId", "webRtcSessionId", "webRtcSessionID", "WebRTCSessionID"]) {
         it(`drops both local records for a session id spelled ${spelling}`, async () => {
             const { drops, targets, harness } = recordingHarness();
@@ -1199,8 +1183,6 @@ describe("WebSocket camera session tracking on the raw path", () => {
 
 describe("WebSocket camera_start_stream arguments", () => {
     it("forwards allow_eviction to the stream manager", async () => {
-        // The one hop between the parsed argument and the ladder that decides on it, and the reason a
-        // client can turn eviction off at all.
         const stated = new Array<boolean | undefined>();
         const h = await createHarness({
             async releaseConnection() {},
@@ -1227,8 +1209,6 @@ describe("WebSocket camera_start_stream arguments", () => {
 
 describe("WebSocket camera_release_stream response", () => {
     it("answers null, because a failure throws and a success has nothing to state", async () => {
-        // `{ released: true }` was a constant: the only other outcome is an error frame, so no caller
-        // could ever branch on it. Round 18 ruled the same field out on camera_stop_stream.
         const released = new Array<number>();
         const h = await createHarness({
             async releaseConnection() {},
@@ -1253,8 +1233,6 @@ describe("WebSocket camera_release_stream response", () => {
 
 describe("WebSocket camera_snapshot arguments", () => {
     it("forwards the overlay arguments to the stream manager", async () => {
-        // The one hop between the parsed arguments and the allocate that has to carry them; without it
-        // a caller's stated overlay is dropped and the camera decides instead.
         const stated = new Array<{ watermarkEnabled?: boolean; osdEnabled?: boolean }>();
         const h = await createHarness({
             async releaseConnection() {},
@@ -1305,8 +1283,7 @@ describe("WebSocket camera session cleanup on disconnect", () => {
             const closing = await h.openClient();
             const staysOpen = await h.openClient();
             try {
-                // Both connections start a stream, so the assertions below distinguish "the right
-                // connection was released" from "the one key every connection shares was".
+                // Both connections start a stream, so releasing the wrong one would show.
                 for (const client of [closing, staysOpen]) {
                     await h.sendOn(client, "camera_start_stream", {
                         node_id: 1,
@@ -1317,8 +1294,7 @@ describe("WebSocket camera session cleanup on disconnect", () => {
                 const [closingConnectionId, otherConnectionId] = owners;
                 expect(owners).to.have.lengthOf(2);
                 expect(closingConnectionId).to.not.equal(otherConnectionId);
-                // The owner key is the counter that never repeats, not the four-hex log tag: after
-                // that tag wraps, releasing one connection would end a second client's sessions.
+                // The owner key is a counter that never repeats, not the four-hex log tag, which wraps.
                 expect(closingConnectionId).to.match(/^conn-\d+$/);
 
                 await new Promise<void>(resolve => {
@@ -1401,9 +1377,7 @@ describe("WebSocket camera lifecycle events", () => {
                 const seenByUninvolved = collectCameraEvents(uninvolved);
 
                 const session = await h.sendOn<{ webrtc_session_id: number }>(owner, "camera_start_stream", STARTED);
-                // Both other connections are camera-aware, so what withholds the event from them is the
-                // ownership and not the opt-in: one of them ended the session, the other has nothing to
-                // do with it.
+                // Both are camera-aware, so ownership, not the opt-in, is what withholds the event.
                 await h.sendOn(other, "camera_start_stream", STARTED);
                 await h.sendOn(uninvolved, "camera_start_stream", STARTED);
 
@@ -1434,9 +1408,7 @@ describe("WebSocket camera lifecycle events", () => {
     });
 
     it("tells no connection about a session it ended itself", async () => {
-        // The response to its own camera_stop_stream is the answer; a second report of the same fact
-        // is what this event exists to avoid, which is also why the peer's own End stays on
-        // webrtc_callback.
+        // The response to its own camera_stop_stream already answers it.
         const { h } = await harnessWithStopAnnouncing();
         try {
             const owner = await h.openClient();
@@ -1460,8 +1432,7 @@ describe("WebSocket camera lifecycle events", () => {
 
     /**
      * A harness whose raw `device_command` EndSession announces what the real manager announces.
-     *
-     * `invoke` stands in for the camera's answer to that command, so a test can make it refuse.
+     * `invoke` stands in for the camera's answer, so a test can make it refuse.
      */
     async function harnessWithRawEndAnnouncing(invoke?: () => Promise<unknown>): Promise<TestHarness> {
         const sessionEnded = new Observable<[CameraSessionEnded]>();
@@ -1513,8 +1484,7 @@ describe("WebSocket camera lifecycle events", () => {
     }
 
     it("tells the connection that started a session that another connection ended it with a raw EndSession", async () => {
-        // device_command is the only route that can send EndSession, and it reaches the camera
-        // manager's records without going through camera_stop_stream.
+        // device_command reaches the manager's records without going through camera_stop_stream.
         const h = await harnessWithRawEndAnnouncing();
         try {
             const owner = await h.openClient();
@@ -1545,9 +1515,7 @@ describe("WebSocket camera lifecycle events", () => {
     });
 
     it("tells a camera-aware connection about an untracked session a raw EndSession ended", async () => {
-        // A session opened on the raw provider route has no owner record, so it is announced to
-        // everyone but the connection that ended it — the client that opened it is the one that
-        // cannot learn from anywhere else that its session is gone.
+        // A raw-route session has no owner record, so it goes to everyone but the connection that ended it.
         const h = await harnessWithRawEndAnnouncing();
         try {
             const rawRouteClient = await h.openClient();
@@ -1582,8 +1550,7 @@ describe("WebSocket camera lifecycle events", () => {
     });
 
     it("tells nobody about an untracked id the camera denies, which named no session at all", async () => {
-        // The record drop runs on the camera's NotFound too, so the outcome has to reach the manager:
-        // announcing here would report a session this server never had and the camera says it has not.
+        // The camera says the session never existed, so there is nothing to announce.
         const h = await harnessWithRawEndAnnouncing(async () => {
             throw new StatusResponseError("no such session", Status.NotFound);
         });
@@ -1633,8 +1600,7 @@ describe("WebSocket camera lifecycle events", () => {
             try {
                 const seenByRaw = collectCameraEvents(raw);
                 const seenByBystander = collectCameraEvents(bystander);
-                // A client on the raw provider route issues no camera_* command at all, and it is the
-                // one whose sessions this server holds no record of, so the opt-in has to cover it.
+                // A raw-route client issues no camera_* command, so that route must opt it in.
                 await h
                     .sendOn(raw, "send_webrtc_provider_command", {
                         node_id: 1,
@@ -1665,8 +1631,7 @@ describe("WebSocket camera lifecycle events", () => {
                         data: { node_id: 1, endpoint_id: 1, kind: "video", stream_id: 2 },
                     },
                 ]);
-                // A connection that issued no camera command at all is a client that may not know the
-                // event types, which is what the opt-in is for.
+                // A connection that issued no camera command may not know the event types.
                 expect(seenByBystander).to.deep.equal([]);
             } finally {
                 raw.close();
@@ -1692,8 +1657,7 @@ describe("WebSocket camera signalling routing", () => {
             // What the real manager answers: the connection whose camera_start_stream established the
             // session, and nothing for a session it holds no record of.
             signallingOwners(nodeId, _endpointId, webRtcSessionId) {
-                // The route owes the manager a branded NodeId; the registry's own key would match a
-                // plain number by coincidence, so nothing else pins that.
+                // Pins the branded NodeId; the registry's own key would match a plain number by chance.
                 if (typeof nodeId !== "bigint") return undefined;
                 const owner = ownerBySession.get(webRtcSessionId);
                 return owner === undefined ? undefined : new Set([owner]);
@@ -1719,8 +1683,7 @@ describe("WebSocket camera signalling routing", () => {
                 collect(first, seenByFirst);
                 collect(second, seenBySecond);
 
-                // Two sessions on the same camera, one per connection: with one connection the filter
-                // cannot be told from no filter at all.
+                // With one connection, the filter could not be told from no filter.
                 const ours = await h.sendOn<{ webrtc_session_id: number }>(first, "camera_start_stream", started);
                 const theirs = await h.sendOn<{ webrtc_session_id: number }>(second, "camera_start_stream", started);
                 expect(ours.webrtc_session_id).to.not.equal(theirs.webrtc_session_id);
@@ -1770,8 +1733,7 @@ describe("WebSocket webrtc_callback opt-in", () => {
                         const msg = JSON.parse(raw.toString()) as { event?: string };
                         if (msg.event !== undefined) events.push(msg.event);
                     });
-                    // The stub throws for every provider invoke, so the command errors; the opt-in is
-                    // applied before the dispatch and does not depend on the outcome.
+                    // The stub throws for every provider invoke; the opt-in must not depend on the outcome.
                     await h
                         .sendOn(ws, command, { node_id: 1, endpoint_id: 1, ...SIGNALLING_ARGS[command] })
                         .catch(() => undefined);
@@ -1808,8 +1770,7 @@ describe("WebSocket camera command arguments", () => {
     ] as const;
 
     for (const command of CAMERA_COMMANDS) {
-        // A missing or null `args` reaches the command as the empty argument set the dispatch
-        // substitutes, so what refuses it is the command's own required argument, still naming it.
+        // A missing or null `args` becomes an empty argument set, so the command's required argument refuses it.
         const missingArgument =
             command === "send_webrtc_provider_command" ? "requires command_name" : "numeric or bigint node_id";
 
@@ -1843,8 +1804,7 @@ describe("WebSocket camera command arguments", () => {
                 const answer = await answerTo(h, { message_id: "string-args", command, args: "node_id=1" });
                 expect(answer.error_code).to.equal(8);
                 expect(answer.details).to.contain(command);
-                // Not "unknown argument key: 0, 1, 2": a string's keys are its indices, so the
-                // key check reads a shape that was never an argument object.
+                // Not "unknown argument key: 0, 1, 2": a string's keys are its indices.
                 expect(answer.details).to.contain("object of arguments");
             } finally {
                 await h.close();
@@ -1854,8 +1814,7 @@ describe("WebSocket camera command arguments", () => {
 });
 
 describe("WebSocket generic command arguments", () => {
-    // set_thread_dataset stands for every generic command that reads a required argument: it refuses
-    // its own missing argument with error 8, and reaches no device before it does.
+    // Stands for every generic command with a required argument; it reaches no device before refusing.
     const WITH_REQUIRED_ARGUMENT = "set_thread_dataset";
 
     for (const [what, args] of [
@@ -1871,8 +1830,6 @@ describe("WebSocket generic command arguments", () => {
                     ...(args === undefined ? {} : { args }),
                 });
                 expect(answer.error_code).to.equal(8);
-                // The argument's own refusal, not the frame's: a missing `args` is an empty argument
-                // set, so the command answers for the argument it did not get.
                 expect(answer.details).to.contain("set_thread_dataset requires dataset");
             } finally {
                 await h.close();
@@ -1898,8 +1855,7 @@ describe("WebSocket generic command arguments", () => {
         });
     }
 
-    // set_loglevel takes only optional arguments and reads them by destructuring, which is what a
-    // frame stating no args used to throw on.
+    // set_loglevel takes only optional arguments and reads them by destructuring.
     it("answers a command whose arguments are all optional and whose message states none", async () => {
         const h = await createHarness();
         try {
@@ -1913,8 +1869,7 @@ describe("WebSocket generic command arguments", () => {
         }
     });
 
-    // The empty argument set must not reach a default that gets written: set_default_fabric_label
-    // would otherwise rename the fabric, persist it and claim the label for this connection.
+    // A defaulted label would rename the fabric, persist it and claim the label for this connection.
     it("refuses a command whose required argument would otherwise be defaulted and written", async () => {
         const h = await createHarness();
         try {
@@ -1936,7 +1891,7 @@ describe("WebSocket generic command arguments", () => {
         }
     });
 
-    // get_vendor_names is the other command that destructured `args` with no guard of its own.
+    // get_vendor_names also destructures `args` with no guard of its own.
     it("answers get_vendor_names when the message states no args", async () => {
         const h = await createHarness();
         try {
@@ -1948,8 +1903,7 @@ describe("WebSocket generic command arguments", () => {
         }
     });
 
-    // The shape is checked before the command is looked up — there is no runtime list of commands to
-    // look one up in — so a frame wrong in both ways answers 8, not 9.
+    // The shape is checked before the command is looked up, so a frame wrong in both ways answers 8, not 9.
     it("answers 8 for an unknown command whose args is not an object", async () => {
         const h = await createHarness();
         try {
@@ -1983,8 +1937,7 @@ describe("WebSocket generic command arguments", () => {
 });
 
 describe("node id classes on the generic node-targeted commands", () => {
-    // One per shape the node-only routes take: a read, a lookup, a second lookup, and a command that
-    // brands the id inline rather than into a local. A class refused on one is refused on all of them.
+    // One per shape the node-only routes take: a read, two lookups, and a command that brands the id inline.
     const NODE_ONLY_ROUTES: ReadonlyArray<readonly [string, Record<string, unknown>]> = [
         ["read_attribute", { attribute_path: "1/6/0" }],
         ["ping_node", {}],
@@ -2000,8 +1953,8 @@ describe("node id classes on the generic node-targeted commands", () => {
 
     const GROUP_NODE_ID = NodeId.fromGroupId(1);
 
-    // Every class that names no node at all, with the words the refusal has to carry. Checking the
-    // class name is what distinguishes the branch under test from the reserved fall-through.
+    // Every class that names no node, with the words the refusal must carry; they tell the branch from the
+    // reserved fall-through.
     const UNUSABLE: ReadonlyArray<readonly [string, bigint, string]> = [
         ["the unspecified node id", NodeId.UNSPECIFIED_NODE_ID, "the Unspecified Node ID"],
         [
@@ -2114,8 +2067,7 @@ describe("groupcast on the generic commands", () => {
             );
 
             expect(answer.error_code).to.equal(undefined);
-            // `null`, never `[{ Path, Status: 0 }]`: no node answered a groupcast, so there is no
-            // status, and reporting Success would invent one.
+            // No node answers a groupcast, so there is no status to report.
             expect(answer.result).to.equal(null);
             expect(unicastWrites.length).to.equal(0);
             expect(groupWrites.length).to.equal(1);
@@ -2212,8 +2164,7 @@ describe("groupcast on the generic commands", () => {
         }
     });
 
-    // Stated, not converted: a timeout of the wrong type converts to `undefined`, which is how a
-    // refusal keyed on the converted value would let it through.
+    // A wrong-type timeout converts to `undefined`, so the check must read the stated value.
     for (const [name, stated] of [
         ["timed_request_timeout_ms", 1000],
         ["timed_request_timeout_ms", "1000"],

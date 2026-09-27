@@ -502,7 +502,6 @@ describe("ws-client", () => {
                 expect(endings).to.deep.equal([{ node_id: 5, endpoint_id: 1, webrtc_session_id: 7 }]);
                 expect(evictions).to.deep.equal([{ node_id: 5, endpoint_id: 1, kind: "snapshot", stream_id: 3 }]);
 
-                // The unsubscribe the listener handed back is the only way to stop receiving them.
                 server.sendEvent("camera_session_ended", {
                     node_id: 5,
                     endpoint_id: 1,
@@ -546,7 +545,6 @@ describe("ws-client", () => {
                 }
 
                 const offerLines = logged.filter(line => line.includes("m=video"));
-                // Both the frame log and the event log have to carry the offer, and neither the credentials.
                 expect(offerLines.length).to.equal(2);
                 for (const line of logged) {
                     expect(line).to.not.contain("uNgu3ss4ble-ufrag");
@@ -578,7 +576,6 @@ describe("ws-client", () => {
                     console.debug = debug;
                 }
 
-                // The caller still gets the frame; only the log is without it.
                 expect(result.data).to.equal(frame);
                 for (const line of logged) {
                     expect(line).to.not.contain("ZnJhbWUtYnl0ZXMtZG8tbm90LWxvZw");

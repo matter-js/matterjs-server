@@ -60,9 +60,7 @@ describe("cameraCommands", () => {
             }
         });
 
-        // `namedClass` is what the refusal has to say: every class below falls through to the same
-        // code, so a test that checks only the code passes against an implementation missing the
-        // branch that names it.
+        // Every class shares one error code, so only the message shows the branch that names it ran.
         function expectRefusedNodeId(nodeId: unknown, namedClass?: string): void {
             let thrown: unknown;
             try {
@@ -78,8 +76,7 @@ describe("cameraCommands", () => {
         }
 
         it("rejects a negative node id of either type instead of branding it", () => {
-            // NodeId(-1) brands a negative bigint, which reaches the node lookup and is answered as a
-            // node that does not exist rather than as an argument no node id could ever be.
+            // NodeId(-1) brands a negative bigint, which the node lookup would answer as "node not found".
             expectRefusedNodeId(-1);
             expectRefusedNodeId(-1n);
         });
@@ -277,8 +274,7 @@ describe("cameraCommands", () => {
         it("reads allow_eviction, and leaves it unstated when the caller says nothing", () => {
             const base = { node_id: 5, endpoint_id: 1, stream_usage: "LiveView" };
             expect(parseStartStreamArgs({ ...base, allow_eviction: false }).allowEviction).to.equal(false);
-            // Unstated rather than false: the default belongs to the manager, and a parser that filled
-            // it in here would decide the policy for every caller that never mentioned it.
+            // The default belongs to the manager, not the parser.
             expect(parseStartStreamArgs(base).allowEviction).to.equal(undefined);
         });
 
@@ -289,8 +285,7 @@ describe("cameraCommands", () => {
                 video: { watermark_enabled: true, osd_enabled: false },
             });
             expect(parsed.video).to.deep.equal({ watermarkEnabled: true, osdEnabled: false });
-            // Unstated rather than false: whether a camera is asked for no overlay or not asked at all
-            // depends on its feature map, which the parser does not read.
+            // What absence means depends on the camera's feature map, which the parser does not read.
             expect(parseStartStreamArgs({ ...base, video: {} }).video).to.deep.equal({});
         });
 
@@ -517,9 +512,7 @@ describe("cameraCommands", () => {
         });
 
         it("rejects a value past the wire width of the field it becomes", () => {
-            // A positive safe integer is not enough: the cluster gives each of these a uint8, uint16
-            // or uint32, and a value past that reaches matter.js's TLV encoder, whose error names the
-            // encoder rather than the argument the client sent.
+            // The cluster types these as uint8/16/32; past that, the TLV encoder fails without naming the argument.
             expectInvalidArguments(() =>
                 parseStartStreamArgs({
                     node_id: 5,
@@ -706,8 +699,6 @@ describe("cameraCommands", () => {
             } catch (error) {
                 thrown = error;
             }
-            // Not a session the camera can have: `ended: false` would read as a session that had
-            // already ended.
             expect((thrown as ServerError).code).to.equal(ServerErrorCode.InvalidArguments);
         });
     });
@@ -862,8 +853,6 @@ describe("cameraCommands", () => {
         };
 
         it("reports each privacy switch under its own wire key", () => {
-            // Each key is read straight back by a client deciding whether the camera is off, so a key
-            // wired to the wrong switch reads as the wrong camera state.
             const wire = toWireCapabilities({
                 ...EMPTY_CAPABILITIES,
                 features: ["Audio", "Privacy"],
@@ -877,8 +866,7 @@ describe("cameraCommands", () => {
 
         it("emits snake_case keys and omits absent capabilities", () => {
             const wire = toWireCapabilities(EMPTY_CAPABILITIES);
-            // A switch the camera states nothing about is left out, not reported off: absent means
-            // there is no such switch.
+            // Absent means the camera has no such switch, not that it is off.
             expect(wire.privacy).to.not.have.property("hard_mode_on");
             expect(wire.privacy).to.not.have.property("soft_livestream_mode_enabled");
             expect(wire.privacy).to.not.have.property("soft_recording_mode_enabled");
@@ -1025,7 +1013,6 @@ describe("cameraCommands", () => {
         });
 
         it("publishes the bandwidth ceiling the server caps a stream's bit rate at", () => {
-            // A caller whose min_bit_rate now fails against this bound has to be able to read it first.
             const wire = toWireCapabilities({
                 ...EMPTY_CAPABILITIES,
                 limits: { ...EMPTY_CAPABILITIES.limits, maxNetworkBandwidth: 2000000 },
@@ -1175,8 +1162,6 @@ describe("cameraCommands", () => {
         });
 
         it("carries all three provenances through unchanged, on both tracks", () => {
-            // One value in and one value out: the boundary neither derives it nor loses it, which is
-            // what makes the three states a client sees the three states the manager recorded.
             const envelope = {
                 codec: 1,
                 minResolution: { width: 640, height: 360 },
@@ -1296,8 +1281,6 @@ describe("cameraCommands", () => {
         });
     });
 
-    // Exercise the branded id constructors directly, since parseCapabilitiesArgs's own tests only assert
-    // on the resulting plain number/bigint value.
     it("parseCapabilitiesArgs returns ids usable as NodeId/EndpointNumber", () => {
         const { nodeId, endpointId } = parseCapabilitiesArgs({ node_id: 5, endpoint_id: 1 });
         expect(nodeId).to.equal(NodeId(5));

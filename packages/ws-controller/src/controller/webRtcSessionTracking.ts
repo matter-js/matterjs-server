@@ -19,13 +19,8 @@ export interface WebRtcSessionTracker {
 /**
  * Drop the local requestor's tracking of a WebRTC session the device is not holding.
  *
- * Never rejects. By the time it runs the device is not holding the session — it accepted the
- * `EndSession`, or answered `NotFound`, which it also does for an id it never held — so what is left
- * is a local record naming a session nothing can name again, and no caller has a remedy for it beyond
- * the log. On the camera manager's route a rejection would additionally skip the
- * registry entry `#endSession` drops next, leaving an entry shutdown would send a second `EndSession`
- * for; on the raw `device_command` route it would turn a successful `EndSession` into an error
- * response, inviting a retry the device can only answer `NotFound`.
+ * Never rejects: a failure only logs. Callers run it after a finished `EndSession` and must still
+ * drop their other records and report the device's result.
  */
 export async function dropWebRtcSessionTracking(
     tracker: WebRtcSessionTracker,
@@ -43,29 +38,19 @@ export async function dropWebRtcSessionTracking(
 /**
  * Whether a failed `EndSession` means the device is not holding the session.
  *
- * The device answers `NotFound` for any id it cannot resolve to one of its sessions
- * (`WebRTCTransportProviderCluster.cpp`, `HandleEndSession` ahead of the delegate call), so what it
- * names is gone whether or not this call is what ended it.
+ * @see connectedhomeip `WebRTCTransportProviderCluster.cpp` `HandleEndSession`: `NotFound` for any unknown id
  */
 export function deviceForgotSession(error: unknown): boolean {
     return deviceStatusOf(error) === Status.NotFound;
 }
 
 /**
- * Invoke `EndSession` and drop the server's local records of the session whenever the device ends up
- * not holding it.
+ * Invoke `EndSession` and drop the server's local records of the session if the device no longer
+ * holds it: on success (`deviceHeldSession` true) and on {@link deviceForgotSession} (false). Any
+ * other failure keeps the records so a later stop, disconnect or shutdown still ends the session.
  *
- * Every route that ends a session it has a local record for goes through here — the camera manager's,
- * and a client's own `EndSession` on the raw `device_command` path — because all of them face the
- * same three outcomes. Records naming a session the device does not have would outlive it and make a
- * later pass send `EndSession` for a dead id, so they go on a success and on {@link
- * deviceForgotSession}; any other failure keeps them, so a later stop, disconnect or shutdown still
- * reaches the session. `dropRecords` must not reject: its rejection would replace the device's own
- * error, which is what the caller reports.
- *
- * `deviceHeldSession` tells the two record-dropping cases apart, for a caller that reports the end to
- * anyone: on `false` the camera stated it has no such session, so there was nothing of its own for this
- * call to have ended.
+ * Every route that ends a locally recorded session must use this. `dropRecords` must not reject, or
+ * its error replaces the device's.
  */
 export async function invokeEndSession<T>(
     invoke: () => Promise<T>,

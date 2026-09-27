@@ -137,8 +137,7 @@ describe("WebRTC provider arguments", () => {
             expect(messages[0]).to.contain("videoStreams, audioStreams");
         });
 
-        // The gated set is read from each field's conformance, not written out, so every field the
-        // cluster states for a new session is covered.
+        // The gated set comes from each field's conformance, not from a hand-written list.
         it("reports streamUsage on a re-offer, which no list of stream fields would carry", () => {
             const messages = logged(() =>
                 toProviderCommandFields("ProvideOffer", { webRtcSessionId: 7, sdp: "v=0", streamUsage: 4 }),
@@ -147,8 +146,7 @@ describe("WebRTC provider arguments", () => {
             expect(messages[0]).to.contain("states streamUsage while webRtcSessionId is 7");
         });
 
-        // The one gated field whose conformance has no fallback clause: it does not apply at all on a
-        // re-offer, and is still forwarded rather than refused.
+        // The one gated field whose conformance has no fallback clause; it is still forwarded, not refused.
         it("reports metadataEnabled on a re-offer", () => {
             let fields: Record<string, unknown> | undefined;
             const messages = logged(() => {
@@ -163,9 +161,7 @@ describe("WebRTC provider arguments", () => {
             expect(messages[0]).to.contain("states metadataEnabled while webRtcSessionId is 7");
         });
 
-        // videoStreamId is optional and deprecated (`O, D`) and names no condition, so it is outside
-        // the reported set although a re-offer ignores it too. Without this the set could be "every
-        // optional field" and the tests above would not tell.
+        // videoStreamId is `O, D` with no condition, so it shows the set is not just "every optional field".
         it("says nothing for a field whose conformance names no condition", () => {
             const messages = logged(() =>
                 toProviderCommandFields("ProvideOffer", { webRtcSessionId: 7, sdp: "v=0", videoStreamId: 3 }),
@@ -243,8 +239,7 @@ describe("WebRTC provider arguments", () => {
         });
 
         it("resolves this API's own snake spelling of a field to it", () => {
-            // Every id this API hands a client is snake-cased — camera_start_stream answers
-            // `webrtc_session_id` — so the echo of one has to reach the field it names.
+            // camera_start_stream answers `webrtc_session_id`, so a client echoes it back in that spelling.
             const fields = toProviderCommandFields("ProvideIceCandidates", {
                 webrtc_session_id: 12,
                 ice_candidates: [{ candidate: "candidate:1", sdpMid: "0", sdpMLineIndex: 0 }],
@@ -253,8 +248,7 @@ describe("WebRTC provider arguments", () => {
         });
 
         it("refuses originatingEndpointId on a command that states no such field", () => {
-            // Dropped where the server overwrites it, unknown where the command has no such field:
-            // dropping it there would discard an argument nothing else answers for.
+            // Dropped where the server overwrites it; refused where the command has no such field.
             expect(
                 refusal(() =>
                     toProviderCommandFields("ProvideIceCandidates", {
@@ -267,8 +261,7 @@ describe("WebRTC provider arguments", () => {
         });
 
         it("holds a string to the floor its field states, where that is all it states", () => {
-            // SdpMid is `min 1` with no ceiling. An empty string is one the struct forbids, so the
-            // camera would otherwise be the one to refuse it.
+            // SdpMid is `min 1` with no ceiling.
             expect(
                 refusal(() =>
                     toProviderCommandFields("ProvideIceCandidates", {

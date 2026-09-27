@@ -50,8 +50,7 @@ describe("overlayPolicy", () => {
         });
 
         it("sends neither field for a caller that declined both on a camera that has neither", () => {
-            // The request is met rather than refused: a camera without the feature has no overlay to
-            // apply, and the field itself is INVALID_COMMAND there.
+            // Met, not refused: the camera has no overlay to apply, and sending the field is INVALID_COMMAND.
             expect(fields(resolveOverlays({ watermarkEnabled: false, osdEnabled: false }, NEITHER))).to.deep.equal({});
         });
 
@@ -83,8 +82,7 @@ describe("overlayPolicy", () => {
         const CARRIED = { watermarkEnabled: true, osdEnabled: false };
 
         it("reads a flag the camera stated nothing about as off", () => {
-            // Absence is kept everywhere else, because it is also what says the field must not go on an
-            // allocate; this is the one place it reads as a value.
+            // The one place absence reads as a value; elsewhere it means the field stays off an allocate.
             expect(overlaysMatch({}, { watermarkEnabled: false, osdEnabled: false })).to.equal(true);
             expect(overlaysMatch({}, { watermarkEnabled: true })).to.equal(false);
             expect(overlaysMatch({ watermarkEnabled: true }, { osdEnabled: true })).to.equal(false);

@@ -18,10 +18,7 @@ const PAKE_KEY_MAX = NodeId.getFromPakeKeyIdentifier(UINT32_MAX);
  * @see Matter Core specification § 2.5.5, Table 4 "Node Identifier Allocations"
  */
 export type NodeIdTarget =
-    /**
-     * One node: the Operational range names a commissioned node, and the Temporary Local range is
-     * where this server allocates the test nodes it imports from a diagnostic dump.
-     */
+    /** One node: an Operational Node ID, or a Temporary Local ID (test nodes imported from a diagnostic dump). */
     | { readonly kind: "node" }
     /**
      * A set of nodes. `write_attribute` and `device_command` multicast to it; every other command
@@ -36,8 +33,8 @@ export type NodeIdTarget =
     | { readonly kind: "unusable"; readonly className: string };
 
 /**
- * Classify `nodeId`. It must already be inside the 64 bits a node id has: a wider or negative value
- * is reported as reserved, which is not a class it belongs to.
+ * Classify `nodeId`. The caller must range-check it to 64 bits first: a wider or negative value is
+ * misreported as reserved.
  *
  * @see Matter Core specification § 2.5.5, Table 4 "Node Identifier Allocations"
  */

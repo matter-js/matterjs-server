@@ -106,8 +106,7 @@ describe("selectWebRtcStreamFields", () => {
     });
 
     it("sends a legacy caller's singular ids unchanged to a rev-2 provider", () => {
-        // They are deprecated, not invalid, on revision 2, and the null is an auto-select request
-        // the list form cannot state at all.
+        // Deprecated, not invalid, on revision 2; the null is an auto-select the list form cannot state.
         const fields: Record<string, unknown> = { videoStreamId: 5, audioStreamId: null };
         selectWebRtcStreamFields(fields, 3);
         expect(fields).to.deep.equal({ videoStreamId: 5, audioStreamId: null });
@@ -120,8 +119,6 @@ describe("selectWebRtcStreamFields", () => {
     });
 
     it("refuses a multi-stream list for a rev-1 provider rather than truncating it", () => {
-        // Sending the first entry alone establishes a session with fewer streams than the caller
-        // asked for, and answers success for it.
         expect(() => selectWebRtcStreamFields({ videoStreams: [3, 5] }, 1)).to.throw(/videoStreams names 2 streams/);
     });
 
@@ -144,8 +141,7 @@ describe("selectWebRtcStreamFields", () => {
     });
 
     it("refuses a list sent beside a null auto-select on the other media kind", () => {
-        // The provider's INVALID_COMMAND test spans both media kinds, and dropping the id would
-        // establish a video-only session for a caller that asked for auto-selected audio.
+        // The provider's INVALID_COMMAND check spans both media kinds; dropping the id would lose the audio.
         expect(() => selectWebRtcStreamFields({ videoStreams: [5], audioStreamId: null }, 2)).to.throw(
             /videoStreams cannot be sent together with audioStreamId/,
         );
@@ -158,8 +154,7 @@ describe("selectWebRtcStreamFields", () => {
     });
 
     it("refuses an empty list whatever the provider's revision, rather than dropping it", () => {
-        // The field takes 1 to 16 entries, so an empty list asks for nothing it can carry, and
-        // dropping it on one revision while forwarding it on the other answers one input two ways.
+        // The field takes 1 to 16 entries.
         expect(() => selectWebRtcStreamFields({ videoStreams: [] }, 1)).to.throw(/videoStreams names no stream/);
         expect(() => selectWebRtcStreamFields({ videoStreams: [] }, 2)).to.throw(/videoStreams names no stream/);
     });
@@ -173,8 +168,7 @@ describe("selectWebRtcStreamFields", () => {
     });
 
     it("leaves the request untouched when the other media kind is refused", () => {
-        // The conversion writes one media kind at a time, so a half-converted request would reach a
-        // retry, or a second reader, in a form its caller never sent.
+        // The conversion writes one media kind at a time, so a refusal must not leave it half-converted.
         const fields: Record<string, unknown> = { videoStreams: [7], audioStreams: [3, 5] };
         expect(() => selectWebRtcStreamFields(fields, 1)).to.throw(/audioStreams names 2 streams/);
         expect(fields).to.deep.equal({ videoStreams: [7], audioStreams: [3, 5] });
@@ -281,8 +275,6 @@ describe("establishWebRtcProviderSession", () => {
     });
 
     it("establishes nothing when the request states both stream forms", async () => {
-        // The refusal happens before the invoke, so the provider never creates a session this call
-        // would then have to end.
         const invoked = new Array<string>();
         const io: WebRtcProviderSessionIo = {
             invoke: async command => {
@@ -352,9 +344,7 @@ describe("establishWebRtcProviderSession", () => {
     });
 
     it("states the session id before the local requestor is given the session", async () => {
-        // The order is the contract: once the requestor holds the session it answers the peer's End
-        // instead of NotFound, so a caller told the id only afterwards cannot tell an end of this
-        // session from an end of any other session on the same camera.
+        // Once the requestor holds the session it answers the peer's End, so the caller needs the id first.
         const steps = new Array<string>();
         const io: WebRtcProviderSessionIo = {
             invoke: async () => ({ webRtcSessionId: 9 }),
@@ -459,8 +449,7 @@ describe("establishWebRtcProviderSession", () => {
     });
 
     it("ends the device session when the local requestor refuses to track it", async () => {
-        // The device has the session and only this call knows its id. Returning without ending it
-        // leaves the streams it references pinned at ReferenceCount > 0, with nothing able to name it.
+        // Only this call knows the id; a session left open pins its streams at ReferenceCount > 0.
         const invokedCommands = new Array<string>();
         const io: WebRtcProviderSessionIo = {
             invoke: async command => {

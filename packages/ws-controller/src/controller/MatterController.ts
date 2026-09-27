@@ -539,23 +539,17 @@ export class MatterController {
         return this.#networkTopology;
     }
 
-    /**
-     * Lazily-constructed camera stream manager. Created on first access, wired to the command
-     * handler's device I/O. Reused across connections and endpoints.
-     */
+    /** Lazily-constructed camera stream manager, shared by all connections. Throws once the controller is stopped. */
     get cameraStreams(): CameraStreamManager {
         if (this.#cameraStreams === undefined) {
             if (this.#stopped) {
                 throw ServerError.sdkStackError("Controller is stopped");
             }
             const manager = new CameraStreamManager(new MatterCameraDeviceIo(this.commandHandler));
-            // A peer-initiated End leaves the device with no session and us with an entry naming it.
             this.commandHandler.events.webRtcCallback.on(data => {
                 if (data.event_type !== "end") return;
-                // The entry naming the session's owner must outlive this emit: every connection
-                // resolves that owner from its own observer of this same event, and this observer runs
-                // ahead of every connection opened after the first camera command. Deferring also puts
-                // the id conversion outside the emit, which matter.js aborts on an observer throw.
+                // Deferred: connection observers of this same emit still resolve the session's owner from
+                // the entry, and a throw inside the emit would abort it for them.
                 Promise.resolve()
                     .then(() =>
                         manager.forgetSession(
@@ -571,13 +565,7 @@ export class MatterController {
         return this.#cameraStreams;
     }
 
-    /**
-     * The camera stream manager if a command has already constructed it, without triggering lazy
-     * construction or the stopped-controller throw. For cleanup paths (a closing WS connection) that
-     * run for every connection regardless of whether it ever used the camera subsystem: touching the
-     * `cameraStreams` getter there would construct the manager on every disconnect, and throw on every
-     * one of them once the controller is stopped.
-     */
+    /** The camera stream manager if already constructed; never constructs it and never throws. For cleanup paths. */
     get cameraStreamsIfCreated(): CameraStreamManager | undefined {
         return this.#cameraStreams;
     }
@@ -708,8 +696,7 @@ export class MatterController {
             await this.#threadDiagnostics.stop();
             await this.#borderRouterRegistry.stop();
         }
-        // Before the command handler closes the underlying connections: a session still open at
-        // shutdown otherwise pins its streams at a non-zero reference count forever.
+        // Must run before the command handler closes: an open session would pin its streams on the device.
         await this.#cameraStreams
             ?.stopAll()
             .catch(err => logger.warn("Failed to release camera sessions on stop", err));

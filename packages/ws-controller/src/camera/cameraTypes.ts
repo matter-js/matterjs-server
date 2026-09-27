@@ -18,11 +18,7 @@ export interface Resolution {
 
 /**
  * A range the device may adapt within; `VideoStreamAllocate` takes exactly this shape.
- *
- * The two overlay flags are absent when the field must not be sent at all, which is what
- * `resolveOverlays` decides from the camera's feature map: their conformance on the command is
- * `WMARK` / `OSD` (§11.2.8.4), so a camera without the feature answers `INVALID_COMMAND` for a field
- * it never advertised.
+ * An absent overlay flag must not be sent (conformance `WMARK` / `OSD`, §11.2.8.4).
  */
 export interface VideoEnvelope {
     overlays: OverlayBounds;
@@ -36,14 +32,7 @@ export interface VideoEnvelope {
     keyFrameInterval: number;
 }
 
-/**
- * Which ceilings {@link budgetVideoEnvelope} lowered, each carrying the value the envelope had before it.
- *
- * The caller can see the difference between what the camera's encoders could produce for it and what
- * the streams the camera already holds left over, which is otherwise invisible: a tight budget answers
- * a `LiveView` request with the full sensor frame at one frame per second, and nothing in the response
- * said that another stream was the reason.
- */
+/** Which ceilings {@link budgetVideoEnvelope} lowered, each carrying the value the envelope had before it. */
 export interface VideoBudgetNarrowing {
     maxFrameRate?: number;
     maxResolution?: Resolution;
@@ -60,12 +49,8 @@ export interface AudioEnvelope {
 /**
  * An allocated video stream as `AllocatedVideoStreams` reports it.
  *
- * `overlays` carries the camera's own statement with its own optionality: the struct reports each flag
- * only for a camera advertising the feature (§11.2.6.11), so an absent one is a camera that cannot draw
- * that overlay. It is not defaulted here, because the same value is what a re-allocation of this stream
- * has to send, and there the difference between "stated false" and "not stated" is the difference
- * between a conformant request and `INVALID_COMMAND`. `overlaysMatch` is the one place absence reads as
- * off.
+ * `overlays` is not defaulted: a re-allocation sends it as is, and an absent flag must stay absent
+ * there (§11.2.6.11 conformance).
  */
 export interface AllocatedVideoStream {
     overlays: OverlayBounds;
@@ -81,7 +66,6 @@ export interface AllocatedVideoStream {
     referenceCount: number;
 }
 
-/** An allocated audio stream as `AllocatedAudioStreams` reports it. */
 export interface AllocatedAudioStream {
     audioStreamId: number;
     streamUsage: number;
@@ -96,11 +80,8 @@ export interface AllocatedAudioStream {
 /**
  * An allocated snapshot stream as `AllocatedSnapshotStreams` reports it.
  *
- * `overlays` is what the camera states for this stream (§11.2.6.13). Unlike the video struct that table
- * states no fallback, so absence carries no spec-given value; what makes it read as off is the field's
- * `WMARK` / `OSD` conformance — a camera that states nothing has no such overlay to draw. It is the
- * camera's statement rather than a promise either way: §11.2.8.8.6 lets it ignore the requested flags
- * for a capability that needs no hardware encoder and use the source video stream's setting instead.
+ * `overlays` is not a promise: §11.2.8.8.6 lets a camera use the source video stream's setting instead
+ * of the requested flags when no hardware encoder is involved.
  */
 export interface AllocatedSnapshotStream {
     overlays: OverlayBounds;
@@ -120,23 +101,15 @@ export interface AllocatedSnapshotStream {
 interface LeaseSubject {
     streamId: number;
     /**
-     * Whether this server allocated the stream during this process run.
-     *
-     * It answers one question — may this server deallocate the stream on its own initiative — and
-     * never "may this server use it", which is decided by inspecting what the device reports. It is
-     * therefore not persisted: after a restart the device's own report is the record, and nothing
-     * this server allocated before the restart is its to give back unasked.
+     * Whether this server allocated the stream during this process run, so it may deallocate it
+     * unasked. Not persisted: after a restart nothing is this server's to give back unasked.
      */
     allocatedByUs: boolean;
 }
 
 /**
- * What this server states about one stream it has handed out.
- *
- * Every kind carries the allocation, including snapshot: the make-room rung has to know what a
- * snapshot stream of this server's holds before it may take it, and the encoder budget has to count a
- * stream the camera has not reported yet. An adopted stream's allocation is the camera's own report of
- * it.
+ * What this server states about one stream it has handed out. An adopted stream's allocation is the
+ * camera's own report of it.
  */
 export type LeaseStatement =
     | (LeaseSubject & { kind: "video"; allocation: AllocatedVideoStream })
@@ -146,25 +119,16 @@ export type LeaseStatement =
 /** A {@link LeaseStatement} plus the facts reconciliation needs. */
 export type StreamLease = LeaseStatement & {
     /**
-     * `Time.nowUs` (millisecond-valued) until which this lease may stand in for a device report.
-     *
-     * Set once, when the stream is allocated, and never extended: handing the stream out again is
-     * not evidence that it still exists. 0 for a stream this server did not allocate.
+     * `Time.nowUs` (millisecond-valued) until which this lease may stand in for a device report. Set
+     * once at allocation and never extended; 0 for a stream this server did not allocate.
      */
     shadowUntil: number;
-    /**
-     * True once a device state read has named this stream.
-     *
-     * Absence only means the stream is gone once the device has shown that it reports this stream at
-     * all; before that, absence is a report that has not arrived.
-     */
+    /** True once a device state read has named this stream; before that, absence means "not reported yet". */
     reportedByDevice: boolean;
     /**
-     * Identifies this exact statement about the stream id.
-     *
-     * A give-back whose wait was abandoned still lands, and the device reissues an id it has freed,
-     * so by then the lease under that id may be a later request's. Reconciliation carries the value
-     * over; only a new statement about the id gets a new one.
+     * Identifies this exact statement about the stream id, because the device reuses freed ids and a
+     * late give-back must not remove a later lease. Reconciliation keeps it; only a new statement gets a
+     * new one.
      */
     generation: number;
 };
@@ -182,42 +146,25 @@ export interface ManagedSession {
 /**
  * One session that ended without the client that opened it asking for it.
  *
- * The peer's own `End` is not one of these: it reaches the owner as a `webrtc_callback` `end` event,
- * and a second report of the same session ending would leave a client two events and no order between
- * them. Nor is a session ended by its own owner, or one ended because the owning connection closed or
- * the server is shutting down — the two fields below are what a route needs to leave those out.
+ * Not raised for the peer's own `End`, which already reaches the owner as a `webrtc_callback` `end` event.
  */
 export interface CameraSessionEnded {
     nodeId: NodeId;
     endpointId: EndpointNumber;
     webRtcSessionId: number;
     /**
-     * The connection that established the session: the one this concerns.
-     *
-     * Absent for a session this server holds no record of, which is what a session opened on the raw
-     * provider route and one adopted from the camera are. Nothing names an owner for those, so the
-     * route reads absence as "tell every camera-aware connection", exactly as it does for their
-     * signalling.
+     * The connection that established the session. Absent for sessions with no recorded owner (raw
+     * provider route, adopted from the camera); the route then tells every camera-aware connection.
      */
     ownerId?: string;
     /**
-     * The connection whose `camera_stop_stream` ended it, absent when no client asked.
-     *
-     * That connection already has the answer to its own command, so a route tells it nothing. Absent
-     * means the server ended the session on its own: the owning connection closed, or it is shutting
-     * down. Neither reaches a client — in the first case the only connection this concerns is the one
-     * that went away, and in the second every socket is closed before the sessions are ended, which
-     * is what the `server_shutdown` event is for.
+     * The connection whose `camera_stop_stream` ended it; the route does not notify that connection.
+     * Absent when the server ended it on its own (owner disconnected, or shutdown).
      */
     requestedBy?: string;
 }
 
-/**
- * One stream the make-room rung destroyed, for the clients that were not the ones it served.
- *
- * `kind` is `video` or `snapshot`, the two the rung can take: an audio stream holds neither an encoder
- * nor a share of the encoded pixel rate, so nothing is ever freed by taking one.
- */
+/** One stream the make-room rung destroyed, for the clients that were not the ones it served. */
 export interface CameraStreamEvicted {
     nodeId: NodeId;
     endpointId: EndpointNumber;
@@ -228,11 +175,7 @@ export interface CameraStreamEvicted {
 /**
  * A WebRTC session as the camera's own `CurrentSessions` (§11.5.5.1) reports it.
  *
- * The camera is the record of which sessions exist, so this survives a restart of this server while
- * nothing it tracks itself does. `CurrentSessions` is fabric-sensitive, so a read never carries
- * another fabric's entries; within the fabric `peerNodeId` says which controller holds the session,
- * and `EndSession` (§11.5.6.7.3) answers `NOT_FOUND` for every entry whose fabric and `PeerNodeID`
- * are not the caller's.
+ * `EndSession` (§11.5.6.7.3) answers `NOT_FOUND` for an entry whose `PeerNodeID` is not the caller's.
  */
 export interface DeviceWebRtcSession {
     webRtcSessionId: number;
@@ -241,70 +184,32 @@ export interface DeviceWebRtcSession {
     streamUsage: number;
     videoStreamIds: number[];
     audioStreamIds: number[];
-    /** `peerNodeId` is this server's own node id, so this is a session only this server can end. */
+    /** `peerNodeId` is this server's own node id, so only this server can end the session. */
     establishedByThisServer: boolean;
 }
 
 export interface ResolvedStream {
     streamId: number;
     envelope: VideoEnvelope | AudioEnvelope;
-    /**
-     * Where the stream came from, in the three states it can be in.
-     *
-     * One value rather than a `reused` flag beside the lease's `allocatedByUs`: those two encode three
-     * states in four combinations, and the fourth — not reused and not allocated by this run — cannot
-     * occur, so a mapping from the pair has to answer for an input nothing produces.
-     */
     provenance: CameraStreamProvenance;
     /** The result does not fit the envelope the server would have allocated; set only by the last ladder rung. */
     degraded?: boolean;
-    /**
-     * Ids of streams this request deallocated, absent when it took nothing.
-     *
-     * A stream a caller holds through another controller can be taken while nothing references it
-     * (§11.2.8.7.2 checks use and Internal, not ownership), and the id it held is gone for good, so
-     * the caller is told which ids stopped existing on its behalf. Reported whichever rung then
-     * answered: a request that took a stream and was served by the degraded rung instead destroyed
-     * that id just the same, even though the allocation scope puts an equivalent stream back under a
-     * new one.
-     */
+    /** Video stream ids this request deallocated, whichever rung then answered; absent when it took nothing. */
     evicted?: number[];
     /**
-     * The ceilings the camera's encoder budget lowered, absent when it lowered none.
-     *
-     * Reported for a freshly allocated stream only: a reused or degraded stream carries the camera's own
-     * range, which the budget had no part in. It is a separate field from {@link degraded} because the
-     * two are different facts with different answers — `degraded` says the stream handed over is outside
-     * the range the server computed, while this says the range the server computed was itself below what
-     * the camera's sensor allows, because other streams spend its encoder budget. A caller that wants
-     * motion answers this one by stating `min_frame_rate`, which the budget may not narrow past.
-     *
-     * These are the unbudgeted ceilings and not a measure of the whole gap: the ladder narrows the range
-     * again after a device refusal, and this record is not recomputed for that, so the envelope finally
-     * allocated can sit below what the budget left.
+     * The ceilings the camera's encoder budget lowered, absent when it lowered none. Set for a freshly
+     * allocated stream only. Not recomputed when the ladder narrows further after a device refusal.
      */
     budgetNarrowed?: VideoBudgetNarrowing;
 }
 
 /**
- * The AVSM `FeatureMap` (§11.2.5) as matter.js decodes it: one boolean per feature the cluster model
- * names.
- *
- * Taken from the client behaviour's own feature type rather than written out here, so a feature a
- * spec revision adds or renames is a compile error in the code that reads it by name, the same reason
- * {@link RawCameraAvStreamManagementState} is `Pick`ed from the real state type. `Partial`, because
- * the value is a bitmap matter.js types as partial: a flag it has not decoded reads `undefined`, not
- * `false`, so every read here compares against `true` rather than negating.
+ * The AVSM `FeatureMap` (§11.2.5) as matter.js decodes it. A flag not decoded reads `undefined`, so
+ * compare against `true`, never negate.
  */
 export type CameraFeatures = Partial<typeof CameraAvStreamManagementClient.features>;
 
-/**
- * The camera's privacy attributes (§11.2.7.20 to §11.2.7.22).
- *
- * A field is absent when the camera states nothing: the two soft modes are gated on the `PRIV`
- * feature and `HardPrivacyModeOn` is optional on its own, so absence is "this camera has no such
- * switch" and never "the switch is off".
- */
+/** The camera's privacy attributes (§11.2.7.20 to §11.2.7.22). Absent means the camera has no such switch. */
 export interface CameraPrivacyState {
     /** SoftRecordingPrivacyModeEnabled: blocks a session of stream usage Recording or Analysis. */
     softRecordingModeEnabled?: boolean;

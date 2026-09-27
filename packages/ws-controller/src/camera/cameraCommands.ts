@@ -49,14 +49,12 @@ function isStreamKind(value: string): value is StreamKind {
     return value === "video" || value === "audio" || value === "snapshot";
 }
 
-/** Each kind's id is its own field, so the bound is read per kind rather than shared. */
 const STREAM_ID_RANGES: Record<StreamKind, FieldRange> = {
     video: CAMERA_FIELD_RANGES.videoStreamId,
     audio: CAMERA_FIELD_RANGES.audioStreamId,
     snapshot: CAMERA_FIELD_RANGES.snapshotStreamId,
 };
 
-/** The keys a resolution object takes. @see VIDEO_HINT_KEY_SET */
 const RESOLUTION_KEY_SET: Record<keyof Required<CameraResolution>, true> = {
     width: true,
     height: true,
@@ -103,7 +101,7 @@ function toOptionalStringArray(value: unknown, field: string): string[] | undefi
     return value;
 }
 
-/** Codec names are matched against the SDP rtpmap spelling, which is upper case. */
+/** Upper-cased, to match the SDP rtpmap spelling. */
 function toOptionalCodecNames(value: unknown, field: string): string[] | undefined {
     return toOptionalStringArray(value, field)?.map(name => name.toUpperCase());
 }
@@ -116,26 +114,12 @@ export interface ParsedCameraTarget {
 /** One camera command's arguments, once they are known to be an object and to hold no unknown key. */
 interface ParsedCameraCommand {
     target: ParsedCameraTarget;
-    /** The same object the caller sent; every field is read from here, never from the raw argument. */
     fields: Record<string, unknown>;
 }
 
 /**
- * The shape and target every camera command names, and the one place a camera command's own argument
- * keys are checked. The keys of an object nested under one — a `video` / `audio` hint, an
- * `ice_servers` entry, a resolution — are checked where that object is parsed.
- *
- * An `args` that is not an object is refused here rather than reaching the key check, whose
- * `Object.keys` reads a string's indices as argument keys — a shape the WebSocket route used to
- * answer as error 0. The caller's own fields are handed back from this call, so no command can read
- * one before that refusal. A missing or null `args` arrives as the empty object the WebSocket
- * dispatch substitutes for it, and is refused by the target check below, which names the same
- * command.
- *
- * The command is named rather than its key set passed, so the set and the name in the refusal cannot
- * be paired wrongly. The set is the command's, not this function's: `node_id` and `endpoint_id` are
- * all it reads, so a key it does not know is the command's own argument. Checking it here is what
- * puts the refusal on every route, since every one of them parses its target.
+ * The argument object and target of a camera command, with the command's top-level keys checked.
+ * Nested objects (hints, `ice_servers` entries, resolutions) are checked where they are parsed.
  */
 function parseCameraCommand(args: unknown, command: CameraCommandName): ParsedCameraCommand {
     const fields = requireArgumentObject(args, command);
@@ -144,12 +128,8 @@ function parseCameraCommand(args: unknown, command: CameraCommandName): ParsedCa
 }
 
 /**
- * The command's arguments as the object they have to be.
- *
- * `Object.keys` reads a string's indices as argument keys and throws a `TypeError` for a missing or
- * null one, and the WebSocket route reports a throw that is not a `ServerError` as error 0. So every
- * route that walks a client's argument keys asks this first. The WebSocket dispatch asks it for every
- * command, which is what leaves only the first case for a camera command to meet.
+ * The command's arguments as an object, or an invalid-arguments refusal. Call before walking argument
+ * keys: `Object.keys` accepts a string and throws a non-`ServerError` for `null`.
  */
 export function requireArgumentObject(args: unknown, command: string): Record<string, unknown> {
     if (!isRecord(args)) {
@@ -159,16 +139,8 @@ export function requireArgumentObject(args: unknown, command: string): Record<st
 }
 
 /**
- * The node and endpoint a command names, checked before matter.js is asked to brand them.
- *
- * Shared by every camera command and by `send_webrtc_provider_command`, so the one wire shape
- * both take is answered the same way on either route.
- *
- * `NodeId()` is `BigInt(v)` and validates nothing, so every bound a node id has is this one's to
- * apply: a value outside the datatype's width would be branded and reach a node lookup, which
- * answers `NODE_NOT_EXISTS` for it — a target this server could never hold reported as one it does
- * not happen to hold. The same holds for a node id inside those 64 bits whose class names no single
- * node: every command routed here acts on one camera, so a Group Node ID is refused here as well.
+ * The node and endpoint a command names, validated here because `NodeId()` validates nothing. Refuses
+ * node ids outside 64 bits and any id that does not name one single node (e.g. a Group Node ID).
  *
  * @see Matter Core spec § 2.5.5 — a Node ID is a 64-bit number.
  */
@@ -177,10 +149,7 @@ export function parseTargetIds(fields: Record<string, unknown>, subject: string)
     if (typeof nodeId !== "number" && typeof nodeId !== "bigint") {
         throw ServerError.invalidArguments(`${subject} requires a numeric or bigint node_id`);
     }
-    // Past the safe range a double no longer holds every integer, so a number there cannot be trusted
-    // to be the one the client wrote: 9.007199254740993e15 arrives as ...992. parseBigIntAwareJson
-    // reads a plain integer literal that large as a bigint, so what reaches here as a number is an
-    // exponent-form literal.
+    // parseBigIntAwareJson turns large integer literals into bigint; an unsafe number here lost precision.
     if (typeof nodeId === "number" && !Number.isSafeInteger(nodeId)) {
         throw ServerError.invalidArguments(
             `${subject} requires a numeric node_id to be an integer no greater than ${Number.MAX_SAFE_INTEGER}; state a larger node id as a bigint`,
@@ -193,9 +162,7 @@ export function parseTargetIds(fields: Record<string, unknown>, subject: string)
         throw ServerError.invalidArguments(`${subject} requires endpoint_id to be an integer between 0 and 0xFFFE`);
     }
     const target = NodeId(nodeId);
-    // Every camera command reports one camera's own answer — `camera_start_stream` the
-    // `WebRTCSessionID` it needs for the rest of the session — so a Group Node ID is refused with the
-    // classes that name no node at all: a group invoke is sent with the response suppressed.
+    // A group invoke suppresses the response, and every camera command needs the camera's answer.
     const classified = nodeIdTarget(target);
     if (classified.kind !== "node") {
         throw ServerError.invalidArguments(
@@ -206,11 +173,8 @@ export function parseTargetIds(fields: Record<string, unknown>, subject: string)
 }
 
 /**
- * The keys `camera_start_stream` takes under `video`, in the spelling the wire uses.
- *
- * Built from a `Record` over the wire model's own key set, so a hint added to `CameraVideoHints`
- * without being listed here does not compile. Without that tie the list is a third copy of the hint
- * shape, and a hint missing from it would be refused although the reference documents it.
+ * The keys `camera_start_stream` takes under `video`. Typed as a `Record` over the wire model's keys,
+ * so a key added to `CameraVideoHints` must be added here to compile; the other key sets follow suit.
  */
 const VIDEO_HINT_KEY_SET: Record<keyof CameraVideoHints, true> = {
     codecs: true,
@@ -226,7 +190,6 @@ const VIDEO_HINT_KEY_SET: Record<keyof CameraVideoHints, true> = {
 
 export const VIDEO_HINT_KEYS: readonly string[] = Object.keys(VIDEO_HINT_KEY_SET);
 
-/** The keys `camera_start_stream` takes under `audio`. @see VIDEO_HINT_KEY_SET */
 const AUDIO_HINT_KEY_SET: Record<keyof CameraAudioHints, true> = {
     codecs: true,
     channel_count: true,
@@ -236,7 +199,6 @@ const AUDIO_HINT_KEY_SET: Record<keyof CameraAudioHints, true> = {
 
 export const AUDIO_HINT_KEYS: readonly string[] = Object.keys(AUDIO_HINT_KEY_SET);
 
-/** The keys `camera_snapshot` takes. @see VIDEO_HINT_KEY_SET */
 const SNAPSHOT_ARG_KEY_SET: Record<keyof Required<ArgsOf<"camera_snapshot">>, true> = {
     node_id: true,
     endpoint_id: true,
@@ -246,7 +208,6 @@ const SNAPSHOT_ARG_KEY_SET: Record<keyof Required<ArgsOf<"camera_snapshot">>, tr
     osd_enabled: true,
 };
 
-/** The top-level keys `camera_start_stream` takes. @see VIDEO_HINT_KEY_SET */
 const START_STREAM_ARG_KEY_SET: Record<keyof Required<ArgsOf<"camera_start_stream">>, true> = {
     node_id: true,
     endpoint_id: true,
@@ -260,20 +221,17 @@ const START_STREAM_ARG_KEY_SET: Record<keyof Required<ArgsOf<"camera_start_strea
     allow_eviction: true,
 };
 
-/** The keys `camera_get_capabilities` takes. @see VIDEO_HINT_KEY_SET */
 const CAPABILITIES_ARG_KEY_SET: Record<keyof Required<ArgsOf<"camera_get_capabilities">>, true> = {
     node_id: true,
     endpoint_id: true,
 };
 
-/** The keys `camera_stop_stream` takes. @see VIDEO_HINT_KEY_SET */
 const STOP_STREAM_ARG_KEY_SET: Record<keyof Required<ArgsOf<"camera_stop_stream">>, true> = {
     node_id: true,
     endpoint_id: true,
     webrtc_session_id: true,
 };
 
-/** The keys `camera_provide_answer` takes. @see VIDEO_HINT_KEY_SET */
 const PROVIDE_ANSWER_ARG_KEY_SET: Record<keyof Required<ArgsOf<"camera_provide_answer">>, true> = {
     node_id: true,
     endpoint_id: true,
@@ -281,7 +239,6 @@ const PROVIDE_ANSWER_ARG_KEY_SET: Record<keyof Required<ArgsOf<"camera_provide_a
     sdp: true,
 };
 
-/** The keys `camera_provide_ice_candidates` takes. @see VIDEO_HINT_KEY_SET */
 const PROVIDE_ICE_CANDIDATES_ARG_KEY_SET: Record<keyof Required<ArgsOf<"camera_provide_ice_candidates">>, true> = {
     node_id: true,
     endpoint_id: true,
@@ -289,7 +246,6 @@ const PROVIDE_ICE_CANDIDATES_ARG_KEY_SET: Record<keyof Required<ArgsOf<"camera_p
     ice_candidates: true,
 };
 
-/** The keys `camera_release_stream` takes. @see VIDEO_HINT_KEY_SET */
 const RELEASE_STREAM_ARG_KEY_SET: Record<keyof Required<ArgsOf<"camera_release_stream">>, true> = {
     node_id: true,
     endpoint_id: true,
@@ -297,10 +253,7 @@ const RELEASE_STREAM_ARG_KEY_SET: Record<keyof Required<ArgsOf<"camera_release_s
     stream_id: true,
 };
 
-/**
- * What each camera command takes at the top level, and the only place a command name is paired with
- * a key set: the refusal names the command this table lists it under, so the two cannot drift.
- */
+/** What each camera command takes at the top level. */
 export const CAMERA_ARG_KEYS = {
     camera_get_capabilities: Object.keys(CAPABILITIES_ARG_KEY_SET),
     camera_start_stream: Object.keys(START_STREAM_ARG_KEY_SET),
@@ -315,11 +268,7 @@ export type CameraCommandName = keyof typeof CAMERA_ARG_KEYS;
 
 /**
  * Which provider command each camera signalling command sends, and the target it sends it to.
- *
- * The payload is the caller's own fields minus the two that name the target, so the session id and
- * the command's own argument reach {@link toProviderCommandFields} in the spelling the client wrote
- * them in. Nothing is converted here: one boundary turns a wire payload into provider arguments, and
- * a second copy of that conversion is what this command exists to avoid.
+ * `payload` is the caller's fields minus the target, unconverted; `toProviderCommandFields` converts it.
  */
 export interface ParsedSignallingArgs extends ParsedCameraTarget {
     commandName: SignallingCommandName;
@@ -413,7 +362,7 @@ export interface ParsedStartStreamArgs extends ParsedCameraTarget {
 
 export function parseStartStreamArgs(args: unknown): ParsedStartStreamArgs {
     const { target, fields } = parseCameraCommand(args, "camera_start_stream");
-    // Internal is device-only: a stream carrying it must not be modified, so it is never requested here.
+    // Internal is device-only and must not be requested.
     const streamUsage = typeof fields.stream_usage === "string" ? streamUsageByName(fields.stream_usage) : undefined;
     if (streamUsage === undefined || streamUsage === StreamUsage.Internal) {
         throw ServerError.invalidArguments(`Unknown or device-only stream_usage "${String(fields.stream_usage)}"`);
@@ -622,7 +571,6 @@ export function toWireCapabilities(capabilities: CameraCapabilities): CameraCapa
     };
 }
 
-/** `ResolvedStream.envelope` is a union; the manager only ever pairs a video envelope with a video track. */
 function isVideoEnvelope(envelope: VideoEnvelope | AudioEnvelope): envelope is VideoEnvelope {
     return "minResolution" in envelope;
 }
@@ -639,8 +587,7 @@ function toWireStartStreamVideo(stream: ResolvedStream): CameraStartStreamVideoR
         frame_rate: { min: envelope.minFrameRate, max: envelope.maxFrameRate },
         bit_rate: { min: envelope.minBitRate, max: envelope.maxBitRate },
         provenance: stream.provenance,
-        // Two sources: the camera's own statement for a reused or degraded stream, the request it
-        // accepted for a freshly allocated one. Absent either way means no such overlay.
+        // Absent means no such overlay.
         watermark_enabled: envelope.overlays.watermarkEnabled ?? false,
         osd_enabled: envelope.overlays.osdEnabled ?? false,
         degraded: stream.degraded ?? false,

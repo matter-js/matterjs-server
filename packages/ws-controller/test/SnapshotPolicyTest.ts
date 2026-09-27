@@ -47,8 +47,7 @@ describe("snapshotPolicy", () => {
         });
 
         it("ignores requiresHardwareEncoder when requiresEncodedPixels is false", () => {
-            // §11.2.6.9.5: "This field is only considered if RequiresEncodedPixels is true." The
-            // reference server never reads the flag otherwise, so neither may we.
+            // §11.2.6.9.5: "This field is only considered if RequiresEncodedPixels is true."
             const unencoded = { ...G350[0], requiresHardwareEncoder: true };
             expect(usesHardwareEncoder(unencoded)).to.equal(false);
         });
@@ -107,8 +106,6 @@ describe("snapshotPolicy", () => {
         });
 
         it("counts a snapshot stream the camera marks as using a hardware encoder", () => {
-            // No call gives such a stream back, so missing it sends the next request at a camera
-            // whose encoder is already taken.
             expect(
                 encodersExhausted({
                     maxConcurrentEncoders: 1,
@@ -180,9 +177,7 @@ describe("snapshotPolicy", () => {
         });
 
         it("keeps the encoder-using capabilities as fallbacks behind the encoder-free ones", () => {
-            // The encoder preference orders; it does not narrow. Dropping the encoder-using entries
-            // ended the ladder at the last encoder-free rung, so a device that refuses all of those
-            // fails the call with capabilities the caller's own bounds allowed never tried.
+            // The encoder preference orders; it does not narrow.
             expect(
                 chosen(selectSnapshotCapabilities(G350, { encodersExhausted: true })).map(entry => entry.resolution),
             ).to.deep.equal([
@@ -205,8 +200,7 @@ describe("snapshotPolicy", () => {
         });
 
         it("keeps an encoded capability the device serves without a hardware encoder while streaming", () => {
-            // requiresEncodedPixels alone does not take an encoder: filtering on it would rule out a
-            // capability the camera can serve concurrently.
+            // requiresEncodedPixels alone does not take an encoder.
             const softwareEncoded = [{ ...G350[1], requiresHardwareEncoder: false }, G350[0]];
             expect(
                 chosen(selectSnapshotCapabilities(softwareEncoded, { encodersExhausted: true }))[0]?.resolution,
@@ -227,8 +221,7 @@ describe("snapshotPolicy", () => {
         });
 
         it("excludes a capability that exceeds the ceiling on one dimension only", () => {
-            // 1920x1080 and 1440x1440 have comparable pixel counts; only a per-dimension test keeps
-            // the taller one out of a 1920x1080 ceiling, and the device validates per dimension.
+            // Comparable pixel count to 1920x1080, so only a per-dimension check (as the device does) excludes it.
             const tall = { ...G350[0], resolution: { width: 1440, height: 1440 } };
             const selected = chosen(
                 selectSnapshotCapabilities([tall, G350[0]], {
@@ -261,8 +254,7 @@ describe("snapshotPolicy", () => {
         });
 
         it("keeps a capability inside the caller's ceiling even when it takes the busy encoder", () => {
-            // The encoder preference is the server's own; giving it up is what keeps a request the
-            // caller's stated bounds allow from failing.
+            // The encoder preference is the server's own and yields to the caller's bounds.
             const encoderFreeLarge = { ...G350[0], resolution: { width: 2560, height: 1440 } };
             const encoderSmall = { ...G350[1], resolution: { width: 1280, height: 720 } };
             const selected = chosen(
@@ -275,8 +267,6 @@ describe("snapshotPolicy", () => {
         });
 
         it("reports a bounds failure when a caller ceiling excludes every capability", () => {
-            // Dropping the ceiling here would hand back a 1920x1080 snapshot to a caller that stated
-            // it can handle 100x100.
             expect(
                 selectSnapshotCapabilities(G350, {
                     encodersExhausted: false,
@@ -342,15 +332,13 @@ describe("snapshotPolicy", () => {
         });
 
         it("takes nothing that holds neither an encoder nor a share of the pixel rate", () => {
-            // Destroying it would buy the allocate that follows nothing at all.
             expect(
                 chooseSnapshotStreamToFree([held(1, { encodedPixels: false, hardwareEncoder: false })], BUDGETED),
             ).to.equal(undefined);
         });
 
         it("takes nothing for the pixel rate on a camera that states no budget", () => {
-            // budgetVideoEnvelope leaves the envelope alone without MaxEncodedPixelRate, so the retry
-            // would repeat the request that just failed with one stream fewer to show for it.
+            // Without MaxEncodedPixelRate, budgetVideoEnvelope ignores the pixel rate, so freeing gains nothing.
             const pixelRateOnly = held(1, { hardwareEncoder: false });
             expect(chooseSnapshotStreamToFree([pixelRateOnly], { maxEncodedPixelRate: undefined })).to.equal(undefined);
             expect(chooseSnapshotStreamToFree([pixelRateOnly], BUDGETED)?.snapshotStreamId).to.equal(1);
@@ -364,8 +352,7 @@ describe("snapshotPolicy", () => {
         });
 
         it("takes the encoder holder before a larger stream that holds no encoder", () => {
-            // MaxConcurrentEncoders is 1 on the hardware this rung exists for, so the encoder is the
-            // scarce resource; taking the big one first destroys a stream and leaves the encoder taken.
+            // MaxConcurrentEncoders is 1 on the hardware this rung exists for, so the encoder is the scarce resource.
             const big = held(1, {
                 hardwareEncoder: false,
                 maxResolution: { width: 1920, height: 1080 },
@@ -437,8 +424,7 @@ describe("snapshotPolicy", () => {
         });
 
         it("refuses a stream whose floor is below the capability, however high its ceiling is", () => {
-            // §11.2.8.13.3 lets the camera answer with any size in the stream's range, so the ceiling
-            // states what the frame may be rather than what it will be.
+            // §11.2.8.13.3 lets the camera answer with any size in the stream's range.
             const ranged = { ...stream(8, 1920, 1080), minResolution: { width: 640, height: 480 } };
             expect(findAdoptableSnapshotStream([ranged], best, { overlays: {} })).to.equal(undefined);
         });

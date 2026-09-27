@@ -20,16 +20,11 @@ function toResolution(resolution: { width: number; height: number }): Resolution
     return { width: resolution.width, height: resolution.height };
 }
 
-/** The real client behaviour state type, as `endpoint.stateOf(CameraAvStreamManagementClient)` returns it. */
 type CameraAvStreamManagementClientState = Immutable<Behavior.StateOf<typeof CameraAvStreamManagementClient>>;
 
 /**
- * The subset of `CameraAvStreamManagementClient`'s state this subsystem reads, `Pick`ed from the real
- * client state type rather than hand-mirrored: a hand-written type with every field optional does not
- * fail to compile when matter.js renames a field (it just reads `undefined` at runtime, silently), and
- * that is the exact class of bug this subsystem exists to prevent. Deriving the type instead means a
- * rename anywhere in the picked fields — top-level or nested — is a compile error in
- * {@link toCameraState}, since the field types are references to the real ones, not copies.
+ * The subset of `CameraAvStreamManagementClient`'s state this subsystem reads. Keep it `Pick`ed from
+ * the real state type so a matter.js rename is a compile error, not a silent `undefined`.
  */
 export type RawCameraAvStreamManagementState = Pick<
     CameraAvStreamManagementClientState,
@@ -54,11 +49,7 @@ export type RawCameraAvStreamManagementState = Pick<
 
 /**
  * Translate matter.js's typed client state and the cluster's feature map into {@link CameraState}.
- *
- * The feature map is a global attribute, which `stateOf` leaves out of its shape, so it is passed in
- * from `globalsOf` rather than read here. It is what says whether this camera can carry video, audio
- * or snapshots at all, and `hdrCapable` is read from it too: deriving that from `hdrModeEnabled`'s
- * presence could not tell a camera without the feature from one whose attribute had not arrived.
+ * The feature map comes from `globalsOf`, because `stateOf` does not carry global attributes.
  */
 export function toCameraState(state: RawCameraAvStreamManagementState, features: CameraFeatures): CameraState {
     return {
@@ -93,9 +84,7 @@ export function toCameraState(state: RawCameraAvStreamManagementState, features:
             maxFrameRate: capability.maxFrameRate,
             imageCodec: capability.imageCodec,
             requiresEncodedPixels: capability.requiresEncodedPixels,
-            // RequiresHardwareEncoder is optional (§11.2.6.9.5). The reference server reads absent as
-            // "no hardware encoder": CameraAVStreamManagementCluster.cpp initialises
-            // snapshotStreamArgs.hardwareEncoder to false and overwrites it only on HasValue().
+            // Optional (§11.2.6.9.5); absent is false, as in the reference server.
             requiresHardwareEncoder: capability.requiresHardwareEncoder ?? false,
         })),
         supportedStreamUsages: [...state.supportedStreamUsages],
@@ -111,8 +100,7 @@ export function toCameraState(state: RawCameraAvStreamManagementState, features:
             minBitRate: stream.minBitRate,
             maxBitRate: stream.maxBitRate,
             referenceCount: stream.referenceCount,
-            // Not defaulted: a re-allocation of this stream may send the field only where the camera
-            // reported one (see AllocatedVideoStream).
+            // Not defaulted: see AllocatedVideoStream.
             overlays: { watermarkEnabled: stream.watermarkEnabled, osdEnabled: stream.osdEnabled },
         })),
         allocatedAudioStreams: (state.allocatedAudioStreams ?? []).map(stream => ({
@@ -150,11 +138,8 @@ export function toCameraState(state: RawCameraAvStreamManagementState, features:
 }
 
 /**
- * Device access for the camera subsystem.
- *
- * State is read from typed behaviour state rather than the attribute cache: the cache flattens struct
- * fields to numeric tags for the Python-compatible wire protocol, so reading it in decision code
- * trades a compile error for a silent empty parse.
+ * Device access for the camera subsystem. Reads typed behaviour state, not the attribute cache, whose
+ * struct fields are keyed by numeric tag.
  */
 export class MatterCameraDeviceIo implements CameraDeviceIo {
     readonly #handler: ControllerCommandHandler;
@@ -177,18 +162,8 @@ export class MatterCameraDeviceIo implements CameraDeviceIo {
 
     /**
      * `CurrentSessions` as the provider reports it, with the peer identity resolved against this
-     * server's own node id.
-     *
-     * Read from typed behaviour state, so the fabric filtering the attribute's fabric-sensitive
-     * quality (§11.5.5.1) demands is the one the node's subscription applied. A lagging report costs
-     * nothing here: it is what a client is offered to pick an id from, and the camera decides what
-     * the `EndSession` that follows ends.
-     *
-     * The stream ids come from the same resolution the outbound offer uses, because the struct
-     * carries them the same two ways: `VideoStreams` / `AudioStreams` from revision 2, and the
-     * deprecated singular `VideoStreamID` / `AudioStreamID` a revision-1 camera states instead
-     * (§11.4.5.5). Reading only the lists leaves every session of a revision-1 camera naming no
-     * stream, which is the one thing the report exists to explain.
+     * server's own node id. Stream ids are read from both the revision-2 lists and the deprecated
+     * revision-1 singular fields (§11.4.5.5).
      */
     async readWebRtcSessions(nodeId: NodeId, endpointId: EndpointNumber): Promise<DeviceWebRtcSession[] | undefined> {
         const endpoint = this.#handler.getNode(nodeId).node.endpoints.for(endpointId);
@@ -227,8 +202,7 @@ export class MatterCameraDeviceIo implements CameraDeviceIo {
     }): Promise<unknown> {
         if (args.cluster === "avsm") {
             const node = this.#handler.getNode(args.nodeId).node;
-            // Widened to the generic cluster shape: the command name is validated by the manager, not
-            // known at compile time, so it cannot be one of the concrete cluster's literal command keys.
+            // Widened: the command name is a runtime string validated by the manager.
             const cluster: Specifier.ClusterLike = CameraAvStreamManagement.Cluster;
             return this.#handler.invokeCommand(node, {
                 endpoint: args.endpointId,
@@ -239,10 +213,8 @@ export class MatterCameraDeviceIo implements CameraDeviceIo {
         }
 
         if (args.command === "provideOffer" || args.command === "solicitOffer") {
-            // Establishing a session (originatingEndpointId + local requestor upsertSession), not a
-            // plain invoke: WebRtcTransportRequestorServer rejects Answer/ICECandidates NotFound for a
-            // session it never stored, so a plain invoke here would return a session id whose signaling
-            // can never be routed.
+            // Must register the session with the local requestor: WebRtcTransportRequestorServer answers
+            // NotFound to Answer/ICECandidates for a session it never stored.
             return this.#handler.invokeWebRtcProviderCommand({
                 nodeId: args.nodeId,
                 endpointId: args.endpointId,

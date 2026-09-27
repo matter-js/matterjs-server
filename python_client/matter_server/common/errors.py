@@ -135,21 +135,24 @@ class OtaUploadError(MatterError):
 
 
 class CameraStreamIncompatible(MatterError):
-    """Raised when no codec or resolution range suits both the camera and the caller.
+    """Raised when the camera, the caller's offer or the request rules the stream out.
 
-    The details carry a ``reason`` that states one thing per value, so a client branches on
-    it alone: ``codec`` (the codec lists do not overlap), ``bounds`` (a range the camera
-    cannot meet, with ``bound`` naming the single bound where the server ruled it out),
-    ``feature`` (the camera's AVSM ``FeatureMap`` does not advertise what the request
-    needs, named in ``feature`` — the only reason that carries that field), ``capability``
-    (the camera advertises the feature and states no capability the request could use),
-    ``offer`` (the caller's own SDP refuses the track's media section, will not receive on
-    it, or carries none), ``no_media`` (the request leaves no media for the session at
-    all), and ``level`` (the offer states a decode ceiling the server cannot read).
+    The details carry a ``reason`` that says which:
 
-    ``codec`` and ``bounds`` are answered in the command's arguments, ``offer`` and
-    ``level`` in the SDP the client sends, and ``feature``, ``capability`` and ``no_media``
-    in neither.
+    - ``codec``: no codec both the camera and the caller, or the caller's offer, can carry.
+    - ``bounds``: a range the camera cannot meet; ``bound`` names the bound when the server ruled
+      it out before asking the camera.
+    - ``feature``: the camera's AVSM ``FeatureMap`` lacks what the request needs, named in
+      ``feature`` (only this reason carries that field).
+    - ``capability``: the feature is advertised, but no stated capability fits the request.
+    - ``offer``: the caller's SDP refuses the track's media section, will not receive on it,
+      or has none.
+    - ``no_media``: the request leaves no media for the session.
+    - ``level``: the offer states a decode ceiling the server cannot read.
+
+    ``codec`` is fixed in the command arguments or the SDP, ``bounds`` and ``no_media`` (ask
+    for a track) in the command arguments, ``offer`` and ``level`` in the client's SDP, and
+    ``feature`` and ``capability`` in neither.
     """
 
     error_code = 102
@@ -177,8 +180,7 @@ class CameraPrivacyMode(MatterError):
     """Raised while a camera privacy switch forbids the session or the snapshot.
 
     The details name the switches from ``camera_get_capabilities``' ``privacy``. It is a
-    device state rather than a request the client can change, which is why it is not
-    ``CameraStreamIncompatible``.
+    device state, not something the request can change.
     """
 
     error_code = 106

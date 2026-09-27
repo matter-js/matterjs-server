@@ -120,12 +120,7 @@ import {
 
 const logger = Logger.get("ControllerCommandHandler");
 
-/**
- * The matter.js command each signalling command is invoked under.
- *
- * A `Record` over the name type, so a command added to the boundary's list without a mapping here
- * does not compile rather than being invoked under a name derived from its spelling.
- */
+/** The matter.js command each signalling command is invoked under. */
 const SIGNALLING_INVOKE_NAMES: Record<SignallingCommandName, "provideAnswer" | "provideIceCandidates"> = {
     ProvideAnswer: "provideAnswer",
     ProvideIceCandidates: "provideIceCandidates",
@@ -179,11 +174,8 @@ export interface ControllerCommandHandlerOptions {
 }
 
 /**
- * The cluster in the shape a request specifier needs.
- *
- * matter.js declares the `ClusterType(model)` overload as returning `object`, so what it builds cannot
- * be inferred from the signature. A cluster model from `ClusterMap` always carries an id, which is the
- * one field `ClusterLike` requires and `ClusterType` copies conditionally.
+ * The cluster in the shape a request specifier needs. The cast is needed because matter.js types the
+ * `ClusterType(model)` overload as `object`; a `ClusterMap` model always carries the id `ClusterLike` requires.
  */
 function clusterSpecifierOf(entry: ClusterMapEntry): Specifier.ClusterLike {
     return ClusterType(entry.model) as Specifier.ClusterLike;
@@ -391,14 +383,7 @@ export class ControllerCommandHandler {
         return this.#controller.node.endpoints.for("camera-controller") as Endpoint<typeof CameraControllerDevice>;
     }
 
-    /**
-     * Invoke ProvideOffer/SolicitOffer and track the resulting session in the local requestor.
-     *
-     * `fields` must already be in matter.js's own field-name convention (the injected
-     * `originatingEndpointId` overwrites any value already present). The decision logic — what makes a
-     * session trackable, when to tear one down — lives in {@link establishWebRtcProviderSession} so it
-     * can be unit-tested without a live node; this method supplies the real device I/O.
-     */
+    /** Supplies the device I/O for {@link establishWebRtcProviderSession}. */
     async #establishWebRtcProviderSession(args: {
         nodeId: NodeId;
         endpointId: EndpointNumber;
@@ -443,10 +428,9 @@ export class ControllerCommandHandler {
     }
 
     /**
-     * The one entry to a WebRTC provider session, for the camera subsystem and for the raw WebSocket
-     * route alike. `fields` is already in matter.js's own convention: a wire payload is converted by
-     * `toProviderCommandFields` at the WebSocket boundary, where `camera_start_stream`'s arguments are
-     * parsed too, so no wire shape reaches this class.
+     * Establish a WebRTC provider session (ProvideOffer/SolicitOffer) and track it locally; used by the
+     * camera subsystem and the raw WebSocket route. `fields` must already be in matter.js's convention
+     * (see `toProviderCommandFields`); any `originatingEndpointId` in it is overwritten.
      */
     async invokeWebRtcProviderCommand(args: {
         nodeId: NodeId;
@@ -462,11 +446,8 @@ export class ControllerCommandHandler {
     /**
      * Signal into a session the camera already holds: the SDP answer, or trickled ICE candidates.
      *
-     * A plain invoke, deliberately apart from {@link invokeWebRtcProviderCommand}: neither command
-     * creates anything to track, neither carries an originating endpoint, and the model gives neither
-     * a response type. A session id is not checked against local records first — the camera holds the
-     * session and answers for an id it cannot resolve to one of its own, and this server's records
-     * name only the sessions of its current run.
+     * The session id is not checked against local records: they cover only this run, and the camera
+     * answers for ids it does not hold.
      */
     async invokeWebRtcSignallingCommand(args: {
         nodeId: NodeId;
@@ -482,11 +463,7 @@ export class ControllerCommandHandler {
         });
     }
 
-    /**
-     * This server's own node id on the fabric — the `PeerNodeID` a camera stores for a session
-     * established with this server (§11.4.5.5), and what its `EndSession` peer check compares
-     * against (§11.5.6.7.3).
-     */
+    /** This server's node id on the fabric: the `PeerNodeID` a camera stores for its sessions (§11.4.5.5). */
     get localNodeId(): NodeId {
         return this.#controller.fabric.nodeId;
     }
@@ -497,14 +474,8 @@ export class ControllerCommandHandler {
     }
 
     /**
-     * WebRtcTransportProvider ClusterRevision, as the endpoint's own cluster structure states it.
-     *
-     * The attribute cache is filled by the node's attribute reports, so it answers `undefined` until
-     * one has carried this attribute, and the first `ProvideOffer` after a restart would then be
-     * down-converted to the deprecated singular stream ids against a revision-2 camera. The global
-     * attribute state is part of what the client structure is built from, so it is known as soon as
-     * the endpoint exposes the behaviour. Still `undefined`-checked by the consumer: for a client
-     * cluster the globals are populated from the device, and nothing guarantees a read has completed.
+     * WebRtcTransportProvider ClusterRevision from the endpoint's cluster structure. Read from the
+     * globals, not the attribute cache, which stays empty after a restart until a report carries it.
      */
     #webRtcProviderClusterRevision(nodeId: NodeId, endpointId: EndpointNumber): number | undefined {
         const endpoint = this.#nodes.get(nodeId).node.endpoints.for(endpointId);
@@ -522,13 +493,9 @@ export class ControllerCommandHandler {
     }
 
     /**
-     * Drop a WebRTC session from the local requestor's CurrentSessions tracking. Call when the session
-     * is ended locally (e.g. the client invokes EndSession on the provider); peer-initiated ends are
-     * already removed by the requestor's own End handler.
-     *
-     * `nodeId` and `endpointId` are what the id was issued by: the entry is dropped only when it is
-     * that camera's, so ending a session on one camera cannot untrack another camera's session
-     * carrying the same id. No-op if the id is untracked or held by a different peer.
+     * Drop a locally ended WebRTC session from the requestor's CurrentSessions; peer-initiated ends
+     * are removed by the requestor itself. No-op if the id is untracked or held by another peer
+     * (session ids are only unique per camera).
      */
     async removeTrackedWebRtcSession(
         webRtcSessionId: number,
@@ -825,13 +792,7 @@ export class ControllerCommandHandler {
         }
     }
 
-    /**
-     * The commissioned nodes, without the groups a groupcast registered.
-     *
-     * A group joins the controller's peer set with a `peerAddress`, which is all
-     * `getCommissionedNodes` filters on, so every group addressed since start would otherwise count
-     * as a node and be interviewed as one.
-     */
+    /** The commissioned nodes, without the groups a groupcast added to the controller's peer set. */
     getCommissionedNodeIds(): NodeId[] {
         return this.#controller.getCommissionedNodes().filter(nodeId => nodeIdTarget(nodeId).kind === "node");
     }
@@ -1100,7 +1061,6 @@ export class ControllerCommandHandler {
         return { attributeId, clusterId, endpointId, status, clusterStatus };
     }
 
-    /** Invoke one command on one endpoint of `node`. */
     async #invokeCommand<const C extends Specifier.ClusterLike>(
         node: ClientNode,
         request: Invoke.ConcreteCommandRequest<C>,
@@ -1110,11 +1070,8 @@ export class ControllerCommandHandler {
     }
 
     /**
-     * Invoke one command, whether its path names an endpoint or leaves it wildcard.
-     *
-     * Only a groupcast leaves it wildcard. A unicast invoke goes through {@link #invokeCommand}, so
-     * that omitting the endpoint there stays a type error rather than an invoke against every
-     * endpoint of the node.
+     * Invoke one command, with or without an endpoint. Only groupcasts may omit it; unicast goes through
+     * {@link #invokeCommand}, whose type requires the endpoint.
      */
     async #invokeOnPath<const C extends Specifier.ClusterLike>(
         node: ClientNode,
@@ -1144,23 +1101,16 @@ export class ControllerCommandHandler {
 
     /**
      * The group matter.js multicasts to for `nodeId`, which callers must have classified as a Group
-     * Node ID: `peers.forAddress` decides group against unicast with `GroupId.isGroupNodeId`, the
-     * same predicate {@link nodeIdTarget} classifies with, so the two cannot disagree.
-     *
-     * The group joins the controller's peer set for the process's lifetime. Nothing removes it, and
-     * `getCommissionedNodes` counts it, which is why {@link getCommissionedNodeIds} filters groups
-     * back out. The store behind it is in memory, so no group survives a restart.
+     * Node ID with {@link nodeIdTarget}. The group stays in the controller's in-memory peer set until
+     * restart, so {@link getCommissionedNodeIds} filters it out.
      */
     async #groupFor(nodeId: NodeId): Promise<ClientNode> {
         return this.#controller.node.peers.forAddress(this.#peerOf(nodeId));
     }
 
     /**
-     * Multicast a write to a group, resolving once the packet has left this server.
-     *
-     * No node answers: a group write is sent with the response suppressed, so there is no status to
-     * report. The path carries no endpoint — each node's own group table decides which of its
-     * endpoints act.
+     * Multicast a write to a group, resolving once the packet is sent. No node answers, and each node's
+     * group table decides which endpoints act.
      */
     async handleGroupWriteAttribute(data: Omit<WriteAttributeRequest, "endpointId">): Promise<void> {
         const { nodeId, clusterId, attributeId } = data;
@@ -1189,16 +1139,11 @@ export class ControllerCommandHandler {
     }
 
     /**
-     * Multicast a command to a group, resolving once the packet has left this server.
+     * Multicast a command to a group, resolving once the packet is sent. No node answers, so there are
+     * no timeouts, and timed commands cannot be groupcast.
      *
-     * No node answers: a group invoke is sent with the response suppressed, so neither timeout an
-     * invoke can carry has anything to wait for and the request type states neither. The command path
-     * carries no endpoint, and a command the specification requires to be invoked as a timed request
-     * cannot go to a group at all.
-     *
-     * Unlike {@link handleInvoke} this does not coalesce a duplicate in flight. Coalescing replaces a
-     * second send with the first one's answer, and here there is no answer — the second groupcast
-     * would simply not be sent.
+     * Does not coalesce duplicates like {@link handleInvoke}: with no answer to share, a coalesced
+     * second groupcast would just not be sent.
      */
     async handleGroupInvoke(
         data: Omit<InvokeRequest, "endpointId" | "timedInteractionTimeoutMs" | "interactionTimeoutMs">,
