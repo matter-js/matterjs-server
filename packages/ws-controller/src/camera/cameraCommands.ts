@@ -19,6 +19,7 @@ import { Bytes, EndpointNumber, NodeId, UINT64_MAX } from "@matter/main";
 import type { WebRtcTransportDefinitions } from "@matter/main/clusters";
 import { StreamUsage } from "@matter/main/types";
 import { ServerError } from "../types/WebSocketMessageTypes.js";
+import { unusableNodeIdClass } from "../util/nodeIdClasses.js";
 import { CAMERA_FIELD_RANGES, ICE_SERVER_LIMITS } from "./cameraFieldRanges.js";
 import type { FieldRange } from "./cameraFieldRanges.js";
 import type { CameraCapabilities, SnapshotResult, StartStreamResult } from "./CameraStreamManager.js";
@@ -166,7 +167,8 @@ export function requireArgumentObject(args: unknown, command: string): Record<st
  * `NodeId()` is `BigInt(v)` and validates nothing, so every bound a node id has is this one's to
  * apply: a value outside the datatype's width would be branded and reach a node lookup, which
  * answers `NODE_NOT_EXISTS` for it — a target this server could never hold reported as one it does
- * not happen to hold.
+ * not happen to hold. The same holds for a node id inside those 64 bits whose class names no single
+ * node: every command routed here acts on one camera, so a Group Node ID is refused here as well.
  *
  * @see Matter Core spec § 2.5.5 — a Node ID is a 64-bit number.
  */
@@ -190,7 +192,12 @@ export function parseTargetIds(fields: Record<string, unknown>, subject: string)
     if (typeof endpointId !== "number" || !Number.isInteger(endpointId) || endpointId < 0 || endpointId > 0xfffe) {
         throw ServerError.invalidArguments(`${subject} requires endpoint_id to be an integer between 0 and 0xFFFE`);
     }
-    return { nodeId: NodeId(nodeId), endpointId: EndpointNumber(endpointId) };
+    const target = NodeId(nodeId);
+    const unusable = unusableNodeIdClass(target);
+    if (unusable !== undefined) {
+        throw ServerError.invalidArguments(`${subject} cannot address ${unusable}: node_id must name one node`);
+    }
+    return { nodeId: target, endpointId: EndpointNumber(endpointId) };
 }
 
 /**

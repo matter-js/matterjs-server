@@ -5,7 +5,7 @@
  */
 
 import { CAMERA_STREAM_PROVENANCES } from "@matter-server/ws-client";
-import { EndpointNumber, NodeId, UINT64_MAX } from "@matter/main";
+import { CaseAuthenticatedTag, EndpointNumber, NodeId, UINT32_MAX, UINT64_MAX } from "@matter/main";
 import { CameraAvStreamManagement } from "@matter/main/clusters/camera-av-stream-management";
 import { StreamUsage } from "@matter/main/types";
 import {
@@ -34,7 +34,7 @@ describe("cameraCommands", () => {
         });
 
         it("accepts a bigint node id without losing precision", () => {
-            const nodeId = 18446744069414584320n;
+            const nodeId = NodeId.fromTemporaryLocalNodeId(UINT32_MAX);
             expect(parseCapabilitiesArgs({ node_id: nodeId, endpoint_id: 1 }).nodeId).to.equal(nodeId);
         });
 
@@ -60,7 +60,10 @@ describe("cameraCommands", () => {
             }
         });
 
-        function expectRefusedNodeId(nodeId: unknown): void {
+        // `namedClass` is what the refusal has to say: every class below falls through to the same
+        // code, so a test that checks only the code passes against an implementation missing the
+        // branch that names it.
+        function expectRefusedNodeId(nodeId: unknown, namedClass?: string): void {
             let thrown: unknown;
             try {
                 parseCapabilitiesArgs({ node_id: nodeId, endpoint_id: 1 });
@@ -69,6 +72,9 @@ describe("cameraCommands", () => {
             }
             expect(thrown).to.be.instanceOf(ServerError);
             expect((thrown as ServerError).code).to.equal(ServerErrorCode.InvalidArguments);
+            if (namedClass !== undefined) {
+                expect((thrown as ServerError).message).to.contain(namedClass);
+            }
         }
 
         it("rejects a negative node id of either type instead of branding it", () => {
@@ -82,8 +88,32 @@ describe("cameraCommands", () => {
             expectRefusedNodeId(UINT64_MAX + 1n);
         });
 
-        it("accepts the widest node id the datatype holds", () => {
-            expect(parseCapabilitiesArgs({ node_id: UINT64_MAX, endpoint_id: 1 }).nodeId).to.equal(UINT64_MAX);
+        // The Operational range's own bounds, Matter Core spec § 2.5.5 Table 4: the last id inside it
+        // and the first id of the reserved span above it. matter.js exposes no constant for either.
+        it("accepts the widest operational node id", () => {
+            const widestOperational = NodeId(0xffff_ffef_ffff_ffffn);
+            expect(NodeId.isOperationalNodeId(widestOperational)).to.equal(true);
+            expect(parseCapabilitiesArgs({ node_id: widestOperational, endpoint_id: 1 }).nodeId).to.equal(
+                widestOperational,
+            );
+        });
+
+        it("refuses a Group Node ID, which no camera command can get an answer from", () => {
+            expectRefusedNodeId(NodeId.fromGroupId(1), "a Group Node ID");
+            expectRefusedNodeId(UINT64_MAX, "a Group Node ID");
+        });
+
+        it("refuses every other node id class that names no single node, naming the class", () => {
+            expectRefusedNodeId(NodeId.UNSPECIFIED_NODE_ID, "the Unspecified Node ID");
+            expectRefusedNodeId(NodeId.fromCaseAuthenticatedTag(CaseAuthenticatedTag(1)), "a CASE Authenticated Tag");
+            expectRefusedNodeId(NodeId.getFromPakeKeyIdentifier(1), "a PAKE key identifier");
+            expectRefusedNodeId(NodeId(0xffff_fff0_0000_0000n), "a reserved Node ID");
+            expectRefusedNodeId(NodeId(0xffff_ffff_0000_0000n), "a reserved Node ID");
+        });
+
+        it("accepts the Temporary Local range, where this server allocates its test nodes", () => {
+            const testNode = NodeId.fromTemporaryLocalNodeId(0);
+            expect(parseCapabilitiesArgs({ node_id: testNode, endpoint_id: 1 }).nodeId).to.equal(testNode);
         });
 
         it("rejects a numeric node id past the safe range, which names a different node than the client sent", () => {
