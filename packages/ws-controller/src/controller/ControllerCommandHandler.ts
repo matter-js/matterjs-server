@@ -45,7 +45,7 @@ import {
     TimeSynchronization,
 } from "@matter/main/clusters";
 import { WebRtcTransportProvider } from "@matter/main/clusters/web-rtc-transport-provider";
-import { DeviceAttestationCheck, Invoke, PeerAddress, Read, Specifier, PeerSet } from "@matter/main/protocol";
+import { DeviceAttestationCheck, Invoke, PeerAddress, Read, Specifier, PeerSet, Write } from "@matter/main/protocol";
 import {
     AttributeId,
     ClusterId,
@@ -104,6 +104,7 @@ import {
 } from "../types/WebSocketMessageTypes.js";
 import { formatNodeId } from "../util/formatNodeId.js";
 import { pingIp } from "../util/network.js";
+import { nodeIdTarget } from "../util/nodeIdClasses.js";
 import { CustomClusterPoller } from "./CustomClusterPoller.js";
 import { NodeAttributeReader } from "./NodeProcessor.js";
 import { Nodes } from "./Nodes.js";
@@ -175,6 +176,17 @@ export interface ControllerCommandHandlerOptions {
     threadDiagnosticsEnabled?: boolean;
     /** Interval between custom cluster polling cycles. Defaults to, and is floored at, 60 seconds. */
     customClusterPollInterval?: Duration;
+}
+
+/**
+ * The cluster in the shape a request specifier needs.
+ *
+ * matter.js declares the `ClusterType(model)` overload as returning `object`, so what it builds cannot
+ * be inferred from the signature. A cluster model from `ClusterMap` always carries an id, which is the
+ * one field `ClusterLike` requires and `ClusterType` copies conditionally.
+ */
+function clusterSpecifierOf(entry: ClusterMapEntry): Specifier.ClusterLike {
+    return ClusterType(entry.model) as Specifier.ClusterLike;
 }
 
 export class ControllerCommandHandler {
@@ -260,7 +272,7 @@ export class ControllerCommandHandler {
             this.#timeSyncManager = new TimeSyncManager({
                 syncTime: peer => this.#syncNodeTime(peer.nodeId),
                 nodeConnected: peer => !!(this.#nodes.has(peer.nodeId) && this.#nodes.get(peer.nodeId).isConnected),
-                commissionedNodeCount: () => this.#controller.getCommissionedNodes().length,
+                commissionedNodeCount: () => this.getCommissionedNodeIds().length,
             });
         }
     }
@@ -782,7 +794,7 @@ export class ControllerCommandHandler {
 
         await this.start();
 
-        const nodes = this.#controller.getCommissionedNodes();
+        const nodes = this.getCommissionedNodeIds();
         logger.info(`Found ${nodes.length} nodes: ${nodes.map(nodeId => this.formatNode(nodeId)).join(", ")}`);
 
         for (const nodeId of nodes) {
@@ -811,6 +823,17 @@ export class ControllerCommandHandler {
                 logger.warn(`Failed to connect node "${this.formatNode(nodeId)}":`, error);
             }
         }
+    }
+
+    /**
+     * The commissioned nodes, without the groups a groupcast registered.
+     *
+     * A group joins the controller's peer set with a `peerAddress`, which is all
+     * `getCommissionedNodes` filters on, so every group addressed since start would otherwise count
+     * as a node and be interviewed as one.
+     */
+    getCommissionedNodeIds(): NodeId[] {
+        return this.#controller.getCommissionedNodes().filter(nodeId => nodeIdTarget(nodeId).kind === "node");
     }
 
     getNodeIds() {
@@ -1077,9 +1100,25 @@ export class ControllerCommandHandler {
         return { attributeId, clusterId, endpointId, status, clusterStatus };
     }
 
+    /** Invoke one command on one endpoint of `node`. */
     async #invokeCommand<const C extends Specifier.ClusterLike>(
         node: ClientNode,
         request: Invoke.ConcreteCommandRequest<C>,
+        options: Omit<Invoke.Definition, "commands"> = {},
+    ) {
+        return this.#invokeOnPath(node, request, options);
+    }
+
+    /**
+     * Invoke one command, whether its path names an endpoint or leaves it wildcard.
+     *
+     * Only a groupcast leaves it wildcard. A unicast invoke goes through {@link #invokeCommand}, so
+     * that omitting the endpoint there stays a type error rather than an invoke against every
+     * endpoint of the node.
+     */
+    async #invokeOnPath<const C extends Specifier.ClusterLike>(
+        node: ClientNode,
+        request: Invoke.CommandRequest<C>,
         options: Omit<Invoke.Definition, "commands"> = {},
     ) {
         const invoke = Invoke({
@@ -1101,6 +1140,106 @@ export class ControllerCommandHandler {
                 }
             }
         }
+    }
+
+    /**
+     * The group matter.js multicasts to for `nodeId`, which callers must have classified as a Group
+     * Node ID: `peers.forAddress` decides group against unicast with `GroupId.isGroupNodeId`, the
+     * same predicate {@link nodeIdTarget} classifies with, so the two cannot disagree.
+     *
+     * The group joins the controller's peer set for the process's lifetime. Nothing removes it, and
+     * `getCommissionedNodes` counts it, which is why {@link getCommissionedNodeIds} filters groups
+     * back out. The store behind it is in memory, so no group survives a restart.
+     */
+    async #groupFor(nodeId: NodeId): Promise<ClientNode> {
+        return this.#controller.node.peers.forAddress(this.#peerOf(nodeId));
+    }
+
+    /**
+     * Multicast a write to a group, resolving once the packet has left this server.
+     *
+     * No node answers: a group write is sent with the response suppressed, so there is no status to
+     * report. The path carries no endpoint — each node's own group table decides which of its
+     * endpoints act.
+     */
+    async handleGroupWriteAttribute(data: Omit<WriteAttributeRequest, "endpointId">): Promise<void> {
+        const { nodeId, clusterId, attributeId } = data;
+
+        const clusterEntry = ClusterMap[clusterId];
+        const attributeModel = clusterEntry?.attributes[attributeId];
+        if (!clusterEntry || !attributeModel) {
+            throw ServerError.invalidArguments(`Attribute ${attributeId} on cluster ${clusterId} unknown`);
+        }
+        const value = convertWebSocketTagBasedToMatter(data.value, attributeModel, clusterEntry.model);
+        logger.info(
+            `Groupcasting write of attribute ${clusterId}.${attributeModel.propertyName} to ${this.formatNode(nodeId)} with value`,
+            value,
+        );
+
+        const group = await this.#groupFor(nodeId);
+        await group.interaction.write(
+            Write(
+                Write.Attribute({
+                    cluster: clusterSpecifierOf(clusterEntry),
+                    attributes: attributeModel.propertyName,
+                    value,
+                }),
+            ),
+        );
+    }
+
+    /**
+     * Multicast a command to a group, resolving once the packet has left this server.
+     *
+     * No node answers: a group invoke is sent with the response suppressed, so neither timeout an
+     * invoke can carry has anything to wait for and the request type states neither. The command path
+     * carries no endpoint, and a command the specification requires to be invoked as a timed request
+     * cannot go to a group at all.
+     *
+     * Unlike {@link handleInvoke} this does not coalesce a duplicate in flight. Coalescing replaces a
+     * second send with the first one's answer, and here there is no answer — the second groupcast
+     * would simply not be sent.
+     */
+    async handleGroupInvoke(
+        data: Omit<InvokeRequest, "endpointId" | "timedInteractionTimeoutMs" | "interactionTimeoutMs">,
+    ): Promise<void> {
+        const { nodeId, clusterId } = data;
+        let { data: commandData } = data;
+
+        const clusterEntry = ClusterMap[clusterId];
+        if (!clusterEntry) {
+            throw ServerError.invalidArguments(`Cluster Id "${clusterId}" unknown`);
+        }
+        const commandName = camelize(data.commandName);
+        const commandModel = clusterEntry.commands[commandName.toLowerCase()];
+        if (!commandModel) {
+            throw ServerError.invalidArguments(
+                `Command "${commandName}" does not exist on cluster "${clusterEntry.model.propertyName}"`,
+            );
+        }
+        if (commandModel.effectiveAccess.timed) {
+            throw ServerError.invalidArguments(
+                `Command "${commandName}" must be invoked as a timed request, which a groupcast cannot carry`,
+            );
+        }
+        if (isObject(commandData)) {
+            if (Object.keys(commandData).length === 0) {
+                commandData = undefined;
+            } else {
+                commandData = convertCommandDataToMatter(commandData, commandModel, clusterEntry.model);
+            }
+        }
+
+        logger.info(
+            `Groupcasting command ${clusterEntry.model.propertyName}.${commandName} to ${this.formatNode(nodeId)}`,
+        );
+
+        const group = await this.#groupFor(nodeId);
+        await this.#invokeOnPath(group, {
+            cluster: clusterSpecifierOf(clusterEntry),
+            command: commandName,
+            fields: commandData,
+        });
     }
 
     async handleInvoke(data: InvokeRequest): Promise<unknown> {
@@ -1150,8 +1289,7 @@ export class ControllerCommandHandler {
             return existing;
         }
 
-        // Resolve cluster namespace with command definitions for typed invoke
-        const cluster = ClusterType(clusterEntry.model) as Specifier.ClusterLike;
+        const cluster = clusterSpecifierOf(clusterEntry);
 
         // Execute and track the command
         const invokePromise = this.#invokeCommand(

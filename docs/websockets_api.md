@@ -490,6 +490,18 @@ Wildcard (all attributes from OnOff cluster):
 }
 ```
 
+Response: one entry for the path written, `[{ "Path": { ... }, "Status": 0 }]`. `Status` is the write
+status where one was returned; a write to an imported test node and a write matter.js resolves from its
+own cache both report `0` without a device having answered.
+
+A `node_id` in the Group Node ID range multicasts the write to the group. The endpoint must then be the
+wildcard — `"*/6/16385"` — because a groupcast carries no endpoint: each node's own group table decides
+which of its endpoints the write reaches. The response is `null`, not a status list: a group write is
+sent with the response suppressed, so no node answers and there is no status to report. Nothing reports
+back, so a groupcast write that every node rejects — a read-only attribute, an attribute none of them
+has — is answered exactly like one they all applied. A wildcard cluster or attribute is refused for a
+group as it is for a node.
+
 ### Commands
 
 **device_command** - Send a command to a device
@@ -529,6 +541,17 @@ Command with parameters (e.g., move to level):
 Optional parameters:
 - `response_type`: Client SDK type hint (currently ignored by the server)
 - `timed_request_timeout_ms`: Timeout for timed interactions (required for some commands like door lock)
+
+A `node_id` in the Group Node ID range multicasts the command to the group. `endpoint_id` must then be
+absent or `null`, because a groupcast carries no endpoint: each node's own group table decides which of
+its endpoints the command reaches. The response is `null`: a group invoke is sent with the response
+suppressed, so no node answers. `timed_request_timeout_ms` and `interaction_timeout_ms` are both refused
+for a group — there is no response to wait for — and so is a command the specification requires to be
+invoked as a timed request, which a groupcast cannot carry.
+
+Whether a groupcast leaves this server also depends on a group key set existing for the group on the
+controller's fabric. This server has no command to provision one yet, so a groupcast to a group that was
+never keyed fails with error 0 and a message naming the group.
 
 ### Node Management
 
@@ -1611,11 +1634,14 @@ These commands are available only in the Matter.js server and not in the Python 
   other node-targeted ones — reports a missing or non-numeric one as error 0 (`UnknownError`)
 - **Node ID classes**: every node-targeted command refuses a `node_id` whose class can never name a
   node, with error 8 naming the class. Accepted are the Operational range (a commissioned node) and
-  the Temporary Local range (this server's imported test nodes); a Group Node ID, a CASE Authenticated
-  Tag, a PAKE key identifier, the Unspecified Node ID and the reserved ranges are refused (Matter Core
-  specification § 2.5.5, Table 4). The Python Matter Server hands all of them to the node lookup and
-  answers `NODE_NOT_EXISTS`, which says the node is not commissioned rather than that the argument
-  could never name one
+  the Temporary Local range (this server's imported test nodes); a CASE Authenticated Tag, a PAKE key
+  identifier, the Unspecified Node ID and the reserved ranges are refused (Matter Core specification
+  § 2.5.5, Table 4). A Group Node ID is accepted by `write_attribute` and `device_command`, which
+  multicast to the group, and refused by every other command, which needs one node's answer. Group id
+  `0` is refused everywhere: the specification calls it the Null or unspecified Group ID, so it names
+  no group (§ 2.5.4, Table 2). The
+  Python Matter Server hands all of them to the node lookup and answers `NODE_NOT_EXISTS`, which says
+  the node is not commissioned rather than that the argument could never name one
 - **Commands that read no arguments**: `server_info`, `get_all_credentials`, `get_thread_border_routers`,
   `discover`, `get_loglevel` and `initiate_ota_upload` still require `args` to be an object when the
   message states one, although they read nothing from it

@@ -1068,7 +1068,12 @@ export interface APICommands {
     device_command: {
         requestArgs: {
             node_id: number | bigint;
-            endpoint_id: number;
+            /**
+             * Required, except when `node_id` is a Group Node ID: a groupcast carries no endpoint,
+             * each node's own group table decides which of its endpoints the command reaches. The
+             * server refuses the wrong pairing with error 8.
+             */
+            endpoint_id?: number | null;
             cluster_id: number;
             command_name: string;
             payload: unknown;
@@ -1077,6 +1082,10 @@ export interface APICommands {
             timed_request_timeout_ms?: number | null;
             interaction_timeout_ms?: number | null;
         };
+        /**
+         * The command's response payload, or `null` when the command has none. A groupcast also
+         * answers `null`: a group invoke is sent with the response suppressed, so no node answers.
+         */
         response: unknown;
     };
     /**
@@ -1255,13 +1264,23 @@ export interface APICommands {
     write_attribute: {
         requestArgs: {
             node_id: number | bigint;
+            /**
+             * `endpoint/cluster/attribute`. The endpoint must be the wildcard when `node_id` is a
+             * Group Node ID: a groupcast carries no endpoint.
+             */
             attribute_path: string;
             value: unknown;
         };
+        /**
+         * The node's own write status, one entry for the path written.
+         *
+         * `null` for a groupcast, which no node answers: a group write is sent with the response
+         * suppressed, so there is no status to report and reporting `Success` would invent one.
+         */
         response: Array<{
             Path: { EndpointId: number; ClusterId: number; AttributeId: number };
             Status: number;
-        }>;
+        }> | null;
     };
     ping_node: {
         requestArgs: { node_id: number | bigint; attempts?: number };

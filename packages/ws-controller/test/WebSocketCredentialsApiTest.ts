@@ -51,6 +51,9 @@ interface StubCameraStreams {
 /** The command-handler behaviour a test needs to vary; everything else is fixed in the stub. */
 interface StubCommandHandlerOverrides {
     handleInvoke?(): Promise<unknown>;
+    handleWriteAttribute?(data: unknown): Promise<{ status: number }>;
+    handleGroupWriteAttribute?(data: unknown): Promise<void>;
+    handleGroupInvoke?(data: unknown): Promise<void>;
     removeTrackedWebRtcSession?(webRtcSessionId: number, nodeId: bigint, endpointId: number): Promise<void>;
     invokeWebRtcProviderCommand?(args: { commandName: string; fields: Record<string, unknown> }): Promise<unknown>;
     invokeWebRtcSignallingCommand?(args: { commandName: string; fields: Record<string, unknown> }): Promise<void>;
@@ -154,6 +157,21 @@ function makeStubController(
             commandHandler?.handleInvoke ??
             (async () => {
                 return {};
+            }),
+        handleWriteAttribute:
+            commandHandler?.handleWriteAttribute ??
+            (async () => {
+                return { status: 0 };
+            }),
+        handleGroupWriteAttribute:
+            commandHandler?.handleGroupWriteAttribute ??
+            (async () => {
+                throw new Error("no groupcast write stubbed");
+            }),
+        handleGroupInvoke:
+            commandHandler?.handleGroupInvoke ??
+            (async () => {
+                throw new Error("no groupcast invoke stubbed");
             }),
         removeTrackedWebRtcSession: commandHandler?.removeTrackedWebRtcSession ?? (async () => {}),
         invokeWebRtcProviderCommand:
@@ -1965,21 +1983,26 @@ describe("WebSocket generic command arguments", () => {
 });
 
 describe("node id classes on the generic node-targeted commands", () => {
-    // One per shape the routes take: a read, a write, an invoke, a lookup, and a command that brands
-    // the id inline rather than into a local. A class refused on one is refused on all of them.
-    const ROUTES: ReadonlyArray<readonly [string, Record<string, unknown>]> = [
+    // One per shape the node-only routes take: a read, a lookup, a second lookup, and a command that
+    // brands the id inline rather than into a local. A class refused on one is refused on all of them.
+    const NODE_ONLY_ROUTES: ReadonlyArray<readonly [string, Record<string, unknown>]> = [
         ["read_attribute", { attribute_path: "1/6/0" }],
-        ["write_attribute", { attribute_path: "1/6/0", value: 1 }],
-        ["device_command", { endpoint_id: 1, cluster_id: 6, command_name: "toggle", payload: {} }],
         ["ping_node", {}],
         ["get_node", {}],
         ["set_acl_entry", { entry: {} }],
     ];
 
-    // Every class that names no node, with the words the refusal has to carry. Checking the class
-    // name is what distinguishes the branch under test from the reserved fall-through.
-    const REFUSED: ReadonlyArray<readonly [string, bigint, string]> = [
-        ["a group node id", NodeId.fromGroupId(1), "a Group Node ID"],
+    /** The two routes matter.js can carry to a group; they refuse the rest of the classes. */
+    const GROUP_CAPABLE_ROUTES: ReadonlyArray<readonly [string, Record<string, unknown>]> = [
+        ["write_attribute", { attribute_path: "1/6/0", value: 1 }],
+        ["device_command", { endpoint_id: 1, cluster_id: 6, command_name: "toggle", payload: {} }],
+    ];
+
+    const GROUP_NODE_ID = NodeId.fromGroupId(1);
+
+    // Every class that names no node at all, with the words the refusal has to carry. Checking the
+    // class name is what distinguishes the branch under test from the reserved fall-through.
+    const UNUSABLE: ReadonlyArray<readonly [string, bigint, string]> = [
         ["the unspecified node id", NodeId.UNSPECIFIED_NODE_ID, "the Unspecified Node ID"],
         [
             "a CASE authenticated tag",
@@ -1990,19 +2013,25 @@ describe("node id classes on the generic node-targeted commands", () => {
         ["a reserved node id", NodeId(0xffff_ffff_0000_0000n), "a reserved Node ID"],
     ];
 
-    for (const [command, extraArgs] of ROUTES) {
-        for (const [label, nodeId, namedClass] of REFUSED) {
+    async function answerFor(
+        h: TestHarness,
+        command: string,
+        args: Record<string, unknown>,
+        tag: string,
+    ): Promise<WireFrame> {
+        return answerToFrameText(h, tag, toBigIntAwareJson({ message_id: tag, command, args }));
+    }
+
+    for (const [command, extraArgs] of [...NODE_ONLY_ROUTES, ...GROUP_CAPABLE_ROUTES]) {
+        for (const [label, nodeId, namedClass] of UNUSABLE) {
             it(`refuses ${command} addressed to ${label} with error 8 naming the class`, async () => {
                 const h = await createHarness();
                 try {
-                    const answer = await answerToFrameText(
+                    const answer = await answerFor(
                         h,
+                        command,
+                        { node_id: nodeId, ...extraArgs },
                         `${command}-${namedClass}`,
-                        toBigIntAwareJson({
-                            message_id: `${command}-${namedClass}`,
-                            command,
-                            args: { node_id: nodeId, ...extraArgs },
-                        }),
                     );
                     expect(answer.error_code).to.equal(8);
                     expect(answer.details).to.contain(command);
@@ -2013,4 +2042,298 @@ describe("node id classes on the generic node-targeted commands", () => {
             });
         }
     }
+
+    for (const [command, extraArgs] of [...NODE_ONLY_ROUTES, ...GROUP_CAPABLE_ROUTES]) {
+        it(`refuses ${command} addressed to the Null Group ID, which names no group`, async () => {
+            const h = await createHarness();
+            try {
+                const answer = await answerFor(
+                    h,
+                    command,
+                    { node_id: NodeId.fromGroupId(0), ...extraArgs },
+                    `${command}-null-group`,
+                );
+                expect(answer.error_code).to.equal(8);
+                expect(answer.details).to.contain("the Null Group ID");
+            } finally {
+                await h.close();
+            }
+        });
+    }
+
+    for (const [command, extraArgs] of NODE_ONLY_ROUTES) {
+        it(`refuses ${command} addressed to a group node id, which names no single node`, async () => {
+            const h = await createHarness();
+            try {
+                const answer = await answerFor(
+                    h,
+                    command,
+                    { node_id: GROUP_NODE_ID, ...extraArgs },
+                    `${command}-group`,
+                );
+                expect(answer.error_code).to.equal(8);
+                expect(answer.details).to.contain("a Group Node ID");
+                expect(answer.details).to.contain("must name one node");
+            } finally {
+                await h.close();
+            }
+        });
+    }
+});
+
+describe("groupcast on the generic commands", () => {
+    const GROUP_NODE_ID = NodeId.fromGroupId(1);
+
+    async function answerFor(
+        h: TestHarness,
+        command: string,
+        args: Record<string, unknown>,
+        tag: string,
+    ): Promise<WireFrame> {
+        return answerToFrameText(h, tag, toBigIntAwareJson({ message_id: tag, command, args }));
+    }
+
+    it("routes write_attribute for a group node id to the groupcast path and answers null", async () => {
+        const groupWrites = new Array<Record<string, unknown>>();
+        const unicastWrites = new Array<unknown>();
+        const h = await createHarness(undefined, {
+            handleGroupWriteAttribute: async data => {
+                groupWrites.push(data as Record<string, unknown>);
+            },
+            handleWriteAttribute: async data => {
+                unicastWrites.push(data);
+                return { status: 0 };
+            },
+        });
+        try {
+            const answer = await answerFor(
+                h,
+                "write_attribute",
+                { node_id: GROUP_NODE_ID, attribute_path: "*/6/16385", value: 5 },
+                "group-write",
+            );
+
+            expect(answer.error_code).to.equal(undefined);
+            // `null`, never `[{ Path, Status: 0 }]`: no node answered a groupcast, so there is no
+            // status, and reporting Success would invent one.
+            expect(answer.result).to.equal(null);
+            expect(unicastWrites.length).to.equal(0);
+            expect(groupWrites.length).to.equal(1);
+            expect(groupWrites[0].nodeId).to.equal(GROUP_NODE_ID);
+            expect(groupWrites[0].clusterId).to.equal(6);
+            expect(groupWrites[0].attributeId).to.equal(16385);
+            expect(groupWrites[0].value).to.equal(5);
+            expect("endpointId" in groupWrites[0]).to.equal(false);
+        } finally {
+            await h.close();
+        }
+    });
+
+    it("refuses write_attribute for a group node id that names an endpoint", async () => {
+        const h = await createHarness(undefined, {
+            handleGroupWriteAttribute: async () => {
+                throw new Error("groupcast must not be reached");
+            },
+        });
+        try {
+            const answer = await answerFor(
+                h,
+                "write_attribute",
+                { node_id: GROUP_NODE_ID, attribute_path: "1/6/16385", value: 5 },
+                "group-write-endpoint",
+            );
+            expect(answer.error_code).to.equal(8);
+            expect(answer.details).to.contain("wildcard endpoint");
+        } finally {
+            await h.close();
+        }
+    });
+
+    for (const [label, path] of [
+        ["attribute", "*/6/*"],
+        ["cluster", "*/*/16385"],
+    ] as const) {
+        it(`still refuses a wildcard ${label} for a group node id`, async () => {
+            const h = await createHarness(undefined, {
+                handleGroupWriteAttribute: async () => {
+                    throw new Error("groupcast must not be reached");
+                },
+            });
+            try {
+                const answer = await answerFor(
+                    h,
+                    "write_attribute",
+                    { node_id: GROUP_NODE_ID, attribute_path: path, value: 5 },
+                    `group-write-wildcard-${label}`,
+                );
+                expect(answer.error_code).to.equal(8);
+                expect(answer.details).to.contain("wildcards");
+            } finally {
+                await h.close();
+            }
+        });
+    }
+
+    it("takes an explicitly null endpoint_id for a group node id", async () => {
+        const groupInvokes = new Array<Record<string, unknown>>();
+        const h = await createHarness(undefined, {
+            handleGroupInvoke: async data => {
+                groupInvokes.push(data as Record<string, unknown>);
+            },
+        });
+        try {
+            const answer = await answerFor(
+                h,
+                "device_command",
+                { node_id: GROUP_NODE_ID, endpoint_id: null, cluster_id: 6, command_name: "toggle", payload: {} },
+                "group-invoke-null-endpoint",
+            );
+            expect(answer.error_code).to.equal(undefined);
+            expect(answer.result).to.equal(null);
+            expect(groupInvokes.length).to.equal(1);
+        } finally {
+            await h.close();
+        }
+    });
+
+    it("refuses an explicitly null endpoint_id for a node id that is not a group", async () => {
+        const h = await createHarness();
+        try {
+            const answer = await answerFor(
+                h,
+                "device_command",
+                { node_id: 1, endpoint_id: null, cluster_id: 6, command_name: "toggle", payload: {} },
+                "unicast-invoke-null-endpoint",
+            );
+            expect(answer.error_code).to.equal(8);
+            expect(answer.details).to.contain("requires endpoint_id");
+        } finally {
+            await h.close();
+        }
+    });
+
+    // Stated, not converted: a timeout of the wrong type converts to `undefined`, which is how a
+    // refusal keyed on the converted value would let it through.
+    for (const [name, stated] of [
+        ["timed_request_timeout_ms", 1000],
+        ["timed_request_timeout_ms", "1000"],
+        ["interaction_timeout_ms", 5000],
+    ] as const) {
+        it(`refuses ${name} stated as ${typeof stated} on a groupcast`, async () => {
+            const h = await createHarness(undefined, {
+                handleGroupInvoke: async () => {
+                    throw new Error("groupcast must not be reached");
+                },
+            });
+            try {
+                const answer = await answerFor(
+                    h,
+                    "device_command",
+                    {
+                        node_id: GROUP_NODE_ID,
+                        cluster_id: 6,
+                        command_name: "toggle",
+                        payload: {},
+                        [name]: stated,
+                    },
+                    `group-invoke-${name}-${typeof stated}`,
+                );
+                expect(answer.error_code).to.equal(8);
+                expect(answer.details).to.contain(name);
+            } finally {
+                await h.close();
+            }
+        });
+    }
+
+    it("answers a unicast write_attribute with the node's own status", async () => {
+        const h = await createHarness(undefined, {
+            handleWriteAttribute: async () => {
+                return { status: 0x86 };
+            },
+        });
+        try {
+            const answer = await answerFor(
+                h,
+                "write_attribute",
+                { node_id: 1, attribute_path: "1/6/16385", value: 5 },
+                "unicast-write",
+            );
+            expect(answer.error_code).to.equal(undefined);
+            expect(answer.result).to.deep.equal([
+                { Path: { EndpointId: 1, ClusterId: 6, AttributeId: 16385 }, Status: 0x86 },
+            ]);
+        } finally {
+            await h.close();
+        }
+    });
+
+    it("routes device_command for a group node id to the groupcast path and answers null", async () => {
+        const groupInvokes = new Array<Record<string, unknown>>();
+        const unicastInvokes = new Array<unknown>();
+        const h = await createHarness(undefined, {
+            handleGroupInvoke: async data => {
+                groupInvokes.push(data as Record<string, unknown>);
+            },
+            handleInvoke: async () => {
+                unicastInvokes.push(true);
+                return {};
+            },
+        });
+        try {
+            const answer = await answerFor(
+                h,
+                "device_command",
+                { node_id: GROUP_NODE_ID, cluster_id: 6, command_name: "toggle", payload: {} },
+                "group-invoke",
+            );
+
+            expect(answer.error_code).to.equal(undefined);
+            expect(answer.result).to.equal(null);
+            expect(unicastInvokes.length).to.equal(0);
+            expect(groupInvokes.length).to.equal(1);
+            expect(groupInvokes[0].nodeId).to.equal(GROUP_NODE_ID);
+            expect(groupInvokes[0].clusterId).to.equal(6);
+            expect(groupInvokes[0].commandName).to.equal("toggle");
+            expect("endpointId" in groupInvokes[0]).to.equal(false);
+        } finally {
+            await h.close();
+        }
+    });
+
+    it("refuses device_command for a group node id that names an endpoint", async () => {
+        const h = await createHarness(undefined, {
+            handleGroupInvoke: async () => {
+                throw new Error("groupcast must not be reached");
+            },
+        });
+        try {
+            const answer = await answerFor(
+                h,
+                "device_command",
+                { node_id: GROUP_NODE_ID, endpoint_id: 1, cluster_id: 6, command_name: "toggle", payload: {} },
+                "group-invoke-endpoint",
+            );
+            expect(answer.error_code).to.equal(8);
+            expect(answer.details).to.contain("takes no endpoint_id");
+        } finally {
+            await h.close();
+        }
+    });
+
+    it("refuses device_command without an endpoint_id for a node id that is not a group", async () => {
+        const h = await createHarness();
+        try {
+            const answer = await answerFor(
+                h,
+                "device_command",
+                { node_id: 1, cluster_id: 6, command_name: "toggle", payload: {} },
+                "unicast-invoke-no-endpoint",
+            );
+            expect(answer.error_code).to.equal(8);
+            expect(answer.details).to.contain("requires endpoint_id");
+        } finally {
+            await h.close();
+        }
+    });
 });

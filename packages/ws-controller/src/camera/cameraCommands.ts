@@ -19,7 +19,7 @@ import { Bytes, EndpointNumber, NodeId, UINT64_MAX } from "@matter/main";
 import type { WebRtcTransportDefinitions } from "@matter/main/clusters";
 import { StreamUsage } from "@matter/main/types";
 import { ServerError } from "../types/WebSocketMessageTypes.js";
-import { unusableNodeIdClass } from "../util/nodeIdClasses.js";
+import { nodeIdTarget } from "../util/nodeIdClasses.js";
 import { CAMERA_FIELD_RANGES, ICE_SERVER_LIMITS } from "./cameraFieldRanges.js";
 import type { FieldRange } from "./cameraFieldRanges.js";
 import type { CameraCapabilities, SnapshotResult, StartStreamResult } from "./CameraStreamManager.js";
@@ -193,9 +193,14 @@ export function parseTargetIds(fields: Record<string, unknown>, subject: string)
         throw ServerError.invalidArguments(`${subject} requires endpoint_id to be an integer between 0 and 0xFFFE`);
     }
     const target = NodeId(nodeId);
-    const unusable = unusableNodeIdClass(target);
-    if (unusable !== undefined) {
-        throw ServerError.invalidArguments(`${subject} cannot address ${unusable}: node_id must name one node`);
+    // Every camera command reports one camera's own answer — `camera_start_stream` the
+    // `WebRTCSessionID` it needs for the rest of the session — so a Group Node ID is refused with the
+    // classes that name no node at all: a group invoke is sent with the response suppressed.
+    const classified = nodeIdTarget(target);
+    if (classified.kind !== "node") {
+        throw ServerError.invalidArguments(
+            `${subject} cannot address ${classified.className}: node_id must name one node`,
+        );
     }
     return { nodeId: target, endpointId: EndpointNumber(endpointId) };
 }

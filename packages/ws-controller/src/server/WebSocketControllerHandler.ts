@@ -69,7 +69,7 @@ import {
 } from "../types/WebSocketMessageTypes.js";
 import { formatNodeId } from "../util/formatNodeId.js";
 import { MATTER_VERSION } from "../util/matterVersion.js";
-import { unusableNodeIdClass } from "../util/nodeIdClasses.js";
+import { nodeIdTarget } from "../util/nodeIdClasses.js";
 import { ConfigStorage } from "./ConfigStorage.js";
 import { nextConnectionLogTag, nextConnectionOwnerId } from "./connectionIdentity.js";
 import {
@@ -213,6 +213,8 @@ function extractWebRtcSessionId(payload: unknown): number | undefined {
     return undefined;
 }
 
+const WRITE_WILDCARD_REFUSAL = "write_attribute does not support wildcards in attribute path";
+
 /** WebSocket Server compatible with Schema version 12, minimum supported 11 */
 export class WebSocketControllerHandler implements WebServerHandler {
     #controller: MatterController;
@@ -281,18 +283,40 @@ export class WebSocketControllerHandler implements WebServerHandler {
      * The node a command names, branded once its Node ID class is known to name a node a command can
      * reach.
      *
-     * Every route that targets a node brands its `node_id` here, so one rule decides which ids reach
-     * matter.js. A class that names an access-control subject or a set of nodes would otherwise be
-     * branded and answered as `NODE_NOT_EXISTS`, which tells a client the node is not commissioned
-     * rather than that the argument can never name a node.
+     * For the routes that need one node's answer, which is every route but `write_attribute` and
+     * `device_command` — those take {@link #targetNodeIdOrGroup} — and the camera commands, which
+     * brand theirs in `parseTargetIds`. Without this a class that names an access-control subject or
+     * a set of nodes would be branded and answered as `NODE_NOT_EXISTS`, which tells a client the
+     * node is not commissioned rather than that the argument can never name a node.
      */
     #targetNodeId(nodeId: number | bigint, command: string): NodeId {
         const target = NodeId(nodeId);
-        const unusable = unusableNodeIdClass(target);
-        if (unusable !== undefined) {
-            throw ServerError.invalidArguments(`${command} cannot address ${unusable}: node_id must name one node`);
+        const classified = nodeIdTarget(target);
+        if (classified.kind !== "node") {
+            throw ServerError.invalidArguments(
+                `${command} cannot address ${classified.className}: node_id must name one node`,
+            );
         }
         return target;
+    }
+
+    /**
+     * The node or group a command names, for the two commands that can multicast.
+     *
+     * `write_attribute` and `device_command` are the only routes matter.js can carry to a group: a
+     * group write and a group invoke are both sent with the response suppressed, and everything else
+     * here needs an answer. `group` is what tells the route to take the multicast path, which takes no
+     * endpoint and reports no device status.
+     */
+    #targetNodeIdOrGroup(nodeId: number | bigint, command: string): { nodeId: NodeId; group: boolean } {
+        const target = NodeId(nodeId);
+        const classified = nodeIdTarget(target);
+        if (classified.kind === "unusable") {
+            throw ServerError.invalidArguments(
+                `${command} cannot address ${classified.className}: node_id must name one node or one group`,
+            );
+        }
+        return { nodeId: target, group: classified.kind === "group" };
     }
 
     /**
@@ -1366,12 +1390,24 @@ export class WebSocketControllerHandler implements WebServerHandler {
 
     async #handleWriteAttribute(args: ArgsOf<"write_attribute">): Promise<ResponseOf<"write_attribute">> {
         const { node_id, attribute_path, value } = args;
-        const nodeId = this.#targetNodeId(node_id, "write_attribute");
+        const { nodeId, group } = this.#targetNodeIdOrGroup(node_id, "write_attribute");
         const { endpointId, clusterId, attributeId } = splitAttributePath(attribute_path);
 
-        // Write operations don't support wildcards
+        if (group) {
+            if (clusterId === undefined || attributeId === undefined) {
+                throw ServerError.invalidArguments(WRITE_WILDCARD_REFUSAL);
+            }
+            if (endpointId !== undefined) {
+                throw ServerError.invalidArguments(
+                    "write_attribute to a Group Node ID takes a wildcard endpoint in attribute_path: a groupcast carries no endpoint, each node's own group table decides which of its endpoints the write reaches",
+                );
+            }
+            await this.#commandHandler.handleGroupWriteAttribute({ nodeId, clusterId, attributeId, value });
+            return null;
+        }
+
         if (endpointId === undefined || clusterId === undefined || attributeId === undefined) {
-            throw ServerError.invalidArguments("write_attribute does not support wildcards in attribute path");
+            throw ServerError.invalidArguments(WRITE_WILDCARD_REFUSAL);
         }
 
         const { status } = await this.#handlerFor(nodeId).handleWriteAttribute({
@@ -1435,9 +1471,41 @@ export class WebSocketControllerHandler implements WebServerHandler {
             command_name: commandName,
             payload,
             timed_request_timeout_ms: timedInteractionTimeoutMs,
+            interaction_timeout_ms: interactionTimeoutMs,
         } = args;
 
-        const nodeId = this.#targetNodeId(node_id, "device_command");
+        const { nodeId, group } = this.#targetNodeIdOrGroup(node_id, "device_command");
+        if (group) {
+            if (endpointId !== undefined && endpointId !== null) {
+                throw ServerError.invalidArguments(
+                    "device_command to a Group Node ID takes no endpoint_id: a groupcast carries no endpoint, each node's own group table decides which of its endpoints the command reaches",
+                );
+            }
+            // The stated value, not the converted one: a timeout of the wrong type converts to
+            // `undefined`, and dropping a timeout the client asked for is what the refusal exists to
+            // prevent.
+            for (const [name, stated] of [
+                ["timed_request_timeout_ms", timedInteractionTimeoutMs],
+                ["interaction_timeout_ms", interactionTimeoutMs],
+            ] as const) {
+                if (stated !== undefined && stated !== null) {
+                    throw ServerError.invalidArguments(
+                        `${name} cannot accompany a groupcast: no node answers a group invoke, so there is no response to wait for`,
+                    );
+                }
+            }
+            await this.#commandHandler.handleGroupInvoke({
+                nodeId,
+                clusterId: ClusterId(clusterId),
+                commandName,
+                data: payload,
+            });
+            return null;
+        }
+        if (endpointId === undefined || endpointId === null) {
+            throw ServerError.invalidArguments("device_command requires endpoint_id unless node_id is a Group Node ID");
+        }
+
         const camelizedCommand = camelize(commandName);
         const invoke = (): Promise<unknown> =>
             this.#handlerFor(nodeId).handleInvoke({
