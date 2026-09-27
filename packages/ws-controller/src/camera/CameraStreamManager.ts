@@ -2147,22 +2147,70 @@ export class CameraStreamManager {
         // and `forget` is where that is remembered so `track` refuses the session it is about to hand
         // back as live.
         this.#sessions.forget(nodeId, endpointId, webRtcSessionId);
-        // Announced with no owner, which every route reads as "tell everyone": this server ended a
-        // session it holds no record of, so it cannot name the connection driving it, and the client
-        // that can least afford to be left guessing is the one that opened it on the raw route.
-        this.#announce(this.events.sessionEnded, { nodeId, endpointId, webRtcSessionId, requestedBy });
+        this.#announceUntrackedEnd(nodeId, endpointId, webRtcSessionId, requestedBy);
         return true;
     }
 
     /**
-     * Stop tracking a session the device has already ended, without invoking `EndSession` for it.
+     * Report a session this server ended but holds no record of.
      *
-     * The peer's `End` notification and a client's own `EndSession` on the raw path both leave the
-     * device with no session. Keeping the entry would make `camera_stop_stream` report `ended: true`
-     * for a session that ended minutes earlier, and shutdown send `EndSession` for a dead id.
+     * Announced with no owner, which every route reads as "tell everyone": nothing names the
+     * connection driving such a session, and the client that can least afford to be left guessing is
+     * the one that opened it on the raw route. Only a camera that answered that it held the session
+     * reaches here: announcing its `NotFound` would report a session that never existed.
+     */
+    #announceUntrackedEnd(
+        nodeId: NodeId,
+        endpointId: EndpointNumber,
+        webRtcSessionId: number,
+        requestedBy: string | undefined,
+    ): void {
+        this.#announce(this.events.sessionEnded, { nodeId, endpointId, webRtcSessionId, requestedBy });
+    }
+
+    /**
+     * Stop tracking a session the peer ended, without invoking `EndSession` for it.
+     *
+     * The peer's `End` notification leaves the device with no session. Keeping the entry would make
+     * `camera_stop_stream` report `ended: true` for a session that ended minutes earlier, and shutdown
+     * send `EndSession` for a dead id.
+     *
+     * Nothing is announced: round 18 routes the peer's `End` to the owner as a `webrtc_callback` event,
+     * and a second report of one fact has no order against the first. A client's own `EndSession` goes
+     * through {@link endedByClient} instead, which does announce.
      */
     forgetSession(nodeId: NodeId, endpointId: EndpointNumber, webRtcSessionId: number): boolean {
         return this.#sessions.forget(nodeId, endpointId, webRtcSessionId);
+    }
+
+    /**
+     * Drop the record of a session a client's own `EndSession` has dealt with, and report it.
+     *
+     * The generic `device_command` route sends that command itself, so this is where its session ends
+     * as far as this server is concerned — the counterpart of what {@link stopStream} does on the
+     * managed route, and announced by the same two rules. A session an entry names is announced to its
+     * owner, naming `requestedBy` so the asking connection is not told what its own command response
+     * already says. A session no entry names is announced with no owner, which every route reads as
+     * "tell everyone", because the client that opened such a session on the raw route is the one that
+     * cannot otherwise learn it is gone.
+     *
+     * `deviceHeldSession` is whether the camera answered that it had the session. Its `NotFound` still
+     * drops an entry — the entry named nothing the camera will act on — and is still announced to that
+     * entry's owner, whose session is gone either way. What it must not do is announce an id **no**
+     * entry named: that would report a session this server never had and the camera denies.
+     */
+    endedByClient(
+        nodeId: NodeId,
+        endpointId: EndpointNumber,
+        webRtcSessionId: number,
+        requestedBy: string,
+        deviceHeldSession: boolean,
+    ): boolean {
+        const session = this.#sessions.get(nodeId, endpointId, webRtcSessionId);
+        if (session !== undefined) return this.#sessions.forgetEstablished(session, requestedBy);
+        this.#sessions.forget(nodeId, endpointId, webRtcSessionId);
+        if (deviceHeldSession) this.#announceUntrackedEnd(nodeId, endpointId, webRtcSessionId, requestedBy);
+        return false;
     }
 
     /**

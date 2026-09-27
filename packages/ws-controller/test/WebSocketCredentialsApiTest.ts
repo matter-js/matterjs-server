@@ -35,7 +35,13 @@ interface StubCameraStreams {
         streamEvicted: Observable<[CameraStreamEvicted]>;
     };
     snapshot?(args: { watermarkEnabled?: boolean; osdEnabled?: boolean }): Promise<unknown>;
-    forgetSession?(nodeId: bigint, endpointId: number, webRtcSessionId: number): boolean;
+    endedByClient?(
+        nodeId: bigint,
+        endpointId: number,
+        webRtcSessionId: number,
+        requestedBy: string,
+        deviceHeldSession: boolean,
+    ): boolean;
     /** Which connections may receive a session's signalling; absent means the manager holds no record. */
     signallingOwners?(nodeId: bigint, endpointId: number, webRtcSessionId: number): ReadonlySet<string> | undefined;
 }
@@ -1039,7 +1045,10 @@ describe("WebSocket camera session tracking on the raw path", () => {
         const harness = createHarness(
             {
                 async releaseConnection() {},
-                forgetSession(nodeId, endpointId, webRtcSessionId) {
+                // `requestedBy` and `deviceHeldSession` are deliberately not read here: these tests
+                // are about which records are dropped and in what order. What the route does with
+                // those arguments is covered by `harnessWithRawEndAnnouncing`.
+                endedByClient(nodeId, endpointId, webRtcSessionId) {
                     drops.push("registry");
                     targets.push({ nodeId, endpointId, webRtcSessionId });
                     return true;
@@ -1378,6 +1387,173 @@ describe("WebSocket camera lifecycle events", () => {
                     endpoint_id: 1,
                     webrtc_session_id: session.webrtc_session_id,
                 });
+                await new Promise(resolve => setTimeout(resolve, 100));
+                expect(seenByOwner).to.deep.equal([]);
+            } finally {
+                owner.close();
+            }
+        } finally {
+            await h.close();
+        }
+    });
+
+    /**
+     * A harness whose raw `device_command` EndSession announces what the real manager announces.
+     *
+     * `invoke` stands in for the camera's answer to that command, so a test can make it refuse.
+     */
+    async function harnessWithRawEndAnnouncing(invoke?: () => Promise<unknown>): Promise<TestHarness> {
+        const sessionEnded = new Observable<[CameraSessionEnded]>();
+        const streamEvicted = new Observable<[CameraStreamEvicted]>();
+        const ownerBySession = new Map<number, string>();
+        let nextSessionId = 1;
+        return createHarness(
+            {
+                async releaseConnection() {},
+                events: { sessionEnded, streamEvicted },
+                async startStream(args: { connectionId: string }) {
+                    const webRtcSessionId = nextSessionId++;
+                    ownerBySession.set(webRtcSessionId, args.connectionId);
+                    return { webRtcSessionId, mode: "solicit_offer" };
+                },
+                // What the manager does for a client's own EndSession: an entry it holds is announced to
+                // that session's owner, and an id no entry names is announced with no owner unless the
+                // camera denied the session.
+                endedByClient(nodeId, endpointId, webRtcSessionId, requestedBy, deviceHeldSession) {
+                    const ownerId = ownerBySession.get(webRtcSessionId);
+                    if (ownerId === undefined && !deviceHeldSession) return false;
+                    ownerBySession.delete(webRtcSessionId);
+                    sessionEnded.emit({
+                        nodeId: NodeId(nodeId),
+                        endpointId: EndpointNumber(endpointId),
+                        webRtcSessionId,
+                        ownerId,
+                        requestedBy,
+                    });
+                    return ownerId !== undefined;
+                },
+            },
+            invoke === undefined ? undefined : { handleInvoke: invoke },
+        );
+    }
+
+    async function endSessionThroughDeviceCommand(
+        h: TestHarness,
+        ws: WebSocket,
+        webRtcSessionId: number,
+    ): Promise<void> {
+        await h.sendOn(ws, "device_command", {
+            node_id: 1,
+            endpoint_id: 1,
+            cluster_id: WebRtcTransportProvider.id,
+            command_name: "EndSession",
+            payload: { webRtcSessionId },
+        });
+    }
+
+    it("tells the connection that started a session that another connection ended it with a raw EndSession", async () => {
+        // device_command is the only route that can send EndSession, and it reaches the camera
+        // manager's records without going through camera_stop_stream.
+        const h = await harnessWithRawEndAnnouncing();
+        try {
+            const owner = await h.openClient();
+            const other = await h.openClient();
+            try {
+                const seenByOwner = collectCameraEvents(owner);
+                const seenByOther = collectCameraEvents(other);
+                const session = await h.sendOn<{ webrtc_session_id: number }>(owner, "camera_start_stream", STARTED);
+                await h.sendOn(other, "camera_start_stream", STARTED);
+
+                await endSessionThroughDeviceCommand(h, other, session.webrtc_session_id);
+                await new Promise(resolve => setTimeout(resolve, 100));
+
+                expect(seenByOwner).to.deep.equal([
+                    {
+                        event: "camera_session_ended",
+                        data: { node_id: 1, endpoint_id: 1, webrtc_session_id: session.webrtc_session_id },
+                    },
+                ]);
+                expect(seenByOther).to.deep.equal([]);
+            } finally {
+                owner.close();
+                other.close();
+            }
+        } finally {
+            await h.close();
+        }
+    });
+
+    it("tells a camera-aware connection about an untracked session a raw EndSession ended", async () => {
+        // A session opened on the raw provider route has no owner record, so it is announced to
+        // everyone but the connection that ended it — the client that opened it is the one that
+        // cannot learn from anywhere else that its session is gone.
+        const h = await harnessWithRawEndAnnouncing();
+        try {
+            const rawRouteClient = await h.openClient();
+            const ender = await h.openClient();
+            try {
+                const seenByRawRouteClient = collectCameraEvents(rawRouteClient);
+                const seenByEnder = collectCameraEvents(ender);
+                await h
+                    .sendOn(rawRouteClient, "send_webrtc_provider_command", {
+                        node_id: 1,
+                        endpoint_id: 1,
+                        command_name: "ProvideOffer",
+                        payload: { webRtcSessionId: null, sdp: "v=0" },
+                    })
+                    .catch(() => undefined);
+                await h.sendOn(ender, "camera_get_capabilities", { node_id: 1, endpoint_id: 1 }).catch(() => undefined);
+
+                await endSessionThroughDeviceCommand(h, ender, 99);
+                await new Promise(resolve => setTimeout(resolve, 100));
+
+                expect(seenByRawRouteClient).to.deep.equal([
+                    { event: "camera_session_ended", data: { node_id: 1, endpoint_id: 1, webrtc_session_id: 99 } },
+                ]);
+                expect(seenByEnder).to.deep.equal([]);
+            } finally {
+                rawRouteClient.close();
+                ender.close();
+            }
+        } finally {
+            await h.close();
+        }
+    });
+
+    it("tells nobody about an untracked id the camera denies, which named no session at all", async () => {
+        // The record drop runs on the camera's NotFound too, so the outcome has to reach the manager:
+        // announcing here would report a session this server never had and the camera says it has not.
+        const h = await harnessWithRawEndAnnouncing(async () => {
+            throw new StatusResponseError("no such session", Status.NotFound);
+        });
+        try {
+            const watcher = await h.openClient();
+            const ender = await h.openClient();
+            try {
+                const seenByWatcher = collectCameraEvents(watcher);
+                await h
+                    .sendOn(watcher, "camera_get_capabilities", { node_id: 1, endpoint_id: 1 })
+                    .catch(() => undefined);
+                await endSessionThroughDeviceCommand(h, ender, 99).catch(() => undefined);
+                await new Promise(resolve => setTimeout(resolve, 100));
+                expect(seenByWatcher).to.deep.equal([]);
+            } finally {
+                watcher.close();
+                ender.close();
+            }
+        } finally {
+            await h.close();
+        }
+    });
+
+    it("tells no connection about a session it ended itself with a raw EndSession", async () => {
+        const h = await harnessWithRawEndAnnouncing();
+        try {
+            const owner = await h.openClient();
+            try {
+                const seenByOwner = collectCameraEvents(owner);
+                const session = await h.sendOn<{ webrtc_session_id: number }>(owner, "camera_start_stream", STARTED);
+                await endSessionThroughDeviceCommand(h, owner, session.webrtc_session_id);
                 await new Promise(resolve => setTimeout(resolve, 100));
                 expect(seenByOwner).to.deep.equal([]);
             } finally {

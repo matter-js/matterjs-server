@@ -3550,6 +3550,69 @@ describe("CameraStreamManager", () => {
             expect(endedSessions(invokes)).to.have.length(afterStop);
         });
 
+        async function withTrackedSession(): Promise<CameraStreamManager> {
+            const { manager } = managerWith(STATE, async invoke => {
+                if (invoke.command === "videoStreamAllocate") return { videoStreamId: 9 };
+                if (invoke.command === "provideOffer") return { webRtcSessionId: 42 };
+                return undefined;
+            });
+            await start(manager, "conn-1");
+            return manager;
+        }
+
+        it("announces a client's own EndSession to the session's owner, naming the connection that asked", async () => {
+            const manager = await withTrackedSession();
+            const announced = endingsOf(manager);
+
+            expect(manager.endedByClient(NODE, ENDPOINT, 42, "conn-2", true)).to.equal(true);
+            expect(announced).to.deep.equal([
+                {
+                    nodeId: NODE,
+                    endpointId: ENDPOINT,
+                    webRtcSessionId: 42,
+                    ownerId: "conn-1",
+                    requestedBy: "conn-2",
+                },
+            ]);
+        });
+
+        it("announces to the owner even when the camera denies the session, because it is gone either way", async () => {
+            const manager = await withTrackedSession();
+            const announced = endingsOf(manager);
+
+            expect(manager.endedByClient(NODE, ENDPOINT, 42, "conn-2", false)).to.equal(true);
+            expect(announced).to.have.length(1);
+            expect(announced[0]?.ownerId).to.equal("conn-1");
+        });
+
+        it("announces nothing for the peer's own End, which the owner already has on webrtc_callback", async () => {
+            const manager = await withTrackedSession();
+            const announced = endingsOf(manager);
+
+            expect(manager.forgetSession(NODE, ENDPOINT, 42)).to.equal(true);
+            expect(announced).to.deep.equal([]);
+        });
+
+        it("announces a client's EndSession for an untracked session with no owner, so everyone is told", async () => {
+            // Nothing names the connection driving such a session, and the client that opened it on
+            // the raw route cannot learn it is gone any other way.
+            const { manager } = managerWith(STATE);
+            const announced = endingsOf(manager);
+
+            expect(manager.endedByClient(NODE, ENDPOINT, 42, "conn-2", true)).to.equal(false);
+            expect(announced).to.deep.equal([
+                { nodeId: NODE, endpointId: ENDPOINT, webRtcSessionId: 42, requestedBy: "conn-2" },
+            ]);
+        });
+
+        it("announces nothing for an untracked id the camera denies, which named no session at all", async () => {
+            const { manager } = managerWith(STATE);
+            const announced = endingsOf(manager);
+
+            expect(manager.endedByClient(NODE, ENDPOINT, 42, "conn-2", false)).to.equal(false);
+            expect(announced).to.deep.equal([]);
+        });
+
         it("refuses to track a session the peer ended while the registration was still in flight", async () => {
             // The window this test exists for: the provider has answered the offer and the id has
             // reached the registration, the local requestor is being given the session and can route

@@ -62,14 +62,21 @@ export function deviceForgotSession(error: unknown): boolean {
  * deviceForgotSession}; any other failure keeps them, so a later stop, disconnect or shutdown still
  * reaches the session. `dropRecords` must not reject: its rejection would replace the device's own
  * error, which is what the caller reports.
+ *
+ * `deviceHeldSession` tells the two record-dropping cases apart, for a caller that reports the end to
+ * anyone: on `false` the camera stated it has no such session, so there was nothing of its own for this
+ * call to have ended.
  */
-export async function invokeEndSession<T>(invoke: () => Promise<T>, dropRecords: () => Promise<void>): Promise<T> {
+export async function invokeEndSession<T>(
+    invoke: () => Promise<T>,
+    dropRecords: (deviceHeldSession: boolean) => Promise<void>,
+): Promise<T> {
     try {
         const response = await invoke();
-        await dropRecords();
+        await dropRecords(true);
         return response;
     } catch (error) {
-        if (deviceForgotSession(error)) await dropRecords();
+        if (deviceForgotSession(error)) await dropRecords(false);
         throw error;
     }
 }

@@ -159,7 +159,8 @@ export class CameraSessionRegistry {
      *
      * Nothing is announced here, unlike {@link forgetEstablished}: the two callers are the peer's own
      * `End`, which the owner already receives as a `webrtc_callback` event, and a client's own
-     * `EndSession` on the generic `device_command` route, which that client sent itself.
+     * `EndSession` on the generic `device_command` route for a session no entry names, which
+     * `CameraStreamManager.endedByClient` reports itself.
      *
      * An id no entry names is still this server's own when a registration in flight has been answered
      * with it, which {@link establishing} is what records — a session ends before it is tracked

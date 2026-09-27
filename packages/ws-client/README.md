@@ -449,14 +449,16 @@ const stopWatchingStreams = client.addCameraStreamEvictedListener(taken => {
 });
 ```
 
-`camera_session_ended` is how a client learns that a session it opened was ended by another connection's
-`camera_stop_stream`, which the camera permits because its own `PeerNodeID` check is what decides who may
-end a session. It reaches the connection that opened the session, and every camera-aware connection for a
-session the server holds no record of, such as one opened on the raw `send_webrtc_provider_command`
-route. It never reaches the connection whose stop ended the session — that command's response is the
-answer — and it carries no reason, because the other endings either reach the client already (the peer's
-own `End`, as a `webrtc_callback` `end` event) or cannot reach it at all (the owning connection closing,
-and shutdown, which the `server_shutdown` event reports).
+`camera_session_ended` is how a client learns that a session it opened was ended by another connection —
+with `camera_stop_stream`, or with `EndSession` through the generic `device_command` route — which the
+camera permits because its own `PeerNodeID` check is what decides who may end a session. It reaches the
+connection that opened the session, and every camera-aware connection for a session the server holds no
+record of, such as one opened on the raw `send_webrtc_provider_command` route. It never reaches the
+connection whose own command ended the session — that command's response is the answer. An `EndSession` the
+camera answers `NOT_FOUND` for announces nothing when no record named the session, since there was none on
+either side to report. The event carries no reason, because the other endings either reach the client already (the peer's own `End`, as a
+`webrtc_callback` `end` event) or cannot reach it at all (the owning connection closing, and shutdown,
+which the `server_shutdown` event reports).
 
 `camera_stream_evicted` names a stream the server deallocated to make room for another request on the
 same camera; `kind` is `video` or `snapshot`. The id is gone for good: a replacement the server allocates

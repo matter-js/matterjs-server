@@ -1421,16 +1421,17 @@ registration.
 }
 ```
 
-Any connection may end any of this server's sessions with `camera_stop_stream` — the camera's own
-`PeerNodeID` and fabric check is what decides that, not this server's records — so a session can end
-without the client that opened it doing anything. This is how that client learns, instead of from its
-next command failing.
+Any connection may end any of this server's sessions — with `camera_stop_stream`, or with `EndSession`
+through the generic `device_command` route — because the camera's own `PeerNodeID` and fabric check is
+what decides that, not this server's records. So a session can end without the client that opened it
+doing anything. This is how that client learns, instead of from its next command failing.
 
 **Delivered only to connections that have issued a camera command** — any `camera_*` command, or
 `send_webrtc_provider_command` — so a pre-schema-14 client never receives an event type it does not
 know. Among those it is **routed to the connection that opened the session**, and never to the
-connection whose `camera_stop_stream` ended it: that one has the answer to its own command, and a
-second report of the same fact would leave a client two events with no order between them. A session
+connection whose `camera_stop_stream` or `device_command` `EndSession` ended it: that one has the answer
+to its own command, and a second report of the same fact would leave a client two events with no order
+between them. A session
 this server holds no record of — one opened on the raw `send_webrtc_provider_command` route — is
 announced to every other such connection instead, for the reason `webrtc_callback` broadcasts such a
 session's signalling: nothing names an owner, so withholding it tells nobody.
@@ -1440,12 +1441,15 @@ Four endings send nothing, each because the client already knows or cannot be to
 | Ending | Why no event |
 |---|---|
 | The peer sent `End` | The owner receives it as a `webrtc_callback` `end` event |
-| The client's own `camera_stop_stream` | That command's response is the answer |
+| The client's own `camera_stop_stream`, or its own `EndSession` on the `device_command` route | That command's response is the answer |
 | The owning connection closed | The only connection this concerns is the one that went away |
 | The server is shutting down | Every socket is closed before the sessions are ended; the `server_shutdown` event is what a client sees |
 
-A session whose `EndSession` failed is still open and is not announced; the next stop, disconnect or
-shutdown reaches it again.
+A session whose `EndSession` failed with anything but the camera's `NOT_FOUND` is still open and is not
+announced; the next stop, disconnect or shutdown reaches it again. `NOT_FOUND` is the camera stating it
+holds no such session, so the server's records go and the owner is told even though the command failed —
+for an id no record named, nothing is announced, because there was no session on either side to report.
+`send_webrtc_provider_command` cannot send `EndSession` at all.
 
 **camera_stream_evicted** *(schema 14+)* - The server deallocated a stream to make room for a request
 

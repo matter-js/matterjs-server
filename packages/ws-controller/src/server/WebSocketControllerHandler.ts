@@ -892,7 +892,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
                     result = await this.#handleGetVendorNames(args);
                     break;
                 case "device_command":
-                    result = await this.#handleDeviceCommand(args);
+                    result = await this.#handleDeviceCommand(args, ownerId);
                     break;
                 case "send_webrtc_provider_command":
                     result = await this.#handleSendWebRtcProviderCommand(args);
@@ -1400,7 +1400,10 @@ export class WebSocketControllerHandler implements WebServerHandler {
         return result;
     }
 
-    async #handleDeviceCommand(args: ArgsOf<"device_command">): Promise<ResponseOf<"device_command">> {
+    async #handleDeviceCommand(
+        args: ArgsOf<"device_command">,
+        requestedBy: string,
+    ): Promise<ResponseOf<"device_command">> {
         const {
             node_id: nodeId,
             endpoint_id: endpointId,
@@ -1435,8 +1438,14 @@ export class WebSocketControllerHandler implements WebServerHandler {
         const result =
             sessionId === undefined
                 ? await invoke()
-                : await invokeEndSession(invoke, () =>
-                      this.#dropWebRtcSessionRecords(NodeId(nodeId), EndpointNumber(endpointId), sessionId),
+                : await invokeEndSession(invoke, deviceHeldSession =>
+                      this.#dropWebRtcSessionRecords(
+                          NodeId(nodeId),
+                          EndpointNumber(endpointId),
+                          sessionId,
+                          requestedBy,
+                          deviceHeldSession,
+                      ),
                   );
 
         // Test nodes return null
@@ -1456,12 +1465,29 @@ export class WebSocketControllerHandler implements WebServerHandler {
      *
      * Both must go: either one left behind outlives the session and makes a later pass send
      * `EndSession` for a dead id. Neither can stop the other, and neither reaches the client —
-     * `forgetSession` is a map delete and `dropWebRtcSessionTracking` never rejects — which is the
-     * contract {@link invokeEndSession} needs, since a rejection here would replace the device's own
-     * answer with a bookkeeping error and invite a retry it can only answer `NotFound`.
+     * `endedByClient` announces through the camera manager's one guarded emit and
+     * `dropWebRtcSessionTracking` never rejects — which is the contract {@link invokeEndSession} needs,
+     * since a rejection here would replace the device's own answer with a bookkeeping error and invite
+     * a retry it can only answer `NotFound`.
+     *
+     * `requestedBy` is what lets the camera manager report the end without telling the connection that
+     * asked. Without it this route dropped the record silently, and a connection that opened the session
+     * with `camera_start_stream` kept signalling into a session that was gone.
      */
-    async #dropWebRtcSessionRecords(nodeId: NodeId, endpointId: EndpointNumber, sessionId: number): Promise<void> {
-        this.#controller.cameraStreamsIfCreated?.forgetSession(nodeId, endpointId, sessionId);
+    async #dropWebRtcSessionRecords(
+        nodeId: NodeId,
+        endpointId: EndpointNumber,
+        sessionId: number,
+        requestedBy: string,
+        deviceHeldSession: boolean,
+    ): Promise<void> {
+        this.#controller.cameraStreamsIfCreated?.endedByClient(
+            nodeId,
+            endpointId,
+            sessionId,
+            requestedBy,
+            deviceHeldSession,
+        );
         await dropWebRtcSessionTracking(this.#commandHandler, sessionId, nodeId, endpointId);
     }
 
