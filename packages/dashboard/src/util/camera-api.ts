@@ -184,7 +184,7 @@ export function cameraErrorText(error: unknown): string {
         }
     }
     if (error.hasDetails(CAMERA_PRIVACY_MODE_ERROR_CODE)) {
-        const modes = error.details.modes.map(mode => PRIVACY_MODE_TEXT[mode] ?? mode);
+        const modes = error.details.modes.map(mode => PRIVACY_MODE_TEXT[mode]);
         return modes.length > 0 ? `${error.details.message}: ${modes.join(", ")}` : error.details.message;
     }
     if (error.hasDetails(CAMERA_RESOURCE_EXHAUSTED_ERROR_CODE)) {

@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import { ServerCommandError } from "@matter-server/ws-client";
 import { EndpointNumber, NodeId } from "@matter/main";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -194,8 +195,11 @@ const SNAPSHOT: SnapshotResult = {
     provenance: "allocated",
 };
 
-/** Every error payload the camera commands can produce, with every optional field present. */
-function errorPayloads(): unknown[] {
+/**
+ * Every error the camera commands can produce, with every optional field present, plus the
+ * ICD multi-admin error and variants that leave the optional fields out.
+ */
+function detailedErrors(): ServerError[] {
     return [
         ServerError.cameraStreamIncompatible({
             reason: "bounds",
@@ -219,7 +223,17 @@ function errorPayloads(): unknown[] {
         }),
         ServerError.cameraStreamInUse({ streamId: 1, referenceCount: 1 }),
         ServerError.cameraNotSupported({ missingClusters: [1362] }),
-    ].map(error => JSON.parse(error.message));
+        ServerError.cameraStreamIncompatible({ reason: "no_media", device: [], requested: [] }),
+        ServerError.cameraStreamIncompatible({ reason: "codec", device: ["H264"], requested: ["H265"] }),
+        ServerError.cameraStreamIncompatible({ reason: "bounds", device: [], requested: [] }),
+        ServerError.cameraResourceExhausted({ allocated: [] }),
+        ServerError.cameraStreamInUse({ streamId: 1 }),
+        ServerError.icdMultiAdmin([4631]),
+    ];
+}
+
+function errorPayloads(): unknown[] {
+    return detailedErrors().map(error => JSON.parse(error.message));
 }
 
 /** Where a `camera_get_capabilities` value goes when a client sends it straight back as a hint. */
@@ -312,6 +326,13 @@ describe("camera wire contract", () => {
             const documented = tokens(wireDoc);
             const missing = [...emitted].filter(key => !documented.has(key)).sort();
             expect(missing).to.deep.equal([]);
+        });
+
+        it("the ws-client reads every error the server builds as that code's typed details", () => {
+            const unread = detailedErrors()
+                .filter(error => new ServerCommandError(error.message, error.code).details === undefined)
+                .map(error => error.message);
+            expect(unread).to.deep.equal([]);
         });
 
         it("the error-code table names every key the camera error details carry", () => {

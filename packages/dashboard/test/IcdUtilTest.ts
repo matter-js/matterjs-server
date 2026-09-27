@@ -225,6 +225,18 @@ describe("icd util", () => {
         it("is empty for a multi-admin rejection with unreadable details", () => {
             expect(multiAdminVendorIds(new ServerCommandError("boom", ICD_MULTI_ADMIN_ERROR_CODE))).to.deep.equal([]);
         });
+        it("is empty for a multi-admin rejection whose details lack a number list", () => {
+            for (const details of [
+                '{"message":"x"}',
+                '{"message":"x","admin_vendor_ids":null}',
+                '{"message":"x","admin_vendor_ids":["1"]}',
+            ]) {
+                expect(
+                    multiAdminVendorIds(new ServerCommandError(details, ICD_MULTI_ADMIN_ERROR_CODE)),
+                    details,
+                ).to.deep.equal([]);
+            }
+        });
         it("is undefined for other errors", () => {
             expect(multiAdminVendorIds(new ServerCommandError("{}", 8))).to.equal(undefined);
             expect(multiAdminVendorIds(new Error("boom"))).to.equal(undefined);

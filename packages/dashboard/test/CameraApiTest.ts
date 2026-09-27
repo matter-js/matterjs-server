@@ -373,6 +373,13 @@ describe("camera API helpers", () => {
             expect(cameraErrorText(none)).to.equal("no camera");
         });
 
+        it("falls back to the message when a camera code's details are partial", () => {
+            const noClusters = serverError(CAMERA_NOT_SUPPORTED_ERROR_CODE, { message: "no camera" });
+            expect(cameraErrorText(noClusters)).to.equal(noClusters.message);
+            const noModes = serverError(CAMERA_PRIVACY_MODE_ERROR_CODE, { message: "privacy", device_status: 1 });
+            expect(cameraErrorText(noModes)).to.equal(noModes.message);
+        });
+
         it("falls back to the message for other codes and errors", () => {
             expect(cameraErrorText(new ServerCommandError("bad argument", 8))).to.equal("bad argument");
             expect(cameraErrorText(new Error("boom"))).to.equal("boom");
