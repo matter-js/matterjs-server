@@ -74,6 +74,15 @@ SUB_WILDCARD: Final = "*"
 # Relayed by the server only from schema 14 on; the offer variants have been relayed since 12.
 SIGNALLING_PROVIDER_COMMANDS: Final = frozenset({"ProvideAnswer", "ProvideIceCandidates"})
 
+# Events whose payload names the node they concern, so a node_filter subscriber receives them.
+NODE_SCOPED_CAMERA_EVENTS: Final = frozenset(
+    {
+        EventType.WEBRTC_CALLBACK,
+        EventType.CAMERA_SESSION_ENDED,
+        EventType.CAMERA_STREAM_EVICTED,
+    }
+)
+
 # pylint: disable=too-many-public-methods,too-many-locals,too-many-branches
 
 
@@ -966,6 +975,9 @@ class MatterClient:
         if msg.event == EventType.NETWORK_TOPOLOGY_UPDATED:
             topology = dataclass_from_dict(NetworkTopology, msg.data)
             self._signal_event(EventType.NETWORK_TOPOLOGY_UPDATED, data=topology)
+            return
+        if msg.event in NODE_SCOPED_CAMERA_EVENTS:
+            self._signal_event(msg.event, data=msg.data, node_id=msg.data["node_id"])
             return
         # An event type unknown to this (older) client is passed through by parse_value as a raw
         # string; forwarding it would crash on `event.value` in _signal_event. Drop it instead so a
