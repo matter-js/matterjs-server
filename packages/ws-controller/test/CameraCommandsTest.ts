@@ -1139,6 +1139,33 @@ describe("cameraCommands", () => {
             });
         });
 
+        it("reports the ceilings the encoder budget lowered, and omits the field when it lowered none", () => {
+            const video = {
+                streamId: 1,
+                reused: false,
+                allocatedByUs: true,
+                envelope: {
+                    codec: 1,
+                    minResolution: { width: 640, height: 360 },
+                    maxResolution: { width: 2560, height: 1440 },
+                    minFrameRate: 1,
+                    maxFrameRate: 15,
+                    minBitRate: 100000,
+                    maxBitRate: 8000000,
+                    keyFrameInterval: 2000,
+                    overlays: {},
+                },
+            };
+            const narrowed = toWireStartStreamResult({
+                webRtcSessionId: 9,
+                mode: "provide_offer",
+                video: { ...video, budgetNarrowed: { maxFrameRate: 30 } },
+            });
+            expect(narrowed.video?.narrowed_by_encoder_budget).to.deep.equal({ max_frame_rate: 30 });
+            const untouched = toWireStartStreamResult({ webRtcSessionId: 9, mode: "provide_offer", video });
+            expect(untouched.video).to.not.have.property("narrowed_by_encoder_budget");
+        });
+
         it("reports a degraded stream and an audio track", () => {
             const result: StartStreamResult = {
                 webRtcSessionId: 9,

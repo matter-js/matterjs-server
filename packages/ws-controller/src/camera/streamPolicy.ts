@@ -11,6 +11,7 @@ import type {
     AllocatedVideoStream,
     AudioEnvelope,
     Resolution,
+    VideoBudgetNarrowing,
     VideoEnvelope,
 } from "./cameraTypes.js";
 import type { OverlayBounds } from "./overlayPolicy.js";
@@ -332,8 +333,15 @@ export interface VideoPixelRateBudget {
     snapshotStreams: AllocatedSnapshotStream[];
 }
 
+/** {@link budgetVideoEnvelope}'s answer: the envelope to allocate in, and what the budget cost it. */
+export interface BudgetedVideoEnvelope {
+    envelope: VideoEnvelope;
+    /** Absent when the budget lowered no ceiling, which includes a camera that states no budget. */
+    narrowed?: VideoBudgetNarrowing;
+}
+
 /**
- * `envelope` narrowed into the encoded pixel rate the camera has left.
+ * `envelope` narrowed into the encoded pixel rate the camera has left, and what that narrowing cost.
  *
  * `MaxEncodedPixelRate` (§11.2.7.2) is what the camera's encoders can produce in total, and the
  * streams it already holds spend it. Asking for the sensor's maximum on top of that asks for
@@ -348,10 +356,14 @@ export interface VideoPixelRateBudget {
  *
  * A budget already fully spent narrows nothing: no frame size fits inside it, so the request goes out
  * as computed and the device's own refusal drives the ladder.
+ *
+ * `narrowed` names the ceilings that moved, so the answer can say so. It is derived from the two
+ * ceilings this function computed rather than from whether a budget was applied, which is what keeps a
+ * caller floor that clamped a ceiling back up from being reported as a narrowing.
  */
-export function budgetVideoEnvelope(envelope: VideoEnvelope, budget: VideoPixelRateBudget): VideoEnvelope {
+export function budgetVideoEnvelope(envelope: VideoEnvelope, budget: VideoPixelRateBudget): BudgetedVideoEnvelope {
     const { maxEncodedPixelRate } = budget;
-    if (maxEncodedPixelRate === undefined) return envelope;
+    if (maxEncodedPixelRate === undefined) return { envelope };
     // The cluster states no per-stream formula for MaxEncodedPixelRate; §11.2.6.9.4 states it for a
     // snapshot *capability* only. This is the reference server's own accounting, verbatim:
     // CameraAVStreamManagementCluster.cpp, IsResourceAvailableForStreamAllocation sums
@@ -363,12 +375,23 @@ export function budgetVideoEnvelope(envelope: VideoEnvelope, budget: VideoPixelR
             .filter(stream => stream.encodedPixels)
             .reduce((total, stream) => total + pixelRate(stream.maxResolution, stream.frameRate), 0);
     const free = maxEncodedPixelRate - committed;
-    if (free <= 0) return envelope;
+    if (free <= 0) return { envelope };
 
     const maxResolution = clampUp(scaleToPixels(envelope.maxResolution, free), envelope.minResolution);
     const affordable = Math.max(1, Math.floor(free / pixels(maxResolution)));
     const maxFrameRate = Math.max(envelope.minFrameRate, Math.min(envelope.maxFrameRate, affordable));
-    return { ...envelope, maxResolution, maxFrameRate };
+    const budgeted = { ...envelope, maxResolution, maxFrameRate };
+
+    const rateLowered = maxFrameRate < envelope.maxFrameRate;
+    const sizeLowered = !fitsUnder(envelope.maxResolution, maxResolution);
+    if (!rateLowered && !sizeLowered) return { envelope: budgeted };
+    return {
+        envelope: budgeted,
+        narrowed: {
+            ...(rateLowered ? { maxFrameRate: envelope.maxFrameRate } : {}),
+            ...(sizeLowered ? { maxResolution: envelope.maxResolution } : {}),
+        },
+    };
 }
 
 function contains(outer: { min: number; max: number }, inner: { min: number; max: number }): boolean {

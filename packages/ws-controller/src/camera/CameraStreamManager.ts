@@ -71,7 +71,14 @@ import {
     trackRequest,
     videoCallerBounds,
 } from "./streamPolicy.js";
-import type { AudioCallerBounds, AudioHints, RateDistortionPoint, TrackRequest, VideoHints } from "./streamPolicy.js";
+import type {
+    AudioCallerBounds,
+    AudioHints,
+    BudgetedVideoEnvelope,
+    RateDistortionPoint,
+    TrackRequest,
+    VideoHints,
+} from "./streamPolicy.js";
 import {
     audioCodecName,
     featureName,
@@ -1197,13 +1204,17 @@ export class CameraStreamManager {
         // camera has left, and freeing a stream changes that. Both halves count what this server has
         // allocated and the camera has not reported yet, so the sum does not over-state the free budget
         // for the request that follows its own snapshot.
-        const budgeted = (streams: AllocatedVideoStream[], snapshots: AllocatedSnapshotStream[]): VideoEnvelope =>
+        const budgeted = (
+            streams: AllocatedVideoStream[],
+            snapshots: AllocatedSnapshotStream[],
+        ): BudgetedVideoEnvelope =>
             budgetVideoEnvelope(selection.envelope, {
                 maxEncodedPixelRate: state.maxEncodedPixelRate,
                 videoStreams: [...streams, ...unreported],
                 snapshotStreams: snapshots,
             });
-        let envelope = budgeted(liveStreams, liveSnapshotStreams);
+        let budget = budgeted(liveStreams, liveSnapshotStreams);
+        let envelope = budget.envelope;
 
         // A stream the degraded rung could hand out is not a stream to destroy for the same request:
         // taking it and then failing costs the victim's holder an id for a request the victim itself
@@ -1255,7 +1266,13 @@ export class CameraStreamManager {
                 });
                 scope.returnOnFailure(() => this.#deallocate(nodeId, endpointId, lease));
                 for (const spend of freed) spend();
-                return reporting({ streamId, envelope, reused: false, allocatedByUs: true });
+                return reporting({
+                    streamId,
+                    envelope,
+                    reused: false,
+                    allocatedByUs: true,
+                    ...(budget.narrowed === undefined ? {} : { budgetNarrowed: budget.narrowed }),
+                });
             } catch (error) {
                 if (error instanceof ServerError) throw error;
                 lastStatus = deviceStatusOf(error);
@@ -1308,7 +1325,8 @@ export class CameraStreamManager {
                     );
                     if (snapshotRoom.freed) {
                         freed.push(snapshotRoom.spend);
-                        envelope = budgeted(liveStreams, liveSnapshotStreams);
+                        budget = budgeted(liveStreams, liveSnapshotStreams);
+                        envelope = budget.envelope;
                         continue;
                     }
                 }
@@ -1325,7 +1343,8 @@ export class CameraStreamManager {
                 liveStreams = liveStreams.filter(stream => stream.videoStreamId !== madeRoom.streamId);
                 freed.push(madeRoom.spend);
                 evicted.push(madeRoom.streamId);
-                envelope = budgeted(liveStreams, liveSnapshotStreams);
+                budget = budgeted(liveStreams, liveSnapshotStreams);
+                envelope = budget.envelope;
             }
         }
 

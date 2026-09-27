@@ -1558,6 +1558,43 @@ describe("CameraStreamManager", () => {
             expect(invokes.filter(invoke => invoke.command === "videoStreamAllocate")).to.have.length(1);
         });
 
+        it("reports the ceiling the budget lowered, so the caller is not left guessing", async () => {
+            // The budget spends the frame rate first, so a tight one answers a LiveView request at full
+            // sensor size and a low rate. Without this field nothing in the response said that another
+            // stream's reservation was the reason rather than the camera's own limit.
+            const { manager } = managerWith(
+                { ...STATE, maxEncodedPixelRate: HALF_SENSOR_BUDGET },
+                encoderBudgetedCamera(HALF_SENSOR_BUDGET),
+            );
+            const resolved = await manager.resolveVideoStream({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                streamUsage: LIVE_VIEW,
+                limits: { codec: H265 },
+            });
+            expect(requireVideoEnvelope(resolved.envelope).maxFrameRate).to.equal(15);
+            expect(resolved.budgetNarrowed).to.deep.equal({ maxFrameRate: 30 });
+            expect(resolved.degraded).to.equal(undefined);
+        });
+
+        it("reports no budget narrowing for a stream it reused", async () => {
+            // A stream the camera already produces carries the camera's own range, which the budget had
+            // no part in — and reuse never reaches the budget at all.
+            const { manager } = managerWith(
+                { ...withStreams([CONTAINED_STREAM]), maxEncodedPixelRate: HALF_SENSOR_BUDGET },
+                encoderBudgetedCamera(HALF_SENSOR_BUDGET),
+            );
+            const resolved = await manager.resolveVideoStream({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                streamUsage: LIVE_VIEW,
+                limits: { codec: H265 },
+                hints: PINNED_1080P,
+            });
+            expect(resolved.reused).to.equal(true);
+            expect(resolved.budgetNarrowed).to.equal(undefined);
+        });
+
         it("would have been refused by the same camera without the budget", async () => {
             // The contrast the budget exists for: with MaxEncodedPixelRate unread the request goes out
             // at the sensor's maximum, and the camera that could have served it first time refuses.

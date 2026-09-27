@@ -35,6 +35,19 @@ export interface VideoEnvelope {
     keyFrameInterval: number;
 }
 
+/**
+ * Which ceilings {@link budgetVideoEnvelope} lowered, each carrying the value the envelope had before it.
+ *
+ * The caller can see the difference between what the camera's encoders could produce for it and what
+ * the streams the camera already holds left over, which is otherwise invisible: a tight budget answers
+ * a `LiveView` request with the full sensor frame at one frame per second, and nothing in the response
+ * said that another stream was the reason.
+ */
+export interface VideoBudgetNarrowing {
+    maxFrameRate?: number;
+    maxResolution?: Resolution;
+}
+
 export interface AudioEnvelope {
     codec: number;
     channelCount: number;
@@ -249,6 +262,17 @@ export interface ResolvedStream {
      * new one.
      */
     evicted?: number[];
+    /**
+     * The ceilings the camera's encoder budget lowered, absent when it lowered none.
+     *
+     * Reported for a freshly allocated stream only: a reused or degraded stream carries the camera's own
+     * range, which the budget had no part in. It is a separate field from {@link degraded} because the
+     * two are different facts with different answers — `degraded` says the stream handed over is outside
+     * the range the server computed, while this says the range the server computed was itself below what
+     * the camera's sensor allows, because other streams spend its encoder budget. A caller that wants
+     * motion answers this one by stating `min_frame_rate`, which the budget may not narrow past.
+     */
+    budgetNarrowed?: VideoBudgetNarrowing;
 }
 
 /**

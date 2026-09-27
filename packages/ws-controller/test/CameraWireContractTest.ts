@@ -177,6 +177,7 @@ const START_STREAM: StartStreamResult = {
         allocatedByUs: true,
         degraded: true,
         evicted: [9],
+        budgetNarrowed: { maxFrameRate: 30, maxResolution: { width: 2560, height: 1440 } },
     },
     audio: {
         streamId: 2,

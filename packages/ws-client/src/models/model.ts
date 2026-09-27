@@ -718,6 +718,29 @@ export interface CameraStartStreamVideoResult {
      */
     evicted_stream_ids?: number[];
     /**
+     * The ceilings the camera's encoder budget lowered, absent when it lowered none.
+     *
+     * `max_encoded_pixel_rate` is what the camera's encoders can produce in total, and every stream the
+     * camera already holds spends it, so the range the server asks for is the sensor's narrowed into
+     * what is left. A tight budget therefore answers with the full sensor frame at one frame per
+     * second, and each key here carries the ceiling the server would have asked for had the budget been
+     * free — so `{ "max_frame_rate": 30 }` beside a `frame_rate.max` of 1 says another stream is the
+     * reason, not this request.
+     *
+     * A caller that wants motion rather than frame size states `min_frame_rate`, which the budget may
+     * not narrow past; `camera_release_stream` or `camera_stop_stream` on a stream of its own gives the
+     * budget back.
+     *
+     * Reported for a freshly allocated stream only. A reused or degraded stream carries the camera's own
+     * range, which the budget had no part in. This is a different fact from `degraded`, which says the
+     * stream handed over is outside the range the server computed; here the stream fits that range and
+     * the range itself was narrowed.
+     */
+    narrowed_by_encoder_budget?: {
+        max_frame_rate?: number;
+        max_resolution?: CameraResolution;
+    };
+    /**
      * Whether the stream this session uses carries the camera's watermark.
      *
      * The camera's own statement for a reused or degraded stream, and the request the camera accepted

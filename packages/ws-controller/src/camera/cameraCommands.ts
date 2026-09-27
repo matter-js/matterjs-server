@@ -634,6 +634,18 @@ function toWireStartStreamVideo(stream: ResolvedStream): CameraStartStreamVideoR
         osd_enabled: envelope.overlays.osdEnabled ?? false,
         ...(stream.degraded === undefined ? {} : { degraded: stream.degraded }),
         ...(stream.evicted === undefined ? {} : { evicted_stream_ids: stream.evicted }),
+        ...(stream.budgetNarrowed === undefined
+            ? {}
+            : {
+                  narrowed_by_encoder_budget: {
+                      ...(stream.budgetNarrowed.maxFrameRate === undefined
+                          ? {}
+                          : { max_frame_rate: stream.budgetNarrowed.maxFrameRate }),
+                      ...(stream.budgetNarrowed.maxResolution === undefined
+                          ? {}
+                          : { max_resolution: stream.budgetNarrowed.maxResolution }),
+                  },
+              }),
     };
 }
 

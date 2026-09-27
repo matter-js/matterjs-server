@@ -916,21 +916,21 @@ describe("streamPolicy", () => {
         }
 
         it("leaves the envelope alone when the camera states no budget", () => {
-            expect(budgetVideoEnvelope(SENSOR, { maxEncodedPixelRate: undefined, ...NO_STREAMS })).to.deep.equal(
-                SENSOR,
-            );
+            expect(budgetVideoEnvelope(SENSOR, { maxEncodedPixelRate: undefined, ...NO_STREAMS })).to.deep.equal({
+                envelope: SENSOR,
+            });
         });
 
         it("leaves the envelope alone when the budget carries it", () => {
-            expect(budgetVideoEnvelope(SENSOR, { maxEncodedPixelRate: SENSOR_RATE, ...NO_STREAMS })).to.deep.equal(
-                SENSOR,
-            );
+            expect(budgetVideoEnvelope(SENSOR, { maxEncodedPixelRate: SENSOR_RATE, ...NO_STREAMS })).to.deep.equal({
+                envelope: SENSOR,
+            });
         });
 
         it("narrows the frame rate to what the budget carries at full frame size", () => {
             const budgeted = budgetVideoEnvelope(SENSOR, { maxEncodedPixelRate: SENSOR_RATE / 2, ...NO_STREAMS });
-            expect(budgeted.maxResolution).to.deep.equal({ width: 2560, height: 1440 });
-            expect(budgeted.maxFrameRate).to.equal(15);
+            expect(budgeted.envelope.maxResolution).to.deep.equal({ width: 2560, height: 1440 });
+            expect(budgeted.envelope.maxFrameRate).to.equal(15);
         });
 
         it("narrows the frame size once not even one frame per second fits", () => {
@@ -939,8 +939,8 @@ describe("streamPolicy", () => {
                 maxEncodedPixelRate: (2560 * 1440) / 2,
                 ...NO_STREAMS,
             });
-            expect(budgeted.maxResolution).to.deep.equal({ width: 1810, height: 1018 });
-            expect(budgeted.maxFrameRate).to.equal(1);
+            expect(budgeted.envelope.maxResolution).to.deep.equal({ width: 1810, height: 1018 });
+            expect(budgeted.envelope.maxFrameRate).to.equal(1);
         });
 
         it("subtracts what the camera's other video streams reserve", () => {
@@ -950,7 +950,7 @@ describe("streamPolicy", () => {
                 videoStreams: [videoStream(7, 1280, 720, 30)],
                 snapshotStreams: new Array<AllocatedSnapshotStream>(),
             });
-            expect(budgeted.maxFrameRate).to.equal(22);
+            expect(budgeted.envelope.maxFrameRate).to.equal(22);
         });
 
         it("subtracts a snapshot stream the camera counts in its encoded pixel rate", () => {
@@ -959,7 +959,7 @@ describe("streamPolicy", () => {
                 videoStreams: new Array<AllocatedVideoStream>(),
                 snapshotStreams: [snapshotStream(2560, 1440, 15, true)],
             });
-            expect(budgeted.maxFrameRate).to.equal(15);
+            expect(budgeted.envelope.maxFrameRate).to.equal(15);
         });
 
         it("ignores a snapshot stream the camera does not count in it", () => {
@@ -969,7 +969,7 @@ describe("streamPolicy", () => {
                 videoStreams: new Array<AllocatedVideoStream>(),
                 snapshotStreams: [snapshotStream(2560, 1440, 15, false)],
             });
-            expect(budgeted.maxFrameRate).to.equal(30);
+            expect(budgeted.envelope.maxFrameRate).to.equal(30);
         });
 
         it("narrows nothing once the budget is spent, leaving the refusal to the camera", () => {
@@ -978,7 +978,50 @@ describe("streamPolicy", () => {
                 videoStreams: [videoStream(7, 2560, 1440, 30)],
                 snapshotStreams: new Array<AllocatedSnapshotStream>(),
             });
-            expect(budgeted).to.deep.equal(SENSOR);
+            expect(budgeted).to.deep.equal({ envelope: SENSOR });
+        });
+
+        it("reports nothing narrowed when the budget carries the envelope", () => {
+            expect(budgetVideoEnvelope(SENSOR, { maxEncodedPixelRate: SENSOR_RATE, ...NO_STREAMS }).narrowed).to.equal(
+                undefined,
+            );
+        });
+
+        it("reports the frame rate it lowered, and what it would have asked for", () => {
+            // The whole point of the field: the caller sees 15 fps and the 30 it would have had, so it
+            // can tell another stream's reservation from a camera that cannot do more.
+            expect(
+                budgetVideoEnvelope(SENSOR, { maxEncodedPixelRate: SENSOR_RATE / 2, ...NO_STREAMS }).narrowed,
+            ).to.deep.equal({ maxFrameRate: 30 });
+        });
+
+        it("reports both ceilings when even one frame per second does not fit", () => {
+            expect(
+                budgetVideoEnvelope(SENSOR, { maxEncodedPixelRate: (2560 * 1440) / 2, ...NO_STREAMS }).narrowed,
+            ).to.deep.equal({ maxFrameRate: 30, maxResolution: { width: 2560, height: 1440 } });
+        });
+
+        it("reports nothing narrowed when a caller floor clamped the ceiling back up", () => {
+            // The budget did the arithmetic and the floors undid it, so the envelope that goes out is
+            // the one the caller asked for: reporting a narrowing here would name a cost nobody paid.
+            const pinned = {
+                ...SENSOR,
+                minResolution: { width: 2560, height: 1440 },
+                minFrameRate: 30,
+            };
+            expect(budgetVideoEnvelope(pinned, { maxEncodedPixelRate: 1000, ...NO_STREAMS }).narrowed).to.equal(
+                undefined,
+            );
+        });
+
+        it("reports nothing narrowed once the budget is spent", () => {
+            expect(
+                budgetVideoEnvelope(SENSOR, {
+                    maxEncodedPixelRate: SENSOR_RATE,
+                    videoStreams: [videoStream(7, 2560, 1440, 30)],
+                    snapshotStreams: new Array<AllocatedSnapshotStream>(),
+                }).narrowed,
+            ).to.equal(undefined);
         });
 
         it("never narrows a ceiling below the envelope's own floor", () => {
@@ -990,8 +1033,8 @@ describe("streamPolicy", () => {
                 minFrameRate: 30,
             };
             const budgeted = budgetVideoEnvelope(pinned, { maxEncodedPixelRate: 1000, ...NO_STREAMS });
-            expect(budgeted.maxResolution).to.deep.equal({ width: 2560, height: 1440 });
-            expect(budgeted.maxFrameRate).to.equal(30);
+            expect(budgeted.envelope.maxResolution).to.deep.equal({ width: 2560, height: 1440 });
+            expect(budgeted.envelope.maxFrameRate).to.equal(30);
         });
     });
 
