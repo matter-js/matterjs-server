@@ -972,6 +972,22 @@ Response: `{ webrtc_session_id, mode, video, audio }`. `mode` is `"provide_offer
 
 The camera's half of the signalling arrives on the `webrtc_callback` event, which for a session opened this way reaches the connection that opened it and no other. `mode` says which half the client owes next: after `"provide_offer"` the camera answers with an `answer` event and the client only trickles candidates, while after `"solicit_offer"` the camera sends an `offer` event and the client owes the SDP answer, through `camera_provide_answer`.
 
+**Signalling can arrive before this response does.** The server applies the `webrtc_callback` opt-in
+before it dispatches the command, precisely because the camera answers the offer while
+`camera_start_stream` is still in flight: for `mode: "provide_offer"` the camera's `answer` and its first
+ICE candidates can reach the connection before the response frame carrying `webrtc_session_id`. A client
+that installs its handlers keyed on the id from the response drops them. Register the `webrtc_callback`
+handler before sending the command and buffer events by their own `webrtc_session_id` until the response
+lands, then attach the buffered ones to the session it names. There is no ordering guarantee either way —
+a response bypasses the outbox an event queues into — so a client must cope with both orders.
+
+**A re-offer is the one thing this command cannot do.** An ICE restart, or a change to the tracks a live
+session carries, is a second `ProvideOffer` naming the session id that already exists (§11.5.6.3, with
+`WebRTCSessionID` stated rather than null). `camera_start_stream` always opens a new session, so a
+re-offer goes through `send_webrtc_provider_command` with `command_name: "ProvideOffer"` and the existing
+`webRtcSessionId` in the payload. The session stays the server's as far as teardown goes:
+`camera_stop_stream` still ends it and `camera_session_ended` still reports another connection ending it.
+
 **camera_provide_answer** - Answer the offer a camera sent
 
 ```json

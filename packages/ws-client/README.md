@@ -354,6 +354,22 @@ The response is `{ webrtc_session_id, mode, video, audio }`. `mode` is `"provide
 
 The camera's own signalling arrives on the `webrtc_callback` event, and for a session opened this way it reaches the connection that opened it and no other. A session the server holds no record of — one opened on the raw `send_webrtc_provider_command` route, or an event for one whose record is already dropped — still reaches every connection that has issued a WebRTC command, because nothing names an owner for it. So a client on the raw route sees its own signalling and every other unowned session's, while a `camera_start_stream` client sees only its own. `mode` says what the client owes next: after `"provide_offer"` the camera answers with an `answer` event, and after `"solicit_offer"` it sends an `offer` event the client answers with `camera_provide_answer`.
 
+**Signalling can arrive before the response does.** The server applies the `webrtc_callback` opt-in before
+it dispatches the command, because the camera answers the offer while `camera_start_stream` is still in
+flight: for `mode: "provide_offer"` the camera's `answer` and its first ICE candidates can reach the
+connection before the response frame carrying `webrtc_session_id`. A client that installs its handlers
+keyed on the id from the response drops them. Register the `webrtc_callback` handler before sending the
+command and buffer events by their own `webrtc_session_id` until the response lands, then hand the buffered
+ones to the session it names. Neither order is guaranteed — a response bypasses the outbox an event queues
+into — so handle both.
+
+**A re-offer is the one known reason to use `send_webrtc_provider_command` for a managed session.** An ICE
+restart, or a change to the tracks a live session carries, is a second `ProvideOffer` naming the session id
+that already exists. `camera_start_stream` always opens a new session, so a re-offer goes out as
+`send_webrtc_provider_command` with `command_name: "ProvideOffer"` and the existing `webRtcSessionId` in the
+payload. Teardown stays with the managed commands: `camera_stop_stream` still ends the session, and
+`camera_session_ended` still reports another connection ending it.
+
 ### camera_provide_answer
 
 Answers the offer a camera sent for a session, as `ProvideAnswer`. The other half of a `camera_start_stream` that stated no `sdp`: the camera writes the offer, delivers it as a `webrtc_callback` `offer` event, and this is the route the answer goes back on.
