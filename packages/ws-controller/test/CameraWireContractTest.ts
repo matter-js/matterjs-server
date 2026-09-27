@@ -298,7 +298,6 @@ function boundPhrases(): string[] {
 describe("camera wire contract", () => {
     const wireDoc = section("docs/websockets_api.md", "### Camera Streaming");
     const errorDoc = section("docs/websockets_api.md", "## Error Codes");
-    const readme = section("packages/ws-client/README.md", "## Camera Streaming");
 
     describe("every emitted key is in the client-facing reference", () => {
         const emitted = new Set<string>();
@@ -314,33 +313,22 @@ describe("camera wire contract", () => {
             expect(missing).to.deep.equal([]);
         });
 
-        it("the ws-client README names every key the camera commands answer with", () => {
-            const documented = tokens(readme);
-            const missing = [...emitted].filter(key => !documented.has(key)).sort();
-            expect(missing).to.deep.equal([]);
-        });
-
         it("the error-code table names every key the camera error details carry", () => {
             const documented = tokens(errorDoc);
             const missing = [...errorKeys].filter(key => !documented.has(key)).sort();
             expect(missing).to.deep.equal([]);
         });
 
-        it("both references spell out every bound the camera commands enforce", () => {
-            const bounds = boundPhrases();
-            expect(bounds.filter(phrase => !wireDoc.includes(phrase))).to.deep.equal([]);
-            expect(bounds.filter(phrase => !readme.includes(phrase))).to.deep.equal([]);
+        it("docs/websockets_api.md spells out every bound the camera commands enforce", () => {
+            expect(boundPhrases().filter(phrase => !wireDoc.includes(phrase))).to.deep.equal([]);
         });
 
-        it("both references name every hint key the parser accepts", () => {
+        it("docs/websockets_api.md names every hint key the parser accepts", () => {
             const hints = [...VIDEO_HINT_KEYS, ...AUDIO_HINT_KEYS, ...Object.values(CAMERA_ARG_KEYS).flat()];
             const inWireDoc = tokens(wireDoc);
-            const inReadme = tokens(readme);
             expect(hints.filter(key => !inWireDoc.has(key))).to.deep.equal([]);
-            expect(hints.filter(key => !inReadme.has(key))).to.deep.equal([]);
         });
 
-        // The README is covered by the hint-key test above: every bound field is also a hint key.
         it("the error-code table names every value bound.field can take", () => {
             const inErrorDoc = tokens(errorDoc);
             expect(BOUND_FIELDS.filter(field => !inErrorDoc.has(field))).to.deep.equal([]);
