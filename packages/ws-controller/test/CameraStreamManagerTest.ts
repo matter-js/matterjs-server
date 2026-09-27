@@ -483,8 +483,7 @@ describe("CameraStreamManager", () => {
                 hints: PINNED_1080P,
             });
             expect(resolved.streamId).to.equal(7);
-            expect(resolved.reused).to.equal(true);
-            expect(resolved.allocatedByUs).to.equal(false);
+            expect(resolved.provenance).to.equal("adopted");
             expect(invokes).to.deep.equal([]);
         });
 
@@ -498,7 +497,7 @@ describe("CameraStreamManager", () => {
                 streamUsage: LIVE_VIEW,
                 limits: { codec: H265 },
             });
-            expect(resolved.reused).to.equal(true);
+            expect(resolved.provenance).to.not.equal("allocated");
             const envelope = requireVideoEnvelope(resolved.envelope);
             expect(envelope.minResolution).to.deep.equal(CONTAINED_STREAM.minResolution);
             expect(envelope.maxResolution).to.deep.equal(CONTAINED_STREAM.maxResolution);
@@ -516,7 +515,7 @@ describe("CameraStreamManager", () => {
                 hints: PINNED_1080P,
             });
             expect(resolved.streamId).to.equal(9);
-            expect(resolved.reused).to.equal(false);
+            expect(resolved.provenance).to.equal("allocated");
             expect(invokes.map(invoke => invoke.command)).to.deep.equal(["videoStreamAllocate"]);
         });
 
@@ -528,7 +527,7 @@ describe("CameraStreamManager", () => {
                 streamUsage: LIVE_VIEW,
                 limits: { codec: H265 },
             });
-            expect(resolved.allocatedByUs).to.equal(true);
+            expect(resolved.provenance).to.not.equal("adopted");
         });
 
         it("fails typed when the caller's resolution floor exceeds what the camera can deliver", async () => {
@@ -714,7 +713,7 @@ describe("CameraStreamManager", () => {
                 hints: { ...PINNED_1080P, maxBitRate: 500000 },
             });
             expect(resolved.streamId).to.equal(9);
-            expect(resolved.reused).to.equal(false);
+            expect(resolved.provenance).to.equal("allocated");
             expect(invokes.map(invoke => invoke.command)).to.deep.equal(["videoStreamAllocate"]);
         });
 
@@ -1477,7 +1476,7 @@ describe("CameraStreamManager", () => {
                 hints: PINNED_1080P,
             });
             expect(resolved.streamId).to.equal(7);
-            expect(resolved.reused).to.equal(true);
+            expect(resolved.provenance).to.not.equal("allocated");
             expect(resolved.degraded).to.equal(true);
             const envelope = requireVideoEnvelope(resolved.envelope);
             expect(envelope.minResolution).to.deep.equal(PINNED_1080P.minResolution);
@@ -1535,7 +1534,7 @@ describe("CameraStreamManager", () => {
                 hints: PINNED_1080P,
             });
             expect(resolved.streamId).to.equal(7);
-            expect(resolved.reused).to.equal(true);
+            expect(resolved.provenance).to.not.equal("allocated");
             expect(invokes).to.have.length(0);
         });
 
@@ -1591,7 +1590,7 @@ describe("CameraStreamManager", () => {
                 limits: { codec: H265 },
                 hints: PINNED_1080P,
             });
-            expect(resolved.reused).to.equal(true);
+            expect(resolved.provenance).to.not.equal("allocated");
             expect(resolved.budgetNarrowed).to.equal(undefined);
         });
 
@@ -2044,7 +2043,7 @@ describe("CameraStreamManager", () => {
             expect(invokes.filter(invoke => invoke.command === "videoStreamAllocate")).to.have.length(1);
             expect(first.streamId).to.equal(9);
             expect(second.streamId).to.equal(9);
-            expect(second.reused).to.equal(true);
+            expect(second.provenance).to.not.equal("allocated");
         });
     });
 
@@ -2094,8 +2093,7 @@ describe("CameraStreamManager", () => {
                 streamUsage: LIVE_VIEW,
             });
             expect(resolved?.streamId).to.equal(4);
-            expect(resolved?.reused).to.equal(true);
-            expect(resolved?.allocatedByUs).to.equal(false);
+            expect(resolved?.provenance).to.equal("adopted");
             expect(invokes).to.deep.equal([]);
         });
 
@@ -2109,7 +2107,7 @@ describe("CameraStreamManager", () => {
                 endpointId: ENDPOINT,
                 streamUsage: LIVE_VIEW,
             });
-            expect(resolved?.reused).to.equal(true);
+            expect(resolved?.provenance).to.not.equal("allocated");
             expect(requireAudioEnvelope(resolved!.envelope).bitRate).to.equal(32000);
         });
 
@@ -2126,7 +2124,7 @@ describe("CameraStreamManager", () => {
                 audio: { bitRate: 32000 },
             });
             expect(resolved?.streamId).to.equal(9);
-            expect(resolved?.reused).to.equal(false);
+            expect(resolved?.provenance).to.equal("allocated");
             expect(invokes.find(invoke => invoke.command === "audioStreamAllocate")?.fields.bitRate).to.equal(32000);
         });
 
@@ -2193,8 +2191,7 @@ describe("CameraStreamManager", () => {
                 streamUsage: LIVE_VIEW,
             });
             expect(resolved?.streamId).to.equal(9);
-            expect(resolved?.reused).to.equal(false);
-            expect(resolved?.allocatedByUs).to.equal(true);
+            expect(resolved?.provenance).to.equal("allocated");
             expect(invokes.map(invoke => invoke.command)).to.deep.equal(["audioStreamAllocate"]);
         });
 
@@ -5317,8 +5314,7 @@ describe("CameraStreamManager", () => {
                 streamUsage: LIVE_VIEW,
                 limits: { codec: H265 },
             });
-            expect(resolved.reused).to.equal(true);
-            expect(resolved.allocatedByUs).to.equal(false);
+            expect(resolved.provenance).to.equal("adopted");
             expect(manager.endpointsWithLeases).to.equal(1);
             expect(invokes).to.deep.equal([]);
         });
@@ -5335,7 +5331,7 @@ describe("CameraStreamManager", () => {
                 streamUsage: LIVE_VIEW,
                 limits: { codec: H265 },
             });
-            expect(resolved.allocatedByUs).to.equal(false);
+            expect(resolved.provenance).to.equal("adopted");
 
             await manager.releaseStream({ nodeId: NODE, endpointId: ENDPOINT, kind: "video", streamId: 7 });
             expect(invokes.map(invoke => invoke.command)).to.include("videoStreamDeallocate");
@@ -5358,7 +5354,7 @@ describe("CameraStreamManager", () => {
                 endpointId: ENDPOINT,
                 streamUsage: LIVE_VIEW,
             });
-            expect(resolved?.allocatedByUs).to.equal(false);
+            expect(resolved?.provenance).to.equal("adopted");
             expect(manager.endpointsWithLeases).to.equal(1);
         });
 
@@ -5399,7 +5395,7 @@ describe("CameraStreamManager", () => {
                 limits: { codec: H265 },
             });
             expect(resolved.degraded).to.equal(true);
-            expect(resolved.allocatedByUs).to.equal(false);
+            expect(resolved.provenance).to.equal("adopted");
             expect(manager.endpointsWithLeases).to.equal(1);
         });
 
@@ -5425,7 +5421,7 @@ describe("CameraStreamManager", () => {
                 limits: { codec: H265 },
             });
             expect(fresh.streamId).to.equal(7);
-            expect(fresh.allocatedByUs).to.equal(true);
+            expect(fresh.provenance).to.not.equal("adopted");
 
             await manager.releaseStream({ nodeId: NODE, endpointId: ENDPOINT, kind: "video", streamId: 7 });
             expect(manager.endpointsWithLeases).to.equal(0);
@@ -5442,7 +5438,7 @@ describe("CameraStreamManager", () => {
                 streamUsage: LIVE_VIEW,
                 limits: { codec: H265 },
             });
-            expect(allocated.reused).to.equal(false);
+            expect(allocated.provenance).to.equal("allocated");
 
             holder.state = {
                 ...STATE,
@@ -5455,8 +5451,7 @@ describe("CameraStreamManager", () => {
                 limits: { codec: H265 },
             });
             expect(reused.streamId).to.equal(9);
-            expect(reused.reused).to.equal(true);
-            expect(reused.allocatedByUs).to.equal(true);
+            expect(reused.provenance).to.equal("reused");
             expect(invokes.map(invoke => invoke.command)).to.deep.equal(["videoStreamAllocate"]);
         });
 
@@ -5483,7 +5478,7 @@ describe("CameraStreamManager", () => {
                 limits: { codec: H265 },
             });
             expect(second.streamId).to.equal(11);
-            expect(second.reused).to.equal(false);
+            expect(second.provenance).to.equal("allocated");
         });
 
         it("drops the lease for a foreign stream once the device stops naming it", async () => {
@@ -5794,7 +5789,7 @@ describe("CameraStreamManager reuse before the device has reported", () => {
         const second = await liveView(manager);
 
         expect(second.streamId).to.equal(9);
-        expect(second.reused).to.equal(true);
+        expect(second.provenance).to.not.equal("allocated");
         expect(invokes.filter(invoke => invoke.command === "videoStreamAllocate")).to.have.length(1);
         // The reuse is reported from the lease's own description of the allocation, so it has to be
         // the range that was allocated rather than a default.
@@ -5827,7 +5822,7 @@ describe("CameraStreamManager reuse before the device has reported", () => {
             hints: { watermarkEnabled: false },
         });
         expect(second.streamId).to.equal(10);
-        expect(second.reused).to.equal(false);
+        expect(second.provenance).to.equal("allocated");
         expect(invokes.filter(invoke => invoke.command === "videoStreamAllocate")).to.have.length(2);
     });
 
@@ -5854,7 +5849,7 @@ describe("CameraStreamManager reuse before the device has reported", () => {
             hints,
         });
         expect(second.streamId).to.equal(9);
-        expect(second.reused).to.equal(true);
+        expect(second.provenance).to.not.equal("allocated");
         expect(invokes.filter(invoke => invoke.command === "videoStreamAllocate")).to.have.length(1);
     });
 
@@ -5874,7 +5869,7 @@ describe("CameraStreamManager reuse before the device has reported", () => {
         });
 
         expect(second?.streamId).to.equal(4);
-        expect(second?.reused).to.equal(true);
+        expect(second?.provenance).to.not.equal("allocated");
         expect(invokes.filter(invoke => invoke.command === "audioStreamAllocate")).to.have.length(1);
         expect(second?.envelope).to.deep.equal(first?.envelope);
     });
@@ -6002,7 +5997,7 @@ describe("CameraStreamManager reuse before the device has reported", () => {
             streamUsage: LIVE_VIEW,
         });
         expect(second?.streamId).to.equal(5);
-        expect(second?.reused).to.equal(false);
+        expect(second?.provenance).to.equal("allocated");
     });
 
     it("keeps reusing an unreported stream up to the last millisecond of the grace window", async () => {
@@ -6032,7 +6027,7 @@ describe("CameraStreamManager reuse before the device has reported", () => {
 
             const second = await liveView(manager);
             expect(second.streamId).to.equal(10);
-            expect(second.reused).to.equal(false);
+            expect(second.provenance).to.equal("allocated");
             expect(invokes.filter(invoke => invoke.command === "videoStreamAllocate")).to.have.length(2);
         } finally {
             MockTime.disable();
@@ -6136,7 +6131,7 @@ describe("CameraStreamManager reuse before the device has reported", () => {
                 streamUsage: LIVE_VIEW,
             });
             expect(second?.streamId).to.equal(5);
-            expect(second?.reused).to.equal(false);
+            expect(second?.provenance).to.equal("allocated");
         } finally {
             MockTime.disable();
         }
@@ -6568,7 +6563,7 @@ describe("CameraStreamManager device cleanup budget", () => {
             });
             // The shadow on the abandoned lease has expired, so this is a fresh allocation under a
             // new generation rather than a reuse of the lease the give-back names.
-            expect(retaken.reused).to.equal(false);
+            expect(retaken.provenance).to.equal("allocated");
 
             answerSilentDeallocate();
             // A macrotask boundary: every microtask the answered invoke queued, including the
@@ -6656,7 +6651,7 @@ describe("CameraStreamManager device cleanup budget", () => {
                 streamUsage: LIVE_VIEW,
                 limits: { codec: H265 },
             });
-            expect(reused.reused).to.equal(true);
+            expect(reused.provenance).to.not.equal("allocated");
 
             answerSilentDeallocate();
             await new Promise<void>(resolve => setImmediate(resolve));
@@ -7385,7 +7380,7 @@ describe("CameraStreamManager overlays", () => {
             allocatedVideoStreams: [videoStream({ watermarkEnabled: false, osdEnabled: false })],
         };
         const { invokes, stream } = await resolve(state, { watermarkEnabled: true });
-        expect(stream.reused).to.equal(false);
+        expect(stream.provenance).to.equal("allocated");
         expect(stream.streamId).to.equal(9);
         expect(invokes.some(invoke => invoke.command === "videoStreamAllocate")).to.equal(true);
     });
@@ -7396,7 +7391,7 @@ describe("CameraStreamManager overlays", () => {
             allocatedVideoStreams: [videoStream({ watermarkEnabled: true, osdEnabled: false })],
         };
         const { stream } = await resolve(state, { watermarkEnabled: false });
-        expect(stream.reused).to.equal(false);
+        expect(stream.provenance).to.equal("allocated");
     });
 
     it("does not reuse a watermarked stream for a caller that stated nothing either", async () => {
@@ -7407,7 +7402,7 @@ describe("CameraStreamManager overlays", () => {
             allocatedVideoStreams: [videoStream({ watermarkEnabled: true, osdEnabled: false })],
         };
         const { stream } = await resolve(state);
-        expect(stream.reused).to.equal(false);
+        expect(stream.provenance).to.equal("allocated");
     });
 
     it("reuses a stream whose overlays are the ones the request resolved to", async () => {
@@ -7416,7 +7411,7 @@ describe("CameraStreamManager overlays", () => {
             allocatedVideoStreams: [videoStream({ watermarkEnabled: true, osdEnabled: false })],
         };
         const { stream } = await resolve(state, { watermarkEnabled: true, osdEnabled: false });
-        expect(stream.reused).to.equal(true);
+        expect(stream.provenance).to.not.equal("allocated");
         expect(stream.streamId).to.equal(7);
     });
 
@@ -7429,7 +7424,7 @@ describe("CameraStreamManager overlays", () => {
             allocatedVideoStreams: [videoStream({ watermarkEnabled: true, osdEnabled: false })],
         };
         const { stream } = await resolve(state, { watermarkEnabled: true });
-        expect(stream.reused).to.equal(true);
+        expect(stream.provenance).to.not.equal("allocated");
         expect(requireVideoEnvelope(stream.envelope).overlays).to.deep.equal({
             watermarkEnabled: true,
             osdEnabled: false,

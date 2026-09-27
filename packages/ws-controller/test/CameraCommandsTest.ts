@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import { CAMERA_STREAM_PROVENANCES } from "@matter-server/ws-client";
 import { EndpointNumber, NodeId, UINT64_MAX } from "@matter/main";
 import { CameraAvStreamManagement } from "@matter/main/clusters/camera-av-stream-management";
 import { StreamUsage } from "@matter/main/types";
@@ -18,7 +19,12 @@ import {
     toWireStartStreamResult,
 } from "../src/camera/cameraCommands.js";
 import type { CameraCapabilities, SnapshotResult, StartStreamResult } from "../src/camera/CameraStreamManager.js";
-import type { AllocatedAudioStream, AllocatedSnapshotStream, AllocatedVideoStream } from "../src/camera/cameraTypes.js";
+import type {
+    AllocatedAudioStream,
+    AllocatedSnapshotStream,
+    AllocatedVideoStream,
+    ResolvedStream,
+} from "../src/camera/cameraTypes.js";
 import { ServerError, ServerErrorCode } from "../src/types/WebSocketMessageTypes.js";
 
 describe("cameraCommands", () => {
@@ -1107,8 +1113,7 @@ describe("cameraCommands", () => {
                 mode: "provide_offer",
                 video: {
                     streamId: 1,
-                    reused: false,
-                    allocatedByUs: true,
+                    provenance: "allocated",
                     envelope: {
                         codec: 1,
                         minResolution: { width: 640, height: 360 },
@@ -1139,39 +1144,37 @@ describe("cameraCommands", () => {
             });
         });
 
-        it("states one provenance per stream rather than two booleans", () => {
-            // The pair encoded three states in four combinations, and the fourth — not reused and not
-            // allocated by this server — cannot occur, so no caller could ever have read it.
-            const video = {
-                streamId: 1,
-                envelope: {
-                    codec: 1,
-                    minResolution: { width: 640, height: 360 },
-                    maxResolution: { width: 1920, height: 1080 },
-                    minFrameRate: 1,
-                    maxFrameRate: 30,
-                    minBitRate: 100000,
-                    maxBitRate: 8000000,
-                    keyFrameInterval: 2000,
-                    overlays: {},
-                },
+        it("carries all three provenances through unchanged, on both tracks", () => {
+            // One value in and one value out: the boundary neither derives it nor loses it, which is
+            // what makes the three states a client sees the three states the manager recorded.
+            const envelope = {
+                codec: 1,
+                minResolution: { width: 640, height: 360 },
+                maxResolution: { width: 1920, height: 1080 },
+                minFrameRate: 1,
+                maxFrameRate: 30,
+                minBitRate: 100000,
+                maxBitRate: 8000000,
+                keyFrameInterval: 2000,
+                overlays: {},
             };
-            const provenanceOf = (reused: boolean, allocatedByUs: boolean) =>
-                toWireStartStreamResult({
+            const audioEnvelope = { codec: 0, channelCount: 1, sampleRate: 48000, bitRate: 64000, bitDepth: 16 };
+            for (const provenance of CAMERA_STREAM_PROVENANCES) {
+                const wire = toWireStartStreamResult({
                     webRtcSessionId: 9,
                     mode: "provide_offer",
-                    video: { ...video, reused, allocatedByUs },
-                }).video?.provenance;
-            expect(provenanceOf(false, true)).to.equal("allocated");
-            expect(provenanceOf(true, true)).to.equal("reused");
-            expect(provenanceOf(true, false)).to.equal("adopted");
+                    video: { streamId: 1, provenance, envelope },
+                    audio: { streamId: 2, provenance, envelope: audioEnvelope },
+                });
+                expect(wire.video?.provenance).to.equal(provenance);
+                expect(wire.audio?.provenance).to.equal(provenance);
+            }
         });
 
         it("reports the ceilings the encoder budget lowered, and omits the field when it lowered none", () => {
-            const video = {
+            const video: ResolvedStream = {
                 streamId: 1,
-                reused: false,
-                allocatedByUs: true,
+                provenance: "allocated",
                 envelope: {
                     codec: 1,
                     minResolution: { width: 640, height: 360 },
@@ -1200,9 +1203,9 @@ describe("cameraCommands", () => {
                 mode: "solicit_offer",
                 video: {
                     streamId: 1,
-                    reused: true,
+                    provenance: "reused",
                     degraded: true,
-                    allocatedByUs: true,
+
                     envelope: {
                         codec: 1,
                         minResolution: { width: 640, height: 360 },
@@ -1217,8 +1220,7 @@ describe("cameraCommands", () => {
                 },
                 audio: {
                     streamId: 2,
-                    reused: false,
-                    allocatedByUs: true,
+                    provenance: "allocated",
                     envelope: { codec: 0, channelCount: 1, sampleRate: 48000, bitRate: 64000, bitDepth: 16 },
                 },
             };

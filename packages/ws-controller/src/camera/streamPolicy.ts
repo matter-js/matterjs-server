@@ -671,8 +671,10 @@ export function computeAudioEnvelope(args: AudioEnvelopeArgs): AudioSelection {
  * camera ranks higher is never taken while a lower-ranked one of the same ownership is free. Which
  * usage that is belongs to the camera and its administrator, not to this server — §11.2.8.12 lets
  * `SetStreamPriorities` reorder it, so no ordering may be assumed here. A usage the list does not
- * carry is taken last rather than first: the camera states nothing about it, and destroying what
- * cannot be reasoned about is the one outcome with no way back.
+ * carry sorts last **within its own side**, not last overall: the camera states nothing about it, and
+ * destroying what cannot be reasoned about is the one outcome with no way back — but an unranked
+ * stream of this server's own still goes before any foreign one, because ownership is the key above
+ * the ranking.
  */
 export function chooseEvictionVictim(
     streams: AllocatedVideoStream[],

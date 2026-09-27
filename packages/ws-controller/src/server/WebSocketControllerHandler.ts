@@ -112,10 +112,9 @@ const NETWORK_TOPOLOGY_OPT_IN_COMMANDS = new Set(["get_network_topology"]);
 
 // Every command that can produce an inbound signalling event opts the connection in: the camera's
 // offer, answer, candidates and end arrive on the webrtc_callback channel whichever command started
-// the session. A session with a known owner is routed to it, so what this set decides is who else
-// receives a session no record names — and a connection that never sent an offer can do nothing with
-// a stray one. `webrtc_callback` is schema 12, so this set cannot be folded into the camera one
-// below: a schema-12 client on the raw route must keep receiving it.
+// the session. A session with a known owner is routed to it, so what this set decides is only who
+// receives a session no record names, and it stays narrower than the camera set below because a
+// connection that never sent an offer can do nothing with a stray one.
 const WEBRTC_OPT_IN_COMMANDS = new Set([
     "send_webrtc_provider_command",
     "camera_start_stream",
@@ -124,13 +123,12 @@ const WEBRTC_OPT_IN_COMMANDS = new Set([
 ]);
 
 // Issuing any camera command (schema 14) opts the connection in to camera_session_ended and
-// camera_stream_evicted: both report what the server did to a camera on nobody's request, and a
-// pre-14 client would receive an event type it does not know. A superset of the set above, so the
-// difference a client can observe is one thing: a connection that has only read capabilities,
-// stopped a session, taken a snapshot or released a stream learns that a session of its own ended or
-// a stream of its own was taken, and is still not handed signalling for a session nobody owns.
-// `send_webrtc_provider_command` is in this set on purpose even though it is schema 12: a raw-route
-// client's own session ending is the one schema-14 fact it cannot learn any other way.
+// camera_stream_evicted, and a connection that has issued none receives neither. A superset of the
+// set above, so the observable difference is that a connection which has only read capabilities,
+// stopped a session, taken a snapshot or released a stream receives these two events and is still
+// not handed signalling for a session nobody owns. camera_session_ended is routed to the session's
+// owner; camera_stream_evicted is not routed at all, because no record says which connection holds a
+// stream, so every camera-aware connection receives every eviction.
 const CAMERA_OPT_IN_COMMANDS = new Set([
     "send_webrtc_provider_command",
     "camera_get_capabilities",

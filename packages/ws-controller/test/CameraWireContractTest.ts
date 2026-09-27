@@ -173,8 +173,7 @@ const START_STREAM: StartStreamResult = {
             keyFrameInterval: 4000,
             overlays: {},
         },
-        reused: true,
-        allocatedByUs: true,
+        provenance: "reused",
         degraded: true,
         evicted: [9],
         budgetNarrowed: { maxFrameRate: 30, maxResolution: { width: 2560, height: 1440 } },
@@ -182,8 +181,7 @@ const START_STREAM: StartStreamResult = {
     audio: {
         streamId: 2,
         envelope: { codec: 0, channelCount: 2, sampleRate: 48000, bitRate: 64000, bitDepth: 16 },
-        reused: false,
-        allocatedByUs: true,
+        provenance: "allocated",
     },
 };
 

@@ -725,7 +725,7 @@ class MatterClient:
             "ProvideIceCandidates",
         ],
         payload: dict,
-    ) -> dict[str, Any]:
+    ) -> dict[str, Any] | None:
         """Invoke a WebRTCTransportProvider command on a commissioned camera.
 
         The server hard-codes the cluster id (0x0553) and injects
@@ -746,7 +746,9 @@ class MatterClient:
             command_name=command_name,
             payload=payload,
         )
-        return cast(dict[str, Any], response)
+        # None for the two signalling commands: the cluster defines no response payload for them, so
+        # subscripting the result of one of those is what a `dict` return type would have invited.
+        return cast("dict[str, Any] | None", response)
 
     def _prepare_message(
         self,

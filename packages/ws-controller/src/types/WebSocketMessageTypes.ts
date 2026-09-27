@@ -110,48 +110,57 @@ export enum ServerErrorCode {
 /** The facts every {@link CameraStreamIncompatibleDetail} carries, whatever its reason. */
 interface CameraStreamIncompatibleFacts {
     /**
-     * Which `camera_start_stream` track the failure is about, so a caller learns which of its two
-     * statements could not be met. Absent when the failure is about the request as a whole (`no_media`)
-     * or about a command that resolves no track, such as `camera_snapshot`.
-     */
-    track?: "video" | "audio";
-    /**
      * The camera's own codec names, empty when the camera is not what refused — an offer that
      * rejects a media section, or a request that asked for no track at all. Never a statement that
      * the camera supports nothing.
      */
     device: string[];
     requested: string[];
-    /**
-     * The single caller bound that could not be met, when the server decided that before asking the
-     * device. `field` is typed to the wire vocabulary so a hint key can only be reported in the
-     * spelling `camera_start_stream` accepts it back in.
-     */
-    bound?: CameraStreamIncompatibleBound;
     /** Matter status code the device answered with, when a device rejection produced this. */
     deviceStatus?: number;
+}
+
+/** The facts a failure about one of `camera_start_stream`'s two tracks can name. */
+interface CameraStreamIncompatibleTrackFacts extends CameraStreamIncompatibleFacts {
+    /**
+     * Which `camera_start_stream` track the failure is about, so a caller learns which of its two
+     * statements could not be met. Absent for a command that resolves no track, such as
+     * `camera_snapshot`.
+     */
+    track?: "video" | "audio";
 }
 
 /**
  * What a client learns about a request the camera or the offer cannot serve.
  *
- * `feature` is carried by the `feature` reason and by no other, which is what the union states: the
- * field is a detail of that one reason rather than a discriminator between several.
+ * Each field that belongs to one reason lives on that reason's arm alone, so a combination the
+ * documents rule out cannot be written: `feature` is carried by `feature`, `bound` by `bounds`, and
+ * `no_media` names no track, because it is the request as a whole that carried no media.
  */
 export type CameraStreamIncompatibleDetail =
-    | (CameraStreamIncompatibleFacts & {
+    | (CameraStreamIncompatibleTrackFacts & {
           reason: "feature";
           /** The AVSM feature the camera does not advertise, named as `camera_get_capabilities` reports the advertised ones. */
           feature: string;
       })
-    | (CameraStreamIncompatibleFacts & { reason: Exclude<CameraStreamIncompatibleReason, "feature"> });
+    | (CameraStreamIncompatibleTrackFacts & {
+          reason: "bounds";
+          /**
+           * The single caller bound that could not be met, when the server decided that before asking the
+           * device. `field` is typed to the wire vocabulary so a hint key can only be reported in the
+           * spelling `camera_start_stream` accepts it back in.
+           */
+          bound?: CameraStreamIncompatibleBound;
+      })
+    | (CameraStreamIncompatibleTrackFacts & { reason: "codec" | "capability" | "offer" | "level" })
+    | (CameraStreamIncompatibleFacts & { reason: "no_media" });
 
 const INCOMPATIBLE_MESSAGES: Record<CameraStreamIncompatibleReason, string> = {
     codec: "No codec supported by both the camera and the caller",
     bounds: "Camera cannot serve the requested stream parameters",
     feature: "Camera does not advertise the feature this request needs",
     capability: "Camera states no capability this request can use",
-    offer: "The offer carries no media section for this track",
+    offer: "The offer does not carry this track's media to the peer",
     no_media: "The request leaves no media for the session to carry",
     level: "Offer states a codec level this server cannot bound a stream by",
 };
@@ -282,11 +291,11 @@ export class ServerError extends Error {
             JSON.stringify({
                 message: INCOMPATIBLE_MESSAGES[detail.reason],
                 reason: detail.reason,
-                ...(detail.track === undefined ? {} : { track: detail.track }),
+                ...("track" in detail && detail.track !== undefined ? { track: detail.track } : {}),
                 ...(detail.reason === "feature" ? { feature: detail.feature } : {}),
                 device: detail.device,
                 requested: detail.requested,
-                ...(detail.bound === undefined ? {} : { bound: detail.bound }),
+                ...(detail.reason === "bounds" && detail.bound !== undefined ? { bound: detail.bound } : {}),
                 ...(detail.deviceStatus === undefined ? {} : { device_status: detail.deviceStatus }),
             }),
         );

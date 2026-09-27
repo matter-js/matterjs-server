@@ -12,7 +12,6 @@ import type {
     CameraStartStreamAudioResult,
     CameraStartStreamResult,
     CameraStartStreamVideoResult,
-    CameraStreamProvenance,
     CameraResolution,
     CameraVideoHints,
 } from "@matter-server/ws-client";
@@ -611,18 +610,6 @@ export function toWireCapabilities(capabilities: CameraCapabilities): CameraCapa
     };
 }
 
-/**
- * Where the stream came from, from the two facts the manager records about it.
- *
- * A stream that was not reused was allocated by this call, so `allocatedByUs` is the only question left
- * once `reused` is answered — which is why the wire states one value instead of the two booleans, whose
- * fourth combination cannot occur.
- */
-function provenanceOf(stream: ResolvedStream): CameraStreamProvenance {
-    if (!stream.reused) return "allocated";
-    return stream.allocatedByUs ? "reused" : "adopted";
-}
-
 /** `ResolvedStream.envelope` is a union; the manager only ever pairs a video envelope with a video track. */
 function isVideoEnvelope(envelope: VideoEnvelope | AudioEnvelope): envelope is VideoEnvelope {
     return "minResolution" in envelope;
@@ -639,7 +626,7 @@ function toWireStartStreamVideo(stream: ResolvedStream): CameraStartStreamVideoR
         resolution: { min: envelope.minResolution, max: envelope.maxResolution },
         frame_rate: { min: envelope.minFrameRate, max: envelope.maxFrameRate },
         bit_rate: { min: envelope.minBitRate, max: envelope.maxBitRate },
-        provenance: provenanceOf(stream),
+        provenance: stream.provenance,
         // Two sources: the camera's own statement for a reused or degraded stream, the request it
         // accepted for a freshly allocated one. Absent either way means no such overlay.
         watermark_enabled: envelope.overlays.watermarkEnabled ?? false,
@@ -673,7 +660,7 @@ function toWireStartStreamAudio(stream: ResolvedStream): CameraStartStreamAudioR
         sample_rate: envelope.sampleRate,
         bit_rate: envelope.bitRate,
         bit_depth: envelope.bitDepth,
-        provenance: provenanceOf(stream),
+        provenance: stream.provenance,
     };
 }
 

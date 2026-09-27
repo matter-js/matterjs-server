@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import type { CameraStreamProvenance } from "@matter-server/ws-client";
 import { Logger, MaybePromise, Observable, Time } from "@matter/main";
 import type { EndpointNumber, NodeId } from "@matter/main";
 import { CameraAvStreamManagement } from "@matter/main/clusters/camera-av-stream-management";
@@ -190,6 +191,14 @@ function allocatedAudioStream(streamId: number, streamUsage: number, envelope: A
         bitDepth: envelope.bitDepth,
         referenceCount: 0,
     };
+}
+
+/**
+ * Where a stream the camera already had came from: ours when this run allocated it, another controller's
+ * otherwise. A stream this call allocated is `"allocated"` and never goes through here.
+ */
+function existingStreamProvenance(allocatedByUs: boolean): CameraStreamProvenance {
+    return allocatedByUs ? "reused" : "adopted";
 }
 
 /** The envelope actually delivered by an allocated audio stream, as opposed to the one requested. */
@@ -1195,8 +1204,7 @@ export class CameraStreamManager {
             return {
                 streamId: reused.videoStreamId,
                 envelope: envelopeOfVideoStream(reused, selection.envelope.keyFrameInterval),
-                reused: true,
-                allocatedByUs: this.leaseReusedVideoStream(nodeId, endpointId, reused),
+                provenance: existingStreamProvenance(this.leaseReusedVideoStream(nodeId, endpointId, reused)),
             };
         }
 
@@ -1269,8 +1277,7 @@ export class CameraStreamManager {
                 return reporting({
                     streamId,
                     envelope,
-                    reused: false,
-                    allocatedByUs: true,
+                    provenance: "allocated",
                     ...(budget.narrowed === undefined ? {} : { budgetNarrowed: budget.narrowed }),
                 });
             } catch (error) {
@@ -1355,9 +1362,8 @@ export class CameraStreamManager {
             return reporting({
                 streamId: degraded.videoStreamId,
                 envelope: envelopeOfVideoStream(degraded, envelope.keyFrameInterval),
-                reused: true,
                 degraded: true,
-                allocatedByUs: this.leaseReusedVideoStream(nodeId, endpointId, degraded),
+                provenance: existingStreamProvenance(this.leaseReusedVideoStream(nodeId, endpointId, degraded)),
             });
         }
 
@@ -1427,9 +1433,9 @@ export class CameraStreamManager {
         const { nodeId, endpointId, streamUsage } = args;
         const state = await this.requireState(nodeId, endpointId);
         const requestedCodecs = args.hints?.codecs ?? new Array<string>();
-        // The peer's own refusal outranks anything the camera can offer, and no different request
-        // changes it, which is what `capability` reports. Answering it here rather than by narrowing
-        // the codec set keeps the caller from being sent after the camera's codec list.
+        // The peer's own refusal outranks anything the camera can offer, and no argument of the request
+        // changes it — only the offer does, which is what `offer` reports. Answering it here rather than
+        // by narrowing the codec set keeps the caller from being sent after the camera's codec list.
         const refusal = mediaRefusal(args.sdp, "audio");
         if (refusal !== undefined) {
             logger.notice(
@@ -1524,8 +1530,7 @@ export class CameraStreamManager {
                 stream: {
                     streamId: existing.audioStreamId,
                     envelope: envelopeOfAudioStream(existing),
-                    reused: true,
-                    allocatedByUs: this.leaseReusedAudioStream(nodeId, endpointId, existing),
+                    provenance: existingStreamProvenance(this.leaseReusedAudioStream(nodeId, endpointId, existing)),
                 },
             };
         }
@@ -1559,7 +1564,7 @@ export class CameraStreamManager {
                 allocation: allocatedAudioStream(streamId, streamUsage, envelope),
             });
             scope.returnOnFailure(() => this.#deallocate(nodeId, endpointId, lease));
-            return { stream: { streamId, envelope, reused: false, allocatedByUs: true } };
+            return { stream: { streamId, envelope, provenance: "allocated" } };
         } catch (error) {
             if (error instanceof ServerError) throw error;
             const status = deviceStatusOf(error);
@@ -1595,9 +1600,11 @@ export class CameraStreamManager {
      * The victim is chosen by {@link chooseEvictionVictim}, which takes this server's own streams
      * before any foreign one and orders each side by the camera's ranking. A stream this server did not
      * allocate may be taken at all because the cluster protects a stream by use and by Internal, not by
-     * who created it; it is taken only once nothing of this server's own is left to give up, and it is
-     * logged, since the spec recommends commissioners pre-allocate (§11.2.1.1) and such a stream may be
-     * deliberate.
+     * who created it; it is taken only once nothing of this server's own is left **among the candidates
+     * this rung was given**, which is `liveStreams` minus whatever satisfies the caller's bounds — so one
+     * of ours the degraded rung could hand out is withheld from here and a foreign stream can go first.
+     * Taking one is logged, since the spec recommends commissioners pre-allocate (§11.2.1.1) and such a
+     * stream may be deliberate.
      *
      * The freeing is registered with `scope` so a request that never uses the capacity it bought puts
      * an equivalent stream back rather than leaving the camera one stream poorer for nothing. The

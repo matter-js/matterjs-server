@@ -102,8 +102,10 @@ export function isDegradedFrom(chosen: Resolution, best: SnapshotCapability | un
  * one question, and this is it. What decides among them is what each would actually free.
  *
  * Which is one half of the make-room ladder's single rule, stated in full on `chooseEvictionVictim`:
- * this server gives up its own streams before it takes anybody else's. That rule is why this rung runs
- * ahead of the video one and why a foreign snapshot stream is never a candidate here at all.
+ * this server gives up its own streams before it takes anybody else's. That rule is why a foreign
+ * snapshot stream is never a candidate here at all. What puts this rung ahead of the video one is a
+ * separate reason: `StreamUsagePriorities` ranks video usages and says nothing about snapshot streams,
+ * so there is no ranking to fold these candidates into.
  *
  * `SnapshotStreamDeallocate` (§11.2.8.10.2) refuses an id it does not know and a `ReferenceCount`
  * above 0, and has no `Internal` case — snapshot streams carry no stream usage. The count is what

@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import type { CameraStreamProvenance } from "@matter-server/ws-client";
 import type { EndpointNumber, NodeId } from "@matter/main";
 import type { CameraAvStreamManagementClient } from "@matter/node/behaviors/camera-av-stream-management";
 import type { OverlayBounds } from "./overlayPolicy.js";
@@ -247,8 +248,14 @@ export interface DeviceWebRtcSession {
 export interface ResolvedStream {
     streamId: number;
     envelope: VideoEnvelope | AudioEnvelope;
-    reused: boolean;
-    allocatedByUs: boolean;
+    /**
+     * Where the stream came from, in the three states it can be in.
+     *
+     * One value rather than a `reused` flag beside the lease's `allocatedByUs`: those two encode three
+     * states in four combinations, and the fourth — not reused and not allocated by this run — cannot
+     * occur, so a mapping from the pair has to answer for an input nothing produces.
+     */
+    provenance: CameraStreamProvenance;
     /** The result does not fit the envelope the server would have allocated; set only by the last ladder rung. */
     degraded?: boolean;
     /**
@@ -271,6 +278,10 @@ export interface ResolvedStream {
      * the range the server computed, while this says the range the server computed was itself below what
      * the camera's sensor allows, because other streams spend its encoder budget. A caller that wants
      * motion answers this one by stating `min_frame_rate`, which the budget may not narrow past.
+     *
+     * These are the unbudgeted ceilings and not a measure of the whole gap: the ladder narrows the range
+     * again after a device refusal, and this record is not recomputed for that, so the envelope finally
+     * allocated can sit below what the budget left.
      */
     budgetNarrowed?: VideoBudgetNarrowing;
 }
