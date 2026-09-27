@@ -48,6 +48,7 @@ import type { MediaRefusal, SdpVideoConstraints, SelectedVideoCodecLimits } from
 import { CameraSessionRegistry } from "./sessionRegistry.js";
 import type { PendingSession, SessionScope } from "./sessionRegistry.js";
 import {
+    chooseSnapshotStreamToFree,
     encodersExhausted,
     findAdoptableSnapshotStream,
     isDowngradeFrom,
@@ -1115,8 +1116,9 @@ export class CameraStreamManager {
                 bound: { field: selection.field, requested: selection.requested, limit: selection.limit },
             });
         }
-        // The ladder's own copy: freeing a stream updates this array, never the state object.
+        // The ladder's own copies: freeing a stream updates these arrays, never the state object.
         let liveStreams = state.allocatedVideoStreams;
+        let liveSnapshotStreams = state.allocatedSnapshotStreams;
         // Freeing and the exhaustion report stay on device state: a stream this server has only just
         // allocated has no reference count anyone but the device can state.
         const unreported = this.unreportedVideoStreams(nodeId, endpointId, liveStreams);
@@ -1140,13 +1142,13 @@ export class CameraStreamManager {
         // snapshot stream this server allocated moments ago is missing from the sum until the report
         // catches up, which over-states the free budget and costs one refused allocate the ladder
         // walks down from. The same lag `encodersExhausted` already documents.
-        const budgeted = (streams: AllocatedVideoStream[]): VideoEnvelope =>
+        const budgeted = (streams: AllocatedVideoStream[], snapshots: AllocatedSnapshotStream[]): VideoEnvelope =>
             budgetVideoEnvelope(selection.envelope, {
                 maxEncodedPixelRate: state.maxEncodedPixelRate,
                 videoStreams: [...streams, ...unreported],
-                snapshotStreams: state.allocatedSnapshotStreams,
+                snapshotStreams: snapshots,
             });
-        let envelope = budgeted(liveStreams);
+        let envelope = budgeted(liveStreams, liveSnapshotStreams);
 
         // A stream the degraded rung could hand out is not a stream to destroy for the same request:
         // taking it and then failing costs the victim's holder an id for a request the victim itself
@@ -1230,6 +1232,19 @@ export class CameraStreamManager {
                 // Nothing is taken on the last attempt: the allocate that would have spent the
                 // capacity is outside the loop, so the victim would be destroyed for nothing.
                 if (attempt === MAX_ALLOCATE_ATTEMPTS) break;
+                // Our own snapshot stream goes first, before any video stream and so before anything
+                // another controller holds. The camera's StreamUsagePriorities ranks video usages and
+                // says nothing about snapshot streams, so there is no ranking to fold this into, and
+                // the next camera_snapshot allocates one again from the camera's own capabilities.
+                const freedSnapshot = await this.freeOwnSnapshotStream(nodeId, endpointId, liveSnapshotStreams);
+                if (freedSnapshot !== undefined) {
+                    // Strictly shrinking, so the rung cannot keep finding the same stream.
+                    liveSnapshotStreams = liveSnapshotStreams.filter(
+                        stream => stream.snapshotStreamId !== freedSnapshot,
+                    );
+                    envelope = budgeted(liveStreams, liveSnapshotStreams);
+                    continue;
+                }
                 const madeRoom = await this.freeAnUnreferencedVideoStream(
                     nodeId,
                     endpointId,
@@ -1243,7 +1258,7 @@ export class CameraStreamManager {
                 liveStreams = liveStreams.filter(stream => stream.videoStreamId !== madeRoom.streamId);
                 freed.push(madeRoom.spend);
                 evicted.push(madeRoom.streamId);
-                envelope = budgeted(liveStreams);
+                envelope = budgeted(liveStreams, liveSnapshotStreams);
             }
         }
 
@@ -1538,6 +1553,46 @@ export class CameraStreamManager {
             }),
         );
         return { streamId: victim.videoStreamId, spend };
+    }
+
+    /**
+     * Deallocate one snapshot stream this server allocated and report its id, or `undefined` when
+     * there is none worth taking. `streams` is a plain array and the caller's `CameraState` is never
+     * written to.
+     *
+     * {@link chooseSnapshotStreamToFree} decides which, from the streams this server's leases claim;
+     * everything else the camera reports belongs to somebody else and is left to the video rung's own
+     * ordering. Nothing is registered with the allocation scope, unlike the video rung: a replacement
+     * would carry a new id nobody holds while re-taking the very encoder the request turned out not to
+     * need, and the next `camera_snapshot` allocates one from the camera's own capabilities anyway.
+     */
+    protected async freeOwnSnapshotStream(
+        nodeId: NodeId,
+        endpointId: EndpointNumber,
+        streams: AllocatedSnapshotStream[],
+    ): Promise<number | undefined> {
+        const ours = streams.filter(stream => this.ownsStream(nodeId, endpointId, "snapshot", stream.snapshotStreamId));
+        const victim = chooseSnapshotStreamToFree(ours);
+        if (victim === undefined) return undefined;
+        const { snapshotStreamId } = victim;
+        try {
+            await this.io.invoke({
+                nodeId,
+                endpointId,
+                cluster: "avsm",
+                command: "snapshotStreamDeallocate",
+                fields: { snapshotStreamId },
+            });
+        } catch (error) {
+            logger.info(`Could not deallocate snapshot stream ${snapshotStreamId}:`, error);
+            return undefined;
+        }
+        this.dropLease(nodeId, endpointId, "snapshot", snapshotStreamId);
+        logger.notice(
+            `Deallocated snapshot stream ${snapshotStreamId} on node ${nodeId}, which this server allocated and nothing references, to make room for a video stream. The next snapshot allocates one again`,
+        );
+        this.#announce(this.events.streamEvicted, { nodeId, endpointId, kind: "snapshot", streamId: snapshotStreamId });
+        return snapshotStreamId;
     }
 
     /**

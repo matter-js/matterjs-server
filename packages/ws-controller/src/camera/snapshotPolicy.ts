@@ -96,6 +96,34 @@ export function isDowngradeFrom(chosen: Resolution, best: SnapshotCapability | u
 }
 
 /**
+ * The snapshot stream the make-room rung should take, or none worth taking.
+ *
+ * `candidates` are the streams this server allocated in this process run — ownership answers exactly
+ * one question, and this is it. Two further conditions decide which of those may be taken and which is
+ * worth taking:
+ *
+ * `SnapshotStreamDeallocate` (§11.2.8.10.2) refuses an id it does not know and a `ReferenceCount`
+ * above 0, and has no `Internal` case — snapshot streams carry no stream usage. The count is what
+ * something else holding the stream looks like: `CaptureSnapshot` does not raise it, so a stream this
+ * server polls snapshots from reads 0, and "unreferenced" therefore means nobody has taken a reference
+ * rather than nobody is using it. That is why only this server's own streams are offered here.
+ *
+ * A stream that holds neither an encoder (§11.2.6.13.9) nor a share of `MaxEncodedPixelRate`
+ * (§11.2.6.13.8) frees no capacity, so taking it would be loss with nothing bought.
+ *
+ * The largest pixel-rate footprint goes first, summed as the reference server sums it
+ * (`frameRate × maxResolution`, `IsResourceAvailableForStreamAllocation`): the refusal being reacted to
+ * is a capacity refusal, so the biggest holder is the candidate most likely to make the retry succeed.
+ * The id breaks a tie so the choice does not depend on the order the camera reported the streams in.
+ */
+export function chooseSnapshotStreamToFree(candidates: AllocatedSnapshotStream[]): AllocatedSnapshotStream | undefined {
+    const footprint = (stream: AllocatedSnapshotStream): number => pixels(stream.maxResolution) * stream.frameRate;
+    return candidates
+        .filter(stream => stream.referenceCount === 0 && (stream.hardwareEncoder || stream.encodedPixels))
+        .sort((a, b) => footprint(b) - footprint(a) || a.snapshotStreamId - b.snapshotStreamId)[0];
+}
+
+/**
  * An already-allocated snapshot stream worth capturing from instead of allocating one, or none.
  *
  * Allocating a snapshot stream per call is the churn §11.2.1.1 asks controllers to avoid, and the

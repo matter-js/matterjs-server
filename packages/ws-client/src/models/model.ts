@@ -791,11 +791,16 @@ export interface CameraSessionEndedData {
     webrtc_session_id: number;
 }
 
-/** The `camera_stream_evicted` payload: one stream id that has stopped existing on the camera. */
+/**
+ * The `camera_stream_evicted` payload: one stream id that has stopped existing on the camera.
+ *
+ * `kind` is `video` or `snapshot`, the two the server can free: an audio stream holds neither an
+ * encoder nor a share of the camera's encoded pixel rate, so taking one would free nothing.
+ */
 export interface CameraStreamEvictedData {
     node_id: number | bigint;
     endpoint_id: number;
-    kind: "video";
+    kind: "video" | "snapshot";
     stream_id: number;
 }
 
@@ -1383,9 +1388,10 @@ export interface APIEvents {
      * A stream the server deallocated to make room for another request on the same camera.
      *
      * Reaches every connection that has issued a camera command, the one the room was made for
-     * included: no record names which connection holds a stream, and the caller that benefited also
-     * reads the same ids in `camera_start_stream`'s `video.evicted_stream_ids`. The id is gone for
-     * good: a replacement the server allocates for the same range gets a new id.
+     * included: no record names which connection holds a stream. For a video stream the caller that
+     * benefited reads the same ids in `camera_start_stream`'s `video.evicted_stream_ids`; for a
+     * snapshot stream this event is the only report, since that field carries video stream ids. The id
+     * is gone for good: a replacement the server allocates for the same range gets a new id.
      */
     camera_stream_evicted: {
         data: CameraStreamEvictedData;

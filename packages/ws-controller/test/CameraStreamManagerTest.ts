@@ -720,6 +720,208 @@ describe("CameraStreamManager", () => {
             );
         });
 
+        it("frees a snapshot stream it allocated itself when that is the only capacity left", async () => {
+            // Round 13 made every snapshot stream outlive its call, so on single-encoder hardware a
+            // client's own snapshot poll blocked its own stream start and only camera_release_stream
+            // could clear it.
+            const encoderHolder = {
+                snapshotStreamId: 5,
+                overlays: NO_OVERLAYS,
+                imageCodec: 0,
+                minResolution: { width: 1920, height: 1080 },
+                maxResolution: { width: 1920, height: 1080 },
+                referenceCount: 0,
+                frameRate: 1,
+                encodedPixels: true,
+                hardwareEncoder: true,
+            };
+            let snapshotStreamLive = false;
+            const { manager, invokes, holder } = managerWith(STATE, async invoke => {
+                if (invoke.command === "snapshotStreamAllocate") {
+                    snapshotStreamLive = true;
+                    return { snapshotStreamId: 5 };
+                }
+                if (invoke.command === "captureSnapshot") {
+                    return { data: new Uint8Array([1]), imageCodec: 0, resolution: { width: 1920, height: 1080 } };
+                }
+                if (invoke.command === "snapshotStreamDeallocate") {
+                    snapshotStreamLive = false;
+                    return undefined;
+                }
+                if (invoke.command === "videoStreamAllocate") {
+                    // The camera's last encoder is the snapshot stream's while it exists.
+                    if (snapshotStreamLive) throw statusError(Status.ResourceExhausted);
+                    return { videoStreamId: 11 };
+                }
+                return undefined;
+            });
+            const evicted = new Array<CameraStreamEvicted>();
+            manager.events.streamEvicted.on(taken => {
+                evicted.push(taken);
+            });
+
+            await manager.snapshot({ nodeId: NODE, endpointId: ENDPOINT });
+            holder.state = { ...STATE, allocatedSnapshotStreams: [encoderHolder] };
+
+            const resolved = await manager.resolveVideoStream({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                streamUsage: LIVE_VIEW,
+                limits: { codec: H265 },
+            });
+
+            expect(resolved.streamId).to.equal(11);
+            expect(
+                invokes
+                    .filter(invoke => invoke.command === "snapshotStreamDeallocate")
+                    .map(invoke => invoke.fields.snapshotStreamId),
+            ).to.deep.equal([5]);
+            // Nothing is put back: the next camera_snapshot allocates one from the camera's own
+            // capabilities, and a replacement here would re-take the encoder this request needed.
+            expect(invokes.filter(invoke => invoke.command === "snapshotStreamAllocate")).to.have.length(1);
+            expect(evicted).to.deep.equal([{ nodeId: NODE, endpointId: ENDPOINT, kind: "snapshot", streamId: 5 }]);
+            // The id is not a video stream id, so it stays out of the field that names those.
+            expect(resolved.evicted).to.equal(undefined);
+        });
+
+        it("puts the pixel rate a freed snapshot stream held back into the envelope", async () => {
+            // The sensor frame at 30 fps is 110.6 Mpx/s. The snapshot stream reserves 62.2 of it,
+            // leaving 48.4, which carries that frame at 13 fps; the request that freed it must get the
+            // whole budget back rather than the envelope the shortage produced.
+            const BUDGET = 110592000;
+            const snapshotHolder = {
+                snapshotStreamId: 5,
+                overlays: NO_OVERLAYS,
+                imageCodec: 0,
+                minResolution: { width: 1920, height: 1080 },
+                maxResolution: { width: 1920, height: 1080 },
+                referenceCount: 0,
+                frameRate: 30,
+                encodedPixels: true,
+                hardwareEncoder: false,
+            };
+            let snapshotStreamLive = false;
+            const { manager, invokes, holder } = managerWith(
+                { ...STATE, maxEncodedPixelRate: BUDGET },
+                async invoke => {
+                    if (invoke.command === "snapshotStreamAllocate") {
+                        snapshotStreamLive = true;
+                        return { snapshotStreamId: 5 };
+                    }
+                    if (invoke.command === "captureSnapshot") {
+                        return {
+                            data: new Uint8Array([1]),
+                            imageCodec: 0,
+                            resolution: { width: 1920, height: 1080 },
+                        };
+                    }
+                    if (invoke.command === "snapshotStreamDeallocate") {
+                        snapshotStreamLive = false;
+                        return undefined;
+                    }
+                    if (invoke.command === "videoStreamAllocate") {
+                        if (snapshotStreamLive) throw statusError(Status.ResourceExhausted);
+                        return { videoStreamId: 11 };
+                    }
+                    return undefined;
+                },
+            );
+            await manager.snapshot({ nodeId: NODE, endpointId: ENDPOINT });
+            holder.state = { ...STATE, maxEncodedPixelRate: BUDGET, allocatedSnapshotStreams: [snapshotHolder] };
+
+            const resolved = await manager.resolveVideoStream({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                streamUsage: LIVE_VIEW,
+                limits: { codec: H265 },
+                hints: { maxFrameRate: 30, minResolution: { width: 2560, height: 1440 } },
+            });
+
+            expect(resolved.streamId).to.equal(11);
+            expect(requireVideoEnvelope(resolved.envelope).maxFrameRate).to.equal(30);
+            const allocates = invokes.filter(invoke => invoke.command === "videoStreamAllocate");
+            expect(allocates[0]?.fields.maxFrameRate).to.equal(13);
+            expect(allocates[allocates.length - 1]?.fields.maxFrameRate).to.equal(30);
+        });
+
+        it("leaves a snapshot stream another controller allocated alone", async () => {
+            const foreign = {
+                snapshotStreamId: 6,
+                overlays: NO_OVERLAYS,
+                imageCodec: 0,
+                minResolution: { width: 1920, height: 1080 },
+                maxResolution: { width: 1920, height: 1080 },
+                referenceCount: 0,
+                frameRate: 1,
+                encodedPixels: true,
+                hardwareEncoder: true,
+            };
+            const { manager, invokes } = managerWith(
+                { ...STATE, allocatedSnapshotStreams: [foreign] },
+                async invoke => {
+                    if (invoke.command === "videoStreamAllocate") throw statusError(Status.ResourceExhausted);
+                    return undefined;
+                },
+            );
+            let thrown: unknown;
+            try {
+                await manager.resolveVideoStream({
+                    nodeId: NODE,
+                    endpointId: ENDPOINT,
+                    streamUsage: LIVE_VIEW,
+                    limits: { codec: H265 },
+                });
+            } catch (error) {
+                thrown = error;
+            }
+            expect((thrown as ServerError).code).to.equal(ServerErrorCode.CameraResourceExhausted);
+            expect(invokes.map(invoke => invoke.command)).to.not.include("snapshotStreamDeallocate");
+        });
+
+        it("takes no snapshot stream of its own when the caller forbade eviction", async () => {
+            const { manager, invokes, holder } = managerWith(STATE, async invoke => {
+                if (invoke.command === "snapshotStreamAllocate") return { snapshotStreamId: 5 };
+                if (invoke.command === "captureSnapshot") {
+                    return { data: new Uint8Array([1]), imageCodec: 0, resolution: { width: 1920, height: 1080 } };
+                }
+                if (invoke.command === "videoStreamAllocate") throw statusError(Status.ResourceExhausted);
+                return undefined;
+            });
+            await manager.snapshot({ nodeId: NODE, endpointId: ENDPOINT });
+            holder.state = {
+                ...STATE,
+                allocatedSnapshotStreams: [
+                    {
+                        snapshotStreamId: 5,
+                        overlays: NO_OVERLAYS,
+                        imageCodec: 0,
+                        minResolution: { width: 1920, height: 1080 },
+                        maxResolution: { width: 1920, height: 1080 },
+                        referenceCount: 0,
+                        frameRate: 1,
+                        encodedPixels: true,
+                        hardwareEncoder: true,
+                    },
+                ],
+            };
+
+            let thrown: unknown;
+            try {
+                await manager.resolveVideoStream({
+                    nodeId: NODE,
+                    endpointId: ENDPOINT,
+                    streamUsage: LIVE_VIEW,
+                    limits: { codec: H265 },
+                    allowEviction: false,
+                });
+            } catch (error) {
+                thrown = error;
+            }
+            expect((thrown as ServerError).code).to.equal(ServerErrorCode.CameraResourceExhausted);
+            // The caller said take nothing, and this id was handed to it by its own camera_snapshot.
+            expect(invokes.map(invoke => invoke.command)).to.not.include("snapshotStreamDeallocate");
+        });
+
         it("announces the stream the make-room rung took", async () => {
             // The request that benefits is told in its own response; the client holding the id that
             // stopped existing has nothing else to learn it from.

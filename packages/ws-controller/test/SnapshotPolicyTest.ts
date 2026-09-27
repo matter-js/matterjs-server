@@ -4,9 +4,11 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import type { AllocatedSnapshotStream } from "../src/camera/cameraTypes.js";
 import type { OverlayBounds } from "../src/camera/overlayPolicy.js";
 import type { SnapshotCapability, SnapshotSelection } from "../src/camera/snapshotPolicy.js";
 import {
+    chooseSnapshotStreamToFree,
     encodersExhausted,
     findAdoptableSnapshotStream,
     selectSnapshotCapabilities,
@@ -314,6 +316,52 @@ describe("snapshotPolicy", () => {
                 capabilities: [],
                 bestWithinCallerBounds: undefined,
             });
+        });
+    });
+
+    describe("chooseSnapshotStreamToFree", () => {
+        const held = (
+            snapshotStreamId: number,
+            carried: Partial<AllocatedSnapshotStream> = {},
+        ): AllocatedSnapshotStream => ({
+            snapshotStreamId,
+            imageCodec: 0,
+            minResolution: { width: 640, height: 480 },
+            maxResolution: { width: 640, height: 480 },
+            referenceCount: 0,
+            frameRate: 1,
+            encodedPixels: true,
+            hardwareEncoder: true,
+            overlays: NO_OVERLAYS,
+            ...carried,
+        });
+
+        it("takes nothing while every candidate is referenced", () => {
+            expect(chooseSnapshotStreamToFree([held(1, { referenceCount: 1 })])).to.equal(undefined);
+        });
+
+        it("takes nothing that holds neither an encoder nor a share of the pixel rate", () => {
+            // Destroying it would buy the allocate that follows nothing at all.
+            expect(chooseSnapshotStreamToFree([held(1, { encodedPixels: false, hardwareEncoder: false })])).to.equal(
+                undefined,
+            );
+        });
+
+        it("takes a stream that holds only an encoder, and one that holds only pixel rate", () => {
+            expect(chooseSnapshotStreamToFree([held(1, { encodedPixels: false })])?.snapshotStreamId).to.equal(1);
+            expect(chooseSnapshotStreamToFree([held(2, { hardwareEncoder: false })])?.snapshotStreamId).to.equal(2);
+        });
+
+        it("takes the largest pixel-rate footprint first, whatever order the camera reported", () => {
+            const small = held(1);
+            const large = held(2, { maxResolution: { width: 1920, height: 1080 } });
+            const fast = held(3, { frameRate: 30 });
+            expect(chooseSnapshotStreamToFree([small, large, fast])?.snapshotStreamId).to.equal(3);
+            expect(chooseSnapshotStreamToFree([large, small])?.snapshotStreamId).to.equal(2);
+        });
+
+        it("breaks a tie on the id, so the choice does not depend on the report order", () => {
+            expect(chooseSnapshotStreamToFree([held(9), held(4)])?.snapshotStreamId).to.equal(4);
         });
     });
 

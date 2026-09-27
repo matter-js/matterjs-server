@@ -199,12 +199,13 @@ export interface CameraSessionEnded {
 /**
  * One stream the make-room rung destroyed, for the clients that were not the ones it served.
  *
- * `kind` is `video`: the rung takes video streams, and a caller reads the same ids in its own response.
+ * `kind` is `video` or `snapshot`, the two the rung can take: an audio stream holds neither an encoder
+ * nor a share of the encoded pixel rate, so nothing is ever freed by taking one.
  */
 export interface CameraStreamEvicted {
     nodeId: NodeId;
     endpointId: EndpointNumber;
-    kind: "video";
+    kind: "video" | "snapshot";
     streamId: number;
 }
 
