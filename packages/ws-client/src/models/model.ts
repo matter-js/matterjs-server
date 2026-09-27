@@ -750,7 +750,8 @@ export interface CameraStartStreamVideoResult {
      *
      * A caller that wants motion rather than frame size states `min_frame_rate`, which the budget may
      * not narrow past; `camera_release_stream` or `camera_stop_stream` on a stream of its own gives the
-     * budget back.
+     * budget back. These are the unbudgeted ceilings and not a measure of the whole gap: after a device
+     * refusal the allocation ladder narrows the range again, so `frame_rate.max` can be lower still.
      *
      * Reported for a freshly allocated stream only. A reused or degraded stream carries the camera's own
      * range, which the budget had no part in. This is a different fact from `degraded`, which says the
