@@ -4271,7 +4271,7 @@ describe("CameraStreamManager", () => {
 
         it("keeps the best capability while a viewer streams on a camera with encoders to spare", async () => {
             // One live stream on a camera that states four encoders leaves three. Reading any live
-            // stream as "no encoder left" costs the caller picture size and reports it as a degrade
+            // stream as "no encoder left" costs the caller picture size and reports it as a degradation
             // that did not happen.
             const spare: CameraState = {
                 ...STATE,
@@ -4336,7 +4336,7 @@ describe("CameraStreamManager", () => {
             // AllocatedSnapshotStreams is a cached view that lags a deallocate, so the stream the
             // previous camera_snapshot gave back is still listed. Counting it against the encoder
             // budget would clamp this call to a smaller capability and report the loss as a
-            // degrade, which is the false report the budget exists to remove.
+            // degradation, which is the false report the budget exists to remove.
             const stale: CameraState = {
                 ...STATE,
                 allocatedSnapshotStreams: [
@@ -4597,7 +4597,7 @@ describe("CameraStreamManager", () => {
             expect(result.resolution).to.deep.equal({ width: 1920, height: 1080 });
             expect(result.snapshotStreamId).to.equal(3);
             // 1920x1080 is the largest the caller's own bounds allowed, so reaching it through the
-            // encoder rung is not a degrade.
+            // encoder rung is not a degradation.
             expect(result.degraded).to.equal(false);
         });
 
@@ -4636,11 +4636,11 @@ describe("CameraStreamManager", () => {
             const result = await manager.snapshot({ nodeId: NODE, endpointId: ENDPOINT });
             expect(result.resolution).to.deep.equal({ width: 1920, height: 1080 });
             // The live stream cost this caller nothing: 1920x1080 is the largest the camera offers and
-            // it needs no encoder, so reporting a degrade would be a false alarm.
+            // it needs no encoder, so reporting a degradation would be a false alarm.
             expect(result.degraded).to.equal(false);
         });
 
-        it("reports a degrade when the device refuses the best capability and the next one is smaller", async () => {
+        it("reports a degradation when the device refuses the best capability and the next one is smaller", async () => {
             // Nothing holds the encoder here: the caller still received a 640x480 frame in place of
             // the 1920x1080 its bounds allowed.
             let allocateAttempts = 0;
@@ -4903,7 +4903,7 @@ describe("CameraStreamManager", () => {
             expect(invokes.find(invoke => invoke.command === "captureSnapshot")?.fields.snapshotStreamId).to.equal(3);
         });
 
-        it("reports the degrade from the frame the device delivered, not from the stream it used", async () => {
+        it("reports the degradation from the frame the device delivered, not from the stream it used", async () => {
             // The response reports what arrived. A device that answers below the size it was asked for
             // is out of spec, and the caller still needs to know the frame is small.
             const existing: CameraState = { ...STATE, allocatedSnapshotStreams: [EXISTING_SNAPSHOT_STREAM] };

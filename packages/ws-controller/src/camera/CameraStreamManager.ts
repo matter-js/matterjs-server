@@ -52,7 +52,7 @@ import {
     chooseSnapshotStreamToFree,
     encodersExhausted,
     findAdoptableSnapshotStream,
-    isDegradeFrom,
+    isDegradedFrom,
     selectSnapshotCapabilities,
     usesHardwareEncoder,
 } from "./snapshotPolicy.js";
@@ -2463,7 +2463,7 @@ export class CameraStreamManager {
                     if (captured !== undefined) {
                         return {
                             ...captured,
-                            degraded: isDegradeFrom(captured.resolution, bestWithinCallerBounds),
+                            degraded: isDegradedFrom(captured.resolution, bestWithinCallerBounds),
                             snapshotStreamId: adopted.snapshotStreamId,
                         };
                     }
@@ -2551,7 +2551,7 @@ export class CameraStreamManager {
                 });
                 return {
                     ...captured,
-                    degraded: isDegradeFrom(captured.resolution, bestWithinCallerBounds),
+                    degraded: isDegradedFrom(captured.resolution, bestWithinCallerBounds),
                     snapshotStreamId,
                 };
             }),

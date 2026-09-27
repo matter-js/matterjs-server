@@ -818,7 +818,7 @@ describe("streamPolicy", () => {
 
         it("accepts a stream that matches pinned bounds exactly", () => {
             // Pinning leaves nothing for this rung to give up, so the one stream it can hand out is
-            // the one that meets the pins — which is not a degrading of anything the caller stated.
+            // the one that meets the pins — which is not a degradation of anything the caller stated.
             const pinned = {
                 ...IN_USE_WIDE,
                 minResolution: { width: 1920, height: 1080 },
