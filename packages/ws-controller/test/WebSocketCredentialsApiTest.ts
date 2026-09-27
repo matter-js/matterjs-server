@@ -35,6 +35,7 @@ interface StubCameraStreams {
         streamEvicted: Observable<[CameraStreamEvicted]>;
     };
     snapshot?(args: { watermarkEnabled?: boolean; osdEnabled?: boolean }): Promise<unknown>;
+    releaseStream?(args: { streamId: number }): Promise<void>;
     endedByClient?(
         nodeId: bigint,
         endpointId: number,
@@ -1190,6 +1191,32 @@ describe("WebSocket camera_start_stream arguments", () => {
     });
 });
 
+describe("WebSocket camera_release_stream response", () => {
+    it("answers null, because a failure throws and a success has nothing to state", async () => {
+        // `{ released: true }` was a constant: the only other outcome is an error frame, so no caller
+        // could ever branch on it. Round 18 ruled the same field out on camera_stop_stream.
+        const released = new Array<number>();
+        const h = await createHarness({
+            async releaseConnection() {},
+            async releaseStream(args: { streamId: number }) {
+                released.push(args.streamId);
+            },
+        });
+        try {
+            const answer = await answerTo(h, {
+                message_id: "release",
+                command: "camera_release_stream",
+                args: { node_id: 1, endpoint_id: 1, kind: "video", stream_id: 4 },
+            });
+            expect(answer.error_code).to.equal(undefined);
+            expect(answer.result).to.equal(null);
+            expect(released).to.deep.equal([4]);
+        } finally {
+            await h.close();
+        }
+    });
+});
+
 describe("WebSocket camera_snapshot arguments", () => {
     it("forwards the overlay arguments to the stream manager", async () => {
         // The one hop between the parsed arguments and the allocate that has to carry them; without it
@@ -1203,7 +1230,7 @@ describe("WebSocket camera_snapshot arguments", () => {
                     data: new Uint8Array([1]),
                     imageCodec: 0,
                     resolution: { width: 640, height: 480 },
-                    downgraded: false,
+                    degraded: false,
                     snapshotStreamId: 3,
                 };
             },

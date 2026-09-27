@@ -16,6 +16,23 @@ def test_api_command_send_webrtc_provider_command_value():
     assert APICommand.SEND_WEBRTC_PROVIDER_COMMAND.value == "send_webrtc_provider_command"
 
 
+def test_api_command_covers_every_camera_command():
+    """The server's seven camera commands all need a name here.
+
+    A command missing from the enum is one a caller can only reach by writing the
+    string out, which is what let the two signalling commands go unnoticed.
+    """
+    assert {command.value for command in APICommand if command.value.startswith("camera_")} == {
+        "camera_get_capabilities",
+        "camera_start_stream",
+        "camera_provide_answer",
+        "camera_provide_ice_candidates",
+        "camera_stop_stream",
+        "camera_snapshot",
+        "camera_release_stream",
+    }
+
+
 def test_webrtc_callback_data_roundtrip():
     payload = WebRTCCallbackData(
         event_type="answer",

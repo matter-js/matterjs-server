@@ -113,7 +113,7 @@ const CAPABILITIES: CameraCapabilities = {
                 minBitRate: 1000000,
                 maxBitRate: 4000000,
                 referenceCount: 1,
-                ownedByServer: true,
+                allocatedByServer: true,
             },
         ],
         audio: [
@@ -126,7 +126,7 @@ const CAPABILITIES: CameraCapabilities = {
                 bitRate: 64000,
                 bitDepth: 16,
                 referenceCount: 1,
-                ownedByServer: false,
+                allocatedByServer: false,
             },
         ],
         snapshot: [
@@ -140,7 +140,7 @@ const CAPABILITIES: CameraCapabilities = {
                 frameRate: 1,
                 encodedPixels: false,
                 hardwareEncoder: false,
-                ownedByServer: true,
+                allocatedByServer: true,
             },
         ],
     },
@@ -191,7 +191,7 @@ const SNAPSHOT: SnapshotResult = {
     data: Uint8Array.of(1, 2, 3),
     imageCodec: 0,
     resolution: { width: 1920, height: 1080 },
-    downgraded: true,
+    degraded: true,
     snapshotStreamId: 8,
 };
 

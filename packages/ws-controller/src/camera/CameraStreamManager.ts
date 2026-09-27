@@ -52,7 +52,7 @@ import {
     chooseSnapshotStreamToFree,
     encodersExhausted,
     findAdoptableSnapshotStream,
-    isDowngradeFrom,
+    isDegradeFrom,
     selectSnapshotCapabilities,
     usesHardwareEncoder,
 } from "./snapshotPolicy.js";
@@ -550,9 +550,9 @@ export interface CameraCapabilities {
         streamUsagePriorities: number[];
     };
     allocated: {
-        video: Array<AllocatedVideoStream & { ownedByServer: boolean }>;
-        audio: Array<AllocatedAudioStream & { ownedByServer: boolean }>;
-        snapshot: Array<AllocatedSnapshotStream & { ownedByServer: boolean }>;
+        video: Array<AllocatedVideoStream & { allocatedByServer: boolean }>;
+        audio: Array<AllocatedAudioStream & { allocatedByServer: boolean }>;
+        snapshot: Array<AllocatedSnapshotStream & { allocatedByServer: boolean }>;
     };
     /**
      * The sessions the camera reports for this fabric, which is what holds an allocation's
@@ -611,7 +611,7 @@ export interface SnapshotResult {
     imageCodec: number;
     resolution: Resolution;
     /** True when the frame is smaller than the best capability the caller's own bounds allowed. */
-    downgraded: boolean;
+    degraded: boolean;
     /** The stream the frame came from, which a successful call always leaves on the camera. */
     snapshotStreamId: number;
 }
@@ -1027,15 +1027,15 @@ export class CameraStreamManager {
             allocated: {
                 video: state.allocatedVideoStreams.map(stream => ({
                     ...stream,
-                    ownedByServer: owned("video", stream.videoStreamId),
+                    allocatedByServer: owned("video", stream.videoStreamId),
                 })),
                 audio: state.allocatedAudioStreams.map(stream => ({
                     ...stream,
-                    ownedByServer: owned("audio", stream.audioStreamId),
+                    allocatedByServer: owned("audio", stream.audioStreamId),
                 })),
                 snapshot: state.allocatedSnapshotStreams.map(stream => ({
                     ...stream,
-                    ownedByServer: owned("snapshot", stream.snapshotStreamId),
+                    allocatedByServer: owned("snapshot", stream.snapshotStreamId),
                 })),
             },
             sessions,
@@ -2352,7 +2352,7 @@ export class CameraStreamManager {
      * controllers to avoid, and every allocate competes for the encoders the livestream needs.
      * Adoption remembers nothing between calls: the candidate is found in the device's own report
      * each time, which is why a restart changes nothing about which stream this call reaches for. A
-     * stream this call allocates is recorded as its own, which is what `owned_by_server` reports and
+     * stream this call allocates is recorded as its own, which is what `allocated_by_server` reports and
      * what lets the video ladder's make-room rung take it back when the camera has no capacity left.
      *
      * Every stream this call allocates is left in place, whatever capability it came from, so the
@@ -2463,7 +2463,7 @@ export class CameraStreamManager {
                     if (captured !== undefined) {
                         return {
                             ...captured,
-                            downgraded: isDowngradeFrom(captured.resolution, bestWithinCallerBounds),
+                            degraded: isDegradeFrom(captured.resolution, bestWithinCallerBounds),
                             snapshotStreamId: adopted.snapshotStreamId,
                         };
                     }
@@ -2551,7 +2551,7 @@ export class CameraStreamManager {
                 });
                 return {
                     ...captured,
-                    downgraded: isDowngradeFrom(captured.resolution, bestWithinCallerBounds),
+                    degraded: isDegradeFrom(captured.resolution, bestWithinCallerBounds),
                     snapshotStreamId,
                 };
             }),

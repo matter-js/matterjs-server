@@ -45,7 +45,7 @@ export function usesHardwareEncoder(capability: SnapshotCapability): boolean {
  *
  * `MaxConcurrentEncoders` is how many streams the camera can encode at once, so one live stream on a
  * camera that states four leaves three encoders free. Treating any live stream as "no encoder left"
- * costs picture size on every multi-encoder camera and reports the loss as a downgrade that did not
+ * costs picture size on every multi-encoder camera and reports the loss as a degrade that did not
  * happen. With `MaxConcurrentEncoders` absent the camera states no budget, and any live stream is
  * taken as the last one.
  *
@@ -91,7 +91,7 @@ export type SnapshotSelection =
  * allocated for a range and the device picks a size inside it, so the stream's ceiling would report
  * a size the caller may not have been given.
  */
-export function isDowngradeFrom(chosen: Resolution, best: SnapshotCapability | undefined): boolean {
+export function isDegradeFrom(chosen: Resolution, best: SnapshotCapability | undefined): boolean {
     return best !== undefined && pixels(chosen) < pixels(best.resolution);
 }
 

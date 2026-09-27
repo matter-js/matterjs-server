@@ -718,13 +718,25 @@ class MatterClient:
         self,
         node_id: int,
         endpoint_id: int,
-        command_name: Literal["ProvideOffer", "SolicitOffer"],
+        command_name: Literal[
+            "ProvideOffer",
+            "SolicitOffer",
+            "ProvideAnswer",
+            "ProvideIceCandidates",
+        ],
         payload: dict,
     ) -> dict[str, Any]:
         """Invoke a WebRTCTransportProvider command on a commissioned camera.
 
         The server hard-codes the cluster id (0x0553) and injects
         originatingEndpointId — payload should omit both.
+
+        ``ProvideOffer`` and ``SolicitOffer`` establish a session and answer with the
+        camera's response; ``ProvideAnswer`` and ``ProvideIceCandidates`` signal into a
+        session the camera already holds and answer ``None``, because the cluster defines
+        no response payload for them. ``EndSession`` is deliberately not relayed here:
+        ``camera_stop_stream`` owns it, so one session gets one ``EndSession`` and the
+        server's own records go with that invoke.
         """
         response = await self.send_command(
             APICommand.SEND_WEBRTC_PROVIDER_COMMAND,

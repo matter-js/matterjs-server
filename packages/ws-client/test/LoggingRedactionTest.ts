@@ -378,7 +378,7 @@ describe("redactIncomingMessage", () => {
                 codec: "JPEG",
                 resolution: { width: 640, height: 480 },
                 stream_id: 3,
-                downgraded: false,
+                degraded: false,
             },
         };
         const { result } = redactIncomingMessage(message) as { result: Record<string, unknown> };
@@ -387,7 +387,7 @@ describe("redactIncomingMessage", () => {
         expect(result.codec).to.equal("JPEG");
         expect(result.resolution).to.deep.equal({ width: 640, height: 480 });
         expect(result.stream_id).to.equal(3);
-        expect(result.downgraded).to.equal(false);
+        expect(result.degraded).to.equal(false);
         expect(message.result.data).to.equal(BULK_STRING);
     });
 

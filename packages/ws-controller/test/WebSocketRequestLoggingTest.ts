@@ -56,7 +56,7 @@ function createFakeCameraStreams() {
                 data: SNAPSHOT_BYTES,
                 imageCodec: 0,
                 resolution: { width: 640, height: 480 },
-                downgraded: false,
+                degraded: false,
                 snapshotStreamId: 8,
             };
         },
@@ -216,7 +216,7 @@ describe("WebSocketControllerHandler request logging", () => {
         // What the server chose stays readable; only the frame goes.
         const chosen = lines.find(line => line.includes("camera_snapshot for node"));
         expect(chosen).to.contain("640x480");
-        expect(chosen).to.contain("downgraded false");
+        expect(chosen).to.contain("degraded false");
         // The response content is skipped, so this line is the only record of which stream was used.
         expect(chosen).to.contain("stream 8");
         const frame = Buffer.from(SNAPSHOT_BYTES).toString("base64");

@@ -561,7 +561,7 @@ describe("ws-client", () => {
                     data: frame,
                     codec: "JPEG",
                     resolution: { width: 640, height: 480 },
-                    downgraded: false,
+                    degraded: false,
                     stream_id: 3,
                 }));
                 await client.connect();

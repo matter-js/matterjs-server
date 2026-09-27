@@ -73,6 +73,8 @@ class APICommand(str, Enum):
     INITIATE_OTA_UPLOAD = "initiate_ota_upload"
     CAMERA_GET_CAPABILITIES = "camera_get_capabilities"  # schema 14+
     CAMERA_START_STREAM = "camera_start_stream"  # schema 14+
+    CAMERA_PROVIDE_ANSWER = "camera_provide_answer"  # schema 14+
+    CAMERA_PROVIDE_ICE_CANDIDATES = "camera_provide_ice_candidates"  # schema 14+
     CAMERA_STOP_STREAM = "camera_stop_stream"  # schema 14+
     CAMERA_SNAPSHOT = "camera_snapshot"  # schema 14+
     CAMERA_RELEASE_STREAM = "camera_release_stream"  # schema 14+

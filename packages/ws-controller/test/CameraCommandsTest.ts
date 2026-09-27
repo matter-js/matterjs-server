@@ -1017,7 +1017,7 @@ describe("cameraCommands", () => {
         });
 
         it("converts allocated video/audio/snapshot streams to snake_case", () => {
-            const videoStream: AllocatedVideoStream & { ownedByServer: boolean } = {
+            const videoStream: AllocatedVideoStream & { allocatedByServer: boolean } = {
                 videoStreamId: 1,
                 overlays: { watermarkEnabled: true, osdEnabled: false },
                 streamUsage: 3,
@@ -1029,9 +1029,9 @@ describe("cameraCommands", () => {
                 minBitRate: 100000,
                 maxBitRate: 8000000,
                 referenceCount: 1,
-                ownedByServer: true,
+                allocatedByServer: true,
             };
-            const audioStream: AllocatedAudioStream & { ownedByServer: boolean } = {
+            const audioStream: AllocatedAudioStream & { allocatedByServer: boolean } = {
                 audioStreamId: 2,
                 streamUsage: 3,
                 audioCodec: 0,
@@ -1040,9 +1040,9 @@ describe("cameraCommands", () => {
                 bitRate: 64000,
                 bitDepth: 16,
                 referenceCount: 0,
-                ownedByServer: false,
+                allocatedByServer: false,
             };
-            const snapshotStream: AllocatedSnapshotStream & { ownedByServer: boolean } = {
+            const snapshotStream: AllocatedSnapshotStream & { allocatedByServer: boolean } = {
                 snapshotStreamId: 3,
                 overlays: { watermarkEnabled: false, osdEnabled: true },
                 imageCodec: 0,
@@ -1052,7 +1052,7 @@ describe("cameraCommands", () => {
                 frameRate: 1,
                 encodedPixels: false,
                 hardwareEncoder: true,
-                ownedByServer: true,
+                allocatedByServer: true,
             };
             const wire = toWireCapabilities({
                 ...EMPTY_CAPABILITIES,
@@ -1069,7 +1069,7 @@ describe("cameraCommands", () => {
                 min_bit_rate: 100000,
                 max_bit_rate: 8000000,
                 reference_count: 1,
-                owned_by_server: true,
+                allocated_by_server: true,
                 watermark_enabled: true,
                 osd_enabled: false,
             });
@@ -1082,7 +1082,7 @@ describe("cameraCommands", () => {
                 bit_rate: 64000,
                 bit_depth: 16,
                 reference_count: 0,
-                owned_by_server: false,
+                allocated_by_server: false,
             });
             expect(wire.allocated.snapshot[0]).to.deep.equal({
                 snapshot_stream_id: 3,
@@ -1090,7 +1090,7 @@ describe("cameraCommands", () => {
                 min_resolution: { width: 640, height: 480 },
                 max_resolution: { width: 1920, height: 1080 },
                 reference_count: 0,
-                owned_by_server: true,
+                allocated_by_server: true,
                 frame_rate: 1,
                 encoded_pixels: false,
                 hardware_encoder: true,
@@ -1132,11 +1132,39 @@ describe("cameraCommands", () => {
                 resolution: { min: { width: 640, height: 360 }, max: { width: 1920, height: 1080 } },
                 frame_rate: { min: 1, max: 30 },
                 bit_rate: { min: 100000, max: 8000000 },
-                reused: false,
-                allocated_by_server: true,
+                provenance: "allocated",
+                degraded: false,
                 watermark_enabled: false,
                 osd_enabled: true,
             });
+        });
+
+        it("states one provenance per stream rather than two booleans", () => {
+            // The pair encoded three states in four combinations, and the fourth — not reused and not
+            // allocated by this server — cannot occur, so no caller could ever have read it.
+            const video = {
+                streamId: 1,
+                envelope: {
+                    codec: 1,
+                    minResolution: { width: 640, height: 360 },
+                    maxResolution: { width: 1920, height: 1080 },
+                    minFrameRate: 1,
+                    maxFrameRate: 30,
+                    minBitRate: 100000,
+                    maxBitRate: 8000000,
+                    keyFrameInterval: 2000,
+                    overlays: {},
+                },
+            };
+            const provenanceOf = (reused: boolean, allocatedByUs: boolean) =>
+                toWireStartStreamResult({
+                    webRtcSessionId: 9,
+                    mode: "provide_offer",
+                    video: { ...video, reused, allocatedByUs },
+                }).video?.provenance;
+            expect(provenanceOf(false, true)).to.equal("allocated");
+            expect(provenanceOf(true, true)).to.equal("reused");
+            expect(provenanceOf(true, false)).to.equal("adopted");
         });
 
         it("reports the ceilings the encoder budget lowered, and omits the field when it lowered none", () => {
@@ -1203,8 +1231,7 @@ describe("cameraCommands", () => {
                 sample_rate: 48000,
                 bit_rate: 64000,
                 bit_depth: 16,
-                reused: false,
-                allocated_by_server: true,
+                provenance: "allocated",
             });
         });
     });
@@ -1215,14 +1242,14 @@ describe("cameraCommands", () => {
                 data: new Uint8Array([1, 2, 3]),
                 imageCodec: 0,
                 resolution: { width: 640, height: 480 },
-                downgraded: true,
+                degraded: true,
                 snapshotStreamId: 3,
             };
             const wire = toWireSnapshotResult(result);
             expect(wire.data).to.equal(Buffer.from([1, 2, 3]).toString("base64"));
             expect(wire.codec).to.equal("JPEG");
             expect(wire.resolution).to.deep.equal({ width: 640, height: 480 });
-            expect(wire.downgraded).to.equal(true);
+            expect(wire.degraded).to.equal(true);
         });
 
         it("names the stream the frame came from", () => {
@@ -1230,7 +1257,7 @@ describe("cameraCommands", () => {
                 data: new Uint8Array([1]),
                 imageCodec: 0,
                 resolution: { width: 640, height: 480 },
-                downgraded: false,
+                degraded: false,
                 snapshotStreamId: 8,
             });
             expect(wire.stream_id).to.equal(8);

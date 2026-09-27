@@ -12,6 +12,7 @@ import type {
     CameraStartStreamAudioResult,
     CameraStartStreamResult,
     CameraStartStreamVideoResult,
+    CameraStreamProvenance,
     CameraResolution,
     CameraVideoHints,
 } from "@matter-server/ws-client";
@@ -569,7 +570,7 @@ export function toWireCapabilities(capabilities: CameraCapabilities): CameraCapa
                 min_bit_rate: stream.minBitRate,
                 max_bit_rate: stream.maxBitRate,
                 reference_count: stream.referenceCount,
-                owned_by_server: stream.ownedByServer,
+                allocated_by_server: stream.allocatedByServer,
                 watermark_enabled: stream.overlays.watermarkEnabled ?? false,
                 osd_enabled: stream.overlays.osdEnabled ?? false,
             })),
@@ -582,7 +583,7 @@ export function toWireCapabilities(capabilities: CameraCapabilities): CameraCapa
                 bit_rate: stream.bitRate,
                 bit_depth: stream.bitDepth,
                 reference_count: stream.referenceCount,
-                owned_by_server: stream.ownedByServer,
+                allocated_by_server: stream.allocatedByServer,
             })),
             snapshot: capabilities.allocated.snapshot.map(stream => ({
                 snapshot_stream_id: stream.snapshotStreamId,
@@ -590,7 +591,7 @@ export function toWireCapabilities(capabilities: CameraCapabilities): CameraCapa
                 min_resolution: stream.minResolution,
                 max_resolution: stream.maxResolution,
                 reference_count: stream.referenceCount,
-                owned_by_server: stream.ownedByServer,
+                allocated_by_server: stream.allocatedByServer,
                 frame_rate: stream.frameRate,
                 encoded_pixels: stream.encodedPixels,
                 hardware_encoder: stream.hardwareEncoder,
@@ -610,6 +611,18 @@ export function toWireCapabilities(capabilities: CameraCapabilities): CameraCapa
     };
 }
 
+/**
+ * Where the stream came from, from the two facts the manager records about it.
+ *
+ * A stream that was not reused was allocated by this call, so `allocatedByUs` is the only question left
+ * once `reused` is answered — which is why the wire states one value instead of the two booleans, whose
+ * fourth combination cannot occur.
+ */
+function provenanceOf(stream: ResolvedStream): CameraStreamProvenance {
+    if (!stream.reused) return "allocated";
+    return stream.allocatedByUs ? "reused" : "adopted";
+}
+
 /** `ResolvedStream.envelope` is a union; the manager only ever pairs a video envelope with a video track. */
 function isVideoEnvelope(envelope: VideoEnvelope | AudioEnvelope): envelope is VideoEnvelope {
     return "minResolution" in envelope;
@@ -626,13 +639,12 @@ function toWireStartStreamVideo(stream: ResolvedStream): CameraStartStreamVideoR
         resolution: { min: envelope.minResolution, max: envelope.maxResolution },
         frame_rate: { min: envelope.minFrameRate, max: envelope.maxFrameRate },
         bit_rate: { min: envelope.minBitRate, max: envelope.maxBitRate },
-        reused: stream.reused,
-        allocated_by_server: stream.allocatedByUs,
-        // Two provenances: the camera's own statement for a reused or degraded stream, the request it
+        provenance: provenanceOf(stream),
+        // Two sources: the camera's own statement for a reused or degraded stream, the request it
         // accepted for a freshly allocated one. Absent either way means no such overlay.
         watermark_enabled: envelope.overlays.watermarkEnabled ?? false,
         osd_enabled: envelope.overlays.osdEnabled ?? false,
-        ...(stream.degraded === undefined ? {} : { degraded: stream.degraded }),
+        degraded: stream.degraded ?? false,
         ...(stream.evicted === undefined ? {} : { evicted_stream_ids: stream.evicted }),
         ...(stream.budgetNarrowed === undefined
             ? {}
@@ -661,8 +673,7 @@ function toWireStartStreamAudio(stream: ResolvedStream): CameraStartStreamAudioR
         sample_rate: envelope.sampleRate,
         bit_rate: envelope.bitRate,
         bit_depth: envelope.bitDepth,
-        reused: stream.reused,
-        allocated_by_server: stream.allocatedByUs,
+        provenance: provenanceOf(stream),
     };
 }
 
@@ -680,7 +691,7 @@ export function toWireSnapshotResult(result: SnapshotResult): CameraSnapshotResu
         data: Bytes.toBase64(result.data),
         codec: imageCodecName(result.imageCodec),
         resolution: result.resolution,
-        downgraded: result.downgraded,
+        degraded: result.degraded,
         stream_id: result.snapshotStreamId,
     };
 }

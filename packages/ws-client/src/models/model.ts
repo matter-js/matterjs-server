@@ -514,7 +514,7 @@ export interface CameraAllocatedVideoStream {
     min_bit_rate: number;
     max_bit_rate: number;
     reference_count: number;
-    owned_by_server: boolean;
+    allocated_by_server: boolean;
     /**
      * Whether the camera draws its watermark on this stream, as the camera states it.
      *
@@ -538,7 +538,7 @@ export interface CameraAllocatedAudioStream {
     bit_rate: number;
     bit_depth: number;
     reference_count: number;
-    owned_by_server: boolean;
+    allocated_by_server: boolean;
 }
 
 export interface CameraAllocatedSnapshotStream {
@@ -556,7 +556,7 @@ export interface CameraAllocatedSnapshotStream {
     /** Upper bound of that range. @see {@link CameraAllocatedSnapshotStream.min_resolution} */
     max_resolution: CameraResolution;
     reference_count: number;
-    owned_by_server: boolean;
+    allocated_by_server: boolean;
     /** Frames per second the stream reserves, as the camera states it. */
     frame_rate: number;
     /**
@@ -692,6 +692,26 @@ export interface CameraCapabilitiesResult {
     sessions: CameraWebRtcSession[];
 }
 
+/**
+ * Where the stream a `camera_start_stream` answered with came from.
+ *
+ * One value rather than the `reused` and `allocated_by_server` booleans it replaces: those encoded three
+ * states in four combinations, one of which — not reused and not allocated by this server — could never
+ * occur.
+ *
+ * - `allocated` — this call allocated the stream on the camera.
+ * - `reused` — the stream was already there and this server allocated it earlier in this run.
+ * - `adopted` — the stream was already there and this server did not allocate it, so another controller
+ *   most likely did. `camera_get_capabilities` reports the same fact as `allocated_by_server: false`.
+ *
+ * None of the three decides whether `camera_release_stream` can free the stream: the camera decides that,
+ * by reference count and by the `Internal` stream usage, and never by who allocated it.
+ */
+export const CAMERA_STREAM_PROVENANCES = ["allocated", "reused", "adopted"] as const;
+
+/** Where a `camera_start_stream` stream came from. @see CAMERA_STREAM_PROVENANCES */
+export type CameraStreamProvenance = (typeof CAMERA_STREAM_PROVENANCES)[number];
+
 export interface CameraStartStreamVideoResult {
     /** The id `camera_release_stream` takes with `kind: "video"`. */
     stream_id: number;
@@ -700,13 +720,14 @@ export interface CameraStartStreamVideoResult {
     resolution: { min: CameraResolution; max: CameraResolution };
     frame_rate: { min: number; max: number };
     bit_rate: { min: number; max: number };
-    reused: boolean;
-    allocated_by_server: boolean;
+    /** Where the stream came from. @see CAMERA_STREAM_PROVENANCES */
+    provenance: CameraStreamProvenance;
     /**
      * True when this stream does not fit the envelope the server would otherwise have allocated. It
-     * still meets every bound the caller stated. Absent when the stream fits.
+     * still meets every bound the caller stated. `camera_snapshot` reports the same class of decision
+     * under the same name.
      */
-    degraded?: boolean;
+    degraded: boolean;
     /**
      * Video stream ids this request deallocated, absent when it took nothing.
      *
@@ -764,8 +785,8 @@ export interface CameraStartStreamAudioResult {
     sample_rate: number;
     bit_rate: number;
     bit_depth: number;
-    reused: boolean;
-    allocated_by_server: boolean;
+    /** Where the stream came from. @see CAMERA_STREAM_PROVENANCES */
+    provenance: CameraStreamProvenance;
 }
 
 export interface CameraStartStreamResult {
@@ -894,7 +915,7 @@ export interface CameraSnapshotResult {
     codec: string;
     resolution: CameraResolution;
     /** True when the frame is smaller than the best capability the request's own bounds allowed. */
-    downgraded: boolean;
+    degraded: boolean;
     /**
      * The snapshot stream the frame came from. A successful call leaves that stream on the camera, so
      * this is the stream the camera holds and the id to pass to `camera_release_stream`. A release
@@ -1195,7 +1216,12 @@ export interface APICommands {
             kind: "video" | "audio" | "snapshot";
             stream_id: number;
         };
-        response: { released: boolean };
+        /**
+         * `null`, like every other command that answers nothing: a failure throws — error 104 while a
+         * listener still references the stream, and the camera's own status otherwise — so a success
+         * carried one constant field a caller could not act on.
+         */
+        response: null;
     };
     remove_node: {
         requestArgs: { node_id: number | bigint };

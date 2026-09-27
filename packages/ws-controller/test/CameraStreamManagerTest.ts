@@ -404,7 +404,7 @@ describe("CameraStreamManager", () => {
             };
             const capabilities = await managerWith(allocated).manager.getCapabilities(NODE, ENDPOINT);
             expect(capabilities.allocated.video[0].referenceCount).to.equal(2);
-            expect(capabilities.allocated.video[0].ownedByServer).to.equal(false);
+            expect(capabilities.allocated.video[0].allocatedByServer).to.equal(false);
             expect(capabilities.allocated.video[0].minBitRate).to.equal(800000);
             expect(capabilities.allocated.video[0].maxBitRate).to.equal(4000000);
         });
@@ -439,7 +439,7 @@ describe("CameraStreamManager", () => {
                 ],
             };
             const capabilities = await manager.getCapabilities(NODE, ENDPOINT);
-            expect(capabilities.allocated.video[0].ownedByServer).to.equal(true);
+            expect(capabilities.allocated.video[0].allocatedByServer).to.equal(true);
         });
 
         it("reads state without invoking anything on the device", async () => {
@@ -4263,7 +4263,7 @@ describe("CameraStreamManager", () => {
                 maxResolution: { width: 1920, height: 1080 },
             });
             expect(result.resolution).to.deep.equal({ width: 640, height: 480 });
-            expect(result.downgraded).to.equal(true);
+            expect(result.degraded).to.equal(true);
             const allocate = invokes.find(invoke => invoke.command === "snapshotStreamAllocate");
             expect(allocate?.fields.minResolution).to.deep.equal({ width: 640, height: 480 });
             expect(allocate?.fields.maxResolution).to.deep.equal({ width: 640, height: 480 });
@@ -4271,7 +4271,7 @@ describe("CameraStreamManager", () => {
 
         it("keeps the best capability while a viewer streams on a camera with encoders to spare", async () => {
             // One live stream on a camera that states four encoders leaves three. Reading any live
-            // stream as "no encoder left" costs the caller picture size and reports it as a downgrade
+            // stream as "no encoder left" costs the caller picture size and reports it as a degrade
             // that did not happen.
             const spare: CameraState = {
                 ...STATE,
@@ -4301,7 +4301,7 @@ describe("CameraStreamManager", () => {
             });
             const result = await manager.snapshot({ nodeId: NODE, endpointId: ENDPOINT });
             expect(result.resolution).to.deep.equal({ width: 1920, height: 1080 });
-            expect(result.downgraded).to.equal(false);
+            expect(result.degraded).to.equal(false);
             const allocate = invokes.find(invoke => invoke.command === "snapshotStreamAllocate");
             expect(allocate?.fields.minResolution).to.deep.equal({ width: 1920, height: 1080 });
             expect(allocate?.fields.maxResolution).to.deep.equal({ width: 1920, height: 1080 });
@@ -4336,7 +4336,7 @@ describe("CameraStreamManager", () => {
             // AllocatedSnapshotStreams is a cached view that lags a deallocate, so the stream the
             // previous camera_snapshot gave back is still listed. Counting it against the encoder
             // budget would clamp this call to a smaller capability and report the loss as a
-            // downgrade, which is the false report the budget exists to remove.
+            // degrade, which is the false report the budget exists to remove.
             const stale: CameraState = {
                 ...STATE,
                 allocatedSnapshotStreams: [
@@ -4362,7 +4362,7 @@ describe("CameraStreamManager", () => {
             });
             const result = await manager.snapshot({ nodeId: NODE, endpointId: ENDPOINT });
             expect(result.resolution).to.deep.equal({ width: 1920, height: 1080 });
-            expect(result.downgraded).to.equal(false);
+            expect(result.degraded).to.equal(false);
             const allocate = invokes.find(invoke => invoke.command === "snapshotStreamAllocate");
             expect(allocate?.fields.minResolution).to.deep.equal({ width: 1920, height: 1080 });
             expect(allocate?.fields.maxResolution).to.deep.equal({ width: 1920, height: 1080 });
@@ -4382,7 +4382,7 @@ describe("CameraStreamManager", () => {
             });
             const result = await manager.snapshot({ nodeId: NODE, endpointId: ENDPOINT });
             expect(result.resolution).to.deep.equal({ width: 1920, height: 1080 });
-            expect(result.downgraded).to.equal(false);
+            expect(result.degraded).to.equal(false);
             const allocate = invokes.find(invoke => invoke.command === "snapshotStreamAllocate");
             expect(allocate?.fields.minResolution).to.deep.equal({ width: 1920, height: 1080 });
             expect(allocate?.fields.maxResolution).to.deep.equal({ width: 1920, height: 1080 });
@@ -4597,8 +4597,8 @@ describe("CameraStreamManager", () => {
             expect(result.resolution).to.deep.equal({ width: 1920, height: 1080 });
             expect(result.snapshotStreamId).to.equal(3);
             // 1920x1080 is the largest the caller's own bounds allowed, so reaching it through the
-            // encoder rung is not a downgrade.
-            expect(result.downgraded).to.equal(false);
+            // encoder rung is not a degrade.
+            expect(result.degraded).to.equal(false);
         });
 
         it("keeps a capability that needs no hardware encoder while a video stream is live", async () => {
@@ -4636,11 +4636,11 @@ describe("CameraStreamManager", () => {
             const result = await manager.snapshot({ nodeId: NODE, endpointId: ENDPOINT });
             expect(result.resolution).to.deep.equal({ width: 1920, height: 1080 });
             // The live stream cost this caller nothing: 1920x1080 is the largest the camera offers and
-            // it needs no encoder, so reporting a downgrade would be a false alarm.
-            expect(result.downgraded).to.equal(false);
+            // it needs no encoder, so reporting a degrade would be a false alarm.
+            expect(result.degraded).to.equal(false);
         });
 
-        it("reports a downgrade when the device refuses the best capability and the next one is smaller", async () => {
+        it("reports a degrade when the device refuses the best capability and the next one is smaller", async () => {
             // Nothing holds the encoder here: the caller still received a 640x480 frame in place of
             // the 1920x1080 its bounds allowed.
             let allocateAttempts = 0;
@@ -4657,7 +4657,7 @@ describe("CameraStreamManager", () => {
             });
             const result = await manager.snapshot({ nodeId: NODE, endpointId: ENDPOINT });
             expect(result.resolution).to.deep.equal({ width: 640, height: 480 });
-            expect(result.downgraded).to.equal(true);
+            expect(result.degraded).to.equal(true);
         });
 
         it("gives the snapshot stream back when the capture fails", async () => {
@@ -4770,7 +4770,7 @@ describe("CameraStreamManager", () => {
             const result = await manager.snapshot({ nodeId: NODE, endpointId: ENDPOINT });
             expect(invokes.map(invoke => invoke.command)).to.deep.equal(["captureSnapshot"]);
             expect(result.snapshotStreamId).to.equal(8);
-            expect(result.downgraded).to.equal(true);
+            expect(result.degraded).to.equal(true);
         });
 
         it("names an adopted stream although the camera's best capability needs the encoder", async () => {
@@ -4878,7 +4878,7 @@ describe("CameraStreamManager", () => {
             const result = await manager.snapshot({ nodeId: NODE, endpointId: ENDPOINT });
             expect(invokes.map(invoke => invoke.command)).to.deep.equal(["captureSnapshot"]);
             expect(invokes[0]?.fields.snapshotStreamId).to.equal(8);
-            expect(result.downgraded).to.equal(false);
+            expect(result.degraded).to.equal(false);
             // Nothing in this call deallocates the adopted stream, so the caller may release it.
             expect(result.snapshotStreamId).to.equal(8);
         });
@@ -4903,7 +4903,7 @@ describe("CameraStreamManager", () => {
             expect(invokes.find(invoke => invoke.command === "captureSnapshot")?.fields.snapshotStreamId).to.equal(3);
         });
 
-        it("reports the downgrade from the frame the device delivered, not from the stream it used", async () => {
+        it("reports the degrade from the frame the device delivered, not from the stream it used", async () => {
             // The response reports what arrived. A device that answers below the size it was asked for
             // is out of spec, and the caller still needs to know the frame is small.
             const existing: CameraState = { ...STATE, allocatedSnapshotStreams: [EXISTING_SNAPSHOT_STREAM] };
@@ -4915,7 +4915,7 @@ describe("CameraStreamManager", () => {
             });
             const result = await manager.snapshot({ nodeId: NODE, endpointId: ENDPOINT });
             expect(result.resolution).to.deep.equal({ width: 640, height: 480 });
-            expect(result.downgraded).to.equal(true);
+            expect(result.degraded).to.equal(true);
         });
 
         it("allocates rather than adopting a stream smaller than the capability it would have used", async () => {
@@ -6595,7 +6595,7 @@ describe("CameraStreamManager device cleanup budget", () => {
             };
             // The lease the second request took is the only record that this server may free stream 9.
             const capabilities = await manager.getCapabilities(NODE, ENDPOINT);
-            expect(capabilities.allocated.video.map(stream => stream.ownedByServer)).to.deep.equal([true]);
+            expect(capabilities.allocated.video.map(stream => stream.allocatedByServer)).to.deep.equal([true]);
         } finally {
             MockTime.disable();
         }
@@ -6664,7 +6664,7 @@ describe("CameraStreamManager device cleanup budget", () => {
             // The camera still reports the stream, so reconciliation cannot be what drops the lease:
             // only the give-back that freed it can.
             const capabilities = await manager.getCapabilities(NODE, ENDPOINT);
-            expect(capabilities.allocated.video.map(stream => stream.ownedByServer)).to.deep.equal([false]);
+            expect(capabilities.allocated.video.map(stream => stream.allocatedByServer)).to.deep.equal([false]);
         } finally {
             MockTime.disable();
         }
