@@ -146,7 +146,7 @@ class WebRTCIceCandidate:
 class WebRTCCallbackData:
     """Payload of a webrtc_callback event.
 
-    `event_type` is one of `WebRTCEventType`, typed `str` so `dataclass_from_dict` can parse it.
+    `event_type` is a `WebRTCEventType` value, as a plain `str`.
     `data` shape varies by event_type:
       - "offer": {"sdp": str, "ice_servers": list | None, "ice_transport_policy": str | None}
       - "answer": {"sdp": str}
@@ -441,7 +441,7 @@ class CameraResolutionHint(TypedDict):
 
 
 class CameraVideoHints(TypedDict, total=False):
-    """Video hints for `camera_start_stream`; every stated key is a hard requirement."""
+    """Video hints for `camera_start_stream`; every key set is a hard requirement."""
 
     codecs: list[str]
     min_resolution: CameraResolutionHint
@@ -455,7 +455,7 @@ class CameraVideoHints(TypedDict, total=False):
 
 
 class CameraAudioHints(TypedDict, total=False):
-    """Audio hints for `camera_start_stream`; stating any key makes audio required."""
+    """Audio hints for `camera_start_stream`; setting any key makes audio required."""
 
     codecs: list[str]
     channel_count: int
@@ -540,8 +540,8 @@ class CameraAllocatedAudioStream:
 class CameraAllocatedSnapshotStream:
     """A snapshot stream allocated on the camera.
 
-    A stream with `hardware_encoder` holds one of the camera's encoders until it is released,
-    whatever `reference_count` says.
+    A stream with `hardware_encoder` keeps one of the camera's encoders until it is released,
+    even when `reference_count` is 0.
     """
 
     # pylint: disable=too-many-instance-attributes
@@ -561,9 +561,9 @@ class CameraAllocatedSnapshotStream:
 
 @dataclass
 class CameraWebRtcSession:
-    """A WebRTC session of this server's fabric, as the camera's `CurrentSessions` lists it.
+    """A WebRTC session the camera reports for this server's fabric.
 
-    `camera_stop_stream` can end it exactly when `established_by_this_server` is true.
+    `camera_stop_stream` can end it only when `established_by_this_server` is true.
     """
 
     webrtc_session_id: int
@@ -639,8 +639,8 @@ class CameraAllocatedStreams:
 class CameraCapabilities:
     """Result of `camera_get_capabilities`.
 
-    `features` is `None` while the camera has not reported its feature map; the server then
-    gates nothing on features. An empty list means the camera advertises none.
+    `features` is `None` while the camera has not reported its features; the server then checks
+    nothing against features. An empty list means the camera has none.
     """
 
     privacy: CameraPrivacy
@@ -671,7 +671,7 @@ class CameraValueRange:
 
 @dataclass
 class CameraEncoderBudgetNarrowing:
-    """Ceilings the encoder budget lowered, each holding the value it would have had without it."""
+    """Ceilings lowered to fit the encoder budget, each with the value it would have had otherwise."""
 
     max_frame_rate: int | None = None
     max_resolution: CameraResolution | None = None
@@ -725,7 +725,10 @@ class CameraStartStreamResult:
 
 @dataclass
 class CameraStopStreamResult:
-    """Result of `camera_stop_stream`; `ended` is false when the camera did not know the session."""
+    """Result of `camera_stop_stream`.
+
+    `ended` is false when the camera answered `NOT_FOUND`: an unknown id or another controller's session.
+    """
 
     ended: bool
 
@@ -735,8 +738,8 @@ class CameraSnapshotResult:
     """Result of `camera_snapshot`.
 
     `data` is the base64-encoded image. The snapshot stream `stream_id` stays allocated until
-    `camera_release_stream` frees it. `provenance` is `allocated` (this call allocated the stream),
-    `reused` or `adopted`, as on a `camera_start_stream` track.
+    `camera_release_stream` frees it. `provenance` is `allocated`, `reused` or `adopted`, as for
+    `camera_start_stream`.
     """
 
     data: str
@@ -768,7 +771,7 @@ class CameraStreamEvictedData:
 
 @dataclass
 class CameraStreamIncompatibleBound:
-    """The caller bound error 102 ruled out before asking the camera, with values as text."""
+    """The caller limit error 102 ruled out before asking the camera; values are text."""
 
     field: str
     requested: str
@@ -777,7 +780,7 @@ class CameraStreamIncompatibleBound:
 
 @dataclass
 class CameraOccupyingStream:
-    """A stream holding capacity a request refused with error 103 needed."""
+    """A stream using capacity that a request refused with error 103 needed."""
 
     kind: str
     stream_id: int

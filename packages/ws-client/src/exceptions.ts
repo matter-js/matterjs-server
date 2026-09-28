@@ -185,10 +185,8 @@ function parseDetails(
 /** Command failure reported by the server; preserves the wire error_code. */
 export class ServerCommandError extends MatterError {
     /**
-     * `message` parsed as JSON for a code in {@link ServerErrorDetailsByCode}, when it satisfies that
-     * code's type. Undefined for any other code, or when `message` is not such an object (a required
-     * field missing, a field of the wrong type, or a value outside the type's union). Narrow it by code
-     * with {@link hasDetails}.
+     * `message` parsed as JSON, for a code in {@link ServerErrorDetailsByCode} when it matches that
+     * code's type; otherwise undefined. Narrow it by code with {@link hasDetails}.
      */
     readonly details?: ServerErrorDetailsByCode[ServerErrorCodeWithDetails];
 

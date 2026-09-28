@@ -339,8 +339,8 @@ export type WebRtcEventType = "offer" | "answer" | "ice_candidates" | "end";
 export type WebRtcProviderCommandName = "ProvideOffer" | "SolicitOffer" | "ProvideAnswer" | "ProvideIceCandidates";
 
 /**
- * One ICE candidate, in the W3C `RTCIceCandidateInit` spelling the wire uses in both directions. A
- * candidate from an `ice_candidates` event can be sent back to `ProvideIceCandidates` unchanged.
+ * One ICE candidate, in the W3C `RTCIceCandidateInit` format. A candidate from an `ice_candidates`
+ * event can be sent to `ProvideIceCandidates` unchanged.
  */
 export interface WebRtcIceCandidate {
     candidate: string;
@@ -348,18 +348,15 @@ export interface WebRtcIceCandidate {
     sdpMLineIndex: number | null;
 }
 
-/**
- * An ICE server, in the W3C `RTCIceServer` spelling the wire uses in both directions (spec § 11.4.5.3).
- * `urls` takes one URL or a list; an event always reports a list.
- */
+/** An ICE server, in the W3C `RTCIceServer` format. Events always report `urls` as a list. */
 export interface CameraIceServer {
-    /** One URL or 1 to 10 of them, each 1 to 2000 characters. */
+    /** One URL or a list of 1 to 10, each 1 to 2000 characters. */
     urls: string | string[];
     /** 1 to 508 characters. */
     username?: string;
     /** 1 to 512 characters. */
     credential?: string;
-    /** TLS root certificate authority id. Required by the spec for `stuns:`/`turns:` URLs; enforced by the camera. */
+    /** TLS root certificate authority id. Required for `stuns:` and `turns:` URLs. */
     caid?: number;
 }
 
@@ -400,72 +397,59 @@ export interface CameraResolution {
 }
 
 /**
- * A range to allocate a camera video stream in. Equal min and max pin a value and fail if the camera
- * cannot serve exactly that. Narrow bounds reduce stream sharing with other clients (spec §11.2.1.2.1),
- * so leave fields unset unless needed.
+ * Limits for the video stream. Equal min and max ask for exactly that value; the call fails if the
+ * camera cannot serve it. Leave fields unset unless needed, so existing streams can be shared.
  */
 export interface CameraVideoHints {
     /**
-     * Codec names in preference order, e.g. ["H265", "H264"], matched case-insensitively and spelled
-     * as `camera_get_capabilities` reports them. A hard requirement: when the camera supports none of
-     * them the call fails with error 102.
+     * Codec names in preference order, e.g. ["H265", "H264"], as `camera_get_capabilities` reports
+     * them (case-insensitive). The call fails with error 102 if the camera supports none of them.
      */
     codecs?: string[];
-    /** `width` and `height` are each an integer 1 to 65535; outside that is error 8. */
+    /** `width` and `height` are integers 1 to 65535. */
     min_resolution?: CameraResolution;
     /** @see {@link CameraVideoHints.min_resolution} */
     max_resolution?: CameraResolution;
-    /** An integer 1 to 65535, the range `VideoStreamAllocate.MinFrameRate` encodes in. */
+    /** Frames per second, an integer 1 to 65535. */
     min_frame_rate?: number;
-    /** An integer 1 to 65535, the range `VideoStreamAllocate.MaxFrameRate` encodes in. */
+    /** Frames per second, an integer 1 to 65535. */
     max_frame_rate?: number;
-    /** An integer 1 to 4294967295, the range `VideoStreamAllocate.MinBitRate` encodes in. */
+    /** Bits per second, an integer 1 to 4294967295. */
     min_bit_rate?: number;
-    /** An integer 1 to 4294967295, the range `VideoStreamAllocate.MaxBitRate` encodes in. */
+    /** Bits per second, an integer 1 to 4294967295. */
     max_bit_rate?: number;
     /**
      * Whether the camera burns its manufacturer watermark into the picture.
      *
-     * When stated, it is a hard requirement: a stream with the other setting is not reused, and `true`
-     * on a camera without the `Watermark` feature fails with error 102 naming it (`false` is accepted).
-     * Left unset, no watermark is requested and a stream with one is not reused, but the degraded
-     * fallback may still return one, flagged `degraded`. Overlays are only compared on a camera that
-     * advertises the feature; not while `features` is absent.
+     * When set, only a stream with the same setting is used. `true` fails with error 102 on a camera
+     * without the `Watermark` feature. When unset on a camera with the feature, no watermark is
+     * requested and streams with one are not used; only the degraded fallback may still return one.
      */
     watermark_enabled?: boolean;
     /**
-     * Whether the camera burns an on-screen display — date, time, device name — into the picture.
-     *
-     * Same rules as `watermark_enabled`, against the `OnScreenDisplay` feature.
+     * Whether the camera burns an on-screen display (date, time, device name) into the picture. Same
+     * rules as `watermark_enabled`, for the `OnScreenDisplay` feature.
      */
     osd_enabled?: boolean;
 }
 
 /**
- * Exact values, not ranges, and each one is a hard requirement.
+ * Exact values, not ranges; the call fails if the camera cannot meet one.
  *
- * Stating any of them requires audio: if no audio stream can be served, the call fails with error
- * 102 instead of going video-only. Stating none leaves the track to the server, and `audio` in the
- * response is `null` when no stream can be resolved.
+ * Setting any of them makes audio required: without an audio stream the call fails with error 102
+ * instead of going video-only. With none set, `audio` in the response is `null` if no audio stream
+ * is available.
  */
 export interface CameraAudioHints {
     /** Codec names, e.g. ["OPUS"], matched case-insensitively. */
     codecs?: string[];
     /**
-     * An integer 1 to 8, the range `AudioStreamAllocate.ChannelCount` encodes in; above that is
-     * error 8. Within it, a value above the `audio.channels` camera_get_capabilities reports fails
-     * with error 102.
+     * An integer 1 to 8. Fails with error 102 if above `audio.channels` from `camera_get_capabilities`.
      */
     channel_count?: number;
-    /**
-     * An integer 1 to 4294967295. Fails with error 102 unless `audio.sample_rates` from
-     * camera_get_capabilities lists it.
-     */
+    /** In Hz. Must be one of `audio.sample_rates` from `camera_get_capabilities`, or error 102. */
     sample_rate?: number;
-    /**
-     * An integer 1 to 4294967295. Carried into the allocation; a stream already allocated at another
-     * bit rate is not reused for it.
-     */
+    /** Bits per second, an integer 1 to 4294967295. Only a stream with this bit rate is reused. */
     bit_rate?: number;
 }
 
@@ -499,14 +483,9 @@ export interface CameraAllocatedVideoStream {
     max_bit_rate: number;
     reference_count: number;
     allocated_by_server: boolean;
-    /**
-     * Whether the camera draws its watermark on this stream, as the camera states it.
-     *
-     * False where the camera states no such overlay, as on every stream of a camera without the
-     * `Watermark` feature. A `camera_start_stream` stating `watermark_enabled` only reuses a matching stream.
-     */
+    /** Whether the camera draws its watermark on this stream. Always false without the `Watermark` feature. */
     watermark_enabled: boolean;
-    /** Whether the camera draws an on-screen display on this stream. @see {@link CameraAllocatedVideoStream.watermark_enabled} */
+    /** Whether the camera draws an on-screen display on this stream. Always false without the `OnScreenDisplay` feature. */
     osd_enabled: boolean;
 }
 
@@ -529,31 +508,26 @@ export interface CameraAllocatedSnapshotStream {
     /** Image codec name, e.g. "JPEG". */
     image_codec: string;
     /**
-     * Lower bound of the range the stream was allocated for; the device picks a frame size within the
-     * bounds. Streams this server allocates use one capability resolution as both bounds.
+     * Smallest frame size the stream was allocated for. Streams this server allocates use the same
+     * value for both bounds.
      */
     min_resolution: CameraResolution;
-    /** Upper bound of that range. @see {@link CameraAllocatedSnapshotStream.min_resolution} */
+    /** Largest frame size the stream was allocated for. */
     max_resolution: CameraResolution;
     reference_count: number;
     allocated_by_server: boolean;
-    /** Frames per second the stream reserves, as the camera states it. */
+    /** Frames per second the stream reserves. */
     frame_rate: number;
-    /**
-     * Whether the stream counts towards the camera's `max_encoded_pixel_rate`, as the camera states it.
-     * It then reserves `max_resolution` times `frame_rate`.
-     */
+    /** Whether the stream uses `max_resolution` times `frame_rate` of the camera's `max_encoded_pixel_rate`. */
     encoded_pixels: boolean;
     /**
-     * Whether the stream uses one of the camera's `max_concurrent_encoders`, as the camera states it.
-     * It holds the encoder until released, whatever `reference_count` says; release such a stream to
-     * free room after `CAMERA_RESOURCE_EXHAUSTED_ERROR_CODE`.
+     * Whether the stream uses one of the camera's `max_concurrent_encoders`. It keeps the encoder
+     * until released, even when `reference_count` is 0. Release it to make room after error 103.
      */
     hardware_encoder: boolean;
     /**
-     * Whether the camera draws its watermark on this stream, as the camera states it. Authoritative:
-     * for a capability whose `requires_hardware_encoder` is false, the camera may ignore the
-     * `camera_snapshot` request and use the source video stream's setting.
+     * Whether the camera draws its watermark on this stream. Trust this over the `camera_snapshot`
+     * request: the camera may use the video stream's setting instead.
      */
     watermark_enabled: boolean;
     /** Whether the camera draws an on-screen display on this stream. @see {@link CameraAllocatedSnapshotStream.watermark_enabled} */
@@ -561,45 +535,43 @@ export interface CameraAllocatedSnapshotStream {
 }
 
 /**
- * A WebRTC session as the camera's `CurrentSessions` reports it, for this server's fabric only.
- * Sessions hold `reference_count` above zero. After a server restart this is the only source of
- * session ids, because the server tracks sessions in memory.
+ * A WebRTC session the camera reports for this server's fabric. After a server restart, this is the
+ * only way to learn session ids.
  */
 export interface CameraWebRtcSession {
-    /** Pass it to `camera_stop_stream` to end the session and release its hold on the streams. */
+    /** Pass it to `camera_stop_stream` to end the session. */
     webrtc_session_id: number;
-    /** The controller the camera recorded as the session's peer. */
+    /** The controller the camera sees as the session's peer. */
     peer_node_id: number | bigint;
     peer_endpoint_id: number;
     /** Stream usage name, e.g. "LiveView". */
     stream_usage: string;
     video_stream_ids: number[];
     audio_stream_ids: number[];
-    /** True when this server is the session's peer, which is exactly when `camera_stop_stream` can end it. */
+    /** True when this server is the session's peer. Only then can `camera_stop_stream` end it. */
     established_by_this_server: boolean;
 }
 
 export interface CameraCapabilitiesResult {
     /**
-     * The AVSM features this camera advertises, spelled as the spec's Feature column spells them:
-     * `Audio`, `Video`, `Snapshot`, `Privacy`, `Speaker`, `ImageControl`, `Watermark`,
-     * `OnScreenDisplay`, `LocalStorage`, `HighDynamicRange`, `NightVision`.
+     * The camera's AV Stream Management features: `Audio`, `Video`, `Snapshot`, `Privacy`, `Speaker`,
+     * `ImageControl`, `Watermark`, `OnScreenDisplay`, `LocalStorage`, `HighDynamicRange`,
+     * `NightVision`. Use this instead of the cluster's `FeatureMap`. Requesting a missing feature
+     * fails with error 102.
      *
-     * Read this instead of the cluster's `FeatureMap`. A missing name is a feature the camera lacks;
-     * requesting it fails with error 102 naming the feature.
-     *
-     * **Absent** means the camera has not reported its feature map yet, not that it advertises
-     * nothing. The server then gates nothing on features and lets the camera answer.
+     * **Absent** means the camera has not reported its features yet, not that it has none. The server
+     * then checks nothing against features.
      */
     features?: string[];
     /**
      * The camera's privacy switches; a key is absent when the camera has no such switch.
      *
-     * While a switch is on, the commands it covers fail with error 106 naming it: `hard_mode_on`
-     * blocks every session and snapshot, `soft_livestream_mode_enabled` `LiveView` sessions and every
-     * snapshot, and `soft_recording_mode_enabled` `Recording` and `Analysis` sessions. The soft
-     * switches are writable (§11.2.7.20, §11.2.7.21) with `write_attribute` on the AV Stream
-     * Management cluster.
+     * While a switch is on, these calls fail with error 106:
+     * - `hard_mode_on`: every session and snapshot.
+     * - `soft_livestream_mode_enabled`: `LiveView` sessions and every snapshot.
+     * - `soft_recording_mode_enabled`: `Recording` and `Analysis` sessions.
+     *
+     * Change the soft switches with `write_attribute` on the AV Stream Management cluster.
      */
     privacy: {
         soft_recording_mode_enabled?: boolean;
@@ -614,22 +586,19 @@ export interface CameraCapabilitiesResult {
         hdr_capable?: boolean;
         rate_distortion_points: CameraRateDistortionPoint[];
         /**
-         * Distinct codec names found across rate_distortion_points, ready to be used as a
-         * `camera_start_stream` video hint.
-         *
-         * Empty when the camera states no trade-off point; `camera_start_stream` then accepts any
-         * codec name the cluster enum defines and lets the device answer.
+         * Codec names from `rate_distortion_points`, usable as `camera_start_stream` video `codecs`.
+         * When empty, `camera_start_stream` accepts any codec the cluster defines and the camera decides.
          */
         codecs: string[];
     };
     audio: {
-        /** Codec names, ready to be used as a `camera_start_stream` audio hint. */
+        /** Codec names, usable as `camera_start_stream` audio `codecs`. */
         codecs: string[];
-        /** Largest channel count the camera accepts: the ceiling for the `audio.channel_count` hint. */
+        /** Largest channel count the camera accepts; the `channel_count` hint must not exceed it. */
         channels?: number;
-        /** Sample rates the camera accepts; the `audio.sample_rate` hint must name one of them. */
+        /** Sample rates the camera accepts; the `sample_rate` hint must be one of them. */
         sample_rates: number[];
-        /** Bit depths the camera accepts. There is no hint for this: the server picks one from the list. */
+        /** Bit depths the camera accepts. The server picks one; there is no hint for it. */
         bit_depths: number[];
         /** Talkback support name: "NotSupported", "HalfDuplex" or "FullDuplex". */
         two_way_talk_support?: string;
@@ -640,9 +609,9 @@ export interface CameraCapabilitiesResult {
     limits: {
         max_encoded_pixel_rate?: number;
         max_concurrent_encoders?: number;
-        /** MaxNetworkBandwidth in bits per second; the server caps a stream's max_bit_rate at it. */
+        /** Bits per second. The server caps a stream's `max_bit_rate` at this value. */
         max_network_bandwidth?: number;
-        /** Stream usage names, ready to be used as `camera_start_stream`'s `stream_usage`. */
+        /** Stream usage names, usable as `camera_start_stream` `stream_usage`. */
         supported_stream_usages: string[];
         stream_usage_priorities: string[];
     };
@@ -651,20 +620,19 @@ export interface CameraCapabilitiesResult {
         audio: CameraAllocatedAudioStream[];
         snapshot: CameraAllocatedSnapshotStream[];
     };
-    /** The camera's current WebRTC sessions, which is what a non-zero `reference_count` is held by. */
+    /** The camera's current WebRTC sessions. They are what a stream's `reference_count` counts. */
     sessions: CameraWebRtcSession[];
 }
 
 /**
- * Where the stream a `camera_start_stream` or `camera_snapshot` answered with came from.
+ * Where the stream of a `camera_start_stream` or `camera_snapshot` result came from.
  *
- * - `allocated` — this call allocated the stream on the camera.
- * - `reused` — the stream was already there and this server allocated it earlier in this run.
- * - `adopted` — the stream was already there and this server did not allocate it, so another controller
- *   most likely did. `camera_get_capabilities` reports the same fact as `allocated_by_server: false`.
+ * - `allocated` — this call allocated the stream.
+ * - `reused` — this server allocated the stream earlier in this run.
+ * - `adopted` — the stream already existed and this server did not allocate it; most likely another
+ *   controller did (`allocated_by_server: false`).
  *
- * None of the three decides whether `camera_release_stream` can free the stream: the camera decides that,
- * by reference count and by the `Internal` stream usage, and never by who allocated it.
+ * `camera_release_stream` treats all three the same.
  */
 export const CAMERA_STREAM_PROVENANCES = ["allocated", "reused", "adopted"] as const;
 
@@ -672,8 +640,8 @@ export const CAMERA_STREAM_PROVENANCES = ["allocated", "reused", "adopted"] as c
 export type CameraStreamProvenance = (typeof CAMERA_STREAM_PROVENANCES)[number];
 
 /**
- * The ceilings the camera's encoder budget lowered, each with the value the server would have asked for
- * without the budget. @see CameraStartStreamVideoResult.narrowed_by_encoder_budget
+ * The ceilings lowered to fit the camera's encoder budget, each with the value it would have had
+ * otherwise. @see CameraStartStreamVideoResult.narrowed_by_encoder_budget
  */
 export interface CameraEncoderBudgetNarrowing {
     max_frame_rate?: number;
@@ -691,28 +659,26 @@ export interface CameraStartStreamVideoResult {
     /** Where the stream came from. @see CAMERA_STREAM_PROVENANCES */
     provenance: CameraStreamProvenance;
     /**
-     * True when this stream does not fit the envelope the server would otherwise have allocated. It
-     * still meets every bound the caller stated.
+     * True when the stream is outside the range the server would normally allocate. It still meets
+     * every limit the caller set.
      */
     degraded: boolean;
     /**
-     * Video stream ids this request deallocated, absent when it took nothing. They may have belonged
-     * to another controller, which must allocate again. Reported even if the request was finally served
-     * by an existing stream. `allow_eviction: false` skips eviction.
+     * Video stream ids this request deallocated; absent when none. They may have belonged to another
+     * controller. Reported even when an existing stream served the request in the end.
      */
     evicted_stream_ids?: number[];
     /**
-     * The ceilings the camera's encoder budget (`max_encoded_pixel_rate`, spent by existing streams)
-     * lowered, absent when it lowered none. Only for freshly allocated streams. Each key is the ceiling
-     * without the budget. State `min_frame_rate` to prefer motion over frame size. After a device refusal
-     * the range may be narrowed further, so `frame_rate.max` can be lower still.
+     * The ceilings lowered to fit the camera's `max_encoded_pixel_rate`, which existing streams
+     * partly use; absent when none. Only for new streams. Set `min_frame_rate` to keep the frame rate
+     * and lower the resolution instead. `frame_rate.max` can be lower still if the camera refused the
+     * first attempt.
      */
     narrowed_by_encoder_budget?: CameraEncoderBudgetNarrowing;
     /**
-     * Whether the stream this session uses carries the camera's watermark: the camera's statement for a
-     * reused or degraded stream, the accepted request for a fresh one. The camera may deduplicate an
-     * allocation to an existing stream with other overlays, so `camera_get_capabilities`'
-     * `allocated.video[]` is authoritative. Can be true even when the request stated nothing.
+     * Whether the stream carries the camera's watermark. Can be true even if the request did not set
+     * it. For a new stream this is the requested value; `allocated.video[]` in
+     * `camera_get_capabilities` shows what the camera actually uses.
      */
     watermark_enabled: boolean;
     /** Whether the camera draws an on-screen display on it. @see {@link CameraStartStreamVideoResult.watermark_enabled} */
@@ -740,9 +706,8 @@ export interface CameraStartStreamResult {
 }
 
 /**
- * Every hint key an error-102 `bound` can name, spelled as `camera_start_stream` takes it.
- * `min_resolution`, `min_frame_rate` and `min_bit_rate` are under `video`; `sample_rate` and
- * `channel_count` are under `audio`.
+ * Every hint an error-102 `bound` can name. `min_resolution`, `min_frame_rate` and `min_bit_rate` are
+ * `video` hints; `sample_rate` and `channel_count` are `audio` hints.
  */
 export const CAMERA_BOUND_FIELDS = [
     "min_resolution",
@@ -756,25 +721,20 @@ export const CAMERA_BOUND_FIELDS = [
 export type CameraBoundField = (typeof CAMERA_BOUND_FIELDS)[number];
 
 /**
- * Every `reason` an error-102 payload can state. Each value has one meaning, so a client can branch on
- * `reason` alone. What a client can do for each:
+ * Every `reason` an error-102 payload can have, and what the client can do:
  *
- * - `codec` — no codec both the camera and the caller, or the caller's offer, can carry. Change
- *   `video.codecs` / `audio.codecs`, or the codecs the SDP offers.
- * - `bounds` — a resolution, frame-rate or bit-rate bound the camera cannot meet. `bound` names the
- *   one bound when the server ruled it out before asking the camera.
- * - `feature` — the camera's AVSM `FeatureMap` does not advertise what the request needs, and
- *   `feature` names it exactly as `camera_get_capabilities` reports the advertised ones. Nothing in
- *   the request changes this.
- * - `capability` — the camera advertises the feature and states no capability the request could use:
- *   an empty `snapshot.capabilities`, or `audio` capabilities naming no codec, sample rate or bit
- *   depth. Also nothing the request changes.
- * - `offer` — the `sdp` the caller sent refuses this track's media section, will not receive on it, or
- *   carries none. `track` names the kind. Change the offer, not an argument.
- * - `no_media` — every track was declined or resolved to nothing, so the session would carry no media.
- *   Ask for a track.
- * - `level` — the offer states a decode ceiling this server cannot read, so it cannot hold a stream to
- *   what the peer said it decodes. Change the `a=fmtp` record or the level in the offer.
+ * - `codec` — the camera and the request (or its SDP offer) share no codec. Change `video.codecs`,
+ *   `audio.codecs` or the codecs in the SDP.
+ * - `bounds` — the camera cannot meet a resolution, frame-rate or bit-rate limit. `bound` names it
+ *   when the server could tell before asking the camera.
+ * - `feature` — the camera lacks a feature the request needs; `feature` names it. The request cannot
+ *   fix this.
+ * - `capability` — the camera has the feature but reports nothing usable, such as an empty
+ *   `snapshot.capabilities`. The request cannot fix this.
+ * - `offer` — the SDP rejects this track, does not receive it, or has no media section for it.
+ *   `track` names the track. Change the SDP.
+ * - `no_media` — no track is left, so the session would have no media. Request a track.
+ * - `level` — the server cannot read the decode level in the SDP's `a=fmtp` line. Change that line.
  */
 export const CAMERA_INCOMPATIBLE_REASONS = [
     "codec",
@@ -795,21 +755,14 @@ export type CameraPrivacyMode = keyof CameraCapabilitiesResult["privacy"];
 /** Which track a stream belongs to, as `camera_release_stream` and error 103 spell it. */
 export type CameraStreamKind = "video" | "audio" | "snapshot";
 
-/**
- * The `camera_session_ended` payload. Sent when another connection ended the session, through
- * `camera_stop_stream` or a `device_command` `EndSession`, so it has no reason field. A peer's `End` arrives as a `webrtc_callback` `end` event;
- * disconnect and shutdown endings are not reported.
- */
+/** The `camera_session_ended` payload. */
 export interface CameraSessionEndedData {
     node_id: number | bigint;
     endpoint_id: number;
     webrtc_session_id: number;
 }
 
-/**
- * The `camera_stream_evicted` payload: one stream id that has stopped existing on the camera. Audio
- * streams are never evicted, since they hold no encoder capacity.
- */
+/** The `camera_stream_evicted` payload: a stream that no longer exists on the camera. */
 export interface CameraStreamEvictedData {
     node_id: number | bigint;
     endpoint_id: number;
@@ -819,20 +772,20 @@ export interface CameraStreamEvictedData {
 
 /** One entry of error 103's `allocated`: a stream holding capacity the refused request needed. */
 export interface CameraOccupyingStream {
-    /** Not always the kind that was asked for: a refused snapshot reports the video streams. */
+    /** Can differ from the requested kind: a refused snapshot reports video streams. */
     kind: CameraStreamKind;
     stream_id: number;
     reference_count: number;
 }
 
-/** The single caller bound the server ruled out before asking the device. */
+/** The caller limit the server ruled out before asking the camera. */
 export interface CameraStreamIncompatibleBound {
     field: CameraBoundField;
     /** The value the caller stated, as text: `"1920x1080"` for a resolution, digits otherwise. */
     requested: string;
     /**
-     * What the bound ran into, as text: the ceiling after all narrowing for a range bound, or the
-     * device's list of values for a set bound such as `sample_rate`.
+     * What the limit ran into, as text: the highest possible value for a range, or the camera's list
+     * of values for `sample_rate`.
      */
     limit: string;
 }
@@ -840,10 +793,10 @@ export interface CameraStreamIncompatibleBound {
 /** The fields every error-102 `details` object carries, whatever its `reason`. */
 interface CameraStreamIncompatibleErrorFacts {
     message: string;
-    /** The camera's codec names; empty when the camera did not refuse (e.g. the offer did), not "supports nothing". */
+    /** The camera's codec names. Empty when the camera did not refuse, for example when the offer did. */
     device: string[];
     requested: string[];
-    /** Matter status code the device answered with, when a device rejection produced this. */
+    /** Matter status code from the camera, when the camera rejected the request. */
     device_status?: number;
 }
 
@@ -854,18 +807,18 @@ interface CameraStreamIncompatibleErrorTrackFacts extends CameraStreamIncompatib
 }
 
 /**
- * Error 102's `details`. Reason-specific fields exist only on their reason's arm; `no_media` names no
- * track because it concerns the whole request. @see CAMERA_INCOMPATIBLE_REASONS
+ * Error 102's `details`. Reason-specific fields exist only for their reason; `no_media` has no
+ * `track`. @see CAMERA_INCOMPATIBLE_REASONS
  */
 export type CameraStreamIncompatibleErrorDetails =
     | (CameraStreamIncompatibleErrorTrackFacts & {
           reason: "feature";
-          /** The AVSM feature the camera does not advertise, named as `camera_get_capabilities` reports the advertised ones. */
+          /** The missing feature, spelled as in `camera_get_capabilities` `features`. */
           feature: string;
       })
     | (CameraStreamIncompatibleErrorTrackFacts & {
           reason: "bounds";
-          /** Present when the server ruled the bound out before asking the device. */
+          /** Present when the server ruled the limit out before asking the camera. */
           bound?: CameraStreamIncompatibleBound;
       })
     | (CameraStreamIncompatibleErrorTrackFacts & { reason: "codec" | "capability" | "offer" | "level" })
@@ -879,7 +832,7 @@ export interface CameraResourceExhaustedErrorDetails {
     max_encoded_pixel_rate?: number;
 }
 
-/** Error 104's `details`. `reference_count` is the count the server last read; absent when that count is zero. */
+/** Error 104's `details`. `reference_count` is the last count the server read; absent when it was 0. */
 export interface CameraStreamInUseErrorDetails {
     message: string;
     stream_id: number;
@@ -893,8 +846,8 @@ export interface CameraNotSupportedErrorDetails {
 }
 
 /**
- * Error 106's `details`. `modes` names every switch that forbids the call, since the device answers one
- * status for all of them; `device_status` is that status.
+ * Error 106's `details`. `modes` lists every switch that blocks the call; `device_status` is the one
+ * status the camera answered.
  */
 export interface CameraPrivacyModeErrorDetails {
     message: string;
@@ -914,13 +867,12 @@ export interface CameraSnapshotResult {
     /** Image codec name, e.g. "JPEG". */
     codec: string;
     resolution: CameraResolution;
-    /** True when the frame is smaller than the best capability the request's own bounds allowed. */
+    /** True when the image is smaller than the best one the request allowed. */
     degraded: boolean;
     /**
-     * The snapshot stream the frame came from. It stays allocated on the camera; pass this id to
-     * `camera_release_stream` to free it (fails with `CAMERA_STREAM_IN_USE_ERROR_CODE` while referenced).
-     * A stream that needs the hardware encoder holds it until released, which can block later video
-     * allocations on single-encoder cameras.
+     * The snapshot stream the image came from. It stays allocated; free it with `camera_release_stream`.
+     * Until then, a stream that uses the hardware encoder can block new video streams on a camera with
+     * one encoder.
      */
     stream_id: number;
     /** Where the stream came from. @see CAMERA_STREAM_PROVENANCES */
@@ -1061,8 +1013,7 @@ export interface APICommands {
         requestArgs: {
             node_id: number | bigint;
             /**
-             * Required, except when `node_id` is a Group Node ID, which must omit it (each node's group
-             * table picks the endpoints). The wrong pairing is refused with error 8.
+             * Required, except when `node_id` is a Group Node ID: then leave it out.
              */
             endpoint_id?: number | null;
             cluster_id: number;
@@ -1077,11 +1028,11 @@ export interface APICommands {
         response: unknown;
     };
     /**
-     * `ProvideOffer` and `SolicitOffer` establish a session and answer with its id; `ProvideAnswer`
-     * and `ProvideIceCandidates` signal for one that exists and answer `null`.
+     * `ProvideOffer` and `SolicitOffer` start a session and answer with its id; `ProvideAnswer` and
+     * `ProvideIceCandidates` act on an existing session and answer `null`.
      *
-     * For a client that allocates its own streams. Sessions opened with `camera_start_stream` use
-     * `camera_provide_answer`, `camera_provide_ice_candidates` and `camera_stop_stream` instead.
+     * For clients that allocate their own streams. For sessions from `camera_start_stream`, use
+     * `camera_provide_answer`, `camera_provide_ice_candidates` and `camera_stop_stream`.
      */
     send_webrtc_provider_command: {
         requestArgs: {
@@ -1092,60 +1043,50 @@ export interface APICommands {
         };
         response: unknown;
     };
-    /** Read-only; reports device-stated facts and current allocations. Allocates nothing. */
+    /** Read-only: what the camera reports and what is allocated on it. */
     camera_get_capabilities: {
         requestArgs: { node_id: number | bigint; endpoint_id: number };
         response: CameraCapabilitiesResult;
     };
-    /** `ProvideOffer` when `sdp` is set, `SolicitOffer` otherwise. `video`/`audio: false` excludes the track. */
+    /** Sends `ProvideOffer` when `sdp` is set, `SolicitOffer` otherwise. `video: false` or `audio: false` leaves out that track. */
     camera_start_stream: {
         requestArgs: {
             node_id: number | bigint;
             endpoint_id: number;
             /**
-             * A name from `camera_get_capabilities`' `supported_stream_usages`, matched
-             * case-insensitively: `LiveView`, `Recording` or `Analysis`. `Internal` is device-only
-             * and refused.
+             * `LiveView`, `Recording` or `Analysis`, as listed in `camera_get_capabilities`
+             * `supported_stream_usages` (case-insensitive). `Internal` is refused.
              */
             stream_usage: string;
             sdp?: string;
             video?: CameraVideoHints | false;
             audio?: CameraAudioHints | false;
-            /**
-             * 0 to 10 entries (`ProvideOffer.ICEServers`), separate from the 1 to 10 URLs per entry;
-             * more entries are refused with error 8.
-             */
+            /** Up to 10 entries. */
             ice_servers?: CameraIceServer[];
             /** 1 to 16 characters. */
             ice_transport_policy?: string;
             metadata_enabled?: boolean;
             /**
-             * Whether the server may deallocate a stream nothing references to serve this request.
-             * Defaults to true. Only tried after reuse and narrowing fail; evicted ids are returned in
-             * `video.evicted_stream_ids`. Set false to skip eviction, e.g. to keep another controller's
-             * pre-allocated streams (spec §11.2.1.1). The degraded fallback still runs, so the request can
-             * still succeed with `video.degraded` true.
+             * Whether the server may deallocate an unused stream to make room. Defaults to true;
+             * evicted ids are in `video.evicted_stream_ids`. Set false to keep other controllers'
+             * streams; the request can then still succeed with `video.degraded` true.
              */
             allow_eviction?: boolean;
         };
         response: CameraStartStreamResult;
     };
     /**
-     * Ends the WebRTC session; the underlying stream allocation is kept.
-     *
-     * Also ends sessions from before a server restart (`established_by_this_server` in
-     * `camera_get_capabilities`). `ended` is false when the camera answers `NOT_FOUND`, which it does
-     * for unknown ids and for another peer's session. Any other `EndSession` failure rejects.
+     * Ends the WebRTC session; its streams stay allocated. Also works for sessions from before a server
+     * restart. `ended` is false when the camera answers `NOT_FOUND`: an unknown id or another
+     * controller's session. Other failures throw.
      */
     camera_stop_stream: {
         requestArgs: { node_id: number | bigint; endpoint_id: number; webrtc_session_id: number };
         response: { ended: boolean };
     };
     /**
-     * Sends the SDP answer for a session the camera is waiting on, as `ProvideAnswer`.
-     *
-     * Used after `camera_start_stream` without `sdp`, whose offer arrives as a `webrtc_callback`
-     * `offer` event. The camera resolves the session id and answers `NOT_FOUND` for an unknown one.
+     * Sends the SDP answer (`ProvideAnswer`) after `camera_start_stream` without `sdp`. The camera's
+     * offer arrives as a `webrtc_callback` `offer` event. An unknown session id fails with `NOT_FOUND`.
      */
     camera_provide_answer: {
         requestArgs: {
@@ -1157,10 +1098,8 @@ export interface APICommands {
         response: null;
     };
     /**
-     * Trickles ICE candidates into an existing session, as `ProvideIceCandidates`.
-     *
-     * Entries have the shape a `webrtc_callback` `ice_candidates` event reports. Without trickling, the
-     * camera learns its peer's addresses from the initial SDP alone.
+     * Sends ICE candidates to an existing session (`ProvideIceCandidates`). Entries have the same shape
+     * as in a `webrtc_callback` `ice_candidates` event.
      */
     camera_provide_ice_candidates: {
         requestArgs: {
@@ -1180,13 +1119,10 @@ export interface APICommands {
             /** Image codec name from `camera_get_capabilities`, e.g. "JPEG". */
             codec?: string;
             /**
-             * Whether the camera burns its manufacturer watermark into the image.
-             *
-             * `true` on a camera without the `Watermark` feature fails with error 102 naming it; `false`
-             * is accepted. Left unset, no watermark is requested and a snapshot stream with one is not
-             * adopted. Overlays are only compared on a camera that advertises the feature. For a
-             * capability whose `requires_hardware_encoder` is false the camera may use the source video
-             * stream's setting; `camera_get_capabilities` reports the outcome.
+             * Whether the camera burns its manufacturer watermark into the image. `true` fails with
+             * error 102 on a camera without the `Watermark` feature. When unset on a camera with the
+             * feature, no watermark is requested and snapshot streams with one are not used. The camera
+             * may apply the video stream's setting instead; `camera_get_capabilities` shows the result.
              */
             watermark_enabled?: boolean;
             /** Whether the camera burns an on-screen display into the image. @see watermark_enabled */
@@ -1194,10 +1130,7 @@ export interface APICommands {
         };
         response: CameraSnapshotResult;
     };
-    /**
-     * Deallocates a stream, whoever allocated it, so the next request allocates fresh. The camera refuses
-     * while the stream is referenced (error 104).
-     */
+    /** Deallocates a stream, whoever allocated it. Fails with error 104 while the stream is in use. */
     camera_release_stream: {
         requestArgs: {
             node_id: number | bigint;
@@ -1205,7 +1138,6 @@ export interface APICommands {
             kind: "video" | "audio" | "snapshot";
             stream_id: number;
         };
-        /** A failure throws: error 104 while the stream is still referenced, the camera's status otherwise. */
         response: null;
     };
     remove_node: {
@@ -1233,10 +1165,7 @@ export interface APICommands {
     write_attribute: {
         requestArgs: {
             node_id: number | bigint;
-            /**
-             * `endpoint/cluster/attribute`. The endpoint must be the wildcard when `node_id` is a
-             * Group Node ID.
-             */
+            /** `endpoint/cluster/attribute`. Use `*` as the endpoint when `node_id` is a Group Node ID. */
             attribute_path: string;
             value: unknown;
         };
@@ -1438,32 +1367,28 @@ export interface APIEvents {
         data: NetworkTopology;
     };
     /**
-     * The camera's half of a WebRTC session's signalling.
-     *
-     * Sent only to connections that have issued a WebRTC command. A session opened by
-     * `camera_start_stream` goes only to the connection that opened it; a session with no server
-     * record (e.g. opened via `send_webrtc_provider_command`) goes to every such connection.
+     * WebRTC signalling from the camera. For a session from `camera_start_stream`, sent only to the
+     * connection that opened it. Otherwise sent to every connection that has issued a WebRTC command.
      */
     webrtc_callback: {
         data: WebRtcCallbackData;
     };
     /**
-     * Another connection ended a session this connection opened.
+     * Another connection ended a session with `camera_stop_stream` or a `device_command` `EndSession`.
      *
-     * Sent only to connections that have issued a camera command (including
-     * `send_webrtc_provider_command`): to the session's owner, or to all of them for a session with no
-     * server record, but never to the connection that stopped it. A peer's `End` arrives as a
-     * `webrtc_callback` `end` event instead.
+     * Sent to the connection that opened the session. For a session the server has no record of, sent
+     * to every connection that has issued a camera command, including `send_webrtc_provider_command`.
+     * Never sent to the connection that ended it, and not sent when a session ends because a
+     * connection closed or the server stopped. When the camera ends a session, a `webrtc_callback`
+     * `end` event arrives instead.
      */
     camera_session_ended: {
         data: CameraSessionEndedData;
     };
     /**
-     * A stream the server deallocated to make room for another request on the same camera.
-     *
-     * Sent to every connection that has issued a camera command, including the requester. Evicted video
-     * ids also appear in `video.evicted_stream_ids`; for snapshot streams this event is the only report.
-     * A replacement stream gets a new id.
+     * The server deallocated a stream to make room for another request on the same camera. Sent to
+     * every connection that has issued a camera command. Evicted video ids also appear in
+     * `video.evicted_stream_ids`. Audio streams are never evicted.
      */
     camera_stream_evicted: {
         data: CameraStreamEvictedData;
@@ -1641,21 +1566,13 @@ export const ICD_MULTI_ADMIN_ERROR_CODE = 100;
 export const CAMERA_STREAM_INCOMPATIBLE_ERROR_CODE = 102;
 /** OHF extension: the camera refused the allocation for lack of capacity. */
 export const CAMERA_RESOURCE_EXHAUSTED_ERROR_CODE = 103;
-/**
- * OHF extension: stream release refused because the device still references the stream (the camera's
- * `INVALID_IN_STATE`). `details.reference_count` is the last count the server read, present only when
- * above zero.
- */
+/** OHF extension: the stream cannot be released because it is still in use. */
 export const CAMERA_STREAM_IN_USE_ERROR_CODE = 104;
 /** OHF extension: endpoint does not expose the clusters camera streaming needs. */
 export const CAMERA_NOT_SUPPORTED_ERROR_CODE = 105;
 /**
- * OHF extension: the camera's privacy switch forbids the call.
- *
- * Raised by `camera_start_stream` and `camera_snapshot`; `details` carry
- * {@link CameraPrivacyModeErrorDetails}, where `modes` names the switches from
- * `camera_get_capabilities`' `privacy` that forbid the call. No change to the request can make it
- * succeed while a switch is on.
+ * OHF extension: a camera privacy switch blocks `camera_start_stream` or `camera_snapshot`.
+ * `details` are {@link CameraPrivacyModeErrorDetails}.
  */
 export const CAMERA_PRIVACY_MODE_ERROR_CODE = 106;
 
@@ -1682,16 +1599,13 @@ export type NodePingResult = Record<string, boolean>;
 export const TEST_NODE_START = 0xffff_fffe_0000_0000n;
 
 /**
- * Last Node ID of the Temporary Local range. The range carries a 32-bit local id, so it is 2^32 wide.
+ * Last Node ID of the Temporary Local range.
  *
  * @see Matter Core specification § 2.5.5, Table 4 "Node Identifier Allocations"
  */
 export const TEST_NODE_END = TEST_NODE_START + (1n << 32n) - 1n;
 
-/**
- * Check if a node ID is in the test node range. Test nodes are imported diagnostic dumps, not real
- * commissioned devices. Ids above the range (Group Node IDs, reserved) are not test nodes.
- */
+/** Check if a node ID is in the test node range. Test nodes are imported diagnostic dumps, not real devices. */
 export function isTestNodeId(nodeId: number | bigint): boolean {
     const bigId = typeof nodeId === "bigint" ? nodeId : BigInt(nodeId);
     return bigId >= TEST_NODE_START && bigId <= TEST_NODE_END;

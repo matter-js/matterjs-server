@@ -123,29 +123,26 @@ class OtaUploadError(MatterError):
 
 
 class CameraStreamIncompatible(MatterError):
-    """Raised when the camera, the caller's offer or the request rules the stream out.
+    """Raised when the camera, the SDP offer or the request rules the stream out.
 
-    ``reason`` says which:
+    ``reason`` says which, and what the client can do:
 
-    - ``codec``: no codec both the camera and the caller, or the caller's offer, can carry.
-    - ``bounds``: a range the camera cannot meet; ``bound`` names the bound when the server ruled
-      it out before asking the camera.
-    - ``feature``: the camera's AVSM ``FeatureMap`` lacks what the request needs, named in
-      ``feature`` (only this reason carries that field).
-    - ``capability``: the feature is advertised, but no stated capability fits the request.
-    - ``offer``: the caller's SDP refuses the track's media section, will not receive on it,
-      or has none.
-    - ``no_media``: the request leaves no media for the session.
-    - ``level``: the offer states a decode ceiling the server cannot read.
+    - ``codec``: the camera and the request (or its SDP offer) share no codec. Change the codecs.
+    - ``bounds``: the camera cannot meet a resolution, frame-rate or bit-rate limit. ``bound``
+      names it when the server could tell before asking the camera. Change the hints.
+    - ``feature``: the camera lacks a feature the request needs, named in ``feature``.
+    - ``capability``: the camera has the feature but reports nothing usable.
+    - ``offer``: the SDP rejects the track, does not receive it, or has no media section for it.
+      Change the SDP.
+    - ``no_media``: no track is left for the session. Request a track.
+    - ``level``: the server cannot read the decode level in the SDP. Change the SDP.
 
-    ``codec`` is fixed in the command arguments or the SDP, ``bounds`` and ``no_media`` (ask
-    for a track) in the command arguments, ``offer`` and ``level`` in the client's SDP, and
-    ``feature`` and ``capability`` in neither.
+    The request cannot fix ``feature`` or ``capability``.
 
-    ``track`` is ``video`` or ``audio`` for a ``camera_start_stream`` track failure. ``device``
-    lists the camera's codec names and is empty when the camera did not refuse. ``device_status``
-    is the Matter status the camera answered with, when a device rejection produced the error.
-    Attributes the details do not carry are ``None`` or empty.
+    ``track`` is ``video`` or ``audio`` when one ``camera_start_stream`` track failed. ``device``
+    lists the camera's codec names; it is empty when the camera did not refuse. ``device_status``
+    is the Matter status from the camera, when the camera rejected the request. Values missing
+    from the details are ``None`` or empty.
     """
 
     error_code = 102
@@ -166,8 +163,8 @@ class CameraStreamIncompatible(MatterError):
 class CameraResourceExhausted(MatterError):
     """Raised when the camera refused the allocation for lack of capacity.
 
-    ``allocated`` lists the streams holding the capacity; their ``kind`` is not always the kind
-    that was asked for (a refused snapshot reports the video streams).
+    ``allocated`` lists the streams using the capacity. Their ``kind`` can differ from the
+    requested kind: a refused snapshot reports video streams.
     """
 
     error_code = 103
@@ -186,9 +183,9 @@ class CameraResourceExhausted(MatterError):
 
 
 class CameraStreamInUse(MatterError):
-    """Raised when stream release is refused because the device still references the stream.
+    """Raised when a stream cannot be released because it is still in use.
 
-    ``reference_count`` is the count the server last read, ``None`` when that count was zero.
+    ``reference_count`` is the last count the server read, ``None`` when it was 0.
     """
 
     error_code = 104
@@ -214,11 +211,10 @@ class CameraNotSupported(MatterError):
 
 
 class CameraPrivacyMode(MatterError):
-    """Raised while a camera privacy switch forbids the session or the snapshot.
+    """Raised while a camera privacy switch blocks the session or the snapshot.
 
-    ``modes`` names every switch that forbids the call, spelled as ``camera_get_capabilities``'
-    ``privacy`` spells it; ``device_status`` is the one status the camera answered for all of them.
-    It is a device state, not something the request can change.
+    ``modes`` lists every switch that blocks it, spelled as in ``camera_get_capabilities``
+    ``privacy``. ``device_status`` is the one status the camera answered. The request cannot fix this.
     """
 
     error_code = 106

@@ -757,10 +757,9 @@ class MatterClient:
         The server hard-codes the cluster id (0x0553) and injects
         originatingEndpointId — payload should omit both.
 
-        ``ProvideOffer`` and ``SolicitOffer`` establish a session and return the camera's
-        response. ``ProvideAnswer`` and ``ProvideIceCandidates`` signal into an existing
-        session, return ``None`` and need schema 14. ``EndSession`` is not relayed: use the
-        ``camera_stop_stream`` command, which also clears the server's session records.
+        ``ProvideOffer`` and ``SolicitOffer`` start a session and return the camera's response.
+        ``ProvideAnswer`` and ``ProvideIceCandidates`` act on an existing session, return ``None``
+        and need schema 14. For ``EndSession``, use ``camera_stop_stream``.
         """
         response = await self.send_command(
             APICommand.SEND_WEBRTC_PROVIDER_COMMAND,
@@ -797,10 +796,10 @@ class MatterClient:
     ) -> CameraStartStreamResult:
         """Open a WebRTC session, allocating or reusing the streams it needs.
 
-        Sends ``ProvideOffer`` when ``sdp`` is given, ``SolicitOffer`` otherwise; the camera's offer
-        then arrives as a ``webrtc_callback`` ``offer`` event. ``video``/``audio``: ``None`` leaves
-        the track to the server, a hints mapping states hard requirements, ``False`` excludes it.
-        An argument left ``None`` is not sent.
+        Sends ``ProvideOffer`` when ``sdp`` is given, ``SolicitOffer`` otherwise; then the camera's
+        offer arrives as a ``webrtc_callback`` ``offer`` event. For ``video`` and ``audio``, ``None``
+        lets the server decide, a hints dict sets hard requirements, and ``False`` leaves the track
+        out. Arguments left ``None`` are not sent.
 
         Requires schema 14.
         """
@@ -844,7 +843,7 @@ class MatterClient:
         webrtc_session_id: int,
         ice_candidates: Sequence[WebRTCIceCandidate | dict[str, Any]],
     ) -> None:
-        """Trickle ICE candidates into an existing session (at least one).
+        """Send one or more ICE candidates to an existing session.
 
         A candidate from a ``webrtc_callback`` ``ice_candidates`` event can be passed unchanged.
 

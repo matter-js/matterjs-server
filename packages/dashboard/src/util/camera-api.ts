@@ -73,11 +73,10 @@ export function isAudioOnlyCamera(caps: CameraCapabilitiesResult | null): boolea
 }
 
 /**
- * The `video` argument for `camera_start_stream`; undefined means leave the key out. Any object, `{}`
- * included, demands video: a camera reporting the `Video` feature gets one, an audio-only camera gets
- * `false`. While the features are unknown, video is demanded only when a hint was picked, so the server
- * can still serve an audio-only camera. Overlay flags are stated only on a camera that advertises them,
- * because `true` on any other fails with error 102.
+ * The `video` argument for `camera_start_stream`; undefined means leave the key out. A camera with the
+ * `Video` feature always gets an object, which requires video; an audio-only camera gets `false`. While
+ * the features are unknown, video is required only when the user picked a hint. Overlay flags are set
+ * only on a camera with that feature.
  */
 export function buildVideoRequest(
     caps: CameraCapabilitiesResult | null,
