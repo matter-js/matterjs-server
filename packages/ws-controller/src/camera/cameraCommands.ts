@@ -111,26 +111,19 @@ export interface ParsedCameraTarget {
     endpointId: EndpointNumber;
 }
 
-/** One camera command's arguments, once they are known to be an object and to hold no unknown key. */
 interface ParsedCameraCommand {
     target: ParsedCameraTarget;
     fields: Record<string, unknown>;
 }
 
-/**
- * The argument object and target of a camera command, with the command's top-level keys checked.
- * Nested objects (hints, `ice_servers` entries, resolutions) are checked where they are parsed.
- */
+/** Top-level keys only; nested objects (hints, `ice_servers` entries, resolutions) are checked where parsed. */
 function parseCameraCommand(args: unknown, command: CameraCommandName): ParsedCameraCommand {
     const fields = requireArgumentObject(args, command);
     rejectUnknownKeys(fields, CAMERA_ARG_KEYS[command], `${command} argument`);
     return { target: parseTargetIds(fields, command), fields };
 }
 
-/**
- * The command's arguments as an object, or an invalid-arguments refusal. Call before walking argument
- * keys: `Object.keys` accepts a string and throws a non-`ServerError` for `null`.
- */
+/** Call before walking argument keys: `Object.keys` accepts a string and throws a non-`ServerError` for `null`. */
 export function requireArgumentObject(args: unknown, command: string): Record<string, unknown> {
     if (!isRecord(args)) {
         throw ServerError.invalidArguments(`${command} requires an object of arguments`);
@@ -139,10 +132,8 @@ export function requireArgumentObject(args: unknown, command: string): Record<st
 }
 
 /**
- * The node and endpoint a command names, validated here because `NodeId()` validates nothing. Refuses
- * node ids outside 64 bits and any id that does not name one single node (e.g. a Group Node ID).
- *
- * @see Matter Core spec § 2.5.5 — a Node ID is a 64-bit number.
+ * Validated here because `NodeId()` validates nothing. Refuses node ids outside 64 bits (Core § 2.5.5)
+ * and any id that does not name one single node (e.g. a Group Node ID).
  */
 export function parseTargetIds(fields: Record<string, unknown>, subject: string): ParsedCameraTarget {
     const { node_id: nodeId, endpoint_id: endpointId } = fields;
@@ -253,7 +244,6 @@ const RELEASE_STREAM_ARG_KEY_SET: Record<keyof Required<ArgsOf<"camera_release_s
     stream_id: true,
 };
 
-/** What each camera command takes at the top level. */
 export const CAMERA_ARG_KEYS = {
     camera_get_capabilities: Object.keys(CAPABILITIES_ARG_KEY_SET),
     camera_start_stream: Object.keys(START_STREAM_ARG_KEY_SET),
@@ -266,16 +256,12 @@ export const CAMERA_ARG_KEYS = {
 
 export type CameraCommandName = keyof typeof CAMERA_ARG_KEYS;
 
-/**
- * Which provider command each camera signalling command sends, and the target it sends it to.
- * `payload` is the caller's fields minus the target, unconverted; `toProviderCommandFields` converts it.
- */
+/** `payload` is the caller's fields minus the target, unconverted; `toProviderCommandFields` converts it. */
 export interface ParsedSignallingArgs extends ParsedCameraTarget {
     commandName: SignallingCommandName;
     payload: Record<string, unknown>;
 }
 
-/** The camera commands that signal into a session rather than establishing or ending one. */
 export type CameraSignallingCommandName = "camera_provide_answer" | "camera_provide_ice_candidates";
 
 const SIGNALLING_PROVIDER_COMMANDS: Record<CameraSignallingCommandName, SignallingCommandName> = {

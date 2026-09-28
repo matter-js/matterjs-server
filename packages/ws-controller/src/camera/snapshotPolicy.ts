@@ -8,13 +8,12 @@ import type { AllocatedSnapshotStream, AllocatedVideoStream, Resolution } from "
 import type { OverlayBounds } from "./overlayPolicy.js";
 import { overlaysMatch } from "./overlayPolicy.js";
 
-/** SnapshotCapabilitiesStruct (§11.2.6.9) as `CameraAvStreamManagementClient` reports it. */
 export interface SnapshotCapability {
     resolution: Resolution;
     maxFrameRate: number;
     imageCodec: number;
     requiresEncodedPixels: boolean;
-    /** Optional on the wire; absent reads as false, matching the reference server's default. */
+    /** Optional on the wire; absent reads as false, as in the reference server. */
     requiresHardwareEncoder: boolean;
 }
 
@@ -26,22 +25,15 @@ function fitsUnder(resolution: Resolution, ceiling: Resolution): boolean {
     return resolution.width <= ceiling.width && resolution.height <= ceiling.height;
 }
 
-/**
- * Whether this capability takes one of the camera's `MaxConcurrentEncoders`. `RequiresHardwareEncoder`
- * "is only considered if RequiresEncodedPixels is true" (§11.2.6.9.5).
- */
+/** `RequiresHardwareEncoder` "is only considered if RequiresEncodedPixels is true" (§11.2.6.9.5). */
 export function usesHardwareEncoder(capability: SnapshotCapability): boolean {
     return capability.requiresEncodedPixels && capability.requiresHardwareEncoder;
 }
 
 /**
- * Whether every one of the camera's encoders is taken. With `MaxConcurrentEncoders` absent, any live
- * stream counts as the last one.
- *
- * A video stream counts while referenced; a snapshot stream counts while it exists with
- * `HardwareEncoder` set (§11.2.6.13.9). Callers include streams allocated but not yet reported.
- * The reference server counts every allocated video stream (`IsResourceAvailableForStreamAllocation`);
- * this result only orders the snapshot ladder, so an undercount costs one device refusal.
+ * Callers include streams allocated but not yet reported. The reference server counts every allocated
+ * video stream (`IsResourceAvailableForStreamAllocation`), not only referenced ones; this result only
+ * orders the snapshot ladder, so an undercount costs one device refusal.
  */
 export function encodersExhausted(args: {
     maxConcurrentEncoders: number | undefined;
@@ -57,33 +49,22 @@ export function encodersExhausted(args: {
 }
 
 /**
- * The capabilities to try, best first, or which narrowing step left none.
- *
- * `bestWithinCallerBounds` is the largest capability the caller's bounds allow, before the encoder
- * reordering; undefined only when the camera advertises no snapshot capability.
+ * `bestWithinCallerBounds` is taken before the encoder reordering; undefined only when the camera
+ * advertises no snapshot capability.
  */
 export type SnapshotSelection =
     | { readonly capabilities: SnapshotCapability[]; readonly bestWithinCallerBounds: SnapshotCapability | undefined }
     | { readonly unsatisfiable: "codec" | "bounds" };
 
-/**
- * Whether `chosen` is a smaller image than the best capability the caller's bounds allowed. `chosen`
- * must be the returned frame's size, not the stream's ceiling: the device picks a size inside the range.
- */
+/** `chosen` must be the returned frame's size, not the stream's ceiling: the device picks a size inside the range. */
 export function isDegradedFrom(chosen: Resolution, best: SnapshotCapability | undefined): boolean {
     return best !== undefined && pixels(chosen) < pixels(best.resolution);
 }
 
 /**
- * The snapshot stream the make-room rung should take, or none whose loss would buy anything.
- *
- * `candidates` must be only streams this server allocated in this process run: `SnapshotStreamDeallocate`
- * (§11.2.8.10.2) checks only `ReferenceCount`, which `CaptureSnapshot` does not raise, so a foreign
- * stream in use can read 0.
- *
- * A candidate must free an encoder (`HardwareEncoder`, §11.2.6.13.9) or pixel rate (`EncodedPixels`,
- * §11.2.6.13.8, only when the camera states `MaxEncodedPixelRate`). Encoder holders go first, then the
- * larger `frameRate × maxResolution` (the reference server's measure), then the lower id.
+ * `candidates` must be only streams this server allocated in this process run: `CaptureSnapshot` does
+ * not raise `ReferenceCount`, so a foreign stream in use can read 0 (§11.2.8.10.2).
+ * `frameRate × maxResolution` is the reference server's measure of pixel rate.
  */
 export function chooseSnapshotStreamToFree(
     candidates: AllocatedSnapshotStream[],
@@ -104,13 +85,9 @@ export function chooseSnapshotStreamToFree(
 }
 
 /**
- * An already-allocated snapshot stream worth capturing from instead of allocating one, or none.
- * Reuse avoids the allocation churn §11.2.1.1 asks controllers to avoid.
- *
- * `best` is the capability that would otherwise be allocated. It is compared per dimension against the
- * candidate's `minResolution`, because the camera may answer with any size in the range (§11.2.8.13.3),
- * so an adopted stream never yields a smaller frame than allocating would. `bounds.overlays` must be
- * the resolved overlays, not the caller's statement.
+ * `best` is the capability that would otherwise be allocated. It must fit under the candidate's
+ * `minResolution` per dimension: the camera may answer with any size in the range (§11.2.8.13.3).
+ * `bounds.overlays` must be the resolved overlays, not the caller's statement.
  */
 export function findAdoptableSnapshotStream(
     streams: AllocatedSnapshotStream[],
@@ -128,10 +105,7 @@ export function findAdoptableSnapshotStream(
 }
 
 /**
- * The capabilities to attempt a snapshot stream against, best first.
- *
- * The caller's codec and resolution ceiling are hard. With every encoder taken, encoder-free
- * capabilities are moved first but encoder-using ones stay in the list: `encodersExhausted` reads a
+ * Encoder-using capabilities stay in the list when encoders are exhausted: `encodersExhausted` reads a
  * lagging view, so the device decides whether an encoder is really free.
  */
 export function selectSnapshotCapabilities(

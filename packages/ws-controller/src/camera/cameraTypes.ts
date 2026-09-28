@@ -16,10 +16,7 @@ export interface Resolution {
     height: number;
 }
 
-/**
- * A range the device may adapt within; `VideoStreamAllocate` takes exactly this shape.
- * An absent overlay flag must not be sent (conformance `WMARK` / `OSD`, §11.2.8.4).
- */
+/** The shape `VideoStreamAllocate` takes. An absent overlay flag must not be sent (§11.2.8.4). */
 export interface VideoEnvelope {
     overlays: OverlayBounds;
     codec: number;
@@ -32,7 +29,7 @@ export interface VideoEnvelope {
     keyFrameInterval: number;
 }
 
-/** Which ceilings {@link budgetVideoEnvelope} lowered, each carrying the value the envelope had before it. */
+/** Each field holds that ceiling's value from before {@link budgetVideoEnvelope} lowered it. */
 export interface VideoBudgetNarrowing {
     maxFrameRate?: number;
     maxResolution?: Resolution;
@@ -46,12 +43,7 @@ export interface AudioEnvelope {
     bitDepth: number;
 }
 
-/**
- * An allocated video stream as `AllocatedVideoStreams` reports it.
- *
- * `overlays` is not defaulted: a re-allocation sends it as is, and an absent flag must stay absent
- * there (§11.2.6.11 conformance).
- */
+/** `overlays` is not defaulted: a re-allocation sends it as is, and an absent flag must stay absent (§11.2.6.11). */
 export interface AllocatedVideoStream {
     overlays: OverlayBounds;
     videoStreamId: number;
@@ -78,8 +70,6 @@ export interface AllocatedAudioStream {
 }
 
 /**
- * An allocated snapshot stream as `AllocatedSnapshotStreams` reports it.
- *
  * `overlays` is not a promise: §11.2.8.8.6 lets a camera use the source video stream's setting instead
  * of the requested flags when no hardware encoder is involved.
  */
@@ -90,7 +80,7 @@ export interface AllocatedSnapshotStream {
     minResolution: Resolution;
     maxResolution: Resolution;
     referenceCount: number;
-    /** FrameRate (§11.2.6.13.3), the rate this stream reserves in the encoded-pixel calculation. */
+    /** The rate this stream reserves in the encoded-pixel budget (§11.2.6.13.3). */
     frameRate: number;
     /** Whether this stream counts in the camera's encoded pixel rate (§11.2.6.13.8). */
     encodedPixels: boolean;
@@ -100,23 +90,16 @@ export interface AllocatedSnapshotStream {
 
 interface LeaseSubject {
     streamId: number;
-    /**
-     * Whether this server allocated the stream during this process run, so it may deallocate it
-     * unasked. Not persisted: after a restart nothing is this server's to give back unasked.
-     */
+    /** This process run allocated the stream, so it may deallocate it unasked. Not persisted. */
     allocatedByUs: boolean;
 }
 
-/**
- * What this server states about one stream it has handed out. An adopted stream's allocation is the
- * camera's own report of it.
- */
+/** An adopted stream's `allocation` is the camera's own report of it. */
 export type LeaseStatement =
     | (LeaseSubject & { kind: "video"; allocation: AllocatedVideoStream })
     | (LeaseSubject & { kind: "audio"; allocation: AllocatedAudioStream })
     | (LeaseSubject & { kind: "snapshot"; allocation: AllocatedSnapshotStream });
 
-/** A {@link LeaseStatement} plus the facts reconciliation needs. */
 export type StreamLease = LeaseStatement & {
     /**
      * `Time.nowUs` (millisecond-valued) until which this lease may stand in for a device report. Set
@@ -126,9 +109,8 @@ export type StreamLease = LeaseStatement & {
     /** True once a device state read has named this stream; before that, absence means "not reported yet". */
     reportedByDevice: boolean;
     /**
-     * Identifies this exact statement about the stream id, because the device reuses freed ids and a
-     * late give-back must not remove a later lease. Reconciliation keeps it; only a new statement gets a
-     * new one.
+     * The device reuses freed ids, so a late give-back must match this to remove the lease. Reconciliation
+     * keeps it; only a new statement gets a new one.
      */
     generation: number;
 };
@@ -137,17 +119,12 @@ export interface ManagedSession {
     webRtcSessionId: number;
     nodeId: NodeId;
     endpointId: EndpointNumber;
-    /** Owning WebSocket connection, so a disconnect can end exactly its sessions. */
     connectionId: string;
     videoStreamIds: number[];
     audioStreamIds: number[];
 }
 
-/**
- * One session that ended without the client that opened it asking for it.
- *
- * Not raised for the peer's own `End`, which already reaches the owner as a `webrtc_callback` `end` event.
- */
+/** Not raised for the peer's own `End`, which already reaches the owner as a `webrtc_callback` `end` event. */
 export interface CameraSessionEnded {
     nodeId: NodeId;
     endpointId: EndpointNumber;
@@ -158,13 +135,12 @@ export interface CameraSessionEnded {
      */
     ownerId?: string;
     /**
-     * The connection whose `camera_stop_stream` ended it; the route does not notify that connection.
+     * The connection whose `camera_stop_stream` or `EndSession` ended it; the route does not notify it.
      * Absent when the server ended it on its own (owner disconnected, or shutdown).
      */
     requestedBy?: string;
 }
 
-/** One stream the make-room rung destroyed, for the clients that were not the ones it served. */
 export interface CameraStreamEvicted {
     nodeId: NodeId;
     endpointId: EndpointNumber;
@@ -173,9 +149,8 @@ export interface CameraStreamEvicted {
 }
 
 /**
- * A WebRTC session as the camera's own `CurrentSessions` (§11.5.5.1) reports it.
- *
- * `EndSession` (§11.5.6.7.3) answers `NOT_FOUND` for an entry whose `PeerNodeID` is not the caller's.
+ * From `CurrentSessions` (§11.5.5.1). `EndSession` (§11.5.6.7.3) answers `NOT_FOUND` unless `PeerNodeID`
+ * is the caller's.
  */
 export interface DeviceWebRtcSession {
     webRtcSessionId: number;
@@ -196,17 +171,11 @@ export interface ResolvedStream {
     degraded?: boolean;
     /** Video stream ids this request deallocated, whichever rung then answered; absent when it took nothing. */
     evicted?: number[];
-    /**
-     * The ceilings the camera's encoder budget lowered, absent when it lowered none. Set for a freshly
-     * allocated stream only. Not recomputed when the ladder narrows further after a device refusal.
-     */
+    /** Allocate path only. Not recomputed when the ladder narrows further after a device refusal. */
     budgetNarrowed?: VideoBudgetNarrowing;
 }
 
-/**
- * The AVSM `FeatureMap` (§11.2.5) as matter.js decodes it. A flag not decoded reads `undefined`, so
- * compare against `true`, never negate.
- */
+/** A flag not decoded reads `undefined`, so compare against `true`, never negate. */
 export type CameraFeatures = Partial<typeof CameraAvStreamManagementClient.features>;
 
 /** The camera's privacy attributes (§11.2.7.20 to §11.2.7.22). Absent means the camera has no such switch. */

@@ -16,8 +16,6 @@ const logger = Logger.get("CameraStreamManager");
 export const DEVICE_CLEANUP_BUDGET_MS = 10000;
 
 /**
- * Await `work` for at most {@link DEVICE_CLEANUP_BUDGET_MS}, then log and stop waiting.
- *
  * The invokes underneath cannot be cancelled and keep running, so their late local effects must be
  * safe: see `CameraSessionRegistry.forgetEstablished` and the lease generation on `StreamLease`.
  * Late device effects are not guarded: an abandoned deallocate can reach the camera after the

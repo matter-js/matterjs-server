@@ -7,43 +7,33 @@
 import type { EndpointNumber, NodeId } from "@matter/main";
 import type { CameraSessionEnded, ManagedSession } from "./cameraTypes.js";
 
-/** What a release path matches on, shared by tracked sessions and registrations still in flight. */
 export interface SessionScope {
     nodeId: NodeId;
     endpointId: EndpointNumber;
     connectionId: string;
 }
 
-/**
- * A session being established, from before the provider round trip until `finish`. Identified by
- * object identity, so a release path that runs meanwhile can see it.
- */
+/** Identified by object identity, so a release path that runs before `finish` can see it. */
 export type PendingSession = Readonly<SessionScope>;
 
 interface PendingRecord {
     claimed: boolean;
     settled: Promise<void>;
     markSettled: () => void;
-    /** The id the provider answered with, so {@link CameraSessionRegistry.forget} can match an end to it. */
     webRtcSessionId?: number;
-    /** Set when this registration's session ended before it was tracked, whoever ended it. */
     ended: boolean;
 }
 
-/** Why a session this server established could not be tracked. Either way the caller must end the session. */
+/** Either way the caller must end the session. */
 export type SessionTrackRefusal = "claimed" | "already_ended";
 
-/**
- * The sessions this server established on devices, tracked from before establishment until release.
- * Keyed by node, endpoint and id, because `WebRTCSessionID` is allocated per provider.
- */
+/** Keyed by node, endpoint and id, because `WebRTCSessionID` is allocated per provider. */
 export class CameraSessionRegistry {
     readonly #announce: (ended: CameraSessionEnded) => void;
     readonly #sessions = new Map<string, ManagedSession>();
     readonly #pending = new Map<PendingSession, PendingRecord>();
     readonly #releasing = new Map<ManagedSession, Promise<boolean>>();
 
-    /** `announce` is called for every tracked session this registry stops holding on a release path. */
     constructor(announce: (ended: CameraSessionEnded) => void) {
         this.#announce = announce;
     }
@@ -52,7 +42,7 @@ export class CameraSessionRegistry {
         return `${nodeId}/${endpointId}/${webRtcSessionId}`;
     }
 
-    /** Announce a session about to be established. Every exit of the establishing call must {@link finish} it. */
+    /** Every exit of the establishing call must {@link finish} the returned registration. */
     begin(nodeId: NodeId, endpointId: EndpointNumber, connectionId: string): PendingSession {
         const pending: PendingSession = { nodeId, endpointId, connectionId };
         let markSettled = (): void => {};
@@ -63,19 +53,15 @@ export class CameraSessionRegistry {
         return pending;
     }
 
-    /**
-     * Record the id the provider answered a registration with. Must be called before the local requestor
-     * is given the session, so an `End` routed after that can be attributed.
-     */
+    /** Must be called before the local requestor is given the session, so a later `End` can be attributed. */
     establishing(pending: PendingSession, webRtcSessionId: number): void {
         const record = this.#pending.get(pending);
         if (record !== undefined) record.webRtcSessionId = webRtcSessionId;
     }
 
     /**
-     * Track an established session, or refuse it and say why. On a refusal the caller must end the
-     * session. `claimed`: a release path is waiting for it. `already_ended`: it ended between the offer
-     * response and this call.
+     * `claimed`: a release path is waiting for it. `already_ended`: it ended between the offer response and
+     * this call.
      */
     track(pending: PendingSession, session: ManagedSession): SessionTrackRefusal | undefined {
         const record = this.#pending.get(pending);
@@ -85,10 +71,7 @@ export class CameraSessionRegistry {
         return undefined;
     }
 
-    /**
-     * Drop a registration begun by {@link begin}. Call it once the establishing call has dealt with the
-     * session, ending it included: a claiming release path waits for this.
-     */
+    /** Call once the establishing call has dealt with the session, even by ending it: a claiming release waits for this. */
     finish(pending: PendingSession): void {
         const record = this.#pending.get(pending);
         this.#pending.delete(pending);
@@ -96,8 +79,8 @@ export class CameraSessionRegistry {
     }
 
     /**
-     * Which connections may receive the signalling of one session, or `undefined` when this server has no
-     * record of it (raw provider route, or already dropped). In-flight registrations are not consulted.
+     * `undefined` when no entry names the session (raw provider route, or already dropped). In-flight
+     * registrations are not consulted.
      */
     signallingOwners(
         nodeId: NodeId,
@@ -113,11 +96,8 @@ export class CameraSessionRegistry {
     }
 
     /**
-     * Stop tracking a session the device no longer holds. Reports whether an entry existed. Announces
-     * nothing; callers report the end themselves.
-     *
-     * Also marks an in-flight registration answered with this id as ended, so {@link track} refuses it.
-     * Every path that learns a session has ended must come through here.
+     * Announces nothing; callers report the end themselves. Also marks an in-flight registration answered
+     * with this id as ended, so {@link track} refuses it. Every path that learns a session ended must call this.
      */
     forget(nodeId: NodeId, endpointId: EndpointNumber, webRtcSessionId: number): boolean {
         if (this.#sessions.delete(this.#key(nodeId, endpointId, webRtcSessionId))) return true;
@@ -174,12 +154,12 @@ export class CameraSessionRegistry {
         return inFlight;
     }
 
-    /** Release one session with the shared de-duplication; every concurrent waiter gets the same device answer. */
+    /** Every concurrent waiter gets the same device answer. */
     releaseOnce(session: ManagedSession, release: (session: ManagedSession) => Promise<boolean>): Promise<boolean> {
         return this.#release(session, release);
     }
 
-    /** The release already running for this session, or a new one. Dropped on settle, so a failure can be retried. */
+    /** Dropped on settle, so a failure can be retried. */
     #release(session: ManagedSession, release: (session: ManagedSession) => Promise<boolean>): Promise<boolean> {
         const running = this.#releasing.get(session);
         if (running !== undefined) return running;

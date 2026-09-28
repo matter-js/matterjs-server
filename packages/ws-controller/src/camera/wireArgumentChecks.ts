@@ -11,7 +11,7 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-/** Every key a caller states is a bound, so an unknown key is refused: dropping it would answer a different request. */
+/** Every key a caller states is a bound: dropping an unknown one would answer a different request. */
 export function rejectUnknownKeys(value: object, known: readonly string[], subject: string): void {
     const unknown = Object.keys(value).filter(key => !known.includes(key));
     if (unknown.length > 0) {
@@ -21,7 +21,6 @@ export function rejectUnknownKeys(value: object, known: readonly string[], subje
     }
 }
 
-/** Whether `value` is an integer inside the range the Matter field it becomes accepts. */
 export function isInRange(value: unknown, range: FieldRange): value is number {
     return typeof value === "number" && Number.isSafeInteger(value) && value >= range.min && value <= range.max;
 }

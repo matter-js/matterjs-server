@@ -5,8 +5,8 @@
  */
 
 /**
- * The decode ceiling a codec level states, in the units {@link VideoCodecLimits} uses. These are hard
- * bounds, like an explicit `max-fs`. `maxBitRate` is absent where no bit rate is read from the level.
+ * Hard bounds, like an explicit `max-fs`, in the units of {@link VideoCodecLimits}. `maxBitRate` is absent
+ * where no bit rate is read from the level.
  */
 export interface CodecLevelLimits {
     readonly maxPixels: number;
@@ -16,15 +16,12 @@ export interface CodecLevelLimits {
 
 /** A macroblock is 16x16 luma samples, which is how H.264 states MaxFS and MaxMBPS. */
 export const PIXELS_PER_MACROBLOCK = 256;
-/** H.264 Table A-1 states MaxBR in units of 1000 bits per second. */
 const BITS_PER_KILOBIT = 1000;
 
 /**
  * ITU-T H.264 (V15, 08/2021) Annex A, Table A-1 "Level limits": MaxMBPS (macroblocks per second),
  * MaxFS (macroblocks) and MaxBR (kbit/s).
- *
- * MaxBR is the Baseline/Main/Extended value (`cpbBrVclFactor` 1000). High profiles allow 1.25x, so
- * this is the tighter bound, which is the safe side.
+ * MaxBR is the Baseline/Main/Extended value (`cpbBrVclFactor` 1000): the tighter bound, since High allows 1.25x.
  */
 const H264_LEVEL_LIMITS = new Map<string, { maxMbps: number; maxFs: number; maxBr: number }>([
     ["1", { maxMbps: 1485, maxFs: 99, maxBr: 64 }],
@@ -84,10 +81,7 @@ const CONSTRAINT_SET3_FLAG = 0x10;
  */
 const H264_LEVEL_1B_PROFILES = new Set<number>([66, 77, 88]);
 
-/**
- * The limits H.264's `profile-level-id` (RFC 6184 §8.1) states, or `undefined` when it maps to no row
- * of Table A-1. `undefined` means unreadable, not unlimited.
- */
+/** `profile-level-id` per RFC 6184 §8.1. `undefined` means unreadable, not unlimited. */
 export function h264ProfileLevelIdLimits(profileLevelId: string): CodecLevelLimits | undefined {
     if (!/^[0-9a-fA-F]{6}$/.test(profileLevelId)) return undefined;
     const profileIdc = Number.parseInt(profileLevelId.slice(0, 2), 16);
@@ -111,7 +105,6 @@ export function h264ProfileLevelIdLimits(profileLevelId: string): CodecLevelLimi
 /**
  * ITU-T H.265 (V5, 02/2018) Annex A: MaxLumaPs from Table A.8 and MaxLumaSr from Table A.9, keyed by
  * `general_level_idc` (thirty times the level number).
- *
  * No bit rate: H.265 states MaxBR per tier, and offers often leave the tier out.
  */
 const H265_LEVEL_LIMITS = new Map<number, { maxLumaPs: number; maxLumaSr: number }>([
@@ -130,10 +123,7 @@ const H265_LEVEL_LIMITS = new Map<number, { maxLumaPs: number; maxLumaSr: number
     [186, { maxLumaPs: 35651584, maxLumaSr: 4278190080 }],
 ]);
 
-/**
- * The limits H.265's `level-id` (`general_level_idc`, RFC 7798 §7.1) states, or `undefined` when it
- * names no row of the level tables. `undefined` means unreadable, not unlimited.
- */
+/** `level-id` is `general_level_idc` (RFC 7798 §7.1). `undefined` means unreadable, not unlimited. */
 export function h265LevelIdLimits(levelId: string): CodecLevelLimits | undefined {
     if (!/^\d{1,3}$/.test(levelId)) return undefined;
     const limits = H265_LEVEL_LIMITS.get(Number(levelId));

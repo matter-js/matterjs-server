@@ -39,12 +39,8 @@ function requireField(parent: ClusterModel | CommandModel | DatatypeModel, name:
 }
 
 /**
- * The range `field` accepts, from its own constraint where that states a number and from its type's
- * width otherwise. A bound that names another field (`MinFrameRate` is "1 to maxFrameRate") is left
- * to the device.
- *
- * Called at module load, so a Matter model that lacks these elements fails the import, not the first
- * camera command.
+ * A bound that names another field (`MinFrameRate` is "1 to maxFrameRate") is left to the device.
+ * Called at module load, so a model mismatch fails the import, not the first camera command.
  */
 export function fieldRange(field: ValueModel): FieldRange {
     const typeName = field.metabase?.name;
@@ -70,7 +66,6 @@ function requireDatatype(parent: ClusterModel, name: string): DatatypeModel {
     return datatype;
 }
 
-/** The ceiling `field`'s own constraint states, which a field bounded only by its type does not have. */
 function maxOf(field: FieldModel): number {
     const { max } = field.constraint;
     if (typeof max !== "number") {
@@ -79,7 +74,6 @@ function maxOf(field: FieldModel): number {
     return max;
 }
 
-/** The ceiling each entry of a list field states, as `max 10[max 2000]` states 2000. */
 function entryMaxOf(field: FieldModel): number {
     const max = field.constraint.entry?.max;
     if (typeof max !== "number") {
@@ -95,7 +89,6 @@ const iceServerUrls = requireField(iceServer, "UrLs");
 
 const webRtcProvider = requireCluster("WebRtcTransportProvider");
 
-/** A `WebRtcTransportProvider` command's definition from the Matter model. */
 export function providerCommand(name: string): CommandModel {
     const command = webRtcProvider.get(CommandModel, name);
     if (command === undefined) {
@@ -107,9 +100,6 @@ export function providerCommand(name: string): CommandModel {
 const provideOffer = providerCommand("ProvideOffer");
 
 /**
- * The wire ranges the camera commands validate their numeric arguments against, read from the
- * cluster's own element definitions.
- *
  * @see Matter spec § 11.2.8.4 (VideoStreamAllocate), § 11.2.8.1 (AudioStreamAllocate), § 11.2.6.7
  * (VideoResolutionStruct)
  */
@@ -129,11 +119,7 @@ export const CAMERA_FIELD_RANGES = {
     webRtcSessionId: fieldRange(requireField(providerCommand("EndSession"), "WebRtcSessionId")),
 } satisfies Record<string, FieldRange>;
 
-/**
- * What `camera_start_stream`'s ICE arguments may carry, read from `ProvideOffer` and `ICEServerStruct`.
- *
- * @see Matter spec § 11.4.5.3 (ICEServerStruct), § 11.5.6.3 (ProvideOffer)
- */
+/** @see Matter spec § 11.4.5.3 (ICEServerStruct), § 11.5.6.3 (ProvideOffer) */
 export const ICE_SERVER_LIMITS: {
     readonly maxServers: number;
     readonly maxTransportPolicyLength: number;

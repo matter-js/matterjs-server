@@ -12,11 +12,7 @@ const TEMPORARY_LOCAL_MAX = NodeId.fromTemporaryLocalNodeId(UINT32_MAX);
 const PAKE_KEY_MIN = NodeId.getFromPakeKeyIdentifier(0);
 const PAKE_KEY_MAX = NodeId.getFromPakeKeyIdentifier(UINT32_MAX);
 
-/**
- * What a Node ID names, as far as the commands of this server can act on it.
- *
- * @see Matter Core specification § 2.5.5, Table 4 "Node Identifier Allocations"
- */
+/** @see Matter Core specification § 2.5.5, Table 4 "Node Identifier Allocations" */
 export type NodeIdTarget =
     /** One node: an Operational Node ID, or a Temporary Local ID (test nodes imported from a diagnostic dump). */
     | { readonly kind: "node" }
@@ -32,12 +28,7 @@ export type NodeIdTarget =
      */
     | { readonly kind: "unusable"; readonly className: string };
 
-/**
- * Classify `nodeId`. The caller must range-check it to 64 bits first: a wider or negative value is
- * misreported as reserved.
- *
- * @see Matter Core specification § 2.5.5, Table 4 "Node Identifier Allocations"
- */
+/** The caller must range-check `nodeId` to 64 bits first: a wider or negative value is misreported as reserved. */
 export function nodeIdTarget(nodeId: NodeId): NodeIdTarget {
     if (NodeId.isOperationalNodeId(nodeId)) {
         return { kind: "node" };

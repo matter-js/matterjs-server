@@ -38,7 +38,7 @@ export interface VideoCapabilities {
     maxNetworkBandwidth?: number;
 }
 
-/** The video ranges a caller may state. A stated field is a hard bound; an absent one is left to the server. */
+/** A stated field is a hard bound; an absent one is left to the server. */
 export interface VideoRangeBounds {
     minResolution?: Resolution;
     maxResolution?: Resolution;
@@ -52,14 +52,10 @@ export interface VideoHints extends VideoRangeBounds, OverlayBounds {
     codecs?: string[];
 }
 
-/**
- * Everything the caller stated about the video stream it asked for. `limits` is the offer's decode
- * ceiling for the resolved codec, which no ladder rung may give up.
- */
+/** `limits` is the offer's decode ceiling for the resolved codec, which no ladder rung may give up. */
 export interface VideoCallerBounds extends VideoRangeBounds {
     limits: SelectedVideoCodecLimits;
     streamUsage: number;
-    /** The overlays the caller stated, each absent when it stated nothing about that one. */
     overlays: OverlayBounds;
 }
 
@@ -81,33 +77,26 @@ export function videoCallerBounds(
     };
 }
 
-/**
- * What the caller stated about one track: `declined` is `false`, `deferred` is the key left out,
- * `demanded` is the key present (an object, however empty). A demanded track must not be answered
- * with a null track and no error.
- */
+/** A demanded track must not be answered with a null track and no error. */
 export type TrackRequest<Hints> =
     | { readonly state: "declined" | "deferred" }
     | { readonly state: "demanded"; readonly hints: Hints };
 
-/** Read a caller's `video` / `audio` argument as the three statements it can make. */
 export function trackRequest<Hints>(stated: Hints | false | undefined): TrackRequest<Hints> {
     if (stated === false) return { state: "declined" };
     if (stated === undefined) return { state: "deferred" };
     return { state: "demanded", hints: stated };
 }
 
-/** The bounds the caller stated for a track, or none when it stated no bounds to honour. */
 export function statedHints<Hints>(request: TrackRequest<Hints>): Hints | undefined {
     return request.state === "demanded" ? request.hints : undefined;
 }
 
 export interface VideoEnvelopeArgs {
     capabilities: VideoCapabilities;
-    /** The codec to allocate for, carrying the offer limits that codec itself stated. */
     limits: SelectedVideoCodecLimits;
     hints: VideoHints | undefined;
-    /** The overlay fields to allocate with, as `resolveOverlays` resolved them; not the raw hints. */
+    /** As `resolveOverlays` resolved them; not the raw hints. */
     overlays: OverlayBounds;
 }
 
@@ -142,10 +131,7 @@ function fitsUnder(resolution: Resolution, ceiling: Resolution): boolean {
     return resolution.width <= ceiling.width && resolution.height <= ceiling.height;
 }
 
-/**
- * The frame rate the offer's limits allow at `resolution`, or `undefined` when they state none. Can be
- * 0; must not be rounded up, since it is a decode ceiling.
- */
+/** Can be 0; must not be rounded up, since it is a decode ceiling. */
 function offerFrameRateCeiling(limits: VideoCodecLimits, resolution: Resolution): number | undefined {
     const ceilings = new Array<number>();
     if (limits.maxPixelsPerSecond !== undefined) {
@@ -155,10 +141,7 @@ function offerFrameRateCeiling(limits: VideoCodecLimits, resolution: Resolution)
     return ceilings.length === 0 ? undefined : Math.min(...ceilings);
 }
 
-/**
- * The envelope to allocate in, or the caller floor that nothing available reaches. `limit` is the
- * ceiling in force after every narrowing (sensor, offer or caller).
- */
+/** `limit` is the ceiling in force after every narrowing (sensor, offer or caller). */
 export type VideoSelection =
     | { readonly envelope: VideoEnvelope }
     | {
@@ -173,11 +156,9 @@ function resolutionText(resolution: Resolution): string {
 }
 
 /**
- * The range to allocate a video stream in. Wide by default, so the camera can adapt (spec §11.2.1.2.2);
- * each step only narrows.
- *
- * A caller-stated floor out of reach fails the request. Server-derived floors (viewport minimum,
- * trade-off point bit rate, frame rate 1) are clamped down instead.
+ * Wide by default, so the camera can adapt (§11.2.1.2.2); each step only narrows. A caller-stated floor
+ * out of reach fails the request. Server-derived floors (viewport minimum, trade-off point bit rate,
+ * frame rate 1) are clamped down instead.
  */
 export function computeVideoEnvelope(args: VideoEnvelopeArgs): VideoSelection {
     const { capabilities, limits, hints, overlays } = args;
@@ -275,15 +256,12 @@ function pixelRate(resolution: Resolution, frameRate: number): number {
     return pixels(resolution) * frameRate;
 }
 
-/** What the camera says its encoders can produce, and the streams already drawing on that. */
 export interface VideoPixelRateBudget {
-    /** `MaxEncodedPixelRate` (§11.2.7.2), or none when the camera states no budget. */
     maxEncodedPixelRate: number | undefined;
     videoStreams: AllocatedVideoStream[];
     snapshotStreams: AllocatedSnapshotStream[];
 }
 
-/** {@link budgetVideoEnvelope}'s answer: the envelope to allocate in, and what the budget cost it. */
 export interface BudgetedVideoEnvelope {
     envelope: VideoEnvelope;
     /** Absent when the budget lowered no ceiling, which includes a camera that states no budget. */
@@ -291,11 +269,8 @@ export interface BudgetedVideoEnvelope {
 }
 
 /**
- * `envelope` narrowed into the encoded pixel rate the camera has left (`MaxEncodedPixelRate`,
- * §11.2.7.2), and what that narrowing cost.
- *
- * Only ceilings move, never below the envelope's floors; a conflict goes to the device (§11.2.1.2.2).
- * A budget already fully spent narrows nothing.
+ * Narrows into what is left of `MaxEncodedPixelRate` (§11.2.7.2). Only ceilings move, never below the
+ * envelope's floors; a conflict goes to the device (§11.2.1.2.2). A budget already fully spent narrows nothing.
  */
 export function budgetVideoEnvelope(envelope: VideoEnvelope, budget: VideoPixelRateBudget): BudgetedVideoEnvelope {
     const { maxEncodedPixelRate } = budget;
@@ -331,7 +306,7 @@ function contains(outer: { min: number; max: number }, inner: { min: number; max
     return inner.min >= outer.min && inner.max <= outer.max;
 }
 
-/** Whether `inner` fits inside `outer` on both dimensions independently (areas would ignore aspect ratio). */
+/** Per dimension: areas would ignore aspect ratio. */
 function resolutionContains(
     outer: { min: Resolution; max: Resolution },
     inner: { min: Resolution; max: Resolution },
@@ -344,10 +319,7 @@ function resolutionContains(
     );
 }
 
-/**
- * Whether `candidate` satisfies every bound the caller stated, including the offer's decode ceiling.
- * Hard at the reuse and degraded rungs; the allocate rungs carry these bounds in the envelope.
- */
+/** Hard at the reuse and degraded rungs; the allocate rungs carry these bounds in the envelope. */
 export function satisfiesVideoCallerBounds(candidate: AllocatedVideoStream, bounds: VideoCallerBounds): boolean {
     const limits = bounds.limits;
     if (candidate.videoCodec !== limits.codec) return false;
@@ -366,7 +338,6 @@ export function satisfiesVideoCallerBounds(candidate: AllocatedVideoStream, boun
     return true;
 }
 
-/** Whether `candidate` also fits the envelope the server computed, on every dimension the envelope states. */
 function fitsComputedEnvelope(candidate: AllocatedVideoStream, envelope: VideoEnvelope): boolean {
     return (
         overlaysMatch(candidate.overlays, envelope.overlays) &&
@@ -385,10 +356,7 @@ function fitsComputedEnvelope(candidate: AllocatedVideoStream, envelope: VideoEn
     );
 }
 
-/**
- * An allocated stream as good as the one the server would have allocated, or none. The candidate's
- * range must lie inside the envelope, not merely overlap it.
- */
+/** The candidate's range must lie inside the envelope, not merely overlap it. */
 export function findReusableVideoStream(
     streams: AllocatedVideoStream[],
     envelope: VideoEnvelope,
@@ -402,10 +370,7 @@ export function findReusableVideoStream(
     return candidates.sort((a, b) => b.referenceCount - a.referenceCount)[0];
 }
 
-/**
- * A stream to hand out when nothing can be allocated (`degraded: true`). Ignores the envelope, keeps the
- * caller's bounds.
- */
+/** For when nothing can be allocated (`degraded: true`). Ignores the envelope, keeps the caller's bounds. */
 export function findDegradedVideoStream(
     streams: AllocatedVideoStream[],
     bounds: VideoCallerBounds,
@@ -443,7 +408,7 @@ export interface AudioCapabilities {
     supportedBitDepths: number[];
 }
 
-/** The audio values a caller may state: exact values, each a hard bound. */
+/** Exact values, each a hard bound. */
 export interface AudioHints {
     /** Codec names as SDP rtpmap advertises them, e.g. "OPUS" (matches VideoHints.codecs). */
     codecs?: string[];
@@ -452,12 +417,10 @@ export interface AudioHints {
     bitRate?: number;
 }
 
-/** {@link AudioHints} plus the mandatory `stream_usage`, in the shape a candidate is compared against. */
 export interface AudioCallerBounds extends AudioHints {
     streamUsage: number;
 }
 
-/** Whether `candidate` satisfies every bound the caller stated; see {@link satisfiesVideoCallerBounds}. */
 export function satisfiesAudioCallerBounds(candidate: AllocatedAudioStream, bounds: AudioCallerBounds): boolean {
     if (candidate.streamUsage !== bounds.streamUsage) return false;
     if (bounds.codecs !== undefined && !bounds.codecs.includes(audioCodecName(candidate.audioCodec))) return false;
@@ -473,10 +436,7 @@ export interface AudioEnvelopeArgs {
     hints: AudioHints | undefined;
 }
 
-/**
- * An audio envelope, no envelope, or the caller value the device cannot meet. `envelope: undefined`
- * means no codec is left; the caller decides whether that is a failure.
- */
+/** `envelope: undefined` means no codec is left; the caller decides whether that is a failure. */
 export type AudioSelection =
     | { readonly envelope: AudioEnvelope | undefined }
     | {
@@ -487,7 +447,6 @@ export type AudioSelection =
           readonly limit: string;
       };
 
-/** Parameters for an audio stream. Every value the caller stated is a hard bound. */
 export function computeAudioEnvelope(args: AudioEnvelopeArgs): AudioSelection {
     const { capabilities, sdp, hints } = args;
 
@@ -533,12 +492,9 @@ export function computeAudioEnvelope(args: AudioEnvelopeArgs): AudioSelection {
 }
 
 /**
- * A video stream eviction may take over, or none. Candidates are what `VideoStreamDeallocate`
- * (§11.2.8.7.2) accepts: unreferenced and not `Internal`, whoever allocated them.
- *
- * Order: this server's own streams before anybody else's (the same rule as `chooseSnapshotStreamToFree`),
- * then lowest in `priorities` (`StreamUsagePriorities`, §11.2.7.19, highest first). A usage missing from
- * `priorities` goes last within its ownership group.
+ * Candidates are what `VideoStreamDeallocate` (§11.2.8.7.2) accepts: unreferenced and not `Internal`,
+ * whoever allocated them. Order: this server's own streams first, then lowest in `StreamUsagePriorities`
+ * (§11.2.7.19, highest first). A usage missing from `priorities` is taken last within its ownership group.
  */
 export function chooseEvictionVictim(
     streams: AllocatedVideoStream[],

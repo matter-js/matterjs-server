@@ -15,8 +15,8 @@ export function nextConnectionLogTag(): string {
 }
 
 /**
- * The key a connection's resources are held under, unique for the process lifetime. A `bigint` so it
- * never repeats: a repeated key would let releasing one connection release another's sessions.
+ * Counted in a `bigint`, so it never repeats: a repeated key would let releasing one connection release
+ * another's sessions.
  */
 export function nextConnectionOwnerId(): string {
     ownerCounter += 1n;

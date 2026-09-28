@@ -133,7 +133,7 @@ const CAMERA_OPT_IN_COMMANDS = new Set([
     "camera_provide_ice_candidates",
 ]);
 
-/** The arguments `send_webrtc_provider_command` accepts; any other key is refused, like unknown `payload` keys. */
+/** Any other key is refused, like unknown `payload` keys. */
 const SEND_PROVIDER_ARG_KEY_SET: Record<keyof Required<ArgsOf<"send_webrtc_provider_command">>, true> = {
     node_id: true,
     endpoint_id: true,
@@ -153,9 +153,8 @@ const skipMessageContentInLogFor = [
 ];
 
 /**
- * The arguments of one request. Absent or `null` `args` mean an empty argument set, as in the Python
- * Matter Server (`parse_arguments`, `matter_server/common/helpers/api.py`); any other non-object is
- * refused with error 8 (the Python server closes the connection there).
+ * Absent or `null` `args` mean no arguments, as in the Python Matter Server (`parse_arguments`,
+ * `matter_server/common/helpers/api.py`). Any other non-object is refused with error 8.
  */
 function commandArguments(args: unknown, command: string): Record<string, unknown> {
     return args === undefined || args === null ? {} : requireArgumentObject(args, command);
@@ -254,8 +253,8 @@ export class WebSocketControllerHandler implements WebServerHandler {
     }
 
     /**
-     * The node a command names; refuses a Node ID class that can never name one node with error 8
-     * instead of `NODE_NOT_EXISTS`. Multicast-capable routes use {@link #targetNodeIdOrGroup}.
+     * Refuses a Node ID class that can never name one node with error 8, not `NODE_NOT_EXISTS`.
+     * Multicast-capable routes use {@link #targetNodeIdOrGroup}.
      */
     #targetNodeId(nodeId: number | bigint, command: string): NodeId {
         const target = NodeId(nodeId);
@@ -269,8 +268,8 @@ export class WebSocketControllerHandler implements WebServerHandler {
     }
 
     /**
-     * The node or group a command names, for `write_attribute` and `device_command`, the only routes
-     * that can multicast. `group` selects the multicast path, which takes no endpoint and gets no answer.
+     * For `write_attribute` and `device_command`, the only routes that can multicast. `group` selects the
+     * multicast path, which takes no endpoint and gets no answer.
      */
     #targetNodeIdOrGroup(nodeId: number | bigint, command: string): { nodeId: NodeId; group: boolean } {
         const target = NodeId(nodeId);
@@ -1491,9 +1490,8 @@ export class WebSocketControllerHandler implements WebServerHandler {
     }
 
     /**
-     * Forget a WebRTC session the device is not holding, in both the camera manager and the requestor.
-     * Never rejects, as {@link invokeEndSession} requires. `requestedBy` is the connection that asked,
-     * so the manager announces the end to the session's owner but not to it.
+     * Never rejects, as {@link invokeEndSession} requires. The manager announces the end to the session's
+     * owner, but not to `requestedBy`.
      */
     async #dropWebRtcSessionRecords(
         nodeId: NodeId,
@@ -1552,10 +1550,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
         return this.#convertCommandDataToWebSocket(WebRtcTransportProvider.id, command_name, response);
     }
 
-    /**
-     * `camera_provide_answer` / `camera_provide_ice_candidates`: signal into a WebRTC session using the
-     * camera API's argument style. Answers `null`; the cluster defines no response payload.
-     */
+    /** Answers `null`: the cluster defines no response payload. */
     async #handleCameraSignallingCommand(
         args: unknown,
         command: CameraSignallingCommandName,

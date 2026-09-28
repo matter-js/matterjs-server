@@ -539,7 +539,6 @@ export class MatterController {
         return this.#networkTopology;
     }
 
-    /** Lazily-constructed camera stream manager, shared by all connections. Throws once the controller is stopped. */
     get cameraStreams(): CameraStreamManager {
         if (this.#cameraStreams === undefined) {
             if (this.#stopped) {
@@ -565,7 +564,7 @@ export class MatterController {
         return this.#cameraStreams;
     }
 
-    /** The camera stream manager if already constructed; never constructs it and never throws. For cleanup paths. */
+    /** For cleanup paths: never constructs the manager and never throws. */
     get cameraStreamsIfCreated(): CameraStreamManager | undefined {
         return this.#cameraStreams;
     }

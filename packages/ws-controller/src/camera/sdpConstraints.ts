@@ -18,30 +18,25 @@ const BITS_PER_KILOBIT = 1000;
 const FRAME_RATE_PERIOD_SECONDS = 100;
 
 /**
- * What one video codec's `a=fmtp` lines state it can decode.
- *
  * Several records for the same codec are folded to the tighter value. Within one record an explicit
- * capability parameter replaces the level's value, because RFC 6184 §8.1 and RFC 7798 §7.1 define it
- * as at or above the level.
+ * capability parameter replaces the level's value: RFC 6184 §8.1 and RFC 7798 §7.1 define it as at or
+ * above the level.
  */
 export interface VideoCodecLimits {
     readonly maxPixels?: number;
     readonly maxPixelsPerSecond?: number;
-    /** Whole frames per second, from `max-fr` (RFC 7741 §6.1) or H.265's `max-fps` (per 100 s, RFC 7798 §7.1). */
+    /** Frames per second, from `max-fr` (RFC 7741 §6.1) or H.265's `max-fps` (per 100 s, RFC 7798 §7.1). */
     readonly maxFrameRate?: number;
     readonly maxBitRate?: number;
 }
 
-/** {@link VideoCodecLimits} carrying the codec that stated them, so the two cannot be paired wrongly. */
+/** Carries the codec that stated the limits, so they cannot be applied to another codec. */
 export interface SelectedVideoCodecLimits extends VideoCodecLimits {
     readonly codec: number;
 }
 
 /**
- * What an offer states about one media kind: no section (`absent`), rejected with port 0, RFC 3264 §6
- * (`refused`), `a=sendonly` / `a=inactive` (`notReceiving`), or `a=recvonly` / `a=sendrecv` / no
- * direction, RFC 4566 §6 (`receiving`).
- *
+ * `refused` is port 0 (RFC 3264 §6); no direction reads as `receiving` (RFC 4566 §6).
  * `codecs` is absent, never empty, when the section has no `a=rtpmap` lines (static payload types only).
  */
 export type MediaDisposition =
@@ -50,7 +45,6 @@ export type MediaDisposition =
     | { readonly state: "notReceiving"; readonly direction: "sendonly" | "inactive" }
     | { readonly state: "receiving"; readonly codecs?: readonly string[] };
 
-/** The {@link MediaDisposition} states that forbid a track of this kind in the answer. */
 export type MediaRefusal = Extract<MediaDisposition, { state: "refused" | "notReceiving" | "absent" }>;
 
 export interface SdpVideoConstraints {
@@ -61,15 +55,13 @@ export interface SdpVideoConstraints {
     /** Per-codec fmtp limits, keyed by upper-cased codec name. A codec absent here stated none. */
     limitsByCodec: ReadonlyMap<string, VideoCodecLimits>;
     /**
-     * Video codecs whose stated decode ceiling this server cannot read; they must not be selected. Kept
-     * apart from the codec list, because an empty list would read as "no codec stated", i.e. unconstrained.
+     * Must not be selected. Kept apart from the codec list, because an empty list would read as
+     * "no codec stated", which is unconstrained.
      */
     unreadableCeilingCodecs: ReadonlySet<string>;
 }
 
 /**
- * Why a track of this kind may not be put in the answer to `offer`, or `undefined` when it may.
- *
  * No offer (the server solicits one) refuses nothing. An offer with no section of this kind refuses
  * it, because the answer can only carry the offer's m-lines (RFC 3264 §6).
  */
@@ -89,24 +81,18 @@ export function mediaRefusal(
     }
 }
 
-/**
- * The codecs the peer stated it can receive for this kind, or `undefined` when there is nothing to
- * narrow by (also for a non-receiving section; check {@link mediaRefusal} first).
- */
+/** `undefined` also for a section that is not receiving; check {@link mediaRefusal} first. */
 export function receivableCodecs(disposition: MediaDisposition): readonly string[] | undefined {
     return disposition.state === "receiving" ? disposition.codecs : undefined;
 }
 
-/**
- * `key`'s value in an `a=fmtp` parameter list, or `undefined`. Case-insensitive: media type parameter
- * names are (RFC 8866 §6.15, RFC 6838 §4.3).
- */
+/** Case-insensitive: media type parameter names are (RFC 8866 §6.15, RFC 6838 §4.3). */
 function fmtpValue(params: string, key: string): string | undefined {
     const match = new RegExp(`(?:^|;)\\s*${key}=([^;\\s]+)`, "i").exec(params);
     return match?.[1];
 }
 
-/** What an `a=fmtp` parameter list says about one numeric key. `unreadable` must never be treated as `absent`. */
+/** `unreadable` must never be treated as `absent`. */
 type FmtpReading =
     | { readonly state: "absent" }
     | { readonly state: "read"; readonly value: number }
@@ -137,11 +123,8 @@ function unreadableParameter(
 const MAX_BIT_RATE_PARAMETER = "max-br";
 
 /**
- * How one codec spells the `a=fmtp` parameters this server reads (RFC 6184 §8.1, RFC 7798 §7.1), and
- * how to read its level. Names are per codec and never shared.
- *
- * `pixelsPerUnit` converts frame-size and sample-rate units to pixels; `frameRatePerUnit` converts the
- * frame-rate parameter to frames per second.
+ * Parameter names are per codec (RFC 6184 §8.1, RFC 7798 §7.1). `pixelsPerUnit` converts frame-size and
+ * sample-rate units to pixels; `frameRatePerUnit` converts the frame-rate parameter to frames per second.
  */
 interface CodecFmtpParameters {
     readonly level?: { readonly name: string; readonly read: (value: string) => CodecLevelLimits | undefined };
@@ -152,7 +135,7 @@ interface CodecFmtpParameters {
     readonly frameRatePerUnit: number;
 }
 
-/** The reading for a codec with no entry in {@link FMTP_PARAMETERS}: H.264's names and units, no level. */
+/** For a codec with no entry in {@link FMTP_PARAMETERS}: H.264's names and units, no level. */
 const DEFAULT_FMTP_PARAMETERS: CodecFmtpParameters = {
     maxFrameSize: "max-fs",
     maxSampleRate: "max-mbps",
@@ -183,9 +166,8 @@ const FMTP_PARAMETERS = new Map<string, CodecFmtpParameters>([
 ]);
 
 /**
- * What one `a=fmtp` record states about its codec's level. `none` also covers codecs with no level
- * table here. The RFC default for an absent level (H.264: `42000A`, level 1) is not applied, because
- * it would bound 1080p below one frame per second.
+ * `none` also covers codecs with no level table here. The RFC default for an absent level (H.264:
+ * `42000A`, level 1) is not applied: it would bound 1080p below one frame per second.
  */
 type LevelStatement =
     | { readonly state: "none" }
@@ -207,7 +189,7 @@ function smallest(a: number | undefined, b: number | undefined): number | undefi
     return Math.min(a, b);
 }
 
-/** Merge `limits` into what `codec` already states, keeping the value both payload types can decode. */
+/** Keeps the value both payload types can decode. */
 function tighten(into: Map<string, VideoCodecLimits>, codec: string, limits: VideoCodecLimits): void {
     const known = into.get(codec) ?? {};
     const maxPixels = smallest(known.maxPixels, limits.maxPixels);
@@ -222,7 +204,6 @@ function tighten(into: Map<string, VideoCodecLimits>, codec: string, limits: Vid
     });
 }
 
-/** What the sections of one media kind stated, before {@link disposition} reduces them to one value. */
 interface MediaSections {
     receiving: boolean;
     /** The direction of the first live section the peer will not receive on; reported only, decides nothing. */
@@ -242,10 +223,6 @@ function disposition(sections: MediaSections): MediaDisposition {
     return sections.refused ? { state: "refused" } : { state: "absent" };
 }
 
-/**
- * How the offer's video codec list splits into codecs this server may select and ones whose ceiling it
- * cannot read, or `undefined` when the offer stated no codec list.
- */
 export function decodableVideoCodecs(
     sdp: SdpVideoConstraints,
 ): { readonly decodable: readonly string[]; readonly unreadable: readonly string[] } | undefined {
@@ -264,8 +241,8 @@ export function videoCodecLimits(sdp: SdpVideoConstraints | undefined, codec: nu
 }
 
 /**
- * Constraints an SDP offer places on a stream: upper bounds on what the caller can decode, not
- * preferences. An unparseable offer reads as `absent` for both kinds, so {@link mediaRefusal} refuses it.
+ * Limits are upper bounds on what the caller can decode, not preferences. An unparseable offer reads as
+ * `absent` for both kinds, so {@link mediaRefusal} refuses it.
  */
 export function parseSdpVideoConstraints(sdp: string): SdpVideoConstraints {
     const limitsByCodec = new Map<string, VideoCodecLimits>();

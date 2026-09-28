@@ -72,7 +72,7 @@ export function imageCodecByName(name: string): number | undefined {
     return /^\d+$/.test(name) ? Number(name) : undefined;
 }
 
-/** The enum's own video vocabulary, for a camera that advertises no trade-off point to narrow. */
+/** Used when the camera reports no rate-distortion trade-off points to narrow the codec list. */
 export function knownVideoCodecs(): CameraAvStreamManagement.VideoCodec[] {
     return [...VIDEO_CODEC_NAMES.keys()];
 }
@@ -101,10 +101,6 @@ const FEATURE_TITLES = new Map<string, { title: string; bit: number }>(
     ]),
 );
 
-/**
- * The features the camera advertises, as the spec's Feature titles, in bit order. A flag with no known
- * title is reported under its flag name, last.
- */
 export function advertisedFeatureNames(features: CameraFeatures): string[] {
     const advertised = new Array<{ name: string; bit: number }>();
     for (const [flag, supported] of Object.entries(features)) {
@@ -115,7 +111,6 @@ export function advertisedFeatureNames(features: CameraFeatures): string[] {
     return advertised.sort((left, right) => left.bit - right.bit).map(entry => entry.name);
 }
 
-/** One feature's reported name, for the error that says a camera does not advertise it. */
 export function featureName(feature: keyof CameraFeatures): string {
     return FEATURE_TITLES.get(feature)?.title ?? feature;
 }

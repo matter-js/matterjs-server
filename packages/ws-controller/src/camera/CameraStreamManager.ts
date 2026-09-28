@@ -94,27 +94,19 @@ const logger = Logger.get("CameraStreamManager");
 /** Bounded so a device that rejects everything fails fast rather than walking to 1x1. */
 const MAX_NARROWING_ROUNDS = 3;
 
-/**
- * `VideoStreamAllocate` attempts per request, narrowing and eviction together. Bounds how long a camera
- * that refuses everything holds the endpoint lock.
- */
+/** Allocate attempts per request, shared by narrowing and eviction. Bounds how long the endpoint lock is held. */
 export const MAX_ALLOCATE_ATTEMPTS = 8;
 
-/** What an allocation ladder may do about a device rejection. */
 type LadderReaction =
     /** The device cannot serve this range. A smaller request may succeed. */
     | "narrow"
     /** The device has no capacity. Freeing or sharing a stream may make room. */
     | "make-room"
-    /** The request is malformed for this device. No retry can fix it. */
+    /** Malformed request (`min > max`, a field out of range, an unknown codec). No retry can fix it. */
     | "fail-incompatible"
     | "rethrow";
 
-/**
- * The single place a Matter status becomes a ladder decision. `ConstraintError` means a malformed
- * request (`min > max`, a field out of range, an unknown codec; see `CameraAVStreamManagementCluster.cpp`),
- * so narrowing cannot fix it.
- */
+/** The single place a Matter status becomes a ladder decision (statuses per `CameraAVStreamManagementCluster.cpp`). */
 function ladderReaction(status: number | undefined): LadderReaction {
     switch (status) {
         case Status.DynamicConstraintError:
@@ -129,9 +121,8 @@ function ladderReaction(status: number | undefined): LadderReaction {
 }
 
 /**
- * The envelope an allocated video stream delivers, as opposed to the one requested. `overlays` is
- * carried unchanged: the camera states a flag only where it has the feature, so the envelope stays a
- * conformant allocate request for `#restoreFreedVideoStream`.
+ * What an allocated stream delivers, not what was requested. `overlays` stays as the camera reports it,
+ * so `#restoreFreedVideoStream` sends a conformant allocate.
  */
 function envelopeOfVideoStream(stream: AllocatedVideoStream, keyFrameInterval: number): VideoEnvelope {
     return {
@@ -147,10 +138,7 @@ function envelopeOfVideoStream(stream: AllocatedVideoStream, keyFrameInterval: n
     };
 }
 
-/**
- * The requested range in the device's allocation shape, standing in until the device reports the
- * stream (the allocate response carries only the id).
- */
+/** Stands in for the device's report until it arrives; the allocate response carries only the id. */
 function allocatedVideoStream(streamId: number, streamUsage: number, envelope: VideoEnvelope): AllocatedVideoStream {
     return {
         videoStreamId: streamId,
@@ -167,7 +155,6 @@ function allocatedVideoStream(streamId: number, streamUsage: number, envelope: V
     };
 }
 
-/** The audio counterpart of {@link allocatedVideoStream}. */
 function allocatedAudioStream(streamId: number, streamUsage: number, envelope: AudioEnvelope): AllocatedAudioStream {
     return {
         audioStreamId: streamId,
@@ -181,12 +168,10 @@ function allocatedAudioStream(streamId: number, streamUsage: number, envelope: A
     };
 }
 
-/** Provenance of a stream the camera already had: `reused` if this run allocated it, `adopted` otherwise. */
 function existingStreamProvenance(allocatedByUs: boolean): CameraStreamProvenance {
     return allocatedByUs ? "reused" : "adopted";
 }
 
-/** The envelope actually delivered by an allocated audio stream, as opposed to the one requested. */
 function envelopeOfAudioStream(stream: AllocatedAudioStream): AudioEnvelope {
     return {
         codec: stream.audioCodec,
@@ -197,12 +182,12 @@ function envelopeOfAudioStream(stream: AllocatedAudioStream): AudioEnvelope {
     };
 }
 
-/** WebRTCEndReasonEnum has no dedicated field for "the caller stopped watching"; UserHangup is it. */
+/** WebRTCEndReasonEnum has no value for "the client stopped watching"; UserHangup is the closest. */
 const WEBRTC_END_REASON_USER_HANGUP = WebRtcTransportDefinitions.WebRtcEndReason.UserHangup;
 
 /**
- * `narrowed`, or a typed codec failure when it is empty. `device` reports the set before this narrowing,
- * not the camera's full list, because the offer may already have ruled codecs out.
+ * `device` reports the set before this narrowing, not the camera's full list: the offer may already have
+ * ruled codecs out.
  */
 function requireCodecCandidates(narrowed: number[], before: number[], requested: string[]): number[] {
     if (narrowed.length === 0) {
@@ -217,8 +202,8 @@ function requireCodecCandidates(narrowed: number[], before: number[], requested:
 }
 
 /**
- * The codec to request: the device's rate-distortion codecs, narrowed by what the offer can decode and
- * then by the caller's preference. Both narrowings are hard. A camera with no trade-off points falls
+ * The device's rate-distortion codecs, narrowed by what the offer can decode, then by the caller's
+ * preference. Either narrowing throws when it leaves nothing. A camera with no trade-off points falls
  * back to every known codec.
  */
 export function preferredVideoCodec(
@@ -231,7 +216,7 @@ export function preferredVideoCodec(
     if (offered !== undefined) {
         const narrowed = candidates.filter(codec => offered.decodable.includes(videoCodecName(codec)));
         if (narrowed.length === 0 && candidates.some(codec => offered.unreadable.includes(videoCodecName(codec)))) {
-            // A codec in common, but no decode ceiling to bound the stream by: that is a level problem, not a codec one.
+            // The codec matches but its decode ceiling is unreadable: a level problem, not a codec one.
             throw ServerError.cameraStreamIncompatible({
                 reason: "level",
                 track: "video",
@@ -266,10 +251,7 @@ function occupyingStream(kind: StreamKind, streamId: number, referenceCount: num
     return { kind, streamId, referenceCount };
 }
 
-/**
- * The request's values for a snapshot stream this server just allocated, standing in until the camera
- * reports it, as {@link allocatedVideoStream} does for video.
- */
+/** The snapshot counterpart of {@link allocatedVideoStream}. */
 function allocatedSnapshotStream(
     snapshotStreamId: number,
     capability: SnapshotCapability,
@@ -289,8 +271,8 @@ function allocatedSnapshotStream(
 }
 
 /**
- * Snapshot streams that hold a hardware encoder (§11.2.6.13.9), for a capacity refusal. No call gives
- * such a stream back, so it is often the only thing a client can release to make room.
+ * Snapshot streams holding a hardware encoder (§11.2.6.13.9). The snapshot call never deallocates them,
+ * so a capacity refusal names them: they are often the only thing a client can release.
  */
 function encoderHoldingSnapshotStreams(streams: AllocatedSnapshotStream[]): CameraOccupyingStreamDetail[] {
     return streams
@@ -305,13 +287,11 @@ function isResolution(value: unknown): value is Resolution {
 }
 
 /**
- * How long a stream this server allocated may be reused before the device reports it. Covers the gap
- * between the allocate response and the `Allocated*Streams` report, in which a second request would
- * otherwise allocate a twin.
+ * How long a stream this server allocated may be reused before the device reports it in
+ * `Allocated*Streams`, so a second request in that gap does not allocate a twin.
  */
 export const UNREPORTED_LEASE_GRACE_MS = 10000;
 
-/** One device-side effect of a request, with the lifetime it was registered under. */
 interface ScopedReturn {
     readonly give: () => Promise<unknown>;
     /** Whether the request's outcome leaves this effect to be given back. */
@@ -319,12 +299,9 @@ interface ScopedReturn {
 }
 
 /**
- * Everything one request caused on a device, each with its way back.
- *
- * Register at the point the effect happens, never at an exit. {@link
- * CameraStreamManager.withAllocationScope} settles on every exit (return, throw, or a claimed
- * registration after the connection closed), so no exit can forget an effect, and an effect that never
- * happened cannot be given back by mistake.
+ * The device effects of one request, each with its way back. Register an effect where it happens, never
+ * at an exit: {@link CameraStreamManager.withAllocationScope} settles on every exit, so no exit forgets an
+ * effect and no effect that never happened is given back.
  */
 class AllocationScope {
     readonly #returns = new Array<ScopedReturn>();
@@ -335,9 +312,8 @@ class AllocationScope {
     }
 
     /**
-     * Give this back unless the request both spends it and succeeds. The returned callback records the
-     * spending. Success is the whole request's, not the spending call's: an allocate can succeed and the
-     * request still fail later.
+     * Give this back unless the request both spends it and succeeds; the returned callback records the
+     * spending. Success means the whole request's: an allocate can succeed and the request still fail.
      */
     returnUnlessSpent(give: () => Promise<unknown>): () => void {
         let spent = false;
@@ -441,20 +417,15 @@ export interface CameraState {
 
 export interface CameraDeviceIo {
     /**
-     * Typed AVSM state, or undefined when the endpoint does not expose the behaviour.
-     *
-     * Called (like {@link invoke}) under the manager's endpoint lock: calling back into the manager for
-     * the same endpoint deadlocks.
+     * Undefined when the endpoint does not expose AVSM. Called (like {@link invoke}) under the manager's
+     * endpoint lock: calling back into the manager for the same endpoint deadlocks.
      */
     readCameraState(nodeId: NodeId, endpointId: EndpointNumber): Promise<CameraState | undefined>;
-    /**
-     * Cluster ids of the clusters camera streaming needs that this endpoint does not expose, as
-     * `camera_not_supported` reports them. Empty when the endpoint exposes both.
-     */
+    /** As `camera_not_supported` reports them; empty when the endpoint exposes AVSM and the WebRTC provider. */
     missingCameraClusters(nodeId: NodeId, endpointId: EndpointNumber): Promise<number[]>;
     /**
-     * The provider's `CurrentSessions`, or undefined without the provider behaviour. It is the camera's
-     * list, so it includes sessions from earlier process runs.
+     * The provider's `CurrentSessions`, so it includes sessions from earlier process runs. Undefined
+     * without a provider.
      */
     readWebRtcSessions(nodeId: NodeId, endpointId: EndpointNumber): Promise<DeviceWebRtcSession[] | undefined>;
     invoke(args: {
@@ -524,9 +495,8 @@ export interface StartStreamArgs {
 }
 
 /**
- * A track's stream, or why there is none, for outcomes where the track may be absent.
- * {@link CameraStreamManager.resolveTrack} decides whether absence is a failure. Outcomes a track may
- * never be absent for (a camera refusing video) stay throws.
+ * A track's stream, or why there is none. Only {@link CameraStreamManager.resolveTrack} decides whether
+ * no stream is a failure.
  */
 export type TrackOutcome = { readonly stream: ResolvedStream } | { readonly unavailable: unknown };
 
@@ -537,7 +507,6 @@ export interface StartStreamResult {
     audio?: ResolvedStream;
 }
 
-/** What one `CaptureSnapshot` needs, including the facts its failure is reported with. */
 interface CaptureSnapshotArgs {
     nodeId: NodeId;
     endpointId: EndpointNumber;
@@ -563,10 +532,7 @@ export class CameraStreamManager {
     readonly #io: CameraDeviceIo;
     readonly #leases = new Map<string, StreamLease[]>();
     readonly #locks = new Map<string, Promise<unknown>>();
-    /**
-     * Camera effects no client's own response reports: a session something else ended, a stream evicted
-     * for another request. Must be declared before `#sessions`, which emits into it.
-     */
+    /** Camera effects no client's own response reports. Must be declared before `#sessions`, which emits into it. */
     readonly events = {
         sessionEnded: new Observable<[CameraSessionEnded], MaybePromise<void>>(),
         streamEvicted: new Observable<[CameraStreamEvicted], MaybePromise<void>>(),
@@ -578,10 +544,7 @@ export class CameraStreamManager {
         this.#io = io;
     }
 
-    /**
-     * Report a device effect that already happened. matter.js `Observable.emit` rethrows observer errors,
-     * so a failing listener would otherwise fail the caller (some emit under the endpoint lock).
-     */
+    /** matter.js `Observable.emit` rethrows observer errors; a failing listener must not fail the caller. */
     #announce<T>(observable: Observable<[T], MaybePromise<void>>, event: T): void {
         MaybePromise.catch(
             () => observable.emit(event),
@@ -666,8 +629,8 @@ export class CameraStreamManager {
     }
 
     /**
-     * Record a stream handed out without allocating it now. A new entry came from device state, so the
-     * device reports it; an existing entry keeps its own evidence.
+     * Record a stream handed out without allocating it now. A new lease is marked reported (it came from
+     * device state); an existing lease keeps its grace window and reported flag.
      */
     #recordReuse(nodeId: NodeId, endpointId: EndpointNumber, statement: LeaseStatement): boolean {
         const previous = this.leaseFor(nodeId, endpointId, statement.kind, statement.streamId);
@@ -707,9 +670,8 @@ export class CameraStreamManager {
     }
 
     /**
-     * Video streams this server allocated that `reported` does not name yet, so a request arriving
-     * before the report reuses them instead of allocating a twin. Past {@link UNREPORTED_LEASE_GRACE_MS}
-     * they are no longer offered: the camera has more likely dropped the stream.
+     * Video streams this server allocated that `reported` does not name yet. Past
+     * {@link UNREPORTED_LEASE_GRACE_MS} they are left out: the camera has more likely dropped the stream.
      */
     protected unreportedVideoStreams(
         nodeId: NodeId,
@@ -726,7 +688,6 @@ export class CameraStreamManager {
         return streams;
     }
 
-    /** The snapshot counterpart of {@link unreportedVideoStreams}. */
     protected unreportedSnapshotStreams(
         nodeId: NodeId,
         endpointId: EndpointNumber,
@@ -742,7 +703,6 @@ export class CameraStreamManager {
         return streams;
     }
 
-    /** The audio counterpart of {@link unreportedVideoStreams}. */
     protected unreportedAudioStreams(
         nodeId: NodeId,
         endpointId: EndpointNumber,
@@ -780,10 +740,7 @@ export class CameraStreamManager {
         }
     }
 
-    /**
-     * Record a reused video stream; returns whether this server allocated it. A foreign stream is leased
-     * with `allocatedByUs: false` (reusable, never released by us).
-     */
+    /** Returns whether this server allocated the stream. */
     protected leaseReusedVideoStream(
         nodeId: NodeId,
         endpointId: EndpointNumber,
@@ -797,7 +754,6 @@ export class CameraStreamManager {
         });
     }
 
-    /** The audio counterpart of {@link leaseReusedVideoStream}. */
     protected leaseReusedAudioStream(
         nodeId: NodeId,
         endpointId: EndpointNumber,
@@ -842,11 +798,9 @@ export class CameraStreamManager {
     }
 
     /**
-     * The typed privacy refusal behind a device `INVALID_IN_STATE`, or `error` unchanged.
-     *
-     * `INVALID_IN_STATE` (§11.5.6.1.10, §11.5.6.3.12, §11.2.8.13.3) also has non-privacy causes, so the
-     * switches, read fresh after the refusal, decide. Nothing is checked before the invoke: the view can
-     * lag, and a stale "on" would block a call the device accepts.
+     * The typed privacy refusal behind a device `INVALID_IN_STATE`, or `error` unchanged. That status has
+     * other causes too (§11.5.6.1.10, §11.5.6.3.12, §11.2.8.13.3), so the switches, read after the
+     * refusal, decide. Never checked before the invoke: a stale "on" would block a call the device accepts.
      */
     protected async privacyFailure(
         nodeId: NodeId,
@@ -1055,8 +1009,8 @@ export class CameraStreamManager {
                 bound: { field: selection.field, requested: selection.requested, limit: selection.limit },
             });
         }
-        // Ladder-local copies; freeing updates these, never `state`. Snapshots include unreported ones
-        // because the reported view lags a `camera_snapshot` followed by `camera_start_stream`.
+        // Ladder-local copies; freeing updates these, never `state`. Unreported snapshot streams count
+        // because the report lags a `camera_snapshot` followed by `camera_start_stream`.
         let liveStreams = state.allocatedVideoStreams;
         let liveSnapshotStreams = [
             ...state.allocatedSnapshotStreams,
@@ -1235,7 +1189,7 @@ export class CameraStreamManager {
         });
     }
 
-    /** `audio` takes the three statements `camera_start_stream`'s own argument takes. */
+    /** `audio`: `false` declines, absent defers, an object demands, as on `camera_start_stream`. */
     async resolveAudioStream(args: {
         nodeId: NodeId;
         endpointId: EndpointNumber;
@@ -1255,11 +1209,8 @@ export class CameraStreamManager {
 
     /**
      * Body of {@link resolveAudioStream}; the caller holds the endpoint lock and owns the scope. No
-     * narrowing ladder.
-     *
-     * Dead ends a video-only session may answer are returned as {@link TrackOutcome}s. A caller-stated
-     * value the camera cannot serve, and a `ServerError` from the allocate, throw. A caller-stated value
-     * is never substituted.
+     * narrowing ladder. Dead ends that still allow a video-only session are returned as `unavailable`. A
+     * caller-stated value the camera cannot serve throws and is never replaced; so does a `ServerError`.
      */
     protected async resolveAudioStreamLocked(
         args: {
@@ -1274,7 +1225,7 @@ export class CameraStreamManager {
         const { nodeId, endpointId, streamUsage } = args;
         const state = await this.requireState(nodeId, endpointId);
         const requestedCodecs = args.hints?.codecs ?? new Array<string>();
-        // The peer's refusal outranks anything the camera can offer; only a new offer changes it.
+        // The offer's refusal is answered before anything the camera states.
         const refusal = mediaRefusal(args.sdp, "audio");
         if (refusal !== undefined) {
             logger.notice(
@@ -1793,7 +1744,7 @@ export class CameraStreamManager {
                 ? response.webRtcSessionId
                 : undefined;
         if (typeof webRtcSessionId !== "number") {
-            // A session without an id can never be ended, so the deallocates registered above are refused.
+            // Without an id the session can never be ended, so the device refuses the deallocates registered above.
             throw ServerError.sdkStackError("Provider returned no WebRTCSessionID");
         }
 
@@ -1879,7 +1830,7 @@ export class CameraStreamManager {
     /**
      * Ends the session on the device; the allocation is kept. Returns false when the device answers
      * `NotFound`. A failed `EndSession` is raised, also when this call joined one another path sent.
-     * Tracked ids share one `EndSession` through the registry; untracked ids are sent as they stand.
+     * Tracked ids share one `EndSession` through the registry; untracked ids are sent directly.
      */
     async stopStream(
         nodeId: NodeId,

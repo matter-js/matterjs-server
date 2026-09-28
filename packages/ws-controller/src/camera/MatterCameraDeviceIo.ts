@@ -22,10 +22,7 @@ function toResolution(resolution: { width: number; height: number }): Resolution
 
 type CameraAvStreamManagementClientState = Immutable<Behavior.StateOf<typeof CameraAvStreamManagementClient>>;
 
-/**
- * The subset of `CameraAvStreamManagementClient`'s state this subsystem reads. Keep it `Pick`ed from
- * the real state type so a matter.js rename is a compile error, not a silent `undefined`.
- */
+/** Keep it `Pick`ed from the real state type so a matter.js rename is a compile error, not a silent `undefined`. */
 export type RawCameraAvStreamManagementState = Pick<
     CameraAvStreamManagementClientState,
     | "maxConcurrentEncoders"
@@ -47,10 +44,6 @@ export type RawCameraAvStreamManagementState = Pick<
     | "hardPrivacyModeOn"
 >;
 
-/**
- * Translate matter.js's typed client state and the cluster's feature map into {@link CameraState}.
- * The feature map comes from `globalsOf`, because `stateOf` does not carry global attributes.
- */
 export function toCameraState(state: RawCameraAvStreamManagementState, features: CameraFeatures): CameraState {
     return {
         features,
@@ -137,10 +130,6 @@ export function toCameraState(state: RawCameraAvStreamManagementState, features:
     };
 }
 
-/**
- * Device access for the camera subsystem. Reads typed behaviour state, not the attribute cache, whose
- * struct fields are keyed by numeric tag.
- */
 export class MatterCameraDeviceIo implements CameraDeviceIo {
     readonly #handler: ControllerCommandHandler;
 
@@ -154,17 +143,14 @@ export class MatterCameraDeviceIo implements CameraDeviceIo {
         if (endpoint === undefined || !endpoint.behaviors.has(CameraAvStreamManagementClient)) {
             return undefined;
         }
+        // `stateOf` does not carry global attributes such as the feature map.
         return toCameraState(
             endpoint.stateOf(CameraAvStreamManagementClient),
             endpoint.globalsOf(CameraAvStreamManagementClient).featureMap,
         );
     }
 
-    /**
-     * `CurrentSessions` as the provider reports it, with the peer identity resolved against this
-     * server's own node id. Stream ids are read from both the revision-2 lists and the deprecated
-     * revision-1 singular fields (§11.4.5.5).
-     */
+    /** Stream ids come from both the revision-2 lists and the deprecated revision-1 fields (§11.4.5.5). */
     async readWebRtcSessions(nodeId: NodeId, endpointId: EndpointNumber): Promise<DeviceWebRtcSession[] | undefined> {
         const endpoint = this.#handler.getNode(nodeId).node.endpoints.for(endpointId);
         if (endpoint === undefined || !endpoint.behaviors.has(WebRtcTransportProviderClient)) return undefined;

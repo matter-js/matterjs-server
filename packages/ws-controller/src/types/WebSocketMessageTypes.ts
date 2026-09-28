@@ -113,7 +113,6 @@ export enum ServerErrorCode {
     CameraPrivacyMode = 106,
 }
 
-/** The facts every {@link CameraStreamIncompatibleDetail} carries, whatever its reason. */
 interface CameraStreamIncompatibleFacts {
     /** The camera's codec names; empty when the camera did not refuse (e.g. the offer did), not "supports nothing". */
     device: string[];
@@ -122,16 +121,12 @@ interface CameraStreamIncompatibleFacts {
     deviceStatus?: number;
 }
 
-/** The facts a failure about one of `camera_start_stream`'s two tracks can name. */
 interface CameraStreamIncompatibleTrackFacts extends CameraStreamIncompatibleFacts {
     /** Which `camera_start_stream` track failed. Absent for commands without tracks, such as `camera_snapshot`. */
     track?: "video" | "audio";
 }
 
-/**
- * What a client learns about a request the camera or the offer cannot serve. Reason-specific fields
- * exist only on their reason's arm; `no_media` names no track because it concerns the whole request.
- */
+/** `no_media` names no track because it concerns the whole request. */
 export type CameraStreamIncompatibleDetail =
     | (CameraStreamIncompatibleTrackFacts & {
           reason: "feature";
@@ -161,10 +156,7 @@ export interface CameraAllocatedStreamDetail {
     referenceCount: number;
 }
 
-/**
- * What a client learns about a release the camera refused with `INVALID_IN_STATE`. `referenceCount`
- * is the count the server last read; absent when that cached count is zero.
- */
+/** `referenceCount` is the cached count the server last read; absent when that is zero. */
 export interface CameraStreamInUseDetail {
     streamId: number;
     referenceCount?: number;
@@ -179,8 +171,8 @@ export interface CameraOccupyingStreamDetail extends CameraAllocatedStreamDetail
 }
 
 /**
- * What a client learns about a call the camera's privacy switches refused. `modes` names every switch
- * that forbids the call, since the device answers one status for all of them. `deviceStatus` is that status.
+ * `modes` names every switch that forbids the call, since the device answers one status (`deviceStatus`)
+ * for all of them.
  */
 export interface CameraPrivacyModeDetail {
     modes: CameraPrivacyMode[];

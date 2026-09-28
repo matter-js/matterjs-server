@@ -15,10 +15,7 @@ import { isRecord, rejectUnknownKeys, toBoundedString, toRequiredNumber } from "
 
 const logger = Logger.get("webRtcProviderArguments");
 
-/**
- * The `WebRtcTransportProvider` commands this boundary converts a payload for. `EndSession` is absent
- * on purpose: `camera_stop_stream` owns it, so the server's session records end with it.
- */
+/** `EndSession` is absent on purpose: `camera_stop_stream` owns it, so the server's session records end with it. */
 export const PROVIDER_COMMAND_NAMES = [
     "ProvideOffer",
     "SolicitOffer",
@@ -34,10 +31,9 @@ export function isProviderCommandName(value: string): value is ProviderCommandNa
     return PROVIDER_COMMAND_NAME_SET.has(value);
 }
 
-/** The commands that create a session, as against signaling for one the camera already holds. */
 export type SessionEstablishingCommandName = "ProvideOffer" | "SolicitOffer";
 
-/** The commands that signal into a session the camera already holds; neither has a response payload. */
+/** Neither has a response payload. */
 export type SignallingCommandName = Exclude<ProviderCommandName, SessionEstablishingCommandName>;
 
 const SESSION_ESTABLISHING: ReadonlySet<string> = new Set<SessionEstablishingCommandName>([
@@ -46,25 +42,24 @@ const SESSION_ESTABLISHING: ReadonlySet<string> = new Set<SessionEstablishingCom
 ]);
 
 /**
- * Whether invoking `name` produces a session this server has to complete and track (originating
- * endpoint injected, stream fields reconciled, session registered with the local requestor).
+ * Such a session needs the originating endpoint injected, stream fields reconciled and the session
+ * registered with the local requestor.
  */
 export function establishesWebRtcSession(name: ProviderCommandName): name is SessionEstablishingCommandName {
     return SESSION_ESTABLISHING.has(name);
 }
 
-/** Turns one wire value into the value its Matter field encodes as, or refuses it with error 8. */
+/** Refuses a bad value with error 8. */
 type FieldConverter = (value: unknown, field: string) => unknown;
 
 /**
- * The form a wire key and the matter.js property it names are compared in: case and separators
- * dropped, so `webrtc_session_id` matches `webRtcSessionId` and `sdpMLineIndex` matches `sdpmLineIndex`.
+ * Case and separators dropped, so `webrtc_session_id` matches `webRtcSessionId` and `sdpMLineIndex`
+ * matches `sdpmLineIndex`.
  */
 function canonicalKey(key: string): string {
     return key.replace(/[^A-Za-z0-9]/g, "").toLowerCase();
 }
 
-/** The keys one `ice_servers` entry takes, in the W3C `RTCIceServer` spelling the wire uses. */
 const ICE_SERVER_KEY_SET: Record<keyof Required<CameraIceServer>, true> = {
     urls: true,
     username: true,
@@ -75,10 +70,8 @@ const ICE_SERVER_KEY_SET: Record<keyof Required<CameraIceServer>, true> = {
 const ICE_SERVER_KEYS: readonly string[] = Object.keys(ICE_SERVER_KEY_SET);
 
 /**
- * One wire `ice_servers` entry (W3C `RTCIceServer`: `urls` is one URL or a list) as the `ICEServerStruct`
- * matter.js encodes (`urLs`, always a list). Keys are matched exactly, not by {@link canonicalKey}.
- *
- * @see Matter spec § 11.4.5.3 (ICEServerStruct)
+ * Wire `urls` (W3C `RTCIceServer`, one URL or a list) becomes matter.js `urLs` (always a list, § 11.4.5.3).
+ * Keys are matched exactly, not by {@link canonicalKey}.
  */
 function toIceServer(value: unknown, field: string): WebRtcTransportDefinitions.IceServer {
     if (!isRecord(value)) throw ServerError.invalidArguments(`${field} must be an object`);
@@ -106,10 +99,7 @@ function toIceServer(value: unknown, field: string): WebRtcTransportDefinitions.
     };
 }
 
-/**
- * The whole `ice_servers` list, bounded by what the command's own field takes. Keep the refusal text in
- * line with {@link listConverter}, which the raw route uses for the same list.
- */
+/** Keep the refusal text in line with {@link listConverter}, which the raw route uses for the same list. */
 export function toIceServers(value: unknown, field: string): WebRtcTransportDefinitions.IceServer[] {
     if (!Array.isArray(value) || value.length > ICE_SERVER_LIMITS.maxServers) {
         throw ServerError.invalidArguments(`${field} must be an array of 0 to ${ICE_SERVER_LIMITS.maxServers} entries`);
@@ -120,10 +110,7 @@ export function toIceServers(value: unknown, field: string): WebRtcTransportDefi
 const ICE_SERVER_STRUCT = "WebRtcTransportDefinitions.ICEServerStruct";
 const ICE_CANDIDATE_STRUCT = "WebRtcTransportDefinitions.ICECandidateStruct";
 
-/**
- * How each struct these commands carry is built from a wire object, keyed by struct type. A struct
- * missing here throws in {@link converterFor} at module load.
- */
+/** A struct missing here throws in {@link converterFor} at module load. */
 const STRUCT_CONVERTERS = new Map<string, (entry: ValueModel) => FieldConverter>([
     [ICE_SERVER_STRUCT, () => toIceServer],
     [ICE_CANDIDATE_STRUCT, structConverter],
@@ -132,7 +119,6 @@ const STRUCT_CONVERTERS = new Map<string, (entry: ValueModel) => FieldConverter>
 /** Server-owned: `establishWebRtcProviderSession` injects the requestor's own endpoint over any value here. */
 const ORIGINATING_ENDPOINT_ID = canonicalKey("originatingEndpointId");
 
-/** A string checked against only the length bounds its own constraint states. */
 function stringConverter(field: ValueModel): FieldConverter {
     const { min, max } = field.constraint;
     if (typeof max === "number") return (value, name) => toBoundedString(value, name, max);
@@ -173,7 +159,7 @@ function listConverter(field: ValueModel): FieldConverter {
     };
 }
 
-/** The conversion `field`'s own definition states. Throws for a field it cannot describe, which stops the import. */
+/** Throws for a field it cannot describe, which stops the import. */
 function converterFor(field: ValueModel): FieldConverter {
     switch (field.metabase?.name) {
         case "struct": {
@@ -209,9 +195,8 @@ interface FieldContract {
 }
 
 /**
- * The names a conformance requires to be null for a clause of it to apply, e.g. `ProvideOffer.StreamUsage`
- * is `WebRTCSessionID == NULL, O` (§ 11.5.6.3). Does not descend into `!` or `|`, where the meaning
- * would invert or vanish.
+ * E.g. `ProvideOffer.StreamUsage` is `WebRTCSessionID == NULL, O` (§ 11.5.6.3). Does not descend into
+ * `!` or `|`, where the meaning would invert or vanish.
  */
 function nullComparedNames(ast: Conformance.Ast, into: Set<string>): void {
     switch (ast.type) {
@@ -241,15 +226,15 @@ function nullComparedNames(ast: Conformance.Ast, into: Set<string>): void {
 }
 
 interface FieldsContract {
-    /** Keyed by {@link canonicalKey}, so every documented spelling of a field resolves to it. */
+    /** Keyed by {@link canonicalKey}. */
     readonly byKey: ReadonlyMap<string, FieldContract>;
     readonly mandatory: readonly string[];
     readonly accepted: readonly string[];
-    /** The canonical key of the field this contract left out, which the walk drops rather than refuses. */
+    /** Dropped from a payload, not refused. */
     readonly dropped?: string;
 }
 
-/** What a set of model fields accepts from a wire object. Throws if two fields share a canonical key. */
+/** Throws if two fields share a canonical key. */
 function contractFor(fields: Iterable<ValueModel>, subject: string, skip?: string): FieldsContract {
     const byKey = new Map<string, FieldContract>();
     const mandatory = new Array<string>();
@@ -283,7 +268,7 @@ function contractFor(fields: Iterable<ValueModel>, subject: string, skip?: strin
     return { byKey, mandatory, accepted, ...(dropped === undefined ? {} : { dropped }) };
 }
 
-/** A struct whose wire object is the cluster's own, spelled the way this API's events emit it. */
+/** Accepts the struct spelled the way this API's events emit it. */
 function structConverter(entry: ValueModel): FieldConverter {
     const contract = contractFor(entry.members, entry.type ?? entry.name);
     return (value, field) => {
@@ -292,7 +277,6 @@ function structConverter(entry: ValueModel): FieldConverter {
     };
 }
 
-/** One wire object as the fields `contract` describes. Unknown and duplicate keys are refused. */
 function toFields(
     contract: FieldsContract,
     payload: Record<string, unknown>,
@@ -344,13 +328,7 @@ const PROVIDER_CONTRACTS: Readonly<Record<ProviderCommandName, FieldsContract>> 
     ProvideIceCandidates: contractForCommand("ProvideIceCandidates"),
 };
 
-/**
- * A provider command payload as the named command's arguments. Keys are matched by {@link canonicalKey}.
- * `originatingEndpointId` is dropped, because the server injects its own requestor endpoint.
- *
- * `target` names the device in logs. `subjectName` names what a refusal is about; defaults to
- * "<command> payload".
- */
+/** `target` names the device in logs; `subjectName` names what a refusal is about. */
 export function toProviderCommandFields(
     commandName: ProviderCommandName,
     payload: unknown,
@@ -366,8 +344,8 @@ export function toProviderCommandFields(
 }
 
 /**
- * Log the fields a request states although the cluster describes them for a new session only (a
- * re-offer ignores them, § 11.5.6.3). They are forwarded, not refused: the camera decides.
+ * Warns about fields the cluster describes for a new session only (§ 11.5.6.3). They are forwarded,
+ * not refused: the camera decides.
  */
 function reportFieldsPastTheirGate(
     commandName: ProviderCommandName,
