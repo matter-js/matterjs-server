@@ -834,9 +834,9 @@ Each of them takes `node_id`, `endpoint_id` and `webrtc_session_id` in the spell
 
 - `args` must be an object when stated. A message that leaves it out or sends `null` has an empty argument set, so it fails with error 8 for the missing `node_id`. A string, number, boolean or array is refused with error 8 naming the command.
 - An unknown argument key is refused with error 8, not dropped: a dropped key would answer a request the client did not make. The refusal names the key and lists the keys the command takes.
-- `node_id` is an integer, sent as a number or a bigint, 0 to 18446744073709551615 (the 64 bits of a node id). `endpoint_id` is an integer 0 to 65534. Neither is passed to matter.js unchecked.
-- A `node_id` sent as a JSON number must be no greater than 9007199254740991. Above that a double does not hold every integer, so the value can differ from what the client wrote: `9.007199254740993e15` arrives as 9007199254740992 and would address that node. A plain integer literal above the safe range is read as a bigint, so only a number in exponent form reaches this check. Send a node id above the safe range as a bigint.
-- `node_id` must name one node. A Group Node ID, a CASE Authenticated Tag, a PAKE key identifier, the Unspecified Node ID and the reserved ranges around them are refused with error 8 naming the class (Matter Core specification § 2.5.5, Table 4). Each of these identifies an access-control subject, a set of nodes, or nothing. Every camera command reports one device's answer — `camera_start_stream` returns the `WebRTCSessionID` the camera sent back. Accepted, such an id would fail later as a node that is not commissioned, which says the node is missing instead of saying the argument can never name a node.
+- `node_id` must name one node: an operational node id, or a test node id. A group id or another special id (Matter Core specification § 2.5.5, Table 4) is refused with error 8, because a camera command talks to one camera.
+- Send a large `node_id` as an integer literal or a bigint, not in exponent form: a JSON number above 2^53 cannot hold every integer, so the server refuses it with error 8 instead of addressing a different node.
+- `endpoint_id` is a valid endpoint number (0 to 65534).
 
 **Names**
 
@@ -846,14 +846,14 @@ Codecs, stream usages and talkback modes are names, not numbers. All names are m
 - Stream usages: `Internal`, `Recording`, `Analysis`, `LiveView`. They are closed for requests only. `camera_start_stream` refuses `Internal`, which marks a stream the device keeps for itself, and any name not in this list. `camera_get_capabilities` still reports a usage the enum does not define as its decimal digits; a stream carrying it cannot be requested back.
 - `two_way_talk_support`: `NotSupported`, `HalfDuplex`, `FullDuplex`. A value the enum does not define is reported as its decimal digits. It has no request side: talkback is asked for in the SDP offer, not by a hint (see **The offer's media sections** under `camera_start_stream`).
 
-A name is the same string in both directions, but a reported key is not always a hint key. These are the values `camera_get_capabilities` reports that a later command takes back:
+A client can send these reported values back in a request (the key name can differ):
 
 | Reported by `camera_get_capabilities` | Send back as |
 |---|---|
 | `video.codecs` | `camera_start_stream`'s `video.codecs` |
 | `audio.codecs` | `camera_start_stream`'s `audio.codecs` |
-| `audio.channels` | `camera_start_stream`'s `audio.channel_count`; the reported value is the ceiling |
-| `audio.sample_rates` | `camera_start_stream`'s `audio.sample_rate`; one of the reported values |
+| `audio.channels` | `camera_start_stream`'s `audio.channel_count`, at most the reported number |
+| `audio.sample_rates` | `camera_start_stream`'s `audio.sample_rate`, one of the reported rates |
 | `limits.supported_stream_usages` | `camera_start_stream`'s `stream_usage`, any name but `Internal` |
 | `snapshot.capabilities[].image_codec` | `camera_snapshot`'s `codec` |
 
@@ -1026,7 +1026,7 @@ Debug-log masking:
 - Each is bounded by the range of the cluster field it becomes: `channel_count` 1 to 8, `min_frame_rate` and `max_frame_rate` 1 to 65535, `min_bit_rate`, `max_bit_rate`, `bit_rate` and `sample_rate` 1 to 4294967295. A value outside its range is refused with error 8 naming the field and both ends of it.
 - `channel_count` has two different refusals: above 8 it is error 8; within 8 but above the `audio.channels` the camera reports it is error 102.
 - A floor above its own ceiling — `min_bit_rate` above `max_bit_rate`, `min_frame_rate` above `max_frame_rate` — is a relation between two arguments, not a bound on one value. It passes these checks, and the camera refuses it.
-- Every bound the caller states is hard in both directions: a codec list, floor or ceiling that nothing satisfies fails with error 102 instead of returning something else.
+- The server never goes outside a limit the caller sets, and never swaps a codec. If no stream fits the stated limits, the call fails with error 102.
 - `min_resolution == max_resolution` pins an exact value. It takes that capacity from every other client sharing the camera (spec §11.2.1.2.2), so leave a bound unset unless an exact value is required.
 
 **Track statements.** `video` and `audio` each make one of three statements, and both keys work the same way:
