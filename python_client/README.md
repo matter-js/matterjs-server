@@ -85,9 +85,18 @@ Beyond the `python-matter-server` API, the client exposes commands the Matter.js
   `webrtc_callback` stays a dict. Errors 102 to 106 (`CameraStreamIncompatible`, ...) expose their
   details as attributes, e.g. `err.reason` and `err.bound` on `CameraStreamIncompatible`
 
+  The minimal `camera_start_stream` call is `node_id`, `endpoint_id`, `stream_usage` and your SDP
+  offer: the server reuses or allocates the best stream the camera can serve within what the offer
+  can decode, and adds audio when it can. Pass `video` / `audio` hints only to set hard bounds. A
+  session opened this way is driven with `camera_provide_answer`, `camera_provide_ice_candidates`
+  and `camera_stop_stream` only, not with `send_webrtc_provider_command` or a `send_device_command`
+  `EndSession`: the server tracks the session and its streams, and only the `camera_*` methods keep
+  that record correct. The exception is a re-offer (ICE restart), which goes through
+  `send_webrtc_provider_command`. See `docs/websockets_api.md` for the flow and every option.
+
 ```python
     try:
-        result = await client.camera_start_stream(node_id, 1, "LiveView", sdp=offer, audio=False)
+        result = await client.camera_start_stream(node_id, 1, "LiveView", sdp=offer)
     except CameraStreamIncompatible as err:
         print(err.reason, err.bound)
     else:

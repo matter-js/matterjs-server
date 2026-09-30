@@ -266,6 +266,19 @@ The camera commands need a server that reports `schema_version >= 14`. They have
 
 This section covers use from TypeScript. The wire protocol, including every argument's range, the allocation rules and the full error payloads, is documented in [docs/websockets_api.md](https://github.com/matter-js/matterjs-server/blob/main/docs/websockets_api.md) under "Camera Streaming (schema 14+)" and "Error Codes".
 
+### Typical flow
+
+1. _(Optional)_ `camera_get_capabilities`: check `features` and `privacy`, and see what the camera states and what is already allocated.
+2. Register a `webrtc_callback` listener **before** the next step. The camera's answer can arrive before the `camera_start_stream` response (see [Signalling and event ordering](#signalling-and-event-ordering)).
+3. `camera_start_stream` with `stream_usage` and your SDP offer in `sdp`. The response names the session in `webrtc_session_id`.
+4. Apply the camera's `answer` event and its `ice_candidates` events, and send your own candidates with `camera_provide_ice_candidates`. Without `sdp`, the camera sends an `offer` event instead, and you answer it with `camera_provide_answer`.
+5. `camera_stop_stream` ends the session. The streams stay allocated, so the next `camera_start_stream` can reuse them.
+6. _(Optional)_ `camera_release_stream` frees a stream you no longer need.
+
+`camera_snapshot` needs no session and no signalling.
+
+**A session opened with `camera_start_stream` is driven with the `camera_*` commands until it ends:** `camera_provide_answer`, `camera_provide_ice_candidates` and `camera_stop_stream`. Do not use `sendWebRtcProviderCommand` or `deviceCommand` `EndSession` for it. The server keeps a record of each session it opens (which connection receives its signalling, which streams it holds, and that it is ended exactly once), and only the `camera_*` commands keep that record correct. The one exception is a re-offer (an ICE restart, or different tracks): it goes through `sendWebRtcProviderCommand`, because `camera_start_stream` always opens a new session (see [Starting a stream](#starting-a-stream)).
+
 ### Commands
 
 | Command                         | Response type              | Purpose                                                                                                                                      |
@@ -301,9 +314,22 @@ Read `features` rather than the cluster's `FeatureMap`. The key is absent until 
 
 ### Starting a stream
 
-`stream_usage` is the only required argument beyond the target. The main options:
+**Minimal call.** `stream_usage` is the only required argument beyond the target. Send your SDP offer in `sdp` as well:
 
-- `video` / `audio`: hints, or `false` to exclude the track. Video hints are ranges (`min_*` / `max_*` for resolution, frame rate and bit rate, plus `codecs`, `watermark_enabled`, `osd_enabled`). Audio hints are exact values (`codecs`, `channel_count`, `sample_rate`, `bit_rate`). The `audio` key being present at all, `{}` included, asks for audio.
+```typescript
+const stream = await client.sendCommand("camera_start_stream", 14, {
+    node_id: nodeId,
+    endpoint_id: 1,
+    stream_usage: "LiveView",
+    sdp: offer.sdp,
+});
+```
+
+This gets the best video stream the camera can serve, within what the offer can decode and within the camera's free encoder capacity. A stream already on the camera is reused when it fits. A browser's offer (H.264 level 3.1) gets at most 1280x720. Audio is added when the camera can serve it; otherwise `audio` is `null` and the session still opens. When the camera is full, the server may deallocate a stream nothing references, possibly another controller's (see `allow_eviction` below). Without `sdp` the server sends `SolicitOffer` and the camera writes the offer.
+
+**More control.** The optional arguments:
+
+- `video` / `audio`: hints, or `false` to exclude the track. Left out, the server decides. Video hints are ranges (`min_*` / `max_*` for resolution, frame rate and bit rate, plus `codecs`, `watermark_enabled`, `osd_enabled`). Audio hints are exact values (`codecs`, `channel_count`, `sample_rate`, `bit_rate`). The `audio` key being present at all, `{}` included, asks for audio.
 - Every stated hint is a hard bound. The call fails with error 102 rather than returning a stream outside it. Setting `min == max` pins an exact value and takes capacity from every other client sharing the camera, so leave a bound unset unless you need it.
 - `allow_eviction` (default `true`): whether the server may deallocate a stream nothing references to make room. Set it to `false` to skip eviction. The server still falls back to a degraded existing stream, so the call can still succeed with `degraded: true`.
 - `sdp`, `ice_servers`, `ice_transport_policy`, `metadata_enabled`: passed to the WebRTC session setup.
@@ -418,7 +444,7 @@ stopSignalling();
 ### Stopping, snapshots and releasing streams
 
 - `camera_stop_stream` answers `ended: false` when the camera answered `NOT_FOUND`: an unknown id, a session that already ended, or another controller's session. Any other failure rejects, and the session is then still open on the camera, so the call can be retried. Any connection can end any session this server holds on the camera. After a server restart, `camera_get_capabilities`' `sessions` (`CameraWebRtcSession[]`) is the only way to learn a session id again; an entry with `established_by_this_server: true` can be ended.
-- `camera_snapshot` takes optional `max_resolution`, `codec`, `watermark_enabled` and `osd_enabled`. The result's `stream_id` names the snapshot stream that served the frame, which stays allocated for the next call. Its `provenance` (`CameraStreamProvenance`) says whether this call allocated that stream (`allocated`) or found it on the camera (`reused`, `adopted`), so a client that releases only what it caused releases the `allocated` ones. A snapshot stream that uses the camera's hardware encoder holds it until released. On single-encoder hardware a later `camera_start_stream` takes such a stream back if this server allocated it, nothing references it and `allow_eviction` is not `false` (reported by `camera_stream_evicted`); otherwise it fails with error 103 until the stream is released. `degraded: true` means the frame is smaller than the request's bounds would have allowed with an encoder free.
+- `camera_snapshot` needs only `node_id` and `endpoint_id`. The minimal call returns a frame from the largest snapshot capability the camera states, in any image codec, with no overlay asked for. For more control it takes optional `max_resolution` (a frame-size ceiling), `codec` (an image codec from `snapshot.capabilities[].image_codec`), `watermark_enabled` and `osd_enabled`. The result's `stream_id` names the snapshot stream that served the frame, which stays allocated for the next call. Its `provenance` (`CameraStreamProvenance`) says whether this call allocated that stream (`allocated`) or found it on the camera (`reused`, `adopted`), so a client that releases only what it caused releases the `allocated` ones. A snapshot stream that uses the camera's hardware encoder holds it until released. On single-encoder hardware a later `camera_start_stream` takes such a stream back if this server allocated it, nothing references it and `allow_eviction` is not `false` (reported by `camera_stream_evicted`); otherwise it fails with error 103 until the stream is released. `degraded: true` means the frame is smaller than the request's bounds would have allowed with an encoder free.
 - `camera_release_stream` frees a stream whoever allocated it; the camera itself refuses an id it does not know and a video or audio stream of usage `Internal`. It fails with error 104 while a listener still references the stream, so releasing never breaks a live session.
 
 ### Camera events
