@@ -86,8 +86,8 @@ Beyond the `python-matter-server` API, the client exposes commands the Matter.js
   details as attributes, e.g. `err.reason` and `err.bound` on `CameraStreamIncompatible`
 
   The minimal `camera_start_stream` call is `node_id`, `endpoint_id`, `stream_usage` and your SDP
-  offer: the server reuses or allocates the best stream the camera can serve within what the offer
-  can decode, and adds audio when it can. Pass `video` / `audio` hints only to set hard bounds. A
+  offer: the server reuses or allocates the best stream the camera can serve that still fits what
+  the offer can decode, and adds audio when it can. Pass `video` / `audio` hints only to set hard bounds. A
   session opened this way is driven with `camera_provide_answer`, `camera_provide_ice_candidates`
   and `camera_stop_stream` only, not with `send_webrtc_provider_command` or a `send_device_command`
   `EndSession`: the server tracks the session and its streams, and only the `camera_*` methods keep
