@@ -65,6 +65,19 @@ await proxy.disconnect()
 The default Bleak-backed implementations (`BleakScanSource`,
 `BleakDeviceResolver`) live in `matter_ble_proxy.bleak_backend`.
 
+### Decoding commissionable advertisements
+
+Decode an advertisement's service data to see whether the device is open for
+commissioning; the result is `None` for anything else. The service UUID may be
+spelled any way the local stack spells it.
+
+```python
+from matter_ble_proxy import parse_commissionable_advertisement
+
+if advertisement := parse_commissionable_advertisement(ad.service_data):
+    print(advertisement.discriminator, advertisement.vendor_id, advertisement.product_id)
+```
+
 ### Reconnection
 
 `MatterBleProxy` does not reconnect on its own. When the WebSocket closes — server

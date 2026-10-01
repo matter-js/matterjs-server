@@ -32,6 +32,29 @@ HANDSHAKE_TIMEOUT_SECONDS = 10.0
 DEFAULT_CONNECT_TIMEOUT_MS = 30_000
 
 
+# Trailing 24 hex chars of the Bluetooth SIG Base UUID. A 128-bit UUID whose
+# tail matches this is just a wrapped 16-bit (or 32-bit) standard UUID.
+_BASE_UUID_TAIL = "00001000800000805f9b34fb"
+
+
+def normalize_uuid(uuid: str) -> str:
+    """Collapse standard Bluetooth UUIDs to their shortest comparable form.
+
+    Accepts short ("fff6", "FFF6"), 32-bit form ("0000fff6"), canonical dashed
+    ("0000FFF6-…"), or compact 32-char hex. For any form embedded in the
+    Bluetooth Base UUID, returns the short 16-bit hex. Otherwise returns the
+    compact lowercase hex. Equivalent representations always normalize equal.
+    """
+    compact = uuid.lower().replace("-", "")
+    # 128-bit canonical form wrapping a 16-bit base UUID (e.g. "0000fff6-0000-1000-8000-00805f9b34fb").
+    if len(compact) == 32 and compact[8:] == _BASE_UUID_TAIL and compact.startswith("0000"):
+        return compact[4:8]
+    # 32-bit form padded with leading zeros (e.g. "0000fff6"); the trailing 4 hex are the 16-bit UUID.
+    if len(compact) == 8 and compact.startswith("0000"):
+        return compact[4:]
+    return compact
+
+
 class BleProxyCommand(StrEnum):
     """Commands the server may send to a client.
 

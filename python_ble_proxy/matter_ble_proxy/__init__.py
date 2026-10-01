@@ -13,7 +13,15 @@ implementation is provided in :mod:`matter_ble_proxy.bleak_backend` for
 standalone use; integrators (e.g. Home Assistant) supply their own backend.
 """
 
-from .bleak_backend import BleakDeviceResolver, BleakScanSource
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any
+
+from .advertisement import (
+    COMMISSIONABLE_SERVICE_UUID,
+    CommissionableAdvertisement,
+    parse_commissionable_advertisement,
+)
 from .client import BleDeviceResolver, BleScanSource, ConnectionState, MatterBleProxy
 from .protocol import (
     BINARY_FRAME_HEADER,
@@ -26,9 +34,23 @@ from .protocol import (
     BleProxyErrorCode,
 )
 
+if TYPE_CHECKING:
+    from .bleak_backend import BleakDeviceResolver, BleakScanSource
+
+
+def __getattr__(name: str) -> Any:
+    """Only the default backend needs bleak, so defer that import until it is asked for."""
+    if name in ("BleakDeviceResolver", "BleakScanSource"):
+        from . import bleak_backend
+
+        return getattr(bleak_backend, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
 __all__ = [
     "BINARY_FRAME_HEADER",
     "BLE_PROXY_PROTOCOL_VERSION",
+    "COMMISSIONABLE_SERVICE_UUID",
     "OPCODE_NOTIFICATION",
     "OPCODE_READ_RESPONSE",
     "OPCODE_WRITE_DATA",
@@ -39,6 +61,8 @@ __all__ = [
     "BleScanSource",
     "BleakDeviceResolver",
     "BleakScanSource",
+    "CommissionableAdvertisement",
     "ConnectionState",
     "MatterBleProxy",
+    "parse_commissionable_advertisement",
 ]
