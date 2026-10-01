@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import json
+from typing import Any
+
+from matter_server.common.models import CameraOccupyingStream, CameraStreamIncompatibleBound
 
 # mapping from error_code to Exception class
 ERROR_MAP: dict[int, type] = {}
@@ -100,27 +103,12 @@ class IcdMultiAdmin(MatterError):
 
     error_code = 100
 
-    _FALLBACK_MESSAGE = "ICD registration rejected: the peer has administrator fabrics from other vendors"
-
     def __init__(self, details: str | None = None) -> None:
         """Parse `details` and expose `admin_vendor_ids`."""
-        self.admin_vendor_ids: list[int] = []
-        message = details if details else self._FALLBACK_MESSAGE
-        if details:
-            try:
-                parsed = json.loads(details)
-            except (json.JSONDecodeError, TypeError):
-                parsed = None
-            if isinstance(parsed, dict):
-                vendor_ids = parsed.get("admin_vendor_ids")
-                if isinstance(vendor_ids, list):
-                    self.admin_vendor_ids = vendor_ids
-                parsed_message = parsed.get("message")
-                message = (
-                    parsed_message
-                    if isinstance(parsed_message, str) and parsed_message
-                    else self._FALLBACK_MESSAGE
-                )
+        parsed, message = _parse_details(
+            details, "ICD registration rejected: the peer has administrator fabrics from other vendors"
+        )
+        self.admin_vendor_ids: list[int] = _int_list(parsed.get("admin_vendor_ids"))
         super().__init__(message)
 
 
@@ -132,6 +120,168 @@ class OtaUploadError(MatterError):
     """
 
     error_code = 101
+
+
+class CameraStreamIncompatible(MatterError):
+    """Raised when the camera, the SDP offer or the request rules the stream out.
+
+    ``reason`` says which, and what the client can do:
+
+    - ``codec``: the camera and the request (or its SDP offer) share no codec. Change the codecs.
+    - ``bounds``: the camera cannot meet a resolution, frame-rate or bit-rate limit. ``bound``
+      names it when the server could tell before asking the camera. Change the hints.
+    - ``feature``: the camera lacks a feature the request needs, named in ``feature``.
+    - ``capability``: the camera has the feature but reports nothing usable.
+    - ``offer``: the SDP rejects the track, does not receive it, or has no media section for it.
+      Change the SDP.
+    - ``no_media``: no track is left for the session. Request a track.
+    - ``level``: the server cannot read the decode level in the SDP. Change the SDP.
+
+    The request cannot fix ``feature`` or ``capability``.
+
+    ``track`` is ``video`` or ``audio`` when one ``camera_start_stream`` track failed. ``device``
+    lists the camera's codec names; it is empty when the camera did not refuse. ``device_status``
+    is the Matter status from the camera, when the camera rejected the request. Values missing
+    from the details are ``None`` or empty.
+    """
+
+    error_code = 102
+
+    def __init__(self, details: str | None = None) -> None:
+        """Parse `details` into typed attributes."""
+        parsed, message = _parse_details(details, "Camera stream is incompatible with the request")
+        self.reason: str | None = _optional_str(parsed.get("reason"))
+        self.track: str | None = _optional_str(parsed.get("track"))
+        self.feature: str | None = _optional_str(parsed.get("feature"))
+        self.device: list[str] = _str_list(parsed.get("device"))
+        self.requested: list[str] = _str_list(parsed.get("requested"))
+        self.bound: CameraStreamIncompatibleBound | None = _bound(parsed.get("bound"))
+        self.device_status: int | None = _optional_int(parsed.get("device_status"))
+        super().__init__(message)
+
+
+class CameraResourceExhausted(MatterError):
+    """Raised when the camera refused the allocation for lack of capacity.
+
+    ``allocated`` lists the streams using the capacity. Their ``kind`` can differ from the
+    requested kind: a refused snapshot reports video streams.
+    """
+
+    error_code = 103
+
+    def __init__(self, details: str | None = None) -> None:
+        """Parse `details` into typed attributes."""
+        parsed, message = _parse_details(details, "Camera has no capacity for this stream")
+        allocated = parsed.get("allocated")
+        entries = allocated if isinstance(allocated, list) else []
+        self.allocated: list[CameraOccupyingStream] = [
+            stream for stream in map(_occupying_stream, entries) if stream is not None
+        ]
+        self.max_concurrent_encoders: int | None = _optional_int(parsed.get("max_concurrent_encoders"))
+        self.max_encoded_pixel_rate: int | None = _optional_int(parsed.get("max_encoded_pixel_rate"))
+        super().__init__(message)
+
+
+class CameraStreamInUse(MatterError):
+    """Raised when a stream cannot be released because it is still in use.
+
+    ``reference_count`` is the last count the server read, ``None`` when it was 0.
+    """
+
+    error_code = 104
+
+    def __init__(self, details: str | None = None) -> None:
+        """Parse `details` into typed attributes."""
+        parsed, message = _parse_details(details, "Stream is in use and cannot be released")
+        self.stream_id: int | None = _optional_int(parsed.get("stream_id"))
+        self.reference_count: int | None = _optional_int(parsed.get("reference_count"))
+        super().__init__(message)
+
+
+class CameraNotSupported(MatterError):
+    """Raised when an endpoint does not expose the clusters camera streaming needs."""
+
+    error_code = 105
+
+    def __init__(self, details: str | None = None) -> None:
+        """Parse `details` into typed attributes."""
+        parsed, message = _parse_details(details, "Endpoint does not support camera streaming")
+        self.missing_clusters: list[int] = _int_list(parsed.get("missing_clusters"))
+        super().__init__(message)
+
+
+class CameraPrivacyMode(MatterError):
+    """Raised while a camera privacy switch blocks the session or the snapshot.
+
+    ``modes`` lists every switch that blocks it, spelled as in ``camera_get_capabilities``
+    ``privacy``. ``device_status`` is the one status the camera answered. The request cannot fix this.
+    """
+
+    error_code = 106
+
+    def __init__(self, details: str | None = None) -> None:
+        """Parse `details` into typed attributes."""
+        parsed, message = _parse_details(details, "Camera privacy mode is enabled")
+        self.modes: list[str] = _str_list(parsed.get("modes"))
+        self.device_status: int | None = _optional_int(parsed.get("device_status"))
+        super().__init__(message)
+
+
+def _parse_details(details: str | None, fallback_message: str) -> tuple[dict[str, Any], str]:
+    """Return the JSON object in `details` (empty if it holds none) and the message to raise with.
+
+    Plain-text details are the message; a JSON object supplies its own `message`.
+    """
+    if not details:
+        return {}, fallback_message
+    try:
+        parsed = json.loads(details)
+    except (json.JSONDecodeError, TypeError):
+        return {}, details
+    if not isinstance(parsed, dict):
+        return {}, details
+    message = parsed.get("message")
+    return parsed, message if isinstance(message, str) and message else fallback_message
+
+
+def _optional_int(value: Any) -> int | None:
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
+def _optional_str(value: Any) -> str | None:
+    return value if isinstance(value, str) else None
+
+
+def _int_list(value: Any) -> list[int]:
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, int) and not isinstance(item, bool)]
+
+
+def _str_list(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, str)]
+
+
+def _bound(value: Any) -> CameraStreamIncompatibleBound | None:
+    if not isinstance(value, dict):
+        return None
+    field, requested, limit = (_optional_str(value.get(key)) for key in ("field", "requested", "limit"))
+    if field is None or requested is None or limit is None:
+        return None
+    return CameraStreamIncompatibleBound(field=field, requested=requested, limit=limit)
+
+
+def _occupying_stream(value: Any) -> CameraOccupyingStream | None:
+    if not isinstance(value, dict):
+        return None
+    kind = _optional_str(value.get("kind"))
+    stream_id = _optional_int(value.get("stream_id"))
+    reference_count = _optional_int(value.get("reference_count"))
+    if kind is None or stream_id is None or reference_count is None:
+        return None
+    return CameraOccupyingStream(kind=kind, stream_id=stream_id, reference_count=reference_count)
 
 
 def exception_from_error_code(error_code: int) -> type[MatterError]:

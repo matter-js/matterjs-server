@@ -23,10 +23,32 @@ import { ControllerCommissioningFlowOptions, OperationalDataset } from "@matter/
 import { EndpointNumber, QrPairingCodeCodec } from "@matter/main/types";
 import { NodeStates } from "@project-chip/matter.js/device";
 import { WebSocketServer } from "ws";
+import type { CameraSignallingCommandName } from "../camera/cameraCommands.js";
+import {
+    parseCapabilitiesArgs,
+    parseReleaseStreamArgs,
+    parseSignallingArgs,
+    parseSnapshotArgs,
+    parseStartStreamArgs,
+    parseStopStreamArgs,
+    parseTargetIds,
+    requireArgumentObject,
+    toWireCapabilities,
+    toWireSnapshotResult,
+    toWireStartStreamResult,
+} from "../camera/cameraCommands.js";
+import {
+    establishesWebRtcSession,
+    isProviderCommandName,
+    PROVIDER_COMMAND_NAMES,
+    toProviderCommandFields,
+} from "../camera/webRtcProviderArguments.js";
+import { rejectUnknownKeys } from "../camera/wireArgumentChecks.js";
 import { ControllerCommandHandler } from "../controller/ControllerCommandHandler.js";
 import { MatterController, registerThreadCredentialsFromHex } from "../controller/MatterController.js";
 import type { TopologyNodeSource } from "../controller/NetworkTopologyService.js";
 import { TestNodeCommandHandler } from "../controller/TestNodeCommandHandler.js";
+import { dropWebRtcSessionTracking, invokeEndSession } from "../controller/webRtcSessionTracking.js";
 import { VendorIds } from "../data/VendorIDs.js";
 import { ClusterMap, ClusterMapEntry } from "../model/ModelMapper.js";
 import { CommissioningRequest } from "../types/CommandHandler.js";
@@ -47,7 +69,9 @@ import {
 } from "../types/WebSocketMessageTypes.js";
 import { formatNodeId } from "../util/formatNodeId.js";
 import { MATTER_VERSION } from "../util/matterVersion.js";
+import { nodeIdTarget } from "../util/nodeIdClasses.js";
 import { ConfigStorage } from "./ConfigStorage.js";
+import { nextConnectionLogTag, nextConnectionOwnerId } from "./connectionIdentity.js";
 import {
     convertMatterToWebSocketNameBased,
     convertMatterToWebSocketTagBased,
@@ -76,20 +100,7 @@ function isIdentityConflict(error: unknown): boolean {
 /** Maximum number of events to keep in the history buffer */
 const EVENT_HISTORY_SIZE = 25;
 
-/** Counter for generating unique connection IDs */
-let connectionIdCounter = 0;
-
-/**
- * Generate a unique connection ID as a 4-digit hex string.
- * Rolls over at 0xFFFF (65535) to keep IDs short and readable.
- */
-function generateConnectionId(): string {
-    const id = connectionIdCounter;
-    connectionIdCounter = (connectionIdCounter + 1) & 0xffff; // Rollover at 0xFFFF
-    return id.toString(16);
-}
-
-const SCHEMA_VERSION = 13;
+const SCHEMA_VERSION = 14;
 const MIN_SUPPORTED_SCHEMA_VERSION = 11;
 
 // Issuing any of these (schema 12) proves the connection is Thread-aware, so it opts the connection
@@ -100,9 +111,54 @@ const THREAD_DIAGNOSTICS_OPT_IN_COMMANDS = new Set(["get_thread_diagnostics", "g
 // thread-diagnostics opt-in: pre-schema-13 clients never subscribed, so they must not receive it.
 const NETWORK_TOPOLOGY_OPT_IN_COMMANDS = new Set(["get_network_topology"]);
 
-// Responses whose payload is large enough that logging it in full just bloats the debug log
-// (the full node/attribute dump, or the whole topology graph — hundreds of nodes/edges).
-const skipMessageContentInLogFor = ["start_listening", "get_network_topology"];
+// Commands that opt the connection in to `webrtc_callback`. Owned sessions are routed to their owner;
+// this set decides who receives signalling for a session no record names.
+const WEBRTC_OPT_IN_COMMANDS = new Set([
+    "send_webrtc_provider_command",
+    "camera_start_stream",
+    "camera_provide_answer",
+    "camera_provide_ice_candidates",
+]);
+
+// Any camera command (schema 14) opts the connection in to camera_session_ended and
+// camera_stream_evicted. Evictions go to every opted-in connection: no record says who holds a stream.
+const CAMERA_OPT_IN_COMMANDS = new Set([
+    "send_webrtc_provider_command",
+    "camera_get_capabilities",
+    "camera_start_stream",
+    "camera_stop_stream",
+    "camera_snapshot",
+    "camera_release_stream",
+    "camera_provide_answer",
+    "camera_provide_ice_candidates",
+]);
+
+/** Any other key is refused, like unknown `payload` keys. */
+const SEND_PROVIDER_ARG_KEY_SET: Record<keyof Required<ArgsOf<"send_webrtc_provider_command">>, true> = {
+    node_id: true,
+    endpoint_id: true,
+    command_name: true,
+    payload: true,
+};
+
+const SEND_PROVIDER_ARG_KEYS: readonly string[] = Object.keys(SEND_PROVIDER_ARG_KEY_SET);
+
+// Responses the debug log omits: large ones, and open_commissioning_window, whose setup passcode
+// nothing else redacts (redactSensitiveCommandFields covers request args only).
+const skipMessageContentInLogFor = [
+    "start_listening",
+    "get_network_topology",
+    "camera_snapshot",
+    "open_commissioning_window",
+];
+
+/**
+ * Absent or `null` `args` mean no arguments, as in the Python Matter Server (`parse_arguments`,
+ * `matter_server/common/helpers/api.py`). Any other non-object is refused with error 8.
+ */
+function commandArguments(args: unknown, command: string): Record<string, unknown> {
+    return args === undefined || args === null ? {} : requireArgumentObject(args, command);
+}
 
 /** Normalize a requested fabric label: matter.js requires a non-empty label of 1-32 chars. */
 function normalizeFabricLabel(label: string | null): string {
@@ -117,9 +173,9 @@ function normalizeFabricLabel(label: string | null): string {
  */
 function extractWebRtcSessionId(payload: unknown): number | undefined {
     if (typeof payload !== "object" || payload === null) return undefined;
-    const record = payload as Record<string, unknown>;
-    for (const key of ["webRtcSessionId", "webRtcSessionID", "WebRTCSessionID"]) {
-        const value = record[key];
+    // Must use the same camelize the invoke normalized the payload with.
+    for (const [key, value] of Object.entries(payload as Record<string, unknown>)) {
+        if (camelize(key) !== "webRtcSessionId") continue;
         if (typeof value === "number" && Number.isInteger(value) && value >= 0) {
             return value;
         }
@@ -129,6 +185,8 @@ function extractWebRtcSessionId(payload: unknown): number | undefined {
     }
     return undefined;
 }
+
+const WRITE_WILDCARD_REFUSAL = "write_attribute does not support wildcards in attribute path";
 
 /** WebSocket Server compatible with Schema version 12, minimum supported 11 */
 export class WebSocketControllerHandler implements WebServerHandler {
@@ -192,6 +250,36 @@ export class WebSocketControllerHandler implements WebServerHandler {
      */
     #handlerFor(nodeId: number | bigint): TestNodeCommandHandler | ControllerCommandHandler {
         return TestNodeCommandHandler.isTestNodeId(nodeId) ? this.#testNodeHandler : this.#commandHandler;
+    }
+
+    /**
+     * Refuses a Node ID class that can never name one node with error 8, not `NODE_NOT_EXISTS`.
+     * Multicast-capable routes use {@link #targetNodeIdOrGroup}.
+     */
+    #targetNodeId(nodeId: number | bigint, command: string): NodeId {
+        const target = NodeId(nodeId);
+        const classified = nodeIdTarget(target);
+        if (classified.kind !== "node") {
+            throw ServerError.invalidArguments(
+                `${command} cannot address ${classified.className}: node_id must name one node`,
+            );
+        }
+        return target;
+    }
+
+    /**
+     * For `write_attribute` and `device_command`, the only routes that can multicast. `group` selects the
+     * multicast path, which takes no endpoint and gets no answer.
+     */
+    #targetNodeIdOrGroup(nodeId: number | bigint, command: string): { nodeId: NodeId; group: boolean } {
+        const target = NodeId(nodeId);
+        const classified = nodeIdTarget(target);
+        if (classified.kind === "unusable") {
+            throw ServerError.invalidArguments(
+                `${command} cannot address ${classified.className}: node_id must name one node or one group`,
+            );
+        }
+        return { nodeId: target, group: classified.kind === "group" };
     }
 
     /**
@@ -262,20 +350,18 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 return;
             }
 
-            const connId = generateConnectionId();
+            const connId = nextConnectionLogTag();
+            const ownerId = nextConnectionOwnerId();
             logger.info(`[${connId}] WebSocket connection established`);
 
             let listening = false;
             // thread_diagnostics_updated (schema 12) is sent only to connections that have issued a
             // Thread request, so schema-11 clients (all currently deployed HA installs) never receive an
-            // event type they'd crash on. See the schema changelog.
-            let wantsThreadDiagnostics = false;
-            // network_topology_updated (schema 13) is likewise sent only to connections that have
-            // issued get_network_topology, so pre-schema-13 clients never receive it.
-            let wantsNetworkTopology = false;
-            // webrtc_callback is likewise sent only to a connection that has issued a WebRTC provider
-            // command, so it reaches the client driving that camera session rather than every client.
-            let wantsWebRtc = false;
+            // event type they'd crash on. See the schema changelog. network_topology_updated (schema 13)
+            // and the camera events are withheld the same way.
+            const optIns = { threadDiagnostics: false, webRtc: false };
+            let topologyObserverRegistered = false;
+            let cameraObserversRegistered = false;
             const observers = new ObserverGroup();
             const connection = new WebSocketConnection(ws, {
                 connId,
@@ -515,7 +601,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
             });
 
             observers.on(this.#controller.threadDiagnostics.events.batchUpdated, batch => {
-                if (this.#closed || this.#shuttingDown || !wantsThreadDiagnostics) return;
+                if (this.#closed || this.#shuttingDown || !optIns.threadDiagnostics) return;
                 // batchUpdated is a shared Observable; a throw here would abort emit and starve other
                 // connections' observers, so isolate the serialize/send per connection. Coalesce
                 // latest-wins per Thread network — an older diagnostics snapshot is worthless — and
@@ -533,8 +619,8 @@ export class WebSocketControllerHandler implements WebServerHandler {
             // instantiate the service (timers, event subscriptions) for every connection, even
             // ones that never request topology.
             const ensureTopologyObserver = () => {
-                if (wantsNetworkTopology || this.#closed || this.#shuttingDown) return;
-                wantsNetworkTopology = true;
+                if (topologyObserverRegistered || this.#closed || this.#shuttingDown) return;
+                topologyObserverRegistered = true;
                 observers.on(this.#controller.networkTopology.events.topologyUpdated, topology => {
                     if (this.#closed || this.#shuttingDown) return;
                     // topologyUpdated is a shared Observable; isolate serialize/send per connection so a
@@ -550,10 +636,63 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 });
             };
 
+            const ensureCameraObservers = () => {
+                if (cameraObserversRegistered || this.#closed || this.#shuttingDown) return;
+                // Set the flag only after the getter: it can throw, and a set flag would never retry.
+                const camera = this.#controller.cameraStreams;
+                cameraObserversRegistered = true;
+                observers.on(camera.events.sessionEnded, ended => {
+                    if (this.#closed || this.#shuttingDown) return;
+                    // Skip the requester (it has its response) and non-owners; ownerless ends go to all.
+                    if (ended.requestedBy === ownerId) return;
+                    if (ended.ownerId !== undefined && ended.ownerId !== ownerId) return;
+                    // Shared Observable: an uncaught throw here aborts the emit and starves other connections.
+                    try {
+                        connection.sendReliable(
+                            toBigIntAwareJson({
+                                event: "camera_session_ended",
+                                data: {
+                                    node_id: ended.nodeId,
+                                    endpoint_id: ended.endpointId,
+                                    webrtc_session_id: ended.webRtcSessionId,
+                                },
+                            }),
+                        );
+                    } catch (err) {
+                        logger.error(`[${connId}] Failed to send camera_session_ended`, err);
+                    }
+                });
+                observers.on(camera.events.streamEvicted, evicted => {
+                    if (this.#closed || this.#shuttingDown) return;
+                    try {
+                        connection.sendReliable(
+                            toBigIntAwareJson({
+                                event: "camera_stream_evicted",
+                                data: {
+                                    node_id: evicted.nodeId,
+                                    endpoint_id: evicted.endpointId,
+                                    kind: evicted.kind,
+                                    stream_id: evicted.streamId,
+                                },
+                            }),
+                        );
+                    } catch (err) {
+                        logger.error(`[${connId}] Failed to send camera_stream_evicted`, err);
+                    }
+                });
+            };
+
             observers.on(this.#commandHandler.events.webRtcCallback, data => {
-                if (this.#closed || this.#shuttingDown || !wantsWebRtc) return;
+                if (this.#closed || this.#shuttingDown || !optIns.webRtc) return;
                 // WebRTC signaling is control-plane: never coalesced or dropped, so send reliably.
                 try {
+                    const owners = this.#controller.cameraStreamsIfCreated?.signallingOwners(
+                        NodeId(data.node_id),
+                        EndpointNumber(data.endpoint_id),
+                        data.webrtc_session_id,
+                    );
+                    // Ownerless sessions go to every opted-in connection; withholding would strand them.
+                    if (owners !== undefined && !owners.has(ownerId)) return;
                     connection.sendReliable(toBigIntAwareJson({ event: "webrtc_callback", data }));
                 } catch (err) {
                     logger.error(`[${connId}] Failed to send webrtc_callback`, err);
@@ -570,6 +709,9 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 logger.info(`[${connId}] WebSocket connection closed`);
                 observers.close();
                 this.#connections.delete(connection);
+                this.#controller.cameraStreamsIfCreated
+                    ?.releaseConnection(ownerId)
+                    .catch(err => logger.warn(`[${connId}] Failed to release camera sessions on disconnect`, err));
                 if (this.#fabricLabelOwner === connection) {
                     logger.info(`[${connId}] Releasing fabric label ownership (owning connection closed)`);
                     this.#fabricLabelOwner = undefined;
@@ -577,32 +719,33 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 connection.dispose();
             };
 
+            // Must run before the command is dispatched: the camera can answer an offer, end a session
+            // or evict a stream while the command is still in flight.
+            const optInToEventsFor = (command: string) => {
+                if (THREAD_DIAGNOSTICS_OPT_IN_COMMANDS.has(command)) optIns.threadDiagnostics = true;
+                if (NETWORK_TOPOLOGY_OPT_IN_COMMANDS.has(command)) ensureTopologyObserver();
+                if (WEBRTC_OPT_IN_COMMANDS.has(command)) optIns.webRtc = true;
+                if (CAMERA_OPT_IN_COMMANDS.has(command)) ensureCameraObservers();
+            };
+
             ws.on("message", data => {
-                this.#handleWebSocketRequest(connId, connection, data.toString(), req?.socket?.remoteAddress)
-                    .then(
-                        ({
-                            response,
-                            enableListeners,
-                            wantsThreadDiagnostics: requested,
-                            wantsNetworkTopology: reqTopology,
-                            wantsWebRtc: reqWebRtc,
-                        }) => {
-                            if (this.#closed) return;
-                            if (enableListeners) {
-                                listening = true;
-                            }
-                            if (requested) {
-                                wantsThreadDiagnostics = true;
-                            }
-                            if (reqTopology) {
-                                ensureTopologyObserver();
-                            }
-                            if (reqWebRtc) {
-                                wantsWebRtc = true;
-                            }
-                            connection.sendReliable(toBigIntAwareJson(response));
-                        },
-                    )
+                this.#handleWebSocketRequest(
+                    connId,
+                    ownerId,
+                    connection,
+                    data.toString(),
+                    optInToEventsFor,
+                    req?.socket?.remoteAddress,
+                )
+                    .then(({ response, enableListeners }) => {
+                        if (this.#closed) return;
+                        if (enableListeners) {
+                            // Unlike the event opt-ins, listening starts only once start_listening has
+                            // answered: its result is the node list the events then update.
+                            listening = true;
+                        }
+                        connection.sendReliable(toBigIntAwareJson(response));
+                    })
                     .catch(err => logger.error(`[${connId}] WebSocket request error`, err));
             });
 
@@ -667,15 +810,14 @@ export class WebSocketControllerHandler implements WebServerHandler {
 
     async #handleWebSocketRequest(
         connId: string,
+        ownerId: string,
         connection: WebSocketConnection,
         data: string,
+        optInToEventsFor: (command: string) => void,
         peerAddress?: string,
     ): Promise<{
         response: ErrorResultMessage | SuccessResultMessage;
         enableListeners?: boolean;
-        wantsThreadDiagnostics?: boolean;
-        wantsNetworkTopology?: boolean;
-        wantsWebRtc?: boolean;
     }> {
         let messageId: string | undefined;
         let command: string | undefined;
@@ -684,9 +826,14 @@ export class WebSocketControllerHandler implements WebServerHandler {
             const request = parseBigIntAwareJson(data) as { message_id: string; command: string; args: any };
             // Deferred: matter.js calls this only at DEBUG, keeping redaction off the hot path.
             logger.debug(`[${connId}] WebSocket request`, () => redactSensitiveCommandFields(request));
-            const { args } = request;
+            let args = request.args;
             messageId = request.message_id;
             command = request.command;
+            // `request` is an unvalidated cast; a non-string command falls to the switch's default.
+            if (typeof command === "string") {
+                optInToEventsFor(command);
+                args = commandArguments(args, command);
+            }
             let result: ResponseOf<any>;
             let enableListeners: boolean | undefined = undefined;
             switch (command) {
@@ -734,10 +881,29 @@ export class WebSocketControllerHandler implements WebServerHandler {
                     result = await this.#handleGetVendorNames(args);
                     break;
                 case "device_command":
-                    result = await this.#handleDeviceCommand(args);
+                    result = await this.#handleDeviceCommand(args, ownerId);
                     break;
                 case "send_webrtc_provider_command":
                     result = await this.#handleSendWebRtcProviderCommand(args);
+                    break;
+                case "camera_get_capabilities":
+                    result = await this.#handleCameraGetCapabilities(args);
+                    break;
+                case "camera_start_stream":
+                    result = await this.#handleCameraStartStream(args, ownerId);
+                    break;
+                case "camera_stop_stream":
+                    result = await this.#handleCameraStopStream(args, ownerId);
+                    break;
+                case "camera_snapshot":
+                    result = await this.#handleCameraSnapshot(args);
+                    break;
+                case "camera_release_stream":
+                    result = await this.#handleCameraReleaseStream(args);
+                    break;
+                case "camera_provide_answer":
+                case "camera_provide_ice_candidates":
+                    result = await this.#handleCameraSignallingCommand(args, command);
                     break;
                 case "write_attribute":
                     result = await this.#handleWriteAttribute(args);
@@ -841,9 +1007,6 @@ export class WebSocketControllerHandler implements WebServerHandler {
                     result,
                 },
                 enableListeners,
-                wantsThreadDiagnostics: command !== undefined && THREAD_DIAGNOSTICS_OPT_IN_COMMANDS.has(command),
-                wantsNetworkTopology: command !== undefined && NETWORK_TOPOLOGY_OPT_IN_COMMANDS.has(command),
-                wantsWebRtc: command === "send_webrtc_provider_command",
             };
         } catch (err) {
             logger.error(`[${connId}] WebSocket error response (${command})`, messageId, err);
@@ -854,9 +1017,6 @@ export class WebSocketControllerHandler implements WebServerHandler {
                     error_code: errorCode,
                     details: (err as Error).message,
                 },
-                wantsThreadDiagnostics: command !== undefined && THREAD_DIAGNOSTICS_OPT_IN_COMMANDS.has(command),
-                wantsNetworkTopology: command !== undefined && NETWORK_TOPOLOGY_OPT_IN_COMMANDS.has(command),
-                wantsWebRtc: command === "send_webrtc_provider_command",
             };
         }
     }
@@ -928,6 +1088,10 @@ export class WebSocketControllerHandler implements WebServerHandler {
         connection: WebSocketConnection,
     ): Promise<ResponseOf<"set_default_fabric_label">> {
         const { label } = args;
+        // `null` is the documented reset; an absent label must not fall through to the default label.
+        if (label !== null && typeof label !== "string") {
+            throw ServerError.invalidArguments("set_default_fabric_label requires label to be a string or null");
+        }
         const effectiveLabel = normalizeFabricLabel(label);
         if (this.#config.fabricLabelLocked) {
             if (this.#config.fabricLabel !== effectiveLabel) {
@@ -1098,7 +1262,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
     }
 
     #handleGetNodes(args: ArgsOf<"get_nodes">): ResponseOf<"get_nodes"> {
-        const { only_available = false } = args ?? {};
+        const { only_available = false } = args;
         const nodeDetails = new Array<MatterNode>();
         // Include real nodes
         for (const node of this.#commandHandler.getNodeIds()) {
@@ -1118,8 +1282,8 @@ export class WebSocketControllerHandler implements WebServerHandler {
 
     async #handleGetNode(args: ArgsOf<"get_node">): Promise<ResponseOf<"get_node">> {
         const { node_id } = args;
-        const nodeId = NodeId(node_id);
-        const handler = this.#handlerFor(node_id);
+        const nodeId = this.#targetNodeId(node_id, "get_node");
+        const handler = this.#handlerFor(nodeId);
 
         if (!handler.hasNode(nodeId)) {
             throw ServerError.nodeNotExists(node_id);
@@ -1137,7 +1301,8 @@ export class WebSocketControllerHandler implements WebServerHandler {
         args: ArgsOf<"get_node_ip_addresses">,
     ): Promise<ResponseOf<"get_node_ip_addresses">> {
         const { node_id, prefer_cache, scoped } = args;
-        const result = await this.#handlerFor(node_id).getNodeIpAddresses(NodeId(node_id), prefer_cache);
+        const nodeId = this.#targetNodeId(node_id, "get_node_ip_addresses");
+        const result = await this.#handlerFor(nodeId).getNodeIpAddresses(nodeId, prefer_cache);
         // scoped=true means keep the interface suffix (e.g., %en0), scoped=false (default) strips it
         if (scoped) {
             return result;
@@ -1146,16 +1311,13 @@ export class WebSocketControllerHandler implements WebServerHandler {
     }
 
     async #handleReadAttribute(args: ArgsOf<"read_attribute">): Promise<ResponseOf<"read_attribute">> {
-        const { node_id: nodeId, attribute_path, fabric_filtered = false } = args;
+        const { node_id, attribute_path, fabric_filtered = false } = args;
+        const nodeId = this.#targetNodeId(node_id, "read_attribute");
 
         // Normalize attribute_path to array
         const attributePaths = Array.isArray(attribute_path) ? attribute_path : [attribute_path];
 
-        const result = await this.#handlerFor(nodeId).handleReadAttributes(
-            NodeId(nodeId),
-            attributePaths,
-            fabric_filtered,
-        );
+        const result = await this.#handlerFor(nodeId).handleReadAttributes(nodeId, attributePaths, fabric_filtered);
 
         if (Object.keys(result).length === 0) {
             throw ServerError.sdkStackError("Failed to read attribute: no values returned");
@@ -1165,16 +1327,29 @@ export class WebSocketControllerHandler implements WebServerHandler {
     }
 
     async #handleWriteAttribute(args: ArgsOf<"write_attribute">): Promise<ResponseOf<"write_attribute">> {
-        const { node_id: nodeId, attribute_path, value } = args;
+        const { node_id, attribute_path, value } = args;
+        const { nodeId, group } = this.#targetNodeIdOrGroup(node_id, "write_attribute");
         const { endpointId, clusterId, attributeId } = splitAttributePath(attribute_path);
 
-        // Write operations don't support wildcards
+        if (group) {
+            if (clusterId === undefined || attributeId === undefined) {
+                throw ServerError.invalidArguments(WRITE_WILDCARD_REFUSAL);
+            }
+            if (endpointId !== undefined) {
+                throw ServerError.invalidArguments(
+                    "write_attribute to a Group Node ID takes a wildcard endpoint in attribute_path: a groupcast carries no endpoint, each node's own group table decides which of its endpoints the write reaches",
+                );
+            }
+            await this.#commandHandler.handleGroupWriteAttribute({ nodeId, clusterId, attributeId, value });
+            return null;
+        }
+
         if (endpointId === undefined || clusterId === undefined || attributeId === undefined) {
-            throw ServerError.invalidArguments("write_attribute does not support wildcards in attribute path");
+            throw ServerError.invalidArguments(WRITE_WILDCARD_REFUSAL);
         }
 
         const { status } = await this.#handlerFor(nodeId).handleWriteAttribute({
-            nodeId: NodeId(nodeId),
+            nodeId,
             endpointId,
             clusterId,
             attributeId,
@@ -1223,45 +1398,90 @@ export class WebSocketControllerHandler implements WebServerHandler {
         return result;
     }
 
-    async #handleDeviceCommand(args: ArgsOf<"device_command">): Promise<ResponseOf<"device_command">> {
+    async #handleDeviceCommand(
+        args: ArgsOf<"device_command">,
+        requestedBy: string,
+    ): Promise<ResponseOf<"device_command">> {
         const {
-            node_id: nodeId,
+            node_id,
             endpoint_id: endpointId,
             cluster_id: clusterId,
             command_name: commandName,
             payload,
             timed_request_timeout_ms: timedInteractionTimeoutMs,
+            interaction_timeout_ms: interactionTimeoutMs,
         } = args;
 
+        const { nodeId, group } = this.#targetNodeIdOrGroup(node_id, "device_command");
+        if (group) {
+            if (endpointId !== undefined && endpointId !== null) {
+                throw ServerError.invalidArguments(
+                    "device_command to a Group Node ID takes no endpoint_id: a groupcast carries no endpoint, each node's own group table decides which of its endpoints the command reaches",
+                );
+            }
+            // Check the stated value: a wrongly typed timeout converts to `undefined` and would pass.
+            for (const [name, stated] of [
+                ["timed_request_timeout_ms", timedInteractionTimeoutMs],
+                ["interaction_timeout_ms", interactionTimeoutMs],
+            ] as const) {
+                if (stated !== undefined && stated !== null) {
+                    throw ServerError.invalidArguments(
+                        `${name} cannot accompany a groupcast: no node answers a group invoke, so there is no response to wait for`,
+                    );
+                }
+            }
+            await this.#commandHandler.handleGroupInvoke({
+                nodeId,
+                clusterId: ClusterId(clusterId),
+                commandName,
+                data: payload,
+            });
+            return null;
+        }
+        if (endpointId === undefined || endpointId === null) {
+            throw ServerError.invalidArguments("device_command requires endpoint_id unless node_id is a Group Node ID");
+        }
+
         const camelizedCommand = camelize(commandName);
-        const result = await this.#handlerFor(nodeId).handleInvoke({
-            nodeId: NodeId(nodeId),
-            endpointId: EndpointNumber(endpointId),
-            clusterId: ClusterId(clusterId),
-            commandName: camelizedCommand,
-            data: payload,
-            timedInteractionTimeoutMs:
-                typeof timedInteractionTimeoutMs === "number" ? Millis(timedInteractionTimeoutMs) : undefined,
-        });
+        const invoke = (): Promise<unknown> =>
+            this.#handlerFor(nodeId).handleInvoke({
+                nodeId,
+                endpointId: EndpointNumber(endpointId),
+                clusterId: ClusterId(clusterId),
+                commandName: camelizedCommand,
+                data: payload,
+                timedInteractionTimeoutMs:
+                    typeof timedInteractionTimeoutMs === "number" ? Millis(timedInteractionTimeoutMs) : undefined,
+            });
+
+        const endsWebRtcSession =
+            clusterId === WebRtcTransportProvider.id &&
+            camelizedCommand === "endSession" &&
+            !TestNodeCommandHandler.isTestNodeId(nodeId);
+        const sessionId = endsWebRtcSession ? extractWebRtcSessionId(payload) : undefined;
+        if (endsWebRtcSession && sessionId === undefined) {
+            logger.debug(
+                "EndSession invoked without a recognizable webRtcSessionId; local session tracking left unchanged",
+            );
+        }
+        const result =
+            sessionId === undefined
+                ? await invoke()
+                : await invokeEndSession(invoke, deviceHeldSession =>
+                      this.#dropWebRtcSessionRecords(
+                          nodeId,
+                          EndpointNumber(endpointId),
+                          sessionId,
+                          requestedBy,
+                          deviceHeldSession,
+                      ),
+                  );
 
         // Test nodes return null
         if (TestNodeCommandHandler.isTestNodeId(nodeId)) {
             return null;
         }
 
-        // The invoke above succeeded (it throws otherwise). A client-initiated EndSession on the
-        // provider ends the session on the device; drop our local tracking of it too, since the peer
-        // won't send us an End for a session we ended ourselves.
-        if (clusterId === WebRtcTransportProvider.id && camelizedCommand === "endSession") {
-            const sessionId = extractWebRtcSessionId(payload);
-            if (sessionId !== undefined) {
-                await this.#commandHandler.removeTrackedWebRtcSession(sessionId);
-            } else {
-                logger.debug(
-                    "EndSession invoked without a recognizable webRtcSessionId; local session tracking left unchanged",
-                );
-            }
-        }
         const cmdResult = this.#convertCommandDataToWebSocket(ClusterId(clusterId), commandName, result);
         if (cmdResult === undefined) {
             return null;
@@ -1269,24 +1489,139 @@ export class WebSocketControllerHandler implements WebServerHandler {
         return cmdResult;
     }
 
-    async #handleSendWebRtcProviderCommand(
-        args: ArgsOf<"send_webrtc_provider_command">,
-    ): Promise<ResponseOf<"send_webrtc_provider_command">> {
-        const { node_id, endpoint_id, command_name, payload } = args;
-        const response = await this.#commandHandler.sendWebRtcProviderCommand({
-            nodeId: NodeId(node_id),
-            endpointId: EndpointNumber(endpoint_id),
-            commandName: command_name,
+    /**
+     * Never rejects, as {@link invokeEndSession} requires. The manager announces the end to the session's
+     * owner, but not to `requestedBy`.
+     */
+    async #dropWebRtcSessionRecords(
+        nodeId: NodeId,
+        endpointId: EndpointNumber,
+        sessionId: number,
+        requestedBy: string,
+        deviceHeldSession: boolean,
+    ): Promise<void> {
+        this.#controller.cameraStreamsIfCreated?.endedByClient(
+            nodeId,
+            endpointId,
+            sessionId,
+            requestedBy,
+            deviceHeldSession,
+        );
+        await dropWebRtcSessionTracking(this.#commandHandler, sessionId, nodeId, endpointId);
+    }
+
+    async #handleSendWebRtcProviderCommand(args: unknown): Promise<ResponseOf<"send_webrtc_provider_command">> {
+        const argsObject = requireArgumentObject(args, "send_webrtc_provider_command");
+        rejectUnknownKeys(argsObject, SEND_PROVIDER_ARG_KEYS, "send_webrtc_provider_command argument");
+        const { command_name, payload } = argsObject;
+        if (command_name === undefined) {
+            throw ServerError.invalidArguments(
+                `send_webrtc_provider_command requires command_name, one of ${PROVIDER_COMMAND_NAMES.join(", ")}`,
+            );
+        }
+        if (typeof command_name !== "string" || !isProviderCommandName(command_name)) {
+            throw ServerError.invalidArguments(
+                `Unsupported WebRTC provider command "${String(command_name)}"; expected one of ${PROVIDER_COMMAND_NAMES.join(", ")}`,
+            );
+        }
+        const { nodeId, endpointId } = parseTargetIds(argsObject, "send_webrtc_provider_command");
+        const fields = toProviderCommandFields(
+            command_name,
             payload,
+            `node ${formatNodeId(nodeId)} endpoint ${endpointId}`,
+        );
+        if (!establishesWebRtcSession(command_name)) {
+            await this.#commandHandler.invokeWebRtcSignallingCommand({
+                nodeId,
+                endpointId,
+                commandName: command_name,
+                fields,
+            });
+            return null;
+        }
+        const response = await this.#commandHandler.invokeWebRtcProviderCommand({
+            nodeId,
+            endpointId,
+            commandName: command_name,
+            fields,
         });
         // Convert the matter.js response to WebSocket format the same way #handleDeviceCommand
         // does for generic invokes (bytes, epochs, bitmaps, struct member filtering).
         return this.#convertCommandDataToWebSocket(WebRtcTransportProvider.id, command_name, response);
     }
 
+    /** Answers `null`: the cluster defines no response payload. */
+    async #handleCameraSignallingCommand(
+        args: unknown,
+        command: CameraSignallingCommandName,
+    ): Promise<ResponseOf<CameraSignallingCommandName>> {
+        const { nodeId, endpointId, commandName, payload } = parseSignallingArgs(args, command);
+        const fields = toProviderCommandFields(
+            commandName,
+            payload,
+            `node ${formatNodeId(nodeId)} endpoint ${endpointId}`,
+            command,
+        );
+        await this.#commandHandler.invokeWebRtcSignallingCommand({ nodeId, endpointId, commandName, fields });
+        return null;
+    }
+
+    async #handleCameraGetCapabilities(args: unknown): Promise<ResponseOf<"camera_get_capabilities">> {
+        const { nodeId, endpointId } = parseCapabilitiesArgs(args);
+        const capabilities = await this.#controller.cameraStreams.getCapabilities(nodeId, endpointId);
+        return toWireCapabilities(capabilities);
+    }
+
+    async #handleCameraStartStream(args: unknown, ownerId: string): Promise<ResponseOf<"camera_start_stream">> {
+        const parsed = parseStartStreamArgs(args);
+        const result = await this.#controller.cameraStreams.startStream({
+            nodeId: parsed.nodeId,
+            endpointId: parsed.endpointId,
+            connectionId: ownerId,
+            streamUsage: parsed.streamUsage,
+            sdp: parsed.sdp,
+            video: parsed.video,
+            audio: parsed.audio,
+            iceServers: parsed.iceServers,
+            iceTransportPolicy: parsed.iceTransportPolicy,
+            metadataEnabled: parsed.metadataEnabled,
+            allowEviction: parsed.allowEviction,
+        });
+        return toWireStartStreamResult(result);
+    }
+
+    async #handleCameraStopStream(args: unknown, ownerId: string): Promise<ResponseOf<"camera_stop_stream">> {
+        const { nodeId, endpointId, webRtcSessionId } = parseStopStreamArgs(args);
+        const ended = await this.#controller.cameraStreams.stopStream(nodeId, endpointId, webRtcSessionId, ownerId);
+        return { ended };
+    }
+
+    async #handleCameraSnapshot(args: unknown): Promise<ResponseOf<"camera_snapshot">> {
+        const { nodeId, endpointId, maxResolution, codec, watermarkEnabled, osdEnabled } = parseSnapshotArgs(args);
+        const result = await this.#controller.cameraStreams.snapshot({
+            nodeId,
+            endpointId,
+            maxResolution,
+            codec,
+            watermarkEnabled,
+            osdEnabled,
+        });
+        const wire = toWireSnapshotResult(result);
+        logger.debug(
+            `camera_snapshot for node ${nodeId} endpoint ${endpointId}: codec ${wire.codec}, ${wire.resolution.width}x${wire.resolution.height}, ${result.data.length} bytes, degraded ${wire.degraded}, stream ${wire.stream_id}`,
+        );
+        return wire;
+    }
+
+    async #handleCameraReleaseStream(args: unknown): Promise<ResponseOf<"camera_release_stream">> {
+        const { nodeId, endpointId, kind, streamId } = parseReleaseStreamArgs(args);
+        await this.#controller.cameraStreams.releaseStream({ nodeId, endpointId, kind, streamId });
+        return null;
+    }
+
     async #handleInterviewNode(args: ArgsOf<"interview_node">): Promise<ResponseOf<"interview_node">> {
         const { node_id } = args;
-        const nodeId = NodeId(node_id);
+        const nodeId = this.#targetNodeId(node_id, "interview_node");
 
         // Handle test nodes - just broadcast the node_updated event
         if (TestNodeCommandHandler.isTestNodeId(nodeId)) {
@@ -1318,14 +1653,14 @@ export class WebSocketControllerHandler implements WebServerHandler {
 
     async #handleGetIcdState(args: ArgsOf<"get_icd_state">): Promise<ResponseOf<"get_icd_state">> {
         const { node_id } = args;
-        const nodeId = NodeId(node_id);
+        const nodeId = this.#targetNodeId(node_id, "get_icd_state");
         this.#rejectIcdCommandForTestNode(nodeId);
         return this.#commandHandler.getIcdState(nodeId);
     }
 
     async #handleRegisterIcd(args: ArgsOf<"register_icd">): Promise<ResponseOf<"register_icd">> {
         const { node_id, allow_multi_admin, ignored_vendors } = args;
-        const nodeId = NodeId(node_id);
+        const nodeId = this.#targetNodeId(node_id, "register_icd");
         this.#rejectIcdCommandForTestNode(nodeId);
         await this.#commandHandler.registerIcd(nodeId, {
             allowMultiAdmin: allow_multi_admin,
@@ -1337,7 +1672,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
 
     async #handleResyncIcd(args: ArgsOf<"resync_icd">): Promise<ResponseOf<"resync_icd">> {
         const { node_id } = args;
-        const nodeId = NodeId(node_id);
+        const nodeId = this.#targetNodeId(node_id, "resync_icd");
         this.#rejectIcdCommandForTestNode(nodeId);
         await this.#commandHandler.resyncIcd(nodeId);
         return null;
@@ -1345,7 +1680,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
 
     async #handleUnregisterIcd(args: ArgsOf<"unregister_icd">): Promise<ResponseOf<"unregister_icd">> {
         const { node_id, force = false } = args;
-        const nodeId = NodeId(node_id);
+        const nodeId = this.#targetNodeId(node_id, "unregister_icd");
         this.#rejectIcdCommandForTestNode(nodeId);
         await this.#commandHandler.unregisterIcd(nodeId, force);
         this.#broadcastEvent("node_updated", this.#collectNodeDetails(nodeId));
@@ -1354,12 +1689,14 @@ export class WebSocketControllerHandler implements WebServerHandler {
 
     async #handlePingNode(args: ArgsOf<"ping_node">): Promise<ResponseOf<"ping_node">> {
         const { node_id, attempts = 1 } = args;
-        return await this.#handlerFor(node_id).pingNode(NodeId(node_id), attempts);
+        const nodeId = this.#targetNodeId(node_id, "ping_node");
+        return await this.#handlerFor(nodeId).pingNode(nodeId, attempts);
     }
 
     async #handleRemoveNode(args: ArgsOf<"remove_node">): Promise<ResponseOf<"remove_node">> {
         const { node_id } = args;
-        await this.#handlerFor(node_id).removeNode(NodeId(node_id));
+        const nodeId = this.#targetNodeId(node_id, "remove_node");
+        await this.#handlerFor(nodeId).removeNode(nodeId);
         return null;
     }
 
@@ -1376,6 +1713,9 @@ export class WebSocketControllerHandler implements WebServerHandler {
 
     async #handleSetThreadDataset(args: ArgsOf<"set_thread_dataset">): Promise<ResponseOf<"set_thread_dataset">> {
         const { dataset, id } = args;
+        if (typeof dataset !== "string") {
+            throw ServerError.invalidArguments("set_thread_dataset requires dataset to be a hex string");
+        }
         this.#assertValidDatasetHex(dataset);
         const credId = id ?? ConfigStorage.DEFAULT_CREDENTIAL_ID;
         const previousDataset = this.#config.getThreadCredentials(credId)?.dataset;
@@ -1395,8 +1735,8 @@ export class WebSocketControllerHandler implements WebServerHandler {
     async #handleGetThreadDiagnostics(
         args: ArgsOf<"get_thread_diagnostics">,
     ): Promise<ResponseOf<"get_thread_diagnostics">> {
-        if (args?.ext_pan_id === undefined) {
-            this.#controller.threadDiagnostics.refreshAllKnown({ force: args?.force });
+        if (args.ext_pan_id === undefined) {
+            this.#controller.threadDiagnostics.refreshAllKnown({ force: args.force });
             return this.#controller.threadDiagnostics.listCached().map(serializeBatch);
         }
         if (!/^[0-9a-fA-F]{16}$/.test(args.ext_pan_id)) {
@@ -1414,7 +1754,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
         // Imported test nodes are served by get_nodes, so the derived graph must include them
         // too. Attached here (not at construction) to keep the service lazily instantiated.
         this.#controller.networkTopology.addNodeSource(this.#testNodeSource);
-        if (args?.refresh === true) {
+        if (args.refresh === true) {
             return this.#controller.networkTopology.refresh();
         }
         return this.#controller.networkTopology.getTopology();
@@ -1423,7 +1763,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
     async #handleRemoveWifiCredentials(
         args: ArgsOf<"remove_wifi_credentials">,
     ): Promise<ResponseOf<"remove_wifi_credentials">> {
-        await this.#config.removeWifiCredentials(args?.id ?? ConfigStorage.DEFAULT_CREDENTIAL_ID);
+        await this.#config.removeWifiCredentials(args.id ?? ConfigStorage.DEFAULT_CREDENTIAL_ID);
         await this.#safeBroadcastServerInfo();
         return {};
     }
@@ -1431,7 +1771,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
     async #handleRemoveThreadDataset(
         args: ArgsOf<"remove_thread_dataset">,
     ): Promise<ResponseOf<"remove_thread_dataset">> {
-        const credId = args?.id ?? ConfigStorage.DEFAULT_CREDENTIAL_ID;
+        const credId = args.id ?? ConfigStorage.DEFAULT_CREDENTIAL_ID;
         const removed = this.#config.getThreadCredentials(credId);
         await this.#config.removeThreadCredentials(credId);
         this.#unregisterThreadIfUnreferenced(removed?.dataset);
@@ -1509,7 +1849,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
         args: ArgsOf<"open_commissioning_window">,
     ): Promise<ResponseOf<"open_commissioning_window">> {
         const { node_id, timeout /*, iteration, option, discriminator*/ } = args;
-        const nodeId = NodeId(node_id);
+        const nodeId = this.#targetNodeId(node_id, "open_commissioning_window");
         const { manualCode, qrCode } = await this.#commandHandler.openCommissioningWindow({
             nodeId,
             timeout,
@@ -1567,7 +1907,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
 
     async #handleGetMatterFabrics(args: ArgsOf<"get_matter_fabrics">): Promise<ResponseOf<"get_matter_fabrics">> {
         const { node_id } = args;
-        const nodeId = NodeId(node_id);
+        const nodeId = this.#targetNodeId(node_id, "get_matter_fabrics");
         const fabrics = await this.#commandHandler.getFabrics(nodeId);
         return fabrics.map(({ fabricId, vendorId, fabricIndex, label }) => ({
             fabric_id: fabricId,
@@ -1580,18 +1920,25 @@ export class WebSocketControllerHandler implements WebServerHandler {
 
     async #handleRemoveMatterFabric(args: ArgsOf<"remove_matter_fabric">): Promise<ResponseOf<"remove_matter_fabric">> {
         const { node_id, fabric_index } = args;
-        await this.#commandHandler.removeFabric(NodeId(node_id), FabricIndex(fabric_index));
+        await this.#commandHandler.removeFabric(
+            this.#targetNodeId(node_id, "remove_matter_fabric"),
+            FabricIndex(fabric_index),
+        );
         return {};
     }
 
     async #handleSetAclEntry(args: ArgsOf<"set_acl_entry">): Promise<ResponseOf<"set_acl_entry">> {
         const { node_id, entry } = args;
-        return await this.#commandHandler.setAclEntry(NodeId(node_id), entry);
+        return await this.#commandHandler.setAclEntry(this.#targetNodeId(node_id, "set_acl_entry"), entry);
     }
 
     async #handleSetNodeBinding(args: ArgsOf<"set_node_binding">): Promise<ResponseOf<"set_node_binding">> {
         const { node_id, endpoint, bindings } = args;
-        return await this.#commandHandler.setNodeBinding(NodeId(node_id), EndpointNumber(endpoint), bindings);
+        return await this.#commandHandler.setNodeBinding(
+            this.#targetNodeId(node_id, "set_node_binding"),
+            EndpointNumber(endpoint),
+            bindings,
+        );
     }
 
     async #handleImportTestNode(args: ArgsOf<"import_test_node">): Promise<ResponseOf<"import_test_node">> {
@@ -1604,13 +1951,13 @@ export class WebSocketControllerHandler implements WebServerHandler {
 
     async #handleCheckNodeUpdate(args: ArgsOf<"check_node_update">): Promise<ResponseOf<"check_node_update">> {
         const { node_id } = args;
-        return await this.#commandHandler.checkNodeUpdate(NodeId(node_id));
+        return await this.#commandHandler.checkNodeUpdate(this.#targetNodeId(node_id, "check_node_update"));
     }
 
     async #handleUpdateNode(args: ArgsOf<"update_node">): Promise<ResponseOf<"update_node">> {
         const { node_id, software_version } = args;
         const targetVersion = typeof software_version === "string" ? parseInt(software_version, 10) : software_version;
-        return await this.#commandHandler.updateNode(NodeId(node_id), targetVersion);
+        return await this.#commandHandler.updateNode(this.#targetNodeId(node_id, "update_node"), targetVersion);
     }
 
     #collectNodeDetails(nodeId: NodeId): MatterNode {

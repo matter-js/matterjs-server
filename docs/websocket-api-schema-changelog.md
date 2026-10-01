@@ -10,6 +10,98 @@ The server-side constants live in `packages/ws-controller/src/server/WebSocketCo
 (`SCHEMA_VERSION`, `MIN_SUPPORTED_SCHEMA_VERSION`). Versions predating this document are not
 listed retroactively; entries start at the first version maintained here.
 
+## Schema 14
+
+Minimum supported: 11 (older clients keep working with the pre-14 command shapes).
+
+Clients detect everything below via `server_info.schema_version >= 14`. The full reference, with every
+argument, range and error payload, is in [websockets_api.md](websockets_api.md#camera-streaming-schema-14).
+
+### Camera API
+
+A convenience API for Matter cameras. The server manages the camera's streams for the client: it
+picks stream settings the camera supports, reuses a matching stream when one exists, allocates a new
+one otherwise, frees idle streams when the camera runs out of capacity, and tracks each WebRTC
+session. A client that wants to do this itself can still use the Matter commands directly
+(`send_webrtc_provider_command`, or `device_command` with the cluster's own commands).
+
+New commands:
+
+- **`camera_get_capabilities`** — what the camera says it supports: video and audio codecs, sensor
+  size, frame rates, snapshot formats, encoder limits, supported features, privacy switches, the
+  streams currently allocated, and the WebRTC sessions the camera holds. It reports only what the
+  camera states; there is no resolution list, because the camera does not publish one.
+- **`camera_start_stream`** — opens a WebRTC session. The client can limit video (codecs, resolution,
+  frame rate, bit rate, watermark and on-screen display) and audio (codec, channels, sample rate,
+  bit rate). The server never goes outside these limits: if no stream fits them, the call fails with
+  error 102 instead of returning something the client did not ask for. The response names the
+  session id, each stream, and whether the stream was newly allocated or reused.
+- **`camera_provide_answer`**, **`camera_provide_ice_candidates`** — send the client's SDP answer and
+  ICE candidates for a session, so a client never needs the raw WebRTC commands.
+- **`camera_stop_stream`** — ends a session. The streams stay allocated for reuse. It also ends a
+  session left open by a server restart (the session id is listed by `camera_get_capabilities`).
+- **`camera_snapshot`** — captures one image and returns it base64-encoded. The snapshot stream stays
+  allocated for the next call.
+- **`camera_release_stream`** — deallocates a stream. The camera refuses while a session still uses
+  it (error 104).
+
+New events, sent only to connections that have used a camera command or
+`send_webrtc_provider_command`:
+
+- **`camera_session_ended`** — another connection ended a session this connection opened.
+- **`camera_stream_evicted`** — the server deallocated an idle stream to make room for a new request.
+  Whoever used that stream has to allocate it again.
+
+Behaviour worth knowing:
+
+- Codecs, stream usages and talk modes are names (`H264`, `LiveView`, `FullDuplex`), not numbers. A
+  name from `camera_get_capabilities` can be sent back unchanged.
+- The camera commands accept only a `node_id` that names a node (not a group or another special id),
+  and refuse unknown arguments with error 8.
+- A failed `camera_start_stream` or `camera_snapshot` frees the streams it allocated.
+- When the camera is out of capacity, the server first lowers its own default settings, then frees an
+  idle stream: its own snapshot streams first, then its own video streams, then another controller's.
+  `allow_eviction: false` stops it from freeing streams.
+- Events can arrive before the `camera_start_stream` response: register the `webrtc_callback` handler
+  first and buffer events by `webrtc_session_id`.
+- Changing a running session (ICE restart, other tracks) needs a new `ProvideOffer` on the raw
+  `send_webrtc_provider_command` route; `camera_start_stream` always opens a new session.
+
+### New error codes 102–106
+
+OHF extensions; python-matter-server codes stop at 11. Each carries JSON details (see
+[camera error details](websockets_api.md#camera-error-details)).
+
+- **102 `CameraStreamIncompatible`** — the camera, the SDP offer or the request rules the stream out.
+  `reason` says which, and whether the client can fix it by changing the arguments (`codec`,
+  `bounds`), by changing the SDP offer (`offer`, `level`), or not at all (`feature`, `capability`,
+  `no_media`).
+- **103 `CameraResourceExhausted`** — the camera has no capacity left. `allocated` lists the streams
+  that use it, so a client can release one of its own and retry.
+- **104 `CameraStreamInUse`** — `camera_release_stream` on a stream a session still uses.
+- **105 `CameraNotSupported`** — the endpoint lacks a camera cluster the command needs.
+- **106 `CameraPrivacyMode`** — a privacy switch on the camera blocks the request.
+
+### Changes to existing commands and events
+
+- **`send_webrtc_provider_command`**
+  - Also relays `ProvideAnswer` and `ProvideIceCandidates`. `EndSession` goes through
+    `camera_stop_stream`.
+  - Checks every payload field against the cluster definition and refuses a bad field with error 8.
+    Newly refused: unknown keys, the same field given twice, missing mandatory fields, and a payload
+    that gives both the stream list and the old single stream id.
+  - `ice_servers` takes the documented `{ urls, username?, credential?, caid? }` shape. Before, that
+    shape failed in the encoder.
+  - Payload keys match with case and separators ignored, so `webrtc_session_id` and `sdpMLineIndex`
+    are accepted.
+- **`webrtc_callback`** — a session opened with `camera_start_stream` sends its events only to the
+  connection that opened it. The opt-in now happens before the command runs, so the camera's first
+  answer is no longer lost.
+- **`device_command` with `EndSession`** also produces `camera_session_ended`.
+- **`args`** — every command treats a missing or `null` `args` as no arguments, and refuses a
+  non-object `args` with error 8.
+
+
 ## Schema 13
 
 Minimum supported: 11 (older clients keep working with the pre-13 command shapes).
@@ -76,8 +168,10 @@ gated; schema 12 is where they're formally specified, so treat WebRTC as a schem
 - **Command `send_webrtc_provider_command`** (client→server) — relays a `ProvideOffer` / `SolicitOffer`
   to a camera endpoint's WebRTC provider.
 - **Event `webrtc_callback`** (server→client) — `offer` / `answer` / `ice_candidates` / `end` for an
-  active session (payload `WebRtcCallbackData`). **Delivered only to connections that have issued a
+  active session (payload `WebRtcCallbackData`). An `offer`'s `ice_servers` use the same
+  `{ urls, username?, credential?, caid? }` shape `camera_start_stream` takes, with `urls` a list. **Delivered only to connections that have issued a
   `send_webrtc_provider_command`** during their lifetime — the callbacks reach the client driving that
-  camera session, not every connection. **Outgoing events carry no `require_schema`**: that mechanism
+  camera session, not every connection. (Schema 14 widens that opt-in to the camera commands and routes
+  the event to the session's owning connection; see below.) **Outgoing events carry no `require_schema`**: that mechanism
   gates client *requests*, not server-emitted events — clients detect support via
   `server_info.schema_version`.

@@ -164,7 +164,7 @@ class TestServerCommands:
 
         assert "fabric_id" in info
         assert "compressed_fabric_id" in info
-        assert info["schema_version"] == 13
+        assert info["schema_version"] == 14
         assert info["min_supported_schema_version"] == 11
         assert "matter-server" in info["sdk_version"]
         assert "matter.js" in info["sdk_version"]
@@ -209,7 +209,7 @@ class TestServerCommands:
         client: MatterTestClient = env["client"]
         diag = await client.get_diagnostics()
         assert diag.info is not None
-        assert diag.info.schema_version == 13
+        assert diag.info.schema_version == 14
         assert isinstance(diag.nodes, list)
         assert isinstance(diag.events, list)
 
