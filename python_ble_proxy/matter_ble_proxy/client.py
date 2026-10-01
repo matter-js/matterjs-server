@@ -37,6 +37,7 @@ from .protocol import (
     AdvertisementData,
     BleProxyCommand,
     BleProxyErrorCode,
+    normalize_uuid,
 )
 
 if TYPE_CHECKING:
@@ -50,28 +51,6 @@ if TYPE_CHECKING:
     CommandHandler = Callable[[int, dict[str, Any]], Coroutine[Any, Any, None]]
 
 _LOGGER = logging.getLogger(__name__)
-
-# Trailing 24 hex chars of the Bluetooth SIG Base UUID. A 128-bit UUID whose
-# tail matches this is just a wrapped 16-bit (or 32-bit) standard UUID.
-_BASE_UUID_TAIL = "00001000800000805f9b34fb"
-
-
-def _normalize_uuid(uuid: str) -> str:
-    """Collapse standard Bluetooth UUIDs to their shortest comparable form.
-
-    Accepts short ("fff6", "FFF6"), 32-bit form ("0000fff6"), canonical dashed
-    ("0000FFF6-…"), or compact 32-char hex. For any form embedded in the
-    Bluetooth Base UUID, returns the short 16-bit hex. Otherwise returns the
-    compact lowercase hex. Equivalent representations always normalize equal.
-    """
-    compact = uuid.lower().replace("-", "")
-    # 128-bit canonical form wrapping a 16-bit base UUID (e.g. "0000fff6-0000-1000-8000-00805f9b34fb").
-    if len(compact) == 32 and compact[8:] == _BASE_UUID_TAIL and compact.startswith("0000"):
-        return compact[4:8]
-    # 32-bit form padded with leading zeros (e.g. "0000fff6"); the trailing 4 hex are the 16-bit UUID.
-    if len(compact) == 8 and compact.startswith("0000"):
-        return compact[4:]
-    return compact
 
 
 class BleScanSource(ABC):
@@ -113,7 +92,7 @@ class ConnectionState:
         self.client = client
         self.handle = handle
         self.services: BleakGATTServiceCollection | None = None
-        # Keyed by `_normalize_uuid`: the server may spell one characteristic several ways.
+        # Keyed by `normalize_uuid`: the server may spell one characteristic several ways.
         self.subscriptions: set[str] = set()
         self.last_write_uuid: str | None = None
         self.intentional_disconnect = False
@@ -351,7 +330,7 @@ class MatterBleProxy:
 
     async def _handle_start_scan(self, cmd_id: int, args: dict[str, Any]) -> None:
         service_uuids: list[str] = args.get("service_uuids", [])
-        service_uuid_set = {_normalize_uuid(u) for u in service_uuids} if service_uuids else None
+        service_uuid_set = {normalize_uuid(u) for u in service_uuids} if service_uuids else None
         allow_duplicates: bool = bool(args.get("allow_duplicates", True))
 
         # The server may re-send `start_scan` with different parameters while a scan runs.
@@ -371,11 +350,11 @@ class MatterBleProxy:
 
         def _on_advertisement(ad: AdvertisementData) -> None:
             if service_uuid_set is not None:
-                advertised = {_normalize_uuid(u) for u in ad.service_uuids}
+                advertised = {normalize_uuid(u) for u in ad.service_uuids}
                 # Some stacks only surface the service UUID via its service_data key,
-                # so include those too. _normalize_uuid collapses Bleak's canonical
+                # so include those too. normalize_uuid collapses Bleak's canonical
                 # 128-bit form and the server's short form to a comparable shape.
-                advertised.update(_normalize_uuid(k) for k in ad.service_data)
+                advertised.update(normalize_uuid(k) for k in ad.service_data)
                 if not service_uuid_set.intersection(advertised):
                     return
 
@@ -562,7 +541,7 @@ class MatterBleProxy:
         char_uuid: str = args["characteristic_uuid"]
         handle = conn.handle
 
-        if _normalize_uuid(char_uuid) in conn.subscriptions:
+        if normalize_uuid(char_uuid) in conn.subscriptions:
             await self._send_success(cmd_id)
             return
 
@@ -583,7 +562,7 @@ class MatterBleProxy:
 
         # Track the subscription so `unsubscribe_characteristic` can detect
         # not-subscribed errors locally without leaning on Bleak's exception.
-        conn.subscriptions.add(_normalize_uuid(char_uuid))
+        conn.subscriptions.add(normalize_uuid(char_uuid))
         await self._send_success(cmd_id)
 
     async def _handle_write_and_subscribe(self, cmd_id: int, args: dict[str, Any]) -> None:
@@ -627,7 +606,7 @@ class MatterBleProxy:
 
         conn.last_write_uuid = write_uuid
 
-        if _normalize_uuid(subscribe_uuid) in conn.subscriptions:
+        if normalize_uuid(subscribe_uuid) in conn.subscriptions:
             await self._send_success(cmd_id)
             return
 
@@ -637,7 +616,7 @@ class MatterBleProxy:
             await self._send_error(cmd_id, BleProxyErrorCode.SUBSCRIBE_FAILED, f"start_notify({subscribe_uuid}): {err}")
             return
 
-        conn.subscriptions.add(_normalize_uuid(subscribe_uuid))
+        conn.subscriptions.add(normalize_uuid(subscribe_uuid))
 
         await self._send_success(cmd_id)
 
@@ -647,7 +626,7 @@ class MatterBleProxy:
             await self._send_not_connected(cmd_id, args["connection_handle"])
             return
         char_uuid: str = args["characteristic_uuid"]
-        if _normalize_uuid(char_uuid) not in conn.subscriptions:
+        if normalize_uuid(char_uuid) not in conn.subscriptions:
             await self._send_error(cmd_id, BleProxyErrorCode.NOT_SUBSCRIBED, f"Not subscribed to {char_uuid}")
             return
         try:
@@ -655,7 +634,7 @@ class MatterBleProxy:
         except Exception as err:
             await self._send_error(cmd_id, BleProxyErrorCode.INTERNAL_ERROR, f"stop_notify({char_uuid}): {err}")
             return
-        conn.subscriptions.discard(_normalize_uuid(char_uuid))
+        conn.subscriptions.discard(normalize_uuid(char_uuid))
         await self._send_success(cmd_id)
 
     async def _handle_request_mtu(self, cmd_id: int, args: dict[str, Any]) -> None:
