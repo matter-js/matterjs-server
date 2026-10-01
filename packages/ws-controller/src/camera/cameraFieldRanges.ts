@@ -21,27 +21,29 @@ const TYPE_MAX = new Map<string, number>([
     ["uint32", TlvUInt32.max],
 ]);
 
-function requireCluster(name: string): ClusterModel {
-    const cluster = MatterModel.standard.get(ClusterModel, name);
-    if (cluster === undefined) throw new InternalError(`The Matter model states no ${name} cluster`);
-    return cluster;
+function required<T>(model: T | undefined, what: string): T {
+    if (model === undefined) throw new InternalError(`The Matter model states no ${what}`);
+    return model;
 }
-
-const avsm = requireCluster("CameraAvStreamManagement");
-const webRtcDefinitions = requireCluster("WebRtcTransportDefinitions");
 
 function requireField(parent: ClusterModel | CommandModel | DatatypeModel, name: string): FieldModel {
-    const field = parent.get(FieldModel, name);
-    if (field === undefined) {
-        throw new InternalError(`The Matter model states no ${parent.name}.${name}`);
-    }
-    return field;
+    return required(parent.get(FieldModel, name), `${parent.name}.${name}`);
 }
 
-/**
- * A bound that names another field (`MinFrameRate` is "1 to maxFrameRate") is left to the device.
- * Called at module load, so a model mismatch fails the import, not the first camera command.
- */
+const avsm = required(
+    MatterModel.standard.get(ClusterModel, "CameraAvStreamManagement"),
+    "CameraAvStreamManagement cluster",
+);
+const webRtcDefinitions = required(
+    MatterModel.standard.get(ClusterModel, "WebRtcTransportDefinitions"),
+    "WebRtcTransportDefinitions cluster",
+);
+const webRtcProvider = required(
+    MatterModel.standard.get(ClusterModel, "WebRtcTransportProvider"),
+    "WebRtcTransportProvider cluster",
+);
+
+/** A bound that names another field (`MinFrameRate` is "1 to maxFrameRate") is left to the device. */
 export function fieldRange(field: ValueModel): FieldRange {
     const typeName = field.metabase?.name;
     const typeMax = typeName === undefined ? undefined : TYPE_MAX.get(typeName);
@@ -53,17 +55,11 @@ export function fieldRange(field: ValueModel): FieldRange {
 }
 
 function commandField(command: string, field: string): FieldModel {
-    const model = avsm.get(CommandModel, command);
-    if (model === undefined) {
-        throw new InternalError(`The Matter model states no CameraAvStreamManagement.${command}`);
-    }
-    return requireField(model, field);
+    return requireField(required(avsm.get(CommandModel, command), `CameraAvStreamManagement.${command}`), field);
 }
 
-function requireDatatype(parent: ClusterModel, name: string): DatatypeModel {
-    const datatype = parent.get(DatatypeModel, name);
-    if (datatype === undefined) throw new InternalError(`The Matter model states no ${parent.name}.${name}`);
-    return datatype;
+export function providerCommand(name: string): CommandModel {
+    return required(webRtcProvider.get(CommandModel, name), `WebRtcTransportProvider.${name}`);
 }
 
 function maxOf(field: FieldModel): number {
@@ -82,20 +78,10 @@ function entryMaxOf(field: FieldModel): number {
     return max;
 }
 
-const resolution = requireDatatype(avsm, "VideoResolutionStruct");
-const iceServer = requireDatatype(webRtcDefinitions, "ICEServerStruct");
-// matter.js camelizes the spec's `URLs` to `UrLs`, and the model lookup is by that exact name.
+const resolution = required(avsm.get(DatatypeModel, "VideoResolutionStruct"), "VideoResolutionStruct");
+const iceServer = required(webRtcDefinitions.get(DatatypeModel, "ICEServerStruct"), "ICEServerStruct");
+// matter.js 0.17 names the spec's `URLs` field `UrLs` (fixed in 0.18).
 const iceServerUrls = requireField(iceServer, "UrLs");
-
-const webRtcProvider = requireCluster("WebRtcTransportProvider");
-
-export function providerCommand(name: string): CommandModel {
-    const command = webRtcProvider.get(CommandModel, name);
-    if (command === undefined) {
-        throw new InternalError(`The Matter model states no WebRtcTransportProvider.${name}`);
-    }
-    return command;
-}
 
 const provideOffer = providerCommand("ProvideOffer");
 
