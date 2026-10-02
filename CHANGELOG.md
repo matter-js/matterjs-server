@@ -9,6 +9,7 @@ This page shows a detailed overview of the changes between versions without the 
 
 ## **WORK IN PROGRESS**
 
+- Enhancement: (lboue) Added a command panel for the ServiceArea cluster to the Dashboard
 - Enhancement: Adds CLI flag `--thread-rest-probe-port` (env `THREAD_REST_PROBE_PORT`) to configure the OTBR REST API port probed on discovered Thread Border Routers (default 8081), and raises the per-request REST probe timeout from 1500 ms to 3000 ms for Border Routers with a slow `/diagnostics` endpoint (a Border Router that accepts the connection and then stalls now delays the first diagnostics batch by up to 9 seconds instead of 4.5)
 - Enhancement: Adds CLI flag `--custom-cluster-poll-interval` (env `CUSTOM_CLUSTER_POLL_INTERVAL`) to configure the polling interval for custom cluster attributes without subscription support (legacy Eve Energy devices); defaults to the previous 60 seconds and accepts 60 to 86400 seconds
 - Enhancement: (lboue) Dashboard Endpoints list and endpoint's Clusters panel show each endpoint's resolved label and Descriptor semantic tags (TagList) to simplify identification
