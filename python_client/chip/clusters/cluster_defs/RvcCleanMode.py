@@ -87,12 +87,12 @@ class RvcCleanMode(Cluster):
                     Fields=[
                         ClusterObjectFieldDescriptor(Label="label", Tag=0, Type=str),
                         ClusterObjectFieldDescriptor(Label="mode", Tag=1, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="modeTags", Tag=2, Type=typing.List[RvcCleanMode.Structs.ModeTagStruct]),
+                        ClusterObjectFieldDescriptor(Label="modeTags", Tag=2, Type=typing.List[uint]),
                     ])
 
             label: str = ""
             mode: uint = 0
-            modeTags: typing.List[RvcCleanMode.Structs.ModeTagStruct] = field(default_factory=lambda: [])
+            modeTags: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class ModeTagStruct(ClusterObject):

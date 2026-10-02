@@ -41,13 +41,13 @@
         "test": "matter-test --force-exit"
     },
     "dependencies": {
-        "@matter/thread-br-client": "0.18.0-alpha.0-20260915-4b1bcade1"
+        "@matter/thread-br-client": "0.18.0-alpha.0-20261002-f5ca6a8ad"
     },
     "devDependencies": {
-        "@matter/testing": "0.18.0-alpha.0-20260915-4b1bcade1",
-        "@types/node": "^26.5.1",
-        "@types/ws": "^8.18.1",
-        "ws": "^8.21.3"
+        "@matter/testing": "0.18.0-alpha.0-20261002-f5ca6a8ad",
+        "@types/node": "^26.6.4",
+        "@types/ws": "^8.18.2",
+        "ws": "^8.22.0"
     },
     "engines": {
         "node": ">=22.13.0"

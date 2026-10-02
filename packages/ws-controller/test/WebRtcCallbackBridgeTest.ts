@@ -89,7 +89,7 @@ describe("WebRtcCallbackBridge", () => {
             server.events.offer.emit(session, {
                 webRtcSessionId: session.id,
                 sdp: "v=0\nm=video",
-                iceServers: [{ urLs: ["stun:stun.example:3478"] }],
+                iceServers: [{ urls: ["stun:stun.example:3478"] }],
                 iceTransportPolicy: "all",
             });
         });
