@@ -5,9 +5,21 @@
  */
 
 import { Bytes } from "@matter/main";
-import { GeneralDiagnostics, Thermostat } from "@matter/main/clusters";
+import {
+    GeneralDiagnostics,
+    OccupancySensing,
+    Thermostat,
+    TimeSynchronization,
+    WindowCovering,
+} from "@matter/main/clusters";
+import { AttributeModel, ClusterModel, FieldModel } from "@matter/main/model";
+import { MATTER_EPOCH_OFFSET_US } from "@matter/main/types";
 import { ClusterMap } from "../src/model/ModelMapper.js";
-import { convertWebSocketTagBasedToMatter } from "../src/server/Converters.js";
+import {
+    convertMatterToWebSocketTagBased,
+    convertWebsocketDataToMatter,
+    convertWebSocketTagBasedToMatter,
+} from "../src/server/Converters.js";
 
 describe("convertWebSocketTagBasedToMatter", () => {
     const clusterEntry = ClusterMap[Thermostat.Cluster.id];
@@ -175,5 +187,155 @@ describe("convertWebSocketTagBasedToMatter - legacy propertyName wire-name fallb
 
         const addresses = result[ipv4AddressesMember.propertyName] as Uint8Array[];
         expect(Bytes.toHex(addresses[0])).to.equal("0a000001");
+    });
+});
+
+describe("convertWebsocketDataToMatter", () => {
+    function syntheticBitmap(type: string, children: FieldModel[]) {
+        return new ClusterModel({
+            name: "SyntheticBitmapTest",
+            id: 0xfff1,
+            children: [new AttributeModel({ name: "Flags", id: 0x0000, type, children })],
+        }).attributes.require("Flags");
+    }
+
+    function attributeModel(clusterId: number, attributeName: string) {
+        const clusterEntry = ClusterMap[clusterId];
+        if (clusterEntry === undefined) {
+            throw new Error(`Cluster ${clusterId} missing from ClusterMap`);
+        }
+        const attribute = clusterEntry.attributes[attributeName];
+        if (attribute === undefined) {
+            throw new Error(`Attribute ${attributeName} missing from cluster ${clusterId}`);
+        }
+        return attribute;
+    }
+
+    it("keeps full precision for epoch-us values sent as a decimal string", () => {
+        const utcTime = attributeModel(TimeSynchronization.Cluster.id, "utctime");
+        const unixMicroseconds = 9007199254740993n; // Number.MAX_SAFE_INTEGER + 2
+
+        const result = convertWebsocketDataToMatter(unixMicroseconds.toString(), utcTime);
+
+        expect(result).to.equal(unixMicroseconds + MATTER_EPOCH_OFFSET_US);
+    });
+
+    it("decodes single-bit bitmap members from a numeric string", () => {
+        const occupancy = attributeModel(OccupancySensing.Cluster.id, "occupancy");
+
+        const result = convertWebsocketDataToMatter("1", occupancy) as Record<string, unknown>;
+
+        expect(result.occupied).to.equal(true);
+    });
+
+    it("decodes multi-bit bitmap subfields as numbers", () => {
+        const operationalStatus = attributeModel(WindowCovering.Cluster.id, "operationalstatus");
+
+        // 0b010110: Global (bits 0-1) = 2, Lift (bits 2-3) = 1, Tilt (bits 4-5) = 1
+        const result = convertWebsocketDataToMatter("22", operationalStatus) as Record<string, unknown>;
+
+        expect(result.global).to.equal(2);
+        expect(result.lift).to.equal(1);
+        expect(result.tilt).to.equal(1);
+    });
+
+    it("decodes a multi-bit subfield at the top of a map32 without sign extension", () => {
+        const flags = syntheticBitmap("map32", [new FieldModel({ name: "High", constraint: "30 to 31" })]);
+
+        const result = convertWebsocketDataToMatter("2147483648", flags) as Record<string, unknown>;
+
+        expect(result.high).to.equal(2);
+    });
+
+    it("skips map64 members beyond the 32-bit shift range instead of decoding another bit", () => {
+        const flags = syntheticBitmap("map64", [
+            new FieldModel({ name: "Low", constraint: "0" }),
+            new FieldModel({ name: "Beyond", constraint: "32" }),
+        ]);
+
+        const result = convertWebsocketDataToMatter("1", flags) as Record<string, unknown>;
+
+        expect(result.low).to.equal(true);
+        expect(Object.keys(result)).to.deep.equal(["low"]);
+    });
+
+    it("skips bitmap members that have no bit position", () => {
+        const flags = syntheticBitmap("map8", [
+            new FieldModel({ name: "Positioned", constraint: "0" }),
+            new FieldModel({ name: "Unpositioned" }),
+        ]);
+
+        const result = convertWebsocketDataToMatter("1", flags) as Record<string, unknown>;
+
+        expect(result.positioned).to.equal(true);
+        expect(Object.keys(result)).to.deep.equal(["positioned"]);
+    });
+
+    it("omits bitmap members whose bit is not set", () => {
+        const occupancy = attributeModel(OccupancySensing.Cluster.id, "occupancy");
+
+        const result = convertWebsocketDataToMatter("0", occupancy) as Record<string, unknown>;
+
+        expect(result.occupied).to.equal(undefined);
+    });
+});
+
+describe("convertMatterToWebSocketTagBased - bitmap packing", () => {
+    const clusterEntry = ClusterMap[WindowCovering.Cluster.id];
+    if (clusterEntry === undefined) {
+        throw new Error("WindowCovering cluster missing from ClusterMap");
+    }
+    const operationalStatus = clusterEntry.attributes.operationalstatus;
+    if (operationalStatus === undefined) {
+        throw new Error("WindowCovering OperationalStatus attribute missing from ClusterMap");
+    }
+
+    it("packs multi-bit subfields at their own offsets", () => {
+        const result = convertMatterToWebSocketTagBased(
+            { global: 2, lift: 1, tilt: 1 },
+            operationalStatus,
+            clusterEntry.model,
+        );
+
+        // 0b010110: Global (bits 0-1) = 2, Lift (bits 2-3) = 1, Tilt (bits 4-5) = 1
+        expect(result).to.equal(22);
+    });
+
+    it("packs a boolean supplied for a multi-bit subfield into that subfield's lowest bit", () => {
+        const result = convertMatterToWebSocketTagBased({ lift: true }, operationalStatus, clusterEntry.model);
+
+        expect(result).to.equal(4);
+    });
+
+    it("masks a subfield value that exceeds its width", () => {
+        const result = convertMatterToWebSocketTagBased({ tilt: 7 }, operationalStatus, clusterEntry.model);
+
+        // Tilt occupies bits 4-5, so only the low two bits of 7 survive
+        expect(result).to.equal(0x30);
+    });
+
+    it("packs a member at the top bit of a map32 as an unsigned value", () => {
+        const cluster = new ClusterModel({
+            name: "SyntheticBitmapTest",
+            id: 0xfff1,
+            children: [
+                new AttributeModel({
+                    name: "Flags",
+                    id: 0x0000,
+                    type: "map32",
+                    children: [new FieldModel({ name: "Top", constraint: "31" })],
+                }),
+            ],
+        });
+
+        const result = convertMatterToWebSocketTagBased({ top: true }, cluster.attributes.require("Flags"), cluster);
+
+        expect(result).to.equal(0x80000000);
+    });
+
+    it("round-trips a multi-bit bitmap through both directions", () => {
+        const decoded = convertWebSocketTagBasedToMatter(22, operationalStatus, clusterEntry.model);
+
+        expect(convertMatterToWebSocketTagBased(decoded, operationalStatus, clusterEntry.model)).to.equal(22);
     });
 });
