@@ -103,7 +103,7 @@ describe("WebRtcCallbackBridge", () => {
             fabric_index: session.fabricIndex,
             data: {
                 sdp: "v=0\nm=video",
-                ice_servers: [{ urLs: ["stun:stun.example:3478"] }],
+                ice_servers: [{ urls: ["stun:stun.example:3478"] }],
                 ice_transport_policy: "all",
             },
         });
