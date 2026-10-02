@@ -18,22 +18,14 @@ import {
     OPERATIONAL_ERROR_ATTR,
     OPERATIONAL_STATE_ATTR,
     OPERATIONAL_STATE_LIST_ATTR,
-    RVC_OPERATIONAL_STATE_CLUSTER_ID,
-    RvcOperationalCommand,
-} from "../../../util/rvc-operational-state.js";
+    OPERATIONAL_STATE_VARIANTS,
+    type OperationalStateVariant,
+} from "../../../util/operational-state.js";
 import { BaseClusterCommands } from "../base-cluster-commands.js";
 import { registerClusterCommands } from "../registry.js";
 
-const CLUSTER_ID = RVC_OPERATIONAL_STATE_CLUSTER_ID;
-
-const COMMANDS: ReadonlyArray<{ name: string; label: string; id: RvcOperationalCommand }> = [
-    { name: "Pause", label: "Pause", id: RvcOperationalCommand.Pause },
-    { name: "Resume", label: "Resume", id: RvcOperationalCommand.Resume },
-    { name: "GoHome", label: "Go Home", id: RvcOperationalCommand.GoHome },
-];
-
-@customElement("rvc-operational-state-cluster-commands")
-class RvcOperationalStateClusterCommands extends BaseClusterCommands {
+@customElement("operational-state-cluster-commands")
+class OperationalStateClusterCommands extends BaseClusterCommands {
     @state() private _busy = false;
     @state() private _result?: { commandLabel: string; label: string; isError: boolean; details?: string };
     @state() private _error?: string;
@@ -54,24 +46,26 @@ class RvcOperationalStateClusterCommands extends BaseClusterCommands {
     }
 
     override render() {
+        const variant = OPERATIONAL_STATE_VARIANTS[this.cluster];
+        if (!this.node || variant === undefined) return nothing;
+        const attribute = (attributeId: number) =>
+            this.node.attributes[`${this.endpoint}/${variant.clusterId}/${attributeId}`];
+
         const operationalState = describeOperationalState(
-            this.node?.attributes[`${this.endpoint}/${CLUSTER_ID}/${OPERATIONAL_STATE_ATTR}`],
-            this.node?.attributes[`${this.endpoint}/${CLUSTER_ID}/${OPERATIONAL_STATE_LIST_ATTR}`],
+            variant,
+            attribute(OPERATIONAL_STATE_ATTR),
+            attribute(OPERATIONAL_STATE_LIST_ATTR),
         );
-        const operationalError = decodeOperationalError(
-            this.node?.attributes[`${this.endpoint}/${CLUSTER_ID}/${OPERATIONAL_ERROR_ATTR}`],
-        );
+        const operationalError = decodeOperationalError(variant, attribute(OPERATIONAL_ERROR_ATTR));
 
-        const acceptedCommands = decodeAcceptedCommands(
-            this.node?.attributes[`${this.endpoint}/${CLUSTER_ID}/${ACCEPTED_COMMAND_LIST_ATTR}`],
-        );
-        const commands = COMMANDS.filter(command => acceptedCommands?.has(command.id) ?? true);
+        const acceptedCommands = decodeAcceptedCommands(attribute(ACCEPTED_COMMAND_LIST_ATTR));
+        const commands = variant.commands.filter(command => acceptedCommands?.has(command.id) ?? true);
 
-        const disabled = this._busy || !this.node?.available;
+        const disabled = this._busy || !this.node.available;
 
         return html`
             <details class="command-panel">
-                <summary>RvcOperationalState Commands</summary>
+                <summary>${variant.title} Commands</summary>
                 <div class="command-content">
                     ${this._renderStateInfo(operationalState, operationalError)}
                     <div class="command-row">
@@ -79,7 +73,7 @@ class RvcOperationalStateClusterCommands extends BaseClusterCommands {
                             command =>
                                 html`<md-outlined-button
                                     ?disabled=${disabled}
-                                    @click=${handleAsync(() => this._invoke(command.name, command.label))}
+                                    @click=${handleAsync(() => this._invoke(variant, command.name, command.label))}
                                 >
                                     ${command.label}
                                 </md-outlined-button>`,
@@ -140,7 +134,7 @@ class RvcOperationalStateClusterCommands extends BaseClusterCommands {
         `;
     }
 
-    private async _invoke(command: string, label: string) {
+    private async _invoke(variant: OperationalStateVariant, command: string, label: string) {
         const node = this.node;
         const endpoint = this.endpoint;
         const generation = ++this._invokeGeneration;
@@ -149,9 +143,9 @@ class RvcOperationalStateClusterCommands extends BaseClusterCommands {
         this._error = undefined;
         this._result = undefined;
         try {
-            const response = await this.client.deviceCommand(node.node_id, endpoint, CLUSTER_ID, command, {});
+            const response = await this.client.deviceCommand(node.node_id, endpoint, variant.clusterId, command, {});
             if (!isCurrent()) return;
-            const outcome = decodeOperationalCommandResponse(response);
+            const outcome = decodeOperationalCommandResponse(variant, response);
             this._result = {
                 commandLabel: label,
                 label: outcome.label,
@@ -229,10 +223,12 @@ class RvcOperationalStateClusterCommands extends BaseClusterCommands {
     ];
 }
 
-registerClusterCommands(CLUSTER_ID, "rvc-operational-state-cluster-commands");
+for (const clusterId of Object.keys(OPERATIONAL_STATE_VARIANTS)) {
+    registerClusterCommands(Number(clusterId), "operational-state-cluster-commands");
+}
 
 declare global {
     interface HTMLElementTagNameMap {
-        "rvc-operational-state-cluster-commands": RvcOperationalStateClusterCommands;
+        "operational-state-cluster-commands": OperationalStateClusterCommands;
     }
 }
