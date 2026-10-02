@@ -21,6 +21,8 @@ export {
     categorizeDevices,
     diagnosticNodeId,
     findDiagnosticMeshNodes,
+    findCorroboratingDiagnostics,
+    findDiagnosticRecordByExtAddress,
     findRouteByExtAddress,
     findUnknownDevices,
     getEdgeSignalScore,
@@ -38,11 +40,13 @@ export {
     getThreadRole,
     getThreadVersion,
     getWiFiDiagnostics,
+    isObserverOnline,
     makeDiagnosticRloc16Resolver,
     makePairKey,
     mergeDiagnosticEdges,
     parseNeighborTable,
     parseRouteTable,
+    shouldHideExternalDevice,
     stripMdnsHostname,
 } from "@matter-server/ws-client";
 export type { WiFiDiagnostics } from "@matter-server/ws-client";
