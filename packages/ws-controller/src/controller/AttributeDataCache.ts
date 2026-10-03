@@ -6,6 +6,7 @@
 
 import { ClientNode, ClusterBehavior, Diagnostic, Logger, MatterError, Millis, NodeId, Time } from "@matter/main";
 import { DecodedAttributeReportValue } from "@matter/main/protocol";
+import { EndpointNumber } from "@matter/main/types";
 import { PairedNode } from "@project-chip/matter.js/device";
 import { ClusterMap } from "../model/ModelMapper.js";
 import { buildAttributePath, convertMatterToWebSocketTagBased } from "../server/Converters.js";
@@ -99,6 +100,36 @@ export class AttributeDataCache {
         // A full populate builds into a detached snapshot and swaps it in at the end, so a write
         // landing mid-run would be lost. Record it for replay onto that snapshot.
         inFlight?.pending.push([path, convertedValue]);
+    }
+
+    /**
+     * Drop the attributes of one endpoint, for a node that no longer has it.
+     *
+     * The snapshot a populate is building reads live state, so it cannot contain the endpoint; a
+     * report that arrived for it before it went away still can, so the replay is filtered as well.
+     */
+    deleteEndpoint(nodeId: NodeId, endpointId: EndpointNumber): void {
+        const prefix = `${endpointId}/`;
+        const attributes = this.#cache.get(nodeId);
+        if (attributes !== undefined) {
+            for (const path of Object.keys(attributes)) {
+                if (path.startsWith(prefix)) {
+                    delete attributes[path];
+                }
+            }
+        }
+        const inFlight = this.#inFlight.get(nodeId);
+        if (inFlight !== undefined) {
+            inFlight.pending = inFlight.pending.filter(([path]) => !path.startsWith(prefix));
+        }
+    }
+
+    /**
+     * Await the populate currently running for a node, so a read serves the snapshot the node
+     * reports now instead of the one it reported before the change that started the rebuild.
+     */
+    async settled(nodeId: NodeId): Promise<void> {
+        await this.#inFlight.get(nodeId)?.promise;
     }
 
     /**
