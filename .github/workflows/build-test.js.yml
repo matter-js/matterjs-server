@@ -35,6 +35,7 @@ jobs:
                         - "package-lock.json"
                         - "packages/**"
                         - "docker/**"
+                        - "bun/**"
                         - ".github/workflows/build-test.js.yml"
             - name: Prepare testing environment
               uses: ./.github/actions/prepare-env
@@ -100,6 +101,28 @@ jobs:
                   push: false
                   cache-from: type=gha
                   cache-to: type=gha,mode=max
+
+    docker-build-bun:
+        # Builds the compiled Bun image from the published npm package so a new
+        # matter-server or Bun release that breaks compile-patch.mjs fails here.
+        needs: [check-and-lint]
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v7
+              if: needs.check-and-lint.outputs.docker-changes == 'true' || github.event.pull_request.user.login == 'dependabot[bot]'
+            - name: Build compiled Bun image
+              if: needs.check-and-lint.outputs.docker-changes == 'true' || github.event.pull_request.user.login == 'dependabot[bot]'
+              run: docker build -f bun/Dockerfile -t matter-server-bun:ci .
+            - name: Smoke test /health
+              if: needs.check-and-lint.outputs.docker-changes == 'true' || github.event.pull_request.user.login == 'dependabot[bot]'
+              run: |
+                  docker run -d --name matter-server-bun -p 5580:5580 matter-server-bun:ci
+                  for i in $(seq 1 30); do
+                      if curl -fsS http://localhost:5580/health; then exit 0; fi
+                      sleep 2
+                  done
+                  docker logs matter-server-bun
+                  exit 1
 
     docker-integration-test:
         # Runs the integration suite with the matter-server inside the dev image
