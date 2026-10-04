@@ -1114,7 +1114,7 @@ export class ControllerCommandHandler {
         }
 
         // Build dedup key from validated/converted fields
-        const serializedData = commandData !== undefined ? toBigIntAwareJson(commandData as object) : "";
+        const serializedData = commandData !== undefined ? toBigIntAwareJson(commandData) : "";
         const dedupKey = `${nodeId}:${endpointId}:${clusterId}:${commandName}:${serializedData}`;
 
         // Check for in-flight duplicate
