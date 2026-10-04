@@ -23,11 +23,13 @@ function uniqueMarker(): string {
  * Serialize to JSON with BigInt support: every bigint is written as plain decimal digits, wherever it sits and
  * however large, so a JSON parser that reads integers at full width (the Python client) gets the exact value.
  * Use this for outgoing WebSocket messages and displaying values.
+ * @throws TypeError for a value JSON cannot represent at the top level (`undefined`, a function or a symbol)
  */
 export function toBigIntAwareJson(value: unknown, spaces?: number): string {
     const marker = uniqueMarker();
     let hasBigint = false;
-    const json = JSON.stringify(
+    // JSON.stringify returns undefined for undefined, a function or a symbol, although its type says string.
+    const json: string | undefined = JSON.stringify(
         value,
         (_key, val: unknown) => {
             if (typeof val !== "bigint") return val;
@@ -36,6 +38,9 @@ export function toBigIntAwareJson(value: unknown, spaces?: number): string {
         },
         spaces,
     );
+    if (json === undefined) {
+        throw new TypeError(`Cannot serialize a top-level ${typeof value} to JSON`);
+    }
     return hasBigint ? json.replace(new RegExp(`"${marker}(-?\\d+)"`, "g"), "$1") : json;
 }
 

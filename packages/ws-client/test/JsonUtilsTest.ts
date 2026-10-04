@@ -86,6 +86,13 @@ describe("bigint-aware JSON", () => {
             expect(parseBigIntAwareJson(json)).to.deep.equal(value);
         });
 
+        it("rejects a top-level value JSON cannot represent instead of returning undefined", () => {
+            expect(() => toBigIntAwareJson(undefined)).to.throw(TypeError, "undefined");
+            expect(() => toBigIntAwareJson(() => 1)).to.throw(TypeError, "function");
+            expect(() => toBigIntAwareJson(Symbol("x"))).to.throw(TypeError, "symbol");
+            expect(toBigIntAwareJson({ a: undefined, b: 1n })).to.equal('{"b":1}');
+        });
+
         it("writes a top-level bigint", () => {
             expect(toBigIntAwareJson(18446744073709551615n)).to.equal("18446744073709551615");
         });
