@@ -24,6 +24,7 @@ import {
     WebServerHandler,
     WebSocketControllerHandler,
 } from "@matter-server/ws-controller";
+import { Seconds, Time } from "@matter/main";
 import { Ble } from "@matter/main/protocol";
 import { getCliOptions, getOriginalArgv, type LogLevel as CliLogLevel } from "./cli.js";
 import { controllerOptionsFrom } from "./controller-options.js";
@@ -106,7 +107,7 @@ let legacyData: LegacyData;
 let legacyDataWriter: LegacyDataWriter | undefined;
 let fileLoggerClose: (() => Promise<void>) | undefined;
 let stopping = false;
-const SHUTDOWN_AFTER_START_FAILURE_TIMEOUT_MS = 30_000;
+const SHUTDOWN_AFTER_START_FAILURE_TIMEOUT = Seconds(30);
 let startCompleted: Promise<void> = Promise.resolve();
 
 async function start() {
@@ -312,7 +313,7 @@ startCompleted = start().catch(async err => {
     stopping = true;
     logger.fatal("Server failed to start", err);
     // The process must not outlive a failed start, even if the teardown hangs.
-    setTimeout(() => process.exit(1), SHUTDOWN_AFTER_START_FAILURE_TIMEOUT_MS);
+    Time.getTimer("Shutdown after start failure", SHUTDOWN_AFTER_START_FAILURE_TIMEOUT, () => process.exit(1)).start();
     await shutdown();
     process.exit(1);
 });
