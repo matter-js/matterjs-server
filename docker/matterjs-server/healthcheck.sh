@@ -10,7 +10,7 @@ port="${PORT:-5580}"
 addr=""
 IFS=,
 for entry in ${LISTEN_ADDRESS:-}; do
-    entry=$(printf '%s' "$entry" | tr -d ' \t')
+    entry=$(printf '%s' "$entry" | tr -d '[:space:]')
     if [ -n "$entry" ]; then
         addr="$entry"
         break
