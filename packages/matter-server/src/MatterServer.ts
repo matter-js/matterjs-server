@@ -106,6 +106,7 @@ let legacyData: LegacyData;
 let legacyDataWriter: LegacyDataWriter | undefined;
 let fileLoggerClose: (() => Promise<void>) | undefined;
 let stopping = false;
+const SHUTDOWN_AFTER_START_FAILURE_TIMEOUT_MS = 30_000;
 let startCompleted: Promise<void> = Promise.resolve();
 
 async function start() {
@@ -256,12 +257,13 @@ async function stop() {
 
     // Wait for start() to finish (or fail) before tearing down, so we don't
     // race against in-flight initialization that could re-create resources.
-    try {
-        await startCompleted;
-    } catch {
-        // start() failed - that's fine, we still need to clean up
-    }
+    await startCompleted;
 
+    await shutdown();
+}
+
+/** Open handles (controller, mDNS, runtime workers) keep the process alive until this has run. */
+async function shutdown() {
     try {
         await server?.stop();
     } catch (err) {
@@ -302,11 +304,17 @@ async function stop() {
 }
 
 startCompleted = start().catch(async err => {
-    if (!stopping) {
-        logger.fatal("Server failed to start", err);
-        process.exitCode = 1;
+    if (stopping) {
+        // stop() owns the teardown when it ran first; it continues once this settles.
+        return;
     }
-    await config?.close();
+    // Makes a later SIGINT/SIGTERM return early instead of starting a second teardown.
+    stopping = true;
+    logger.fatal("Server failed to start", err);
+    // The process must not outlive a failed start, even if the teardown hangs.
+    setTimeout(() => process.exit(1), SHUTDOWN_AFTER_START_FAILURE_TIMEOUT_MS);
+    await shutdown();
+    process.exit(1);
 });
 
 process.on("SIGINT", () => void stop().catch(err => console.error(err)));
