@@ -11,6 +11,8 @@ This page shows a detailed overview of the changes between versions without the 
 
 - Enhancement: (cyberb) `--listen-address` (env `LISTEN_ADDRESS`) accepts an absolute unix socket path, so the WebSocket API and dashboard can be served on a local socket, alone or next to TCP addresses; a socket file left behind by an unclean shutdown is replaced on the next start, and the Docker health check queries the socket
 - Enhancement: (cyberb) The Python client connects over a unix socket when given a `unix://<path>` server URL, including OTA image uploads
+- Enhancement: `LISTEN_ADDRESS` accepts a comma-separated list of addresses or interface names, like the repeatable `--listen-address` option
+- Enhancement: (lboue) Added a command panel for the RvcOperationalState cluster to the Dashboard
 - Enhancement: (lboue) Added a command panel for the ServiceArea cluster to the Dashboard
 - Enhancement: Adds CLI flag `--thread-rest-probe-port` (env `THREAD_REST_PROBE_PORT`) to configure the OTBR REST API port probed on discovered Thread Border Routers (default 8081), and raises the per-request REST probe timeout from 1500 ms to 3000 ms for Border Routers with a slow `/diagnostics` endpoint (a Border Router that accepts the connection and then stalls now delays the first diagnostics batch by up to 9 seconds instead of 4.5)
 - Enhancement: Adds CLI flag `--custom-cluster-poll-interval` (env `CUSTOM_CLUSTER_POLL_INTERVAL`) to configure the polling interval for custom cluster attributes without subscription support (legacy Eve Energy devices); defaults to the previous 60 seconds and accepts 60 to 86400 seconds
@@ -25,6 +27,7 @@ This page shows a detailed overview of the changes between versions without the 
 - Enhancement: (lboue) Added a decode and control panel for the EnergyEvse cluster to the Dashboard, including a weekly charging schedule editor
 - Enhancement: (lboue) Allows creating temporary/expiring PIN users (UserType=ExpiringUser) and configuring the lock's ExpiringUserTimeout to the Dashboard DoorLock cluster panel
 - Enhancement: (lboue) Added Presets and Thermostat Suggestions (Thermostat cluster PRES/TSUGGEST features) panels to the Dashboard
+- Fix: The server exits with code 1 when it fails to start (for example when the WebSocket port is in use), so systemd or Docker can restart it; before, it logged the error and kept running without a listener
 - Fix: Door Lock PIN fields (`credentialData`, `pinCode`) are redacted from the debug logs
 - Fix: BLE proxy connections are pinged every 15 seconds and terminated after 45 to 60 seconds of silence, so a proxy client that loses power is detected instead of staying registered indefinitely
 - Fix: (colin-kiegel) Python client ignores a command result whose future is already done, so a result arriving after a disconnect no longer kills the read loop with `InvalidStateError`
