@@ -125,6 +125,14 @@ export function parseTcpPortOption(value: string): number {
     return parsed;
 }
 
+/** Splits a comma-separated LISTEN_ADDRESS value; docker/matterjs-server/healthcheck.sh probes the first entry the same way. */
+export function parseListenAddressList(value: string): string[] {
+    return value
+        .split(",")
+        .map(address => address.trim())
+        .filter(address => address !== "");
+}
+
 function collectAddresses(value: string, previous: string[]): string[] {
     return previous.concat(value);
 }
@@ -178,7 +186,7 @@ export function parseCliArgs(argv?: string[]): CliOptions {
         )
         .option(
             "--listen-address <address>",
-            "IP address to bind WebSocket server (repeatable via CLI, single value via env: LISTEN_ADDRESS)",
+            "IP address or interface name to bind WebSocket server (repeatable via CLI, comma-separated via env: LISTEN_ADDRESS)",
             collectAddresses,
             [],
         )
@@ -329,12 +337,12 @@ export function parseCliArgs(argv?: string[]): CliOptions {
         }
     }
 
-    // Handle listenAddress: CLI provides an array, env var (LISTEN_ADDRESS) provides a single string
     let listenAddress: string[] | null = null;
     if (Array.isArray(opts.listenAddress) && opts.listenAddress.length > 0) {
         listenAddress = opts.listenAddress;
     } else if (process.env.LISTEN_ADDRESS) {
-        listenAddress = [process.env.LISTEN_ADDRESS];
+        const addresses = parseListenAddressList(process.env.LISTEN_ADDRESS);
+        listenAddress = addresses.length > 0 ? addresses : null;
     }
 
     // Substitute {{interface}} patterns with all its IP addresses
@@ -359,6 +367,8 @@ export function parseCliArgs(argv?: string[]): CliOptions {
             }
             return [address];
         });
+        // An interface and one of its own IPs would otherwise bind the same address twice (EADDRINUSE).
+        listenAddress = [...new Set(listenAddress)];
     }
     return {
         vendorId: opts.vendorid,

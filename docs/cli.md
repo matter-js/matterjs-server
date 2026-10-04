@@ -28,7 +28,7 @@ npm run server -- --bluetooth-adapter 0
 | --fabricid                   | integer      | (random)         | No       | Fabric ID for the Fabric (random if not specified)                                                                                                                                                                                                                   |
 | --storage-path               | string       | ~/.matter_server | No       | Storage path to keep persistent data                                                                                                                                                                                                                                 |
 | --port                       | integer      | 5580             | No       | TCP Port for WebSocket server                                                                                                                                                                                                                                        |
-| --listen-address             | string[]     | null (bind all)  | No       | IP address(es) to bind WebSocket server. Repeatable.                                                                                                                                                                                                                 |
+| --listen-address             | string[]     | null (bind all)  | No       | IP address(es) or interface name(s) to bind WebSocket server. Repeatable — env `LISTEN_ADDRESS` (comma-separated).                                                                                                                                                                                                                 |
 | --log-level                  | enum         | "info"           | No       | Global logging level                                                                                                                                                                                                                                                 |
 | --log-file                   | string       | null             | No       | Log file path incl. filename, e.g. `/data/matter-server.log`                                                                                                                                                                                                         |
 | --primary-interface          | string       | null             | No       | Primary network interface for link-local addresses                                                                                                                                                                                                                   |
@@ -118,6 +118,8 @@ and the
 ```bash
 npm run server -- --listen-address 192.168.1.100 --listen-address "::1"
 ```
+
+The `LISTEN_ADDRESS` environment variable takes the same addresses as a comma-separated list (`LISTEN_ADDRESS=192.168.1.100,::1`).
 
 ---
 
