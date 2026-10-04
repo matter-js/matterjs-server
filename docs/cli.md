@@ -127,7 +127,7 @@ A value starting with `/` is a unix socket path (Linux and macOS, at most 107 by
 npm run server -- --listen-address 127.0.0.1 --listen-address /run/matter-server/ws.sock
 ```
 
-The Python client connects with the server URL `unix:///run/matter-server/ws.sock`. Other clients need a WebSocket library with unix socket support, for example the Node.js `ws` package with `ws+unix:///run/matter-server/ws.sock:/ws`. The OTA upload of `@matter-server/ws-client` does not work over a unix socket.
+The Python client connects with the server URL `unix:///run/matter-server/ws.sock`. Other clients need a WebSocket library with unix socket support, for example the Node.js `ws` package with `ws+unix:///run/matter-server/ws.sock:/ws`. The OTA upload of `@matter-server/ws-client` does not work over a unix socket. The BLE proxy endpoint (`--ble-proxy`) is not usable through a unix socket from Home Assistant: it derives the `/ble` URL only from a `ws://…/ws` server URL, and `matter-ble-proxy` connects over TCP. Keep a TCP listen address next to the socket when you need the BLE proxy.
 
 ---
 
