@@ -4,9 +4,9 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { ClientNode, ClusterBehavior, Diagnostic, Logger, MatterError, Millis, NodeId, Time } from "@matter/main";
+import { Behavior, ClusterBehavior, Diagnostic, Logger, MatterError, Millis, NodeId, Time } from "@matter/main";
+import { AttributeList, AttributeModel } from "@matter/main/model";
 import { DecodedAttributeReportValue } from "@matter/main/protocol";
-import { PairedNode } from "@project-chip/matter.js/device";
 import { ClusterMap } from "../model/ModelMapper.js";
 import { buildAttributePath, convertMatterToWebSocketTagBased } from "../server/Converters.js";
 import { AttributesData } from "../types/CommandHandler.js";
@@ -15,13 +15,34 @@ import { formatNodeId } from "../util/formatNodeId.js";
 const logger = Logger.get("AttributeDataCache");
 
 /**
+ * The parts of a `PairedNode` the cache reads.
+ */
+export interface AttributeSourceNode {
+    readonly nodeId: NodeId;
+    readonly initialized: boolean;
+    readonly node: {
+        readonly lifecycle: { readonly isCommissioned: boolean; readonly isReady: boolean };
+        readonly endpoints: Iterable<AttributeSourceEndpoint>;
+    };
+}
+
+export interface AttributeSourceEndpoint {
+    readonly number: number;
+    readonly behaviors: { readonly active: Iterable<Behavior.Type> };
+    stateOf(type: ClusterBehavior.Type): object;
+}
+
+/** A change to one attribute with its converted value; `undefined` records a removal. */
+type AttributeChange = { endpointId: number; clusterId: number; attributeId: number; value: unknown };
+
+/**
  * Tracks an in-flight asynchronous populate so concurrent populate requests collapse onto a single
  * run, and single-attribute updates arriving mid-run are replayed onto the freshly built snapshot.
  */
 type PopulateContext = {
     rerun: boolean;
     cancelled: boolean;
-    pending: Array<[path: string, value: unknown]>;
+    pending: Array<AttributeChange>;
     promise: Promise<void>;
 };
 
@@ -30,7 +51,7 @@ type PopulateContext = {
  *
  * Stores attributes pre-converted to WebSocket tag-based format as flat
  * "endpoint/cluster/attribute" keyed objects for direct retrieval when
- * clients request node data.
+ * clients request node data. Only attributes the cluster's AttributeList reports are stored (see {@link isListed}).
  */
 export class AttributeDataCache {
     #cache = new Map<NodeId, AttributesData>();
@@ -40,7 +61,7 @@ export class AttributeDataCache {
      * Add a node to the cache and populate its attributes.
      * No entry is created if the node is not yet initialized.
      */
-    add(node: PairedNode): Promise<void> {
+    add(node: AttributeSourceNode): Promise<void> {
         return this.#populateFromNode(node, false);
     }
 
@@ -61,17 +82,21 @@ export class AttributeDataCache {
     /**
      * Update (reinitialize) the cache for a node.
      * Creates a fresh cache from the node's current state.
-     * Use this when the node structure may have changed (endpoints added/removed).
+     * Use this when the node structure may have changed (endpoints added/removed, AttributeList changed).
      */
-    update(node: PairedNode): Promise<void> {
+    update(node: AttributeSourceNode): Promise<void> {
         return this.#populateFromNode(node, true);
     }
 
     /**
      * Update a single attribute in the cache.
-     * Use this for incremental updates when an attribute value changes.
+     * Use this for incremental updates when an attribute value changes. An `undefined` value removes the attribute,
+     * which matter.js reports when a new AttributeList drops it.
+     *
+     * @returns whether clients should see the change as an attribute update: `false` for a removal and for an
+     *   attribute the cached AttributeList does not report. Without a snapshot every value counts as visible.
      */
-    updateAttribute(nodeId: NodeId, data: DecodedAttributeReportValue<any>): void {
+    updateAttribute(nodeId: NodeId, data: DecodedAttributeReportValue<any>): boolean {
         const { endpointId, clusterId, attributeId } = data.path;
 
         const clusterData = ClusterMap[clusterId];
@@ -80,25 +105,23 @@ export class AttributeDataCache {
             clusterData?.attributes[attributeId],
             clusterData?.model,
         );
-        if (convertedValue === undefined) {
-            return;
-        }
-        const path = buildAttributePath(endpointId, clusterId, attributeId);
+        const change: AttributeChange = { endpointId, clusterId, attributeId, value: convertedValue };
         const inFlight = this.#inFlight.get(nodeId);
         const attributes = this.#cache.get(nodeId);
+
+        // A full populate builds into a detached snapshot and swaps it in at the end, so a write
+        // landing mid-run would be lost. Record it for replay onto that snapshot.
+        inFlight?.pending.push(change);
 
         // Only patch an existing complete snapshot. Never create an entry from a single attribute:
         // has() must not report a node as cached from a partial write, or ensureNodePopulated /
         // getNodeDetails would serve a truncated snapshot and skip the real populate. With no snapshot
         // yet, the value is captured by the in-flight populate's pending replay, or by the next full
         // populate (which reads live state) when none is running.
-        if (attributes !== undefined) {
-            attributes[path] = convertedValue;
+        if (attributes === undefined) {
+            return convertedValue !== undefined;
         }
-
-        // A full populate builds into a detached snapshot and swaps it in at the end, so a write
-        // landing mid-run would be lost. Record it for replay onto that snapshot.
-        inFlight?.pending.push([path, convertedValue]);
+        return applyChange(attributes, change);
     }
 
     /**
@@ -128,7 +151,7 @@ export class AttributeDataCache {
      * pass redone from a caller that merely awaits completion (a read). Only the former schedules a
      * re-run; reads just await the in-flight promise, so frequent reads can never thrash the populate.
      */
-    #populateFromNode(node: PairedNode, rebuild: boolean): Promise<void> {
+    #populateFromNode(node: AttributeSourceNode, rebuild: boolean): Promise<void> {
         const nodeId = node.nodeId;
         if (!node.initialized || !node.node.lifecycle.isCommissioned || !node.node.lifecycle.isReady) {
             logger.debug(`Node ${formatNodeId(nodeId)} not initialized, skipping cache population`);
@@ -150,7 +173,7 @@ export class AttributeDataCache {
         return context.promise;
     }
 
-    async #runPopulate(node: PairedNode, context: PopulateContext): Promise<void> {
+    async #runPopulate(node: AttributeSourceNode, context: PopulateContext): Promise<void> {
         const nodeId = node.nodeId;
         try {
             let attributeCount = 0;
@@ -172,8 +195,8 @@ export class AttributeDataCache {
                 if (context.rerun) {
                     continue;
                 }
-                for (const [path, value] of context.pending) {
-                    attributes[path] = value;
+                for (const change of context.pending) {
+                    applyChange(attributes, change);
                 }
                 this.#cache.set(nodeId, attributes);
                 attributeCount = Object.keys(attributes).length;
@@ -195,7 +218,11 @@ export class AttributeDataCache {
      * Collect attributes from all endpoints into a flat attribute object, yielding to the event loop
      * between endpoints so a large node does not block other timers, I/O, and WebSocket traffic.
      */
-    async #collectAttributes(node: ClientNode, attributes: AttributesData, context: PopulateContext): Promise<void> {
+    async #collectAttributes(
+        node: AttributeSourceNode["node"],
+        attributes: AttributesData,
+        context: PopulateContext,
+    ): Promise<void> {
         for (const endpoint of node.endpoints) {
             const endpointId = endpoint.number;
 
@@ -208,6 +235,9 @@ export class AttributeDataCache {
                 const clusterState = endpoint.stateOf(behavior) as Record<string, unknown>;
 
                 for (const attribute of cluster.schema.attributes) {
+                    if (!isListed(attribute.id, clusterState.attributeList)) {
+                        continue;
+                    }
                     try {
                         const convertedValue = convertMatterToWebSocketTagBased(
                             clusterState[attribute.propertyName],
@@ -235,4 +265,35 @@ export class AttributeDataCache {
             }
         }
     }
+}
+
+/**
+ * Whether a cluster's AttributeList reports an attribute. Global attributes always count as listed.
+ *
+ * Some devices report an empty AttributeList despite returning attribute data, so only a non-empty list is
+ * authoritative. This matches how matter.js `ClientStructure` derives the peer's attribute set.
+ */
+function isListed(attributeId: number, attributeList: unknown): boolean {
+    if (AttributeModel.globalIds.has(attributeId) || !Array.isArray(attributeList) || !attributeList.length) {
+        return true;
+    }
+    return attributeList.includes(attributeId);
+}
+
+/**
+ * Apply a change to a snapshot, checked against the AttributeList stored in that snapshot.
+ *
+ * @returns whether a visible value was written
+ */
+function applyChange(attributes: AttributesData, { endpointId, clusterId, attributeId, value }: AttributeChange) {
+    const path = buildAttributePath(endpointId, clusterId, attributeId);
+    if (value === undefined) {
+        delete attributes[path];
+        return false;
+    }
+    if (!isListed(attributeId, attributes[buildAttributePath(endpointId, clusterId, AttributeList.id)])) {
+        return false;
+    }
+    attributes[path] = value;
+    return true;
 }
