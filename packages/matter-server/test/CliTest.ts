@@ -7,7 +7,13 @@
 import { Minutes, Seconds } from "@matter/main";
 import { InvalidArgumentError } from "commander";
 import { spawnSync } from "node:child_process";
-import { parseCliArgs, parseCustomClusterPollIntervalOption, parseTcpPortOption } from "../src/cli.js";
+import { networkInterfaces } from "node:os";
+import {
+    parseCliArgs,
+    parseCustomClusterPollIntervalOption,
+    parseListenAddressList,
+    parseTcpPortOption,
+} from "../src/cli.js";
 import { controllerOptionsFrom } from "../src/controller-options.js";
 
 /** Commander skips the first two entries of a parsed argv. */
@@ -19,8 +25,11 @@ describe("cli", () => {
     // parseCliArgs reads the ambient environment, and this repo's documented test command exports env vars.
     let savedEnv: string | undefined;
     let savedProbePortEnv: string | undefined;
+    let savedListenAddressEnv: string | undefined;
 
     before(() => {
+        savedListenAddressEnv = process.env.LISTEN_ADDRESS;
+        delete process.env.LISTEN_ADDRESS;
         savedEnv = process.env.CUSTOM_CLUSTER_POLL_INTERVAL;
         delete process.env.CUSTOM_CLUSTER_POLL_INTERVAL;
         savedProbePortEnv = process.env.THREAD_REST_PROBE_PORT;
@@ -28,6 +37,11 @@ describe("cli", () => {
     });
 
     after(() => {
+        if (savedListenAddressEnv === undefined) {
+            delete process.env.LISTEN_ADDRESS;
+        } else {
+            process.env.LISTEN_ADDRESS = savedListenAddressEnv;
+        }
         if (savedProbePortEnv === undefined) {
             delete process.env.THREAD_REST_PROBE_PORT;
         } else {
@@ -125,6 +139,55 @@ describe("cli", () => {
         it("rejects a value that only starts with digits", () => {
             expect(() => parseTcpPortOption("8080abc")).to.throw(InvalidArgumentError);
             expect(() => parseTcpPortOption("1e4")).to.throw(InvalidArgumentError);
+        });
+    });
+
+    describe("LISTEN_ADDRESS", () => {
+        function withListenAddressEnv(value: string, run: () => void) {
+            process.env.LISTEN_ADDRESS = value;
+            try {
+                run();
+            } finally {
+                delete process.env.LISTEN_ADDRESS;
+            }
+        }
+
+        it("splits a comma-separated list, trimming spaces and dropping empty entries", () => {
+            expect(parseListenAddressList(" 127.0.0.1, ::1 ,,192.168.1.10,")).to.deep.equal([
+                "127.0.0.1",
+                "::1",
+                "192.168.1.10",
+            ]);
+        });
+
+        it("binds every address from the environment", () => {
+            withListenAddressEnv("127.0.0.1,::1", () => {
+                expect(parseCliArgs(argv()).listenAddress).to.deep.equal(["127.0.0.1", "::1"]);
+            });
+        });
+
+        it("binds all interfaces when the environment value holds no address", () => {
+            withListenAddressEnv(" , ", () => {
+                expect(parseCliArgs(argv()).listenAddress).to.equal(null);
+            });
+        });
+
+        it("binds an address listed twice, directly and through its interface, only once", function () {
+            const loopback = Object.entries(networkInterfaces()).find(([, addresses]) =>
+                addresses?.some(address => address.address === "127.0.0.1"),
+            );
+            if (loopback === undefined) this.skip();
+            const [name] = loopback;
+            withListenAddressEnv(`${name},127.0.0.1`, () => {
+                const addresses = parseCliArgs(argv()).listenAddress ?? [];
+                expect(addresses.filter(address => address === "127.0.0.1")).to.have.length(1);
+            });
+        });
+
+        it("lets the CLI option take precedence over the environment", () => {
+            withListenAddressEnv("127.0.0.1,::1", () => {
+                expect(parseCliArgs(argv("--listen-address", "10.0.0.1")).listenAddress).to.deep.equal(["10.0.0.1"]);
+            });
         });
     });
 
