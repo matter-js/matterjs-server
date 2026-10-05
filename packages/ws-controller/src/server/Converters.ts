@@ -9,6 +9,8 @@ import { AttributeId, Bytes, camelize, ClusterId, isObject, Logger } from "@matt
 import { ClusterModel, FieldModel, FieldValue, ValueModel } from "@matter/main/model";
 import { EndpointNumber, MATTER_EPOCH_OFFSET_S, MATTER_EPOCH_OFFSET_US } from "@matter/main/types";
 
+export { parseBigIntAwareJson, toBigIntAwareJson } from "@matter-server/ws-client";
+
 const logger = new Logger("ChipToolWebSocketHandler");
 
 /** Convert stringified numbers in hex and normal style to either number or bigint. */
@@ -18,6 +20,11 @@ export function parseNumber(number: string): number | bigint {
         throw new Error(`Failed to parse number: ${number}`);
     }
     return parsed;
+}
+
+/** Decorator-defined (custom cluster) lists carry no `type`; the metabase identifies them. */
+function isList(model: ValueModel): boolean {
+    return model.type === "list" || model.metabase?.name === "list";
 }
 
 function convertWebSocketGenericToMatter(value: unknown, model: ValueModel, clusterModel: ClusterModel) {
@@ -90,7 +97,7 @@ export function convertWebSocketTagBasedToMatter(
     }
 
     // Handle lists
-    if (Array.isArray(value) && model.type === "list") {
+    if (Array.isArray(value) && isList(model)) {
         const memberModel = model.members.at(0);
         return value.map(v => convertWebSocketTagBasedToMatter(v, memberModel, clusterModel));
     }
@@ -138,7 +145,7 @@ export function convertCommandDataToMatter(
     }
 
     // Handle lists
-    if (Array.isArray(value) && model.type === "list") {
+    if (Array.isArray(value) && isList(model)) {
         const memberModel = model.members.at(0);
         return value.map(v => convertCommandDataToMatter(v, memberModel, clusterModel));
     }
@@ -209,7 +216,7 @@ function classifyModel(model: ValueModel): ConvKind {
     let kind = modelKindCache.get(model);
     if (kind !== undefined) return kind;
 
-    if (model.type === "list") {
+    if (isList(model)) {
         kind = ConvKind.List;
     } else if (model.metabase?.name === "struct") {
         kind = ConvKind.Struct;
@@ -462,153 +469,6 @@ function convertMatterToWebSocket(
     }
 }
 
-/**
- * Serialize to JSON with BigInt support.
- * - BigInt values within safe integer range are converted to numbers
- * - Large BigInt values are output as raw decimal numbers (not quoted strings)
- */
-export function toBigIntAwareJson(object: object, spaces?: number): string {
-    const replacements = new Array<{ from: string; to: string }>();
-    let result = JSON.stringify(
-        object,
-        (_key, value) => {
-            if (typeof value === "bigint") {
-                if (value > Number.MAX_SAFE_INTEGER) {
-                    // Store replacement: quoted hex string -> raw decimal number
-                    replacements.push({ from: `"0x${value.toString(16)}"`, to: value.toString() });
-                    return `0x${value.toString(16)}`;
-                } else {
-                    return Number(value);
-                }
-            }
-            return value;
-        },
-        spaces,
-    );
-    // Large numbers need to be raw (not quoted) in the output, so replace hex placeholders with decimal
-    // This handles both object values and array elements
-    if (replacements.length > 0) {
-        replacements.forEach(({ from, to }) => {
-            result = result.replaceAll(from, to);
-        });
-    }
-
-    return result;
-}
-
-/** Marker prefix for large numbers that need BigInt conversion */
-const BIGINT_MARKER = "__BIGINT__";
-
-/**
- * Parse JSON with BigInt support for large numbers that exceed JavaScript precision.
- * Numbers with 15+ digits that exceed MAX_SAFE_INTEGER are converted to BigInt.
- *
- * This function carefully avoids modifying numbers that appear inside string values.
- */
-export function parseBigIntAwareJson(json: string): unknown {
-    // Pre-process: Replace large numbers (15+ digits) with marked string placeholders
-    // This must happen before JSON.parse to preserve precision
-    // We need to track whether we're inside a string to avoid modifying string contents
-    const result: string[] = [];
-    let i = 0;
-    let inString = false;
-
-    while (i < json.length) {
-        const char = json[i];
-
-        if (inString) {
-            // Inside a string - copy characters as-is until we find the closing quote
-            if (char === "\\") {
-                // Escape sequence - copy both the backslash and the next character
-                result.push(char);
-                i++;
-                if (i < json.length) {
-                    result.push(json[i]);
-                    i++;
-                }
-            } else if (char === '"') {
-                // End of string
-                result.push(char);
-                inString = false;
-                i++;
-            } else {
-                result.push(char);
-                i++;
-            }
-        } else {
-            // Outside a string
-            if (char === '"') {
-                // Start of a string
-                result.push(char);
-                inString = true;
-                i++;
-            } else if (char >= "0" && char <= "9") {
-                // Potential number - extract and check
-                // Check if previous character was a minus sign (for negative numbers)
-                const hasMinus = result.length > 0 && result[result.length - 1] === "-";
-                if (hasMinus) {
-                    result.pop(); // Remove the minus sign, we'll include it in the number
-                }
-
-                // Extract the integer part
-                const start = i;
-                while (i < json.length && json[i] >= "0" && json[i] <= "9") {
-                    i++;
-                }
-
-                // Check for decimal point (fractional number) or exponent
-                let isFloat = false;
-                if (i < json.length && json[i] === ".") {
-                    isFloat = true;
-                    i++; // consume the decimal point
-                    while (i < json.length && json[i] >= "0" && json[i] <= "9") {
-                        i++;
-                    }
-                }
-
-                // Check for exponent (e.g., 1e10, 1E-5)
-                if (i < json.length && (json[i] === "e" || json[i] === "E")) {
-                    isFloat = true;
-                    i++; // consume 'e' or 'E'
-                    if (i < json.length && (json[i] === "+" || json[i] === "-")) {
-                        i++; // consume sign
-                    }
-                    while (i < json.length && json[i] >= "0" && json[i] <= "9") {
-                        i++;
-                    }
-                }
-
-                const numberStr = (hasMinus ? "-" : "") + json.slice(start, i);
-
-                // Only convert integers (not floats) with 15+ digits that exceed safe integer range
-                if (!isFloat && numberStr.length - (hasMinus ? 1 : 0) >= 15) {
-                    const num = BigInt(numberStr);
-                    if (num > Number.MAX_SAFE_INTEGER || num < Number.MIN_SAFE_INTEGER) {
-                        result.push(`"${BIGINT_MARKER}${numberStr}"`);
-                    } else {
-                        result.push(numberStr);
-                    }
-                } else {
-                    result.push(numberStr);
-                }
-            } else {
-                result.push(char);
-                i++;
-            }
-        }
-    }
-
-    const processed = result.join("");
-
-    // Parse with reviver to convert marked strings back to BigInt
-    return JSON.parse(processed, (_key, value) => {
-        if (typeof value === "string" && value.startsWith(BIGINT_MARKER)) {
-            return BigInt(value.slice(BIGINT_MARKER.length));
-        }
-        return value;
-    });
-}
-
 /** Chip JSON-like data strings can contain long numbers that are not supported by JSON.parse */
 function parseChipJSON(json: string) {
     json = json.replace(/: (\d{15,})[,}]/g, (match, number) => {
@@ -631,7 +491,7 @@ export function convertWebsocketDataToMatter(value: any, model: ValueModel): any
         return null;
     }
 
-    if (model.type === "list") {
+    if (isList(model)) {
         if (typeof value === "string") {
             value = parseChipJSON(value);
         }

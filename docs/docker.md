@@ -100,7 +100,7 @@ All CLI options can be configured via environment variables, making it easy to c
 | --------------------- | --------------------------------------------------------------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------- |
 | `STORAGE_PATH`        | Path to store Matter fabric data                                            | `/data`          | Any valid path                                                                                                      |
 | `PORT`                | WebSocket server port                                                       | `5580`           | Any valid port number                                                                                               |
-| `LISTEN_ADDRESS`      | IP address(es) to bind WebSocket server                                     | (all interfaces) | Set a specific IP address to bind to a single address. Using `ifname` expands to all IPs on that interface (v4/v6). |
+| `LISTEN_ADDRESS`      | IP address(es) to bind WebSocket server                                     | (all interfaces) | Comma-separated IP addresses, interface names or unix socket paths, see the note below. |
 | `LOG_LEVEL`           | Server logging verbosity                                                    | `info`           | `critical`, `error`, `warning`, `info`, `debug`, `verbose`                                                          |
 | `LOG_FILE`            | Log file path (must include filename, not just dir)                         | (none)           | e.g. `/data/logs/matter-server.log`                                                                                 |
 | `PRIMARY_INTERFACE`   | Primary network interface for mDNS                                          | (auto-detect)    | e.g., `eth0`, `en0`                                                                                                 |
@@ -123,12 +123,13 @@ All CLI options can be configured via environment variables, making it easy to c
 > keeping up to seven daily backup files (≈ 7 days of history). No further cleanup is performed.
 
 > [!NOTE]
-> The `LISTEN_ADDRESS` environment variable only supports a single address. Use the CLI `--listen-address` option (repeatable) to bind to multiple addresses.
-> The value can either be an ip address or the network interface name (i.e. `192.168.1.10` or `eth0`)
+> `LISTEN_ADDRESS` takes one address or a comma-separated list, the same as repeating the CLI `--listen-address` option.
+> Each value can be an IP address, a network interface name or an absolute unix socket path (e.g. `192.168.1.10,eth0` or `/data/matter-server.sock`).
+> An interface name expands to all IPs on that interface (v4/v6). The `--listen-address` CLI option takes precedence over
+> the environment variable; the two are not combined.
 >
-> When `LISTEN_ADDRESS` is an interface name the built-in container health
-> check cannot resolve it and will mark the container unhealthy — see
-> [Health Check](#health-check) for the workaround.
+> The built-in container health check probes the first entry, so put an IP literal first when you also list an
+> interface name (e.g. `127.0.0.1,eth0`) — see [Health Check](#health-check).
 
 ### Node.js Memory Limit
 
@@ -257,17 +258,17 @@ docker inspect --format='{{.State.Health.Status}}' matterjs-server
 ```
 
 The health check honours `LISTEN_ADDRESS` and `PORT`: it uses the first
-address from `LISTEN_ADDRESS` (or `localhost` when unset) and the configured
-port. IPv6 literals are bracketed automatically.
+non-empty entry of `LISTEN_ADDRESS` (or `localhost` when unset) and the configured
+port. IPv6 literals are bracketed automatically. An absolute path is queried as a
+unix socket, and the port is ignored. It does not see `--listen-address`
+passed on the command line.
 
 > [!NOTE]
 > **Limitation:** The health check cannot resolve interface names. If you set
 > `LISTEN_ADDRESS=eth0` (or another interface name), the server binds to the
 > resolved IPs but the health check still receives `eth0` and fails to
-> connect. To keep the health check working in that case, either set
-> `LISTEN_ADDRESS` to an explicit IP literal, or use the CLI form with the
-> repeatable `--listen-address` flag and include a literal IP that resolves
-> from inside the container (e.g. `--listen-address eth0 --listen-address 127.0.0.1`).
+> connect. To keep the health check working in that case, list an IP literal
+> that is reachable from inside the container first (e.g. `LISTEN_ADDRESS=127.0.0.1,eth0`).
 
 ## Troubleshooting
 

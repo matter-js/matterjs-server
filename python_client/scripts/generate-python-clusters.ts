@@ -354,6 +354,26 @@ interface PythonType {
 }
 
 /**
+ * Type name of a model. Decorator-defined models (custom clusters) carry the type
+ * as an `operationalBase` datatype instead of a `type` string.
+ */
+function typeNameOf(model: ValueModel): string | undefined {
+    const type = (model as any).type as string | undefined;
+    if (type !== undefined) return type;
+    const base = (model as any).operationalBase;
+    if (base?.tag !== "datatype") return undefined;
+    // Only named types with a definition (struct fields, enum members) or known signed ints;
+    // bare bases such as enum8/uint8 keep the metatype-based fallback.
+    if (base.children?.length > 0 || SIGNED_INT_TYPES.has(base.name)) return base.name as string;
+    return undefined;
+}
+
+/** Entry model of a list; decorator-defined lists keep it under `operationalBase`. */
+function listEntryOf(model: ValueModel): ValueModel | undefined {
+    return model.children?.[0] ?? (model as any).operationalBase?.children?.[0];
+}
+
+/**
  * Resolve a Matter.js ValueModel to its Python type, taking into account
  * nullable/optional qualifiers, lists, enums, structs, etc.
  */
@@ -362,7 +382,7 @@ function resolvePythonType(
     clusterName: string,
     knownDatatypes: Map<string, { metatype: string; clusterName: string }>,
 ): PythonType {
-    const type = (model as any).type as string | undefined;
+    const type = typeNameOf(model);
     const metatype = model.effectiveMetatype;
     const isNullable = model.effectiveQuality?.nullable === true;
     const isOptional = !model.effectiveConformance?.isMandatory;
@@ -371,12 +391,12 @@ function resolvePythonType(
 
     if (type === "list" || metatype === "array") {
         // List type - get the entry type
-        const entryModel = model.children?.[0] as ValueModel | undefined;
+        const entryModel = listEntryOf(model);
         let entryType = "uint";
         if (entryModel) {
             // Resolve the base scalar type directly for list entries.
             // CHIP SDK does NOT wrap list element types in Optional/Nullable.
-            const entryScalarType = (entryModel as any).type as string | undefined;
+            const entryScalarType = typeNameOf(entryModel);
             const entryMetatype = entryModel.effectiveMetatype;
             const entryPy = resolveScalarType(entryScalarType, entryMetatype, clusterName, knownDatatypes);
             entryType = entryPy.annotation;
@@ -697,6 +717,31 @@ function resolveClusterChildren(cluster: ClusterModel): {
             }
         }
     }
+
+    // Decorator-defined clusters reference their structs through `operationalBase`
+    // rather than declaring them as cluster children; treat those as local datatypes.
+    const seen = new Set(datatypes.map(d => d.name));
+    const isGlobal = (name: string) => Matter.children.some(c => c.tag === "datatype" && c.name === name);
+    const collect = (models: ValueModel[], skipOwnBase: boolean) => {
+        for (const m of models) {
+            const base = (m as any).operationalBase;
+            if (base?.tag === "datatype" && base.children?.length > 0) {
+                if (skipOwnBase) {
+                    collect(base.children as ValueModel[], false);
+                } else if (!isGlobal(base.name) && !seen.has(base.name)) {
+                    seen.add(base.name);
+                    datatypes.push(base);
+                    collect(base.children as ValueModel[], false);
+                }
+            }
+            const entry = listEntryOf(m);
+            if (entry) collect([entry], false);
+            collect((m.children ?? []) as ValueModel[], false);
+        }
+    };
+    collect(attributes, false);
+    // A command's or event's own base is its payload, not a reusable struct
+    collect([...commands, ...events] as ValueModel[], true);
 
     return { datatypes, commands, attributes, events };
 }
@@ -1376,16 +1421,21 @@ function generateCommand(
     clusterId: number,
     _datatypeRegistry: Map<string, { metatype: string; clusterName: string }>,
     resolveType: (m: ValueModel) => PythonType,
-    _responseCommands: CommandModel[],
+    responseCommands: CommandModel[],
 ): void {
     // Custom cluster commands may have direction=undefined; treat as client request
     const isClient = model.direction !== "response";
     const commandId = model.id ?? 0;
 
-    // Determine response_type
+    // Determine response_type. Decorator-defined commands don't set `response`; the
+    // `response()` modifier names the response command `<request>Response` instead.
     let responseType = "None";
-    if (isClient && model.response && model.response !== "status") {
-        responseType = `'${toChipPythonClassName(model.response, clusterName)}'`;
+    let responseName = model.response;
+    if (isClient && !responseName && responseCommands.some(r => r.name === `${model.name}Response`)) {
+        responseName = `${model.name}Response`;
+    }
+    if (isClient && responseName && responseName !== "status") {
+        responseType = `'${toChipPythonClassName(responseName, clusterName)}'`;
     }
 
     w.line("@dataclass");
