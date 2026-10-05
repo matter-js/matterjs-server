@@ -50,7 +50,7 @@ Orange nodes are inferred from a commissioned node's Thread neighbor table but a
 - A **Border Router** whose Thread radio MAC differs from its MeshCoP border-agent ID, so it can't be matched to a known BR (common with Apple and Aqara).
 - A **stale neighbor entry** for a device that has left. Obvious stale ghosts (all observers offline, or a single-source entry from an otherwise-reachable node) are filtered out automatically.
 
-An **external router** is such a device advertising rx-on-when-idle (mains-powered, so router-capable); an **external device** is one that is not. "Router-capable" is not a confirmed routing role.
+An **external always-on device** is such a device advertising rx-on-when-idle, so it does not sleep between transmissions; an **external device** is one that is not. An always-on device is often a mains-powered Mesh Extender, but a Minimal End Device also keeps its receiver on and cannot route, so the label states receiver behavior, not a routing role or a power source.
 
 A separate **Diagnostic Mesh Node** is inferred from a Border Router's own Route64 / child-table diagnostics rather than a neighbor table; it is likewise not commissioned to this fabric.
 
@@ -59,8 +59,8 @@ A separate **Diagnostic Mesh Node** is inferred from a Border Router's own Route
 Thread nodes commissioned to this fabric carry a small corner badge over the device icon showing their Thread routing role. For the underlying Thread role definitions, see the [OpenThread node roles and types primer](https://openthread.io/guides/thread-primer/node-roles-and-types).
 
 - **Crown (amber)**: Leader — the elected coordinator of the Thread network
-- **Swap arrows (blue)**: Router — forwards traffic for other nodes
-- **Small dot (grey-blue)**: End Device, or REED (Router-Eligible End Device) — a node that currently acts as an end device but can be promoted to a full Router when the mesh needs more routing capacity
+- **Swap arrows (blue)**: Mesh Extender (formerly Router) — forwards traffic for other nodes
+- **Small dot (grey-blue)**: End Device, or Standby Mesh Extender (formerly REED) — a node that currently acts as an end device but the Leader can promote it to an active Mesh Extender when the mesh needs more routing capacity
 - **Zzz / sleep (grey-blue)**: Sleepy End Device — radio off when idle to save battery
 - **No badge**: Role unassigned/unspecified, or an external device whose role can't be queried
 
@@ -73,7 +73,7 @@ Thread Border Routers use the device icon itself to show role:
 Other node icons:
 
 - **WiFi symbol**: WiFi-connected node
-- **Access point (orange)**: external/unknown router-capable device
+- **Access point (orange)**: external/unknown device with an always-on receiver
 - **Question mark (orange)**: external/unknown end device
 
 ### Understanding Connection Lines
@@ -102,9 +102,9 @@ If the lines are missing and most data is also missing when selecting the node, 
 
 When you click on a Thread device, the details panel shows network information:
 
-- **Thread Role**: The device's role in the Thread network (Router, End Device, etc.)
+- **Thread Role**: The device's role in the Thread network (Mesh Extender, End Device, etc.)
 - **Direct neighbors**: Number of devices in the neighbor table (direct RF neighbors)
-- **Routable destinations**: Number of destinations in the route table (routers only)
+- **Routable destinations**: Number of destinations in the route table (Mesh Extenders only)
 
 #### Connection Details
 
@@ -112,7 +112,7 @@ Each connection shows:
 
 - **LQI (Link Quality Indicator)**: higher is better. The Matter spec types this as 0–255, but the OpenThread stack reports 0–3 in practice. Derived from RF signal quality.
 - **RSSI (Received Signal Strength)**: In dBm, closer to 0 is stronger (e.g., -50 dBm is better than -80 dBm).
-- **Bidir (Bidirectional LQI)**: Average of the inbound and outbound LQI from the route table — i.e. the link quality measured in **both directions**. Only available for router connections, which maintain a route table.
+- **Bidir (Bidirectional LQI)**: Average of the inbound and outbound LQI from the route table — i.e. the link quality measured in **both directions**. Only available for Mesh Extender connections, which maintain a route table.
 - **Cost (Path Cost)**: Number of hops to reach the destination. 1 = direct link, higher = multi-hop route.
 
 A connection may also be tagged with a direction hint:
@@ -127,7 +127,7 @@ A connection with neither tag is bidirectional: both nodes see each other.
 Thread devices itself maintain two tables:
 
 1. **Neighbor Table** (0/53/7): Direct RF neighbors visible to the device. All Thread devices have this.
-2. **Route Table** (0/53/8): Routing paths to other nodes. Only routers maintain this table.
+2. **Route Table** (0/53/8): Routing paths to other nodes. Only Mesh Extenders maintain this table.
 
 The visualization combines both tables directly from the devices to provide the most complete picture of your network.
 
@@ -136,7 +136,7 @@ Additionally, if REST-APIs or network credentials are available on the Matter Se
 ### Thread Diagnostics from Border Routers
 
 Beyond what your own commissioned devices report, the dashboard can build a much fuller Thread mesh by
-asking the Thread **Border Routers** directly — including routers and children that aren't on your
+asking the Thread **Border Routers** directly — including Mesh Extenders and children that aren't on your
 Matter fabric. Border Routers are discovered automatically on your LAN; querying their diagnostics
 needs a way into each Thread network:
 
@@ -176,16 +176,16 @@ Devices that appear in neighbor or route tables but are not commissioned to your
 
 - **Devices on a different Matter fabric**: a single Thread network is often shared by several fabrics (e.g. Home Assistant, Apple, Google). Their nodes and Border Routers are RF neighbors of your devices, but we cannot query them.
 - **Non-Matter Thread infrastructure**: Border Routers, range extenders, and other Thread devices (e.g. HomeKit-only Thread devices) that are not Matter devices and can never be commissioned.
-- **A Border Router under an unstable radio MAC**: some vendors (notably Apple and Aqara) randomize their Thread radio MAC at each reboot. The same physical Border Router then shows up twice — once as the known BR (matched via its stable MeshCoP `xa` identifier) and once here as an "External Router" carrying its current radio MAC. After such a reboot the old MAC lingers until neighbor tables age out.
+- **A Border Router under an unstable radio MAC**: some vendors (notably Apple and Aqara) randomize their Thread radio MAC at each reboot. The same physical Border Router then shows up twice — once as the known BR (matched via its stable MeshCoP `xa` identifier) and once here as an "External always-on device" carrying its current radio MAC. After such a reboot the old MAC lingers until neighbor tables age out.
 - **Stale entries**: a neighbor may keep listing a node that has left the network or a battery-powered (sleepy) device it has not heard from recently, until the entry ages out. Use the refresh button to re-read current tables; sometimes a device restart is needed before its tables drop the obsolete entry.
 
-Unknown devices show as "Router (external)" or "End Device (external)" based on their radio behavior (rxOnWhenIdle). Since they're not commissioned to this fabric, we cannot query their actual Thread role (Leader, Router, etc.).
+Unknown devices show as "Always-on device (external)" or "End Device (external)" based on their radio behavior (rxOnWhenIdle). Since they're not commissioned to this fabric, we cannot query their actual Thread role (Leader, Mesh Extender, etc.).
 
 ### Limitations
 
-**Thread roles for external devices**: The Thread role (Leader, Router, End Device) can only be determined for devices commissioned to this fabric. External devices like Home Assistant's Thread Border Router will show as "Router (external)" even if they are the current Thread Leader. This is a fundamental Matter limitation - we cannot query attributes from devices on other fabrics.
+**Thread roles for external devices**: The Thread role (Leader, Mesh Extender, End Device) can only be determined for devices commissioned to this fabric. External devices like Home Assistant's Thread Border Router will show as "Always-on device (external)" even if they are the current Thread Leader. This is a fundamental Matter limitation - we cannot query attributes from devices on other fabrics.
 
-**Leader role is dynamic**: In Thread networks, the Leader role can change via leader election. Any router can potentially become the Leader, so this status may change over time.
+**Leader role is dynamic**: In Thread networks, the Leader role can change via leader election. Any Mesh Extender can potentially become the Leader, so this status may change over time.
 
 ## Developer Mode
 
