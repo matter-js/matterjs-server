@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+export * from "./aqara.js";
 export * from "./draft-electrical-measurement.js";
 export * from "./eve.js";
 export * from "./heiman.js";

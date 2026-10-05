@@ -28,7 +28,7 @@ import {
     buildThreadEdgePairs,
     decodeMeshcopStateBitmap,
     DIAGNOSTIC_MESH_NODE_EXPLANATION,
-    EXTERNAL_ROUTER_CAPABLE_NOTE,
+    EXTERNAL_ALWAYS_ON_NOTE,
     EXTERNAL_THREAD_DEVICE_EXPLANATION,
     findDiagnosticMeshNodes,
     findUnknownDevices,
@@ -425,12 +425,12 @@ export class ThreadGraph extends BaseNetworkGraph {
                     hidden: shouldHide,
                 });
             } else {
-                const baseType = device.isRouter ? "External Router" : "External Device";
+                const baseType = device.isRouter ? "External always-on device" : "External Device";
                 const typeLabel =
                     diagNode?.vendorName !== undefined ? `${baseType} (${diagNode.vendorName})` : baseType;
                 const suffix = device.networkName !== undefined ? `\n${device.networkName}` : "";
                 const title = device.isRouter
-                    ? `${EXTERNAL_THREAD_DEVICE_EXPLANATION} ${EXTERNAL_ROUTER_CAPABLE_NOTE}`
+                    ? `${EXTERNAL_THREAD_DEVICE_EXPLANATION} ${EXTERNAL_ALWAYS_ON_NOTE}`
                     : EXTERNAL_THREAD_DEVICE_EXPLANATION;
                 graphNodes.push({
                     id: device.id,
@@ -499,7 +499,7 @@ export class ThreadGraph extends BaseNetworkGraph {
                 meshNode.childCount > 0
                     ? ` · ${meshNode.childCount} ${meshNode.childCount === 1 ? "child" : "children"}`
                     : "";
-            const label = `${meshNode.vendorName ?? "Router"} [${idTail}]${childSuffix}\n${meshNode.networkName}`;
+            const label = `${meshNode.vendorName ?? "Mesh Extender"} [${idTail}]${childSuffix}\n${meshNode.networkName}`;
             graphNodes.push({
                 id: meshNode.id,
                 label,
