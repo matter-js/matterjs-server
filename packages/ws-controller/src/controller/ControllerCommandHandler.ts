@@ -588,7 +588,7 @@ export class ControllerCommandHandler {
         this.#nodeObservers.set(nodeId, nodeObservers);
 
         nodeObservers.on(node.events.attributeChanged, data => {
-            // Removed and unlisted attributes reach clients via the node_updated that follows matter.js structureChanged.
+            // A removal reaches clients via the node_updated that follows matter.js structureChanged.
             if (!attributeCache.updateAttribute(nodeId, data)) {
                 return;
             }

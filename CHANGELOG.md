@@ -25,7 +25,7 @@ This page shows a detailed overview of the changes between versions without the 
 - Enhancement: (lboue) Added a decode and control panel for the EnergyEvse cluster to the Dashboard, including a weekly charging schedule editor
 - Enhancement: (lboue) Allows creating temporary/expiring PIN users (UserType=ExpiringUser) and configuring the lock's ExpiringUserTimeout to the Dashboard DoorLock cluster panel
 - Enhancement: (lboue) Added Presets and Thermostat Suggestions (Thermostat cluster PRES/TSUGGEST features) panels to the Dashboard
-- Fix: Attributes a device does not list in its AttributeList (for example after a firmware update removed them) are hidden in the Dashboard and Home Assistant, and their removal no longer sends an `attribute_updated` event with a `null` value
+- Fix: An attribute a device removes (for example in a firmware update) is dropped from the node data and no longer sent to clients as an `attribute_updated` event with a `null` value
 - Fix: The server exits with code 1 when it fails to start (for example when the WebSocket port is in use), so systemd or Docker can restart it; before, it logged the error and kept running without a listener
 - Fix: Door Lock PIN fields (`credentialData`, `pinCode`) are redacted from the debug logs
 - Fix: BLE proxy connections are pinged every 15 seconds and terminated after 45 to 60 seconds of silence, so a proxy client that loses power is detected instead of staying registered indefinitely
