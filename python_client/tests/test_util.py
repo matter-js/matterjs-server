@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import pytest
+
 from chip.clusters import Objects as clusters
 from chip.clusters.Types import NullValue
 from chip.tlv import uint
-from matter_server.common.helpers.util import dataclass_to_dict, dataclass_to_tag_dict
+from matter_server.common.helpers.util import dataclass_to_dict, dataclass_to_tag_dict, parse_value
 
 
 def test_dataclass_to_tag_dict_uses_tlv_tags() -> None:
@@ -130,3 +132,41 @@ def test_dataclass_to_dict_still_uses_field_names() -> None:
 
     assert result["presetHandle"] == b"\x01"
     assert result["presetScenario"] == clusters.Thermostat.Enums.PresetScenarioEnum.kOccupied
+
+
+@pytest.mark.parametrize(
+    "cluster_name",
+    [
+        "DeviceEnergyManagementMode",
+        "DishwasherMode",
+        "EnergyEvseMode",
+        "LaundryWasherMode",
+        "OvenMode",
+        "RefrigeratorAndTemperatureControlledCabinetMode",
+        "RvcCleanMode",
+        "RvcRunMode",
+        "WaterHeaterMode",
+    ],
+)
+def test_mode_option_struct_parses_mode_tags(cluster_name: str) -> None:
+    """Derived mode clusters inherit the modeTags list entry type from ModeBase."""
+    cluster = getattr(clusters, cluster_name)
+
+    result = parse_value(
+        "supportedModes",
+        [{"0": "Auto", "1": 0, "2": [{"1": 0}]}],
+        cluster.Attributes.SupportedModes.attribute_type.Type,
+    )
+
+    assert isinstance(result[0].modeTags[0], cluster.Structs.ModeTagStruct)
+    assert result[0].modeTags[0].value == 0
+
+
+def test_rvc_run_mode_tag_value_is_enum() -> None:
+    result = parse_value(
+        "supportedModes",
+        [{"0": "Idle", "1": 0, "2": [{"1": 16384}]}],
+        clusters.RvcRunMode.Attributes.SupportedModes.attribute_type.Type,
+    )
+
+    assert result[0].modeTags[0].value == clusters.RvcRunMode.Enums.ModeTag.kIdle

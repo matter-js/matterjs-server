@@ -371,7 +371,7 @@ function resolvePythonType(
 
     if (type === "list" || metatype === "array") {
         // List type - get the entry type
-        const entryModel = model.children?.[0] as ValueModel | undefined;
+        const entryModel = model.listEntry;
         let entryType = "uint";
         if (entryModel) {
             // Resolve the base scalar type directly for list entries.

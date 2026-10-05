@@ -98,12 +98,12 @@ class OvenMode(Cluster):
                     Fields=[
                         ClusterObjectFieldDescriptor(Label="label", Tag=0, Type=str),
                         ClusterObjectFieldDescriptor(Label="mode", Tag=1, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="modeTags", Tag=2, Type=typing.List[uint]),
+                        ClusterObjectFieldDescriptor(Label="modeTags", Tag=2, Type=typing.List[OvenMode.Structs.ModeTagStruct]),
                     ])
 
             label: str = ""
             mode: uint = 0
-            modeTags: typing.List[uint] = field(default_factory=lambda: [])
+            modeTags: typing.List[OvenMode.Structs.ModeTagStruct] = field(default_factory=lambda: [])
 
         @dataclass
         class ModeTagStruct(ClusterObject):

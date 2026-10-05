@@ -11,6 +11,7 @@ This page shows a detailed overview of the changes between versions without the 
 
 - Enhancement: Update matter.js to the latest 0.18.0 nightly
     - Adds support for Matter 1.6.1
+    - Python client: some cluster names follow the new model, e.g. `ICEServerStruct.urLs` is now `URLs`, `AmbientContextSensing.ObjectCountReached` is now `ObjectCountThresholdReached`, and the `kUnreportableAttribute` and `kNoUpstreamSubscription` status codes are removed
 - Enhancement: (cyberb) `--listen-address` (env `LISTEN_ADDRESS`) accepts an absolute unix socket path, so the WebSocket API and dashboard can be served on a local socket, alone or next to TCP addresses; a socket file left behind by an unclean shutdown is replaced on the next start, and the Docker health check queries the socket
 - Enhancement: (cyberb) The Python client connects over a unix socket when given a `unix://<path>` server URL, including OTA image uploads
 - Enhancement: `LISTEN_ADDRESS` accepts a comma-separated list of addresses or interface names, like the repeatable `--listen-address` option
