@@ -10,52 +10,50 @@
  * that exceed JavaScript's MAX_SAFE_INTEGER (e.g., Matter node IDs, fabric IDs).
  */
 
-/** Marker prefix for large numbers that need BigInt conversion */
-const BIGINT_MARKER = "__BIGINT__";
+/**
+ * A bigint passes through `JSON.stringify` / `JSON.parse` as a string of a marker plus its digits. The marker holds a
+ * fresh random part on every call, so text a device or client sends cannot match it.
+ */
+function uniqueMarker(): string {
+    const random = crypto.getRandomValues(new Uint32Array(2));
+    return `\uE000${random[0].toString(16)}${random[1].toString(16)}:`;
+}
 
 /**
- * Serialize to JSON with BigInt support.
- * - BigInt values within safe integer range are converted to numbers
- * - Large BigInt values are output as raw decimal numbers (not quoted strings)
+ * Serialize to JSON with BigInt support: every bigint is written as plain decimal digits, wherever it sits and
+ * however large, so a JSON parser that reads integers at full width (the Python client) gets the exact value.
  * Use this for outgoing WebSocket messages and displaying values.
+ * @throws TypeError for a value JSON cannot represent at the top level (`undefined`, a function or a symbol)
  */
 export function toBigIntAwareJson(value: unknown, spaces?: number): string {
-    const replacements = new Array<{ from: string; to: string }>();
-    let result = JSON.stringify(
+    const marker = uniqueMarker();
+    let hasBigint = false;
+    // JSON.stringify returns undefined for undefined, a function or a symbol, although its type says string.
+    const json: string | undefined = JSON.stringify(
         value,
-        (_key, val) => {
-            if (typeof val === "bigint") {
-                if (val > Number.MAX_SAFE_INTEGER) {
-                    // Store replacement: quoted hex string -> raw decimal number
-                    replacements.push({ from: `"0x${val.toString(16)}"`, to: val.toString() });
-                    return `0x${val.toString(16)}`;
-                } else {
-                    return Number(val);
-                }
-            }
-            return val;
+        (_key, val: unknown) => {
+            if (typeof val !== "bigint") return val;
+            hasBigint = true;
+            return `${marker}${val}`;
         },
         spaces,
     );
-    // Large numbers need to be raw (not quoted) in the output, so replace hex placeholders with decimal
-    // This handles both object values and array elements
-    if (replacements.length > 0) {
-        replacements.forEach(({ from, to }) => {
-            result = result.replaceAll(from, to);
-        });
+    if (json === undefined) {
+        throw new TypeError(`Cannot serialize a top-level ${typeof value} to JSON`);
     }
-
-    return result;
+    return hasBigint ? json.replace(new RegExp(`"${marker}(-?\\d+)"`, "g"), "$1") : json;
 }
 
 /**
  * Parse JSON with BigInt support for large numbers that exceed JavaScript precision.
- * Numbers with 15+ digits that exceed MAX_SAFE_INTEGER are converted to BigInt.
+ * Integers outside the safe integer range (positive or negative) are converted to BigInt.
  * Use this for incoming WebSocket messages.
  *
  * This function carefully avoids modifying numbers that appear inside string values.
  */
 export function parseBigIntAwareJson(json: string): unknown {
+    const marker = uniqueMarker();
+
     // Pre-process: Replace large numbers (15+ digits) with marked string placeholders
     // This must happen before JSON.parse to preserve precision
     // We need to track whether we're inside a string to avoid modifying string contents
@@ -134,7 +132,7 @@ export function parseBigIntAwareJson(json: string): unknown {
                 if (!isFloat && numberStr.length - (hasMinus ? 1 : 0) >= 15) {
                     const num = BigInt(numberStr);
                     if (num > Number.MAX_SAFE_INTEGER || num < Number.MIN_SAFE_INTEGER) {
-                        result.push(`"${BIGINT_MARKER}${numberStr}"`);
+                        result.push(`"${marker}${numberStr}"`);
                     } else {
                         result.push(numberStr);
                     }
@@ -152,8 +150,8 @@ export function parseBigIntAwareJson(json: string): unknown {
 
     // Parse with reviver to convert marked strings back to BigInt
     return JSON.parse(processed, (_key, value) => {
-        if (typeof value === "string" && value.startsWith(BIGINT_MARKER)) {
-            return BigInt(value.slice(BIGINT_MARKER.length));
+        if (typeof value === "string" && value.startsWith(marker)) {
+            return BigInt(value.slice(marker.length));
         }
         return value;
     });

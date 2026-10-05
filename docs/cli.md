@@ -28,7 +28,7 @@ npm run server -- --bluetooth-adapter 0
 | --fabricid                   | integer      | (random)         | No       | Fabric ID for the Fabric (random if not specified)                                                                                                                                                                                                                   |
 | --storage-path               | string       | ~/.matter_server | No       | Storage path to keep persistent data                                                                                                                                                                                                                                 |
 | --port                       | integer      | 5580             | No       | TCP Port for WebSocket server                                                                                                                                                                                                                                        |
-| --listen-address             | string[]     | null (bind all)  | No       | IP address(es) to bind WebSocket server. Repeatable.                                                                                                                                                                                                                 |
+| --listen-address             | string[]     | null (bind all)  | No       | IP address(es), interface name(s) or absolute unix socket path(s) to bind WebSocket server. Repeatable — env `LISTEN_ADDRESS` (comma-separated).                                                                                                                                                                                                                 |
 | --log-level                  | enum         | "info"           | No       | Global logging level                                                                                                                                                                                                                                                 |
 | --log-file                   | string       | null             | No       | Log file path incl. filename, e.g. `/data/matter-server.log`                                                                                                                                                                                                         |
 | --primary-interface          | string       | null             | No       | Primary network interface for link-local addresses                                                                                                                                                                                                                   |
@@ -118,6 +118,16 @@ and the
 ```bash
 npm run server -- --listen-address 192.168.1.100 --listen-address "::1"
 ```
+
+The `LISTEN_ADDRESS` environment variable takes the same addresses as a comma-separated list (`LISTEN_ADDRESS=192.168.1.100,::1`).
+
+A value starting with `/` is a unix socket path (Linux and macOS, at most 107 bytes on Linux and 103 on macOS). `--port` does not apply to it, and the socket file is created with the process umask, so only users with write permission on it can connect. A socket file left behind by an unclean shutdown is removed on the next start. A socket that still accepts connections, or any other file at that path, makes startup fail.
+
+```bash
+npm run server -- --listen-address 127.0.0.1 --listen-address /run/matter-server/ws.sock
+```
+
+The Python client connects with the server URL `unix:///run/matter-server/ws.sock`. Other clients need a WebSocket library with unix socket support, for example the Node.js `ws` package with `ws+unix:///run/matter-server/ws.sock:/ws`. The OTA upload of `@matter-server/ws-client` does not work over a unix socket. The BLE proxy endpoint (`--ble-proxy`) is not usable through a unix socket from Home Assistant: it derives the `/ble` URL only from a `ws://…/ws` server URL, and `matter-ble-proxy` connects over TCP. Keep a TCP listen address next to the socket when you need the BLE proxy.
 
 ---
 
