@@ -68,6 +68,11 @@ function packBitField(memberValue: boolean | number, field: BitField): number {
     return (width >= 32 ? numeric : numeric & ((1 << width) - 1)) << field.min;
 }
 
+/** Decorator-defined (custom cluster) lists carry no `type`; the metabase identifies them. */
+function isList(model: ValueModel): boolean {
+    return model.type === "list" || model.metabase?.name === "list";
+}
+
 function convertWebSocketGenericToMatter(value: unknown, model: ValueModel, clusterModel: ClusterModel): unknown {
     // Handle bitmaps - convert number to object with boolean flags
     if (typeof value === "number" && model.metabase?.metatype === "bitmap") {
@@ -127,7 +132,7 @@ export function convertWebSocketTagBasedToMatter(
     }
 
     // Handle lists
-    if (Array.isArray(value) && model.type === "list") {
+    if (Array.isArray(value) && isList(model)) {
         const memberModel = model.members.at(0);
         return value.map(v => convertWebSocketTagBasedToMatter(v, memberModel, clusterModel));
     }
@@ -175,7 +180,7 @@ export function convertCommandDataToMatter(
     }
 
     // Handle lists
-    if (Array.isArray(value) && model.type === "list") {
+    if (Array.isArray(value) && isList(model)) {
         const memberModel = model.members.at(0);
         return value.map(v => convertCommandDataToMatter(v, memberModel, clusterModel));
     }
@@ -246,7 +251,7 @@ function classifyModel(model: ValueModel): ConvKind {
     let kind = modelKindCache.get(model);
     if (kind !== undefined) return kind;
 
-    if (model.type === "list") {
+    if (isList(model)) {
         kind = ConvKind.List;
     } else if (model.metabase?.name === "struct") {
         kind = ConvKind.Struct;
@@ -521,7 +526,7 @@ export function convertWebsocketDataToMatter(value: unknown, model: ValueModel):
 
     let data: unknown = value;
 
-    if (model.type === "list") {
+    if (isList(model)) {
         if (typeof data === "string") {
             data = parseChipJSON(data);
         }

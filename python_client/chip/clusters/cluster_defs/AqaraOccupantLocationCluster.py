@@ -1,4 +1,4 @@
-"""ThirdRealityMeteringCluster cluster definition (auto-generated, DO NOT edit)."""
+"""AqaraOccupantLocationCluster cluster definition (auto-generated, DO NOT edit)."""
 
 from __future__ import annotations
 
@@ -15,17 +15,15 @@ from ..Types import Nullable, NullValue
 
 
 @dataclass
-class ThirdRealityMeteringCluster(Cluster):
-    id: typing.ClassVar[int] = 0x130DFC02
+class AqaraOccupantLocationCluster(Cluster):
+    id: typing.ClassVar[int] = 0x115FFC0C
 
     @ChipUtility.classproperty
     def descriptor(cls) -> ClusterObjectDescriptor:
         return ClusterObjectDescriptor(
             Fields=[
-                ClusterObjectFieldDescriptor(Label="currentSummationDelivered", Tag=0x00000000, Type=typing.Optional[uint]),
-                ClusterObjectFieldDescriptor(Label="multiplier", Tag=0x00000301, Type=typing.Optional[uint]),
-                ClusterObjectFieldDescriptor(Label="divisor", Tag=0x00000302, Type=typing.Optional[uint]),
-                ClusterObjectFieldDescriptor(Label="instantaneousDemand", Tag=0x00000400, Type=typing.Optional[int]),
+                ClusterObjectFieldDescriptor(Label="maxDetectionTargets", Tag=0x00000000, Type=typing.Optional[uint]),
+                ClusterObjectFieldDescriptor(Label="activityState", Tag=0x00000007, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="generatedCommandList", Tag=0x0000FFF8, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="acceptedCommandList", Tag=0x0000FFF9, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="attributeList", Tag=0x0000FFFB, Type=typing.List[uint]),
@@ -33,22 +31,81 @@ class ThirdRealityMeteringCluster(Cluster):
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    currentSummationDelivered: typing.Optional[uint] = None
-    multiplier: typing.Optional[uint] = None
-    divisor: typing.Optional[uint] = None
-    instantaneousDemand: typing.Optional[int] = None
+    maxDetectionTargets: typing.Optional[uint] = None
+    activityState: typing.Optional[uint] = None
     generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])
     acceptedCommandList: typing.List[uint] = field(default_factory=lambda: [])
     attributeList: typing.List[uint] = field(default_factory=lambda: [])
     featureMap: uint = 0
     clusterRevision: uint = 0
 
+    class Structs:
+        @dataclass
+        class AqaraTargetStruct(ClusterObject):
+            @ChipUtility.classproperty
+            def descriptor(cls) -> ClusterObjectDescriptor:
+                return ClusterObjectDescriptor(
+                    Fields=[
+                        ClusterObjectFieldDescriptor(Label="targetID", Tag=0, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="x", Tag=1, Type=int),
+                        ClusterObjectFieldDescriptor(Label="y", Tag=2, Type=int),
+                        ClusterObjectFieldDescriptor(Label="cell", Tag=3, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="activityState", Tag=4, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="fallState", Tag=5, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="postureState", Tag=6, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="zoneID", Tag=7, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="inZoneID", Tag=8, Type=typing.Optional[uint]),
+                    ])
+
+            targetID: uint = 0
+            x: int = 0
+            y: int = 0
+            cell: uint = 0
+            activityState: uint = 0
+            fallState: uint = 0
+            postureState: uint = 0
+            zoneID: uint = 0
+            inZoneID: typing.Optional[uint] = None
+
+    class Commands:
+        @dataclass
+        class SubscribeLocationData(ClusterCommand):
+            cluster_id: typing.ClassVar[int] = 0x115FFC0C
+            command_id: typing.ClassVar[int] = 0x00000000
+            is_client: typing.ClassVar[bool] = True
+            response_type: typing.ClassVar[typing.Optional[str]] = None
+
+            @ChipUtility.classproperty
+            def descriptor(cls) -> ClusterObjectDescriptor:
+                return ClusterObjectDescriptor(
+                    Fields=[
+                        ClusterObjectFieldDescriptor(Label="timeout", Tag=0, Type=uint),
+                    ])
+
+            timeout: uint = 0
+
+        @dataclass
+        class RemoveDetectionTarget(ClusterCommand):
+            cluster_id: typing.ClassVar[int] = 0x115FFC0C
+            command_id: typing.ClassVar[int] = 0x00000001
+            is_client: typing.ClassVar[bool] = True
+            response_type: typing.ClassVar[typing.Optional[str]] = None
+
+            @ChipUtility.classproperty
+            def descriptor(cls) -> ClusterObjectDescriptor:
+                return ClusterObjectDescriptor(
+                    Fields=[
+                        ClusterObjectFieldDescriptor(Label="targetID", Tag=0, Type=uint),
+                    ])
+
+            targetID: uint = 0
+
     class Attributes:
         @dataclass
-        class CurrentSummationDelivered(ClusterAttributeDescriptor):
+        class MaxDetectionTargets(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
-                return 0x130DFC02
+                return 0x115FFC0C
 
             @ChipUtility.classproperty
             def attribute_id(cls) -> int:
@@ -61,58 +118,26 @@ class ThirdRealityMeteringCluster(Cluster):
             value: typing.Optional[uint] = None
 
         @dataclass
-        class Multiplier(ClusterAttributeDescriptor):
+        class ActivityState(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
-                return 0x130DFC02
+                return 0x115FFC0C
 
             @ChipUtility.classproperty
             def attribute_id(cls) -> int:
-                return 0x00000301
+                return 0x00000007
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
             value: typing.Optional[uint] = None
-
-        @dataclass
-        class Divisor(ClusterAttributeDescriptor):
-            @ChipUtility.classproperty
-            def cluster_id(cls) -> int:
-                return 0x130DFC02
-
-            @ChipUtility.classproperty
-            def attribute_id(cls) -> int:
-                return 0x00000302
-
-            @ChipUtility.classproperty
-            def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
-
-            value: typing.Optional[uint] = None
-
-        @dataclass
-        class InstantaneousDemand(ClusterAttributeDescriptor):
-            @ChipUtility.classproperty
-            def cluster_id(cls) -> int:
-                return 0x130DFC02
-
-            @ChipUtility.classproperty
-            def attribute_id(cls) -> int:
-                return 0x00000400
-
-            @ChipUtility.classproperty
-            def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[int])
-
-            value: typing.Optional[int] = None
 
         @dataclass
         class GeneratedCommandList(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
-                return 0x130DFC02
+                return 0x115FFC0C
 
             @ChipUtility.classproperty
             def attribute_id(cls) -> int:
@@ -128,7 +153,7 @@ class ThirdRealityMeteringCluster(Cluster):
         class AcceptedCommandList(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
-                return 0x130DFC02
+                return 0x115FFC0C
 
             @ChipUtility.classproperty
             def attribute_id(cls) -> int:
@@ -144,7 +169,7 @@ class ThirdRealityMeteringCluster(Cluster):
         class AttributeList(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
-                return 0x130DFC02
+                return 0x115FFC0C
 
             @ChipUtility.classproperty
             def attribute_id(cls) -> int:
@@ -160,7 +185,7 @@ class ThirdRealityMeteringCluster(Cluster):
         class FeatureMap(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
-                return 0x130DFC02
+                return 0x115FFC0C
 
             @ChipUtility.classproperty
             def attribute_id(cls) -> int:
@@ -176,7 +201,7 @@ class ThirdRealityMeteringCluster(Cluster):
         class ClusterRevision(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
-                return 0x130DFC02
+                return 0x115FFC0C
 
             @ChipUtility.classproperty
             def attribute_id(cls) -> int:
@@ -187,3 +212,23 @@ class ThirdRealityMeteringCluster(Cluster):
                 return ClusterObjectFieldDescriptor(Type=uint)
 
             value: uint = 0
+
+    class Events:
+        @dataclass
+        class LocationInfo(ClusterEvent):
+            @ChipUtility.classproperty
+            def cluster_id(cls) -> int:
+                return 0x115FFC0C
+
+            @ChipUtility.classproperty
+            def event_id(cls) -> int:
+                return 0x00000000
+
+            @ChipUtility.classproperty
+            def descriptor(cls) -> ClusterObjectDescriptor:
+                return ClusterObjectDescriptor(
+                    Fields=[
+                        ClusterObjectFieldDescriptor(Label="targets", Tag=0, Type=typing.List[AqaraOccupantLocationCluster.Structs.AqaraTargetStruct]),
+                    ])
+
+            targets: typing.List[AqaraOccupantLocationCluster.Structs.AqaraTargetStruct] = field(default_factory=lambda: [])
