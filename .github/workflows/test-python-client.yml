@@ -31,6 +31,8 @@ jobs:
             python-client:
               - "python_client/**"
               - "packages/ws-client/test/MockMatterServer.ts"
+              - "packages/ws-client/src/json-utils.ts"
+              - "packages/ws-client/test/fixtures/**"
               - "packages/matter-server/test/**"
               - "packages/**/package.json"
               - ".github/workflows/test-python-client.yml"
