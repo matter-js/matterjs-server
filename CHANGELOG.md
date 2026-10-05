@@ -9,6 +9,8 @@ This page shows a detailed overview of the changes between versions without the 
 
 ## **WORK IN PROGRESS**
 
+- Enhancement: (cyberb) `--listen-address` (env `LISTEN_ADDRESS`) accepts an absolute unix socket path, so the WebSocket API and dashboard can be served on a local socket, alone or next to TCP addresses; a socket file left behind by an unclean shutdown is replaced on the next start, and the Docker health check queries the socket
+- Enhancement: (cyberb) The Python client connects over a unix socket when given a `unix://<path>` server URL, including OTA image uploads
 - Enhancement: `LISTEN_ADDRESS` accepts a comma-separated list of addresses or interface names, like the repeatable `--listen-address` option
 - Enhancement: (lboue) Added a command panel for the RvcOperationalState cluster to the Dashboard
 - Enhancement: (lboue) Added a command panel for the ServiceArea cluster to the Dashboard
@@ -26,6 +28,7 @@ This page shows a detailed overview of the changes between versions without the 
 - Enhancement: (lboue) Allows creating temporary/expiring PIN users (UserType=ExpiringUser) and configuring the lock's ExpiringUserTimeout to the Dashboard DoorLock cluster panel
 - Enhancement: (lboue) Added Presets and Thermostat Suggestions (Thermostat cluster PRES/TSUGGEST features) panels to the Dashboard
 - Fix: An attribute a device removes (for example in a firmware update) is dropped from the node data and no longer sent to clients as an `attribute_updated` event with a `null` value
+- Fix: Large negative 64-bit values keep their precision in WebSocket messages, and a text value starting with `__BIGINT__` is no longer turned into a number or rejected; the server and the ws-client share one bigint-aware JSON implementation
 - Fix: The server exits with code 1 when it fails to start (for example when the WebSocket port is in use), so systemd or Docker can restart it; before, it logged the error and kept running without a listener
 - Fix: Door Lock PIN fields (`credentialData`, `pinCode`) are redacted from the debug logs
 - Fix: BLE proxy connections are pinged every 15 seconds and terminated after 45 to 60 seconds of silence, so a proxy client that loses power is detected instead of staying registered indefinitely

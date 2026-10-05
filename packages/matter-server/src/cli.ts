@@ -186,7 +186,7 @@ export function parseCliArgs(argv?: string[]): CliOptions {
         )
         .option(
             "--listen-address <address>",
-            "IP address or interface name to bind WebSocket server (repeatable via CLI, comma-separated via env: LISTEN_ADDRESS)",
+            "IP address, interface name or absolute unix socket path to bind WebSocket server (repeatable via CLI, comma-separated via env: LISTEN_ADDRESS)",
             collectAddresses,
             [],
         )

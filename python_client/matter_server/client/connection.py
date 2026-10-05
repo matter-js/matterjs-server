@@ -8,7 +8,13 @@ import pprint
 from typing import Final, cast
 from urllib.parse import urlparse, urlunparse
 
-from aiohttp import ClientSession, ClientWebSocketResponse, WSMsgType, client_exceptions
+from aiohttp import (
+    ClientSession,
+    ClientWebSocketResponse,
+    UnixConnector,
+    WSMsgType,
+    client_exceptions,
+)
 
 from matter_server.common.const import SCHEMA_VERSION
 from matter_server.common.helpers.json import json_dumps, json_loads
@@ -36,6 +42,9 @@ from .exceptions import (
 LOGGER = logging.getLogger(f"{__package__}.connection")
 VERBOSE_LOGGER = os.environ.get("MATTER_VERBOSE_LOGGING")
 SUB_WILDCARD: Final = "*"
+UNIX_PREFIX: Final = "unix://"
+# The host is ignored on a unix socket connection; only the path is routed by the server.
+UNIX_WS_URL: Final = "ws://localhost/ws"
 
 
 class MatterClientConnection:
@@ -52,6 +61,12 @@ class MatterClientConnection:
         self.server_info: ServerInfoMessage | None = None
         self._aiohttp_session = aiohttp_session
         self._ws_client: ClientWebSocketResponse | None = None
+        self._unix_socket_path = (
+            ws_server_url[len(UNIX_PREFIX) :]
+            if ws_server_url.startswith(UNIX_PREFIX)
+            else None
+        )
+        self._unix_session: ClientSession | None = None
 
     @property
     def connected(self) -> bool:
@@ -65,9 +80,20 @@ class MatterClientConnection:
             raise InvalidState(msg)
 
         LOGGER.debug("Trying to connect")
+        if self._unix_socket_path is not None:
+            self._unix_session = ClientSession(
+                connector=UnixConnector(path=self._unix_socket_path)
+            )
         try:
-            self._ws_client = await self._aiohttp_session.ws_connect(
-                self.ws_server_url,
+            await self._connect()
+        except BaseException:
+            await self.disconnect()
+            raise
+
+    async def _connect(self) -> None:
+        try:
+            self._ws_client = await self._session().ws_connect(
+                self._transport_url(),
                 heartbeat=55,
                 compress=15,
                 max_msg_size=0,
@@ -84,7 +110,6 @@ class MatterClientConnection:
 
         if info.schema_version < SCHEMA_VERSION:
             # The client schema is too new, the server can't handle it yet
-            await self._ws_client.close()
             raise ServerVersionTooOld(
                 f"Matter schema version is incompatible: {SCHEMA_VERSION}, "
                 f"the server supports at most {info.schema_version} "
@@ -93,7 +118,6 @@ class MatterClientConnection:
 
         if info.min_supported_schema_version > SCHEMA_VERSION:
             # The client schema version is too low and can't be handled by the server anymore
-            await self._ws_client.close()
             raise ServerVersionTooNew(
                 f"Matter schema version is incompatible: {SCHEMA_VERSION}, "
                 f"the server requires at least {info.min_supported_schema_version} "
@@ -108,9 +132,21 @@ class MatterClientConnection:
             info.sdk_version,
         )
 
+    def _session(self) -> ClientSession:
+        """Return the session to talk to the server; for a unix socket it only exists while connected."""
+        if self._unix_socket_path is None:
+            return self._aiohttp_session
+        if self._unix_session is None:
+            raise NotConnected
+        return self._unix_session
+
+    def _transport_url(self) -> str:
+        """Return the WebSocket URL to request on the session from _session()."""
+        return UNIX_WS_URL if self._unix_socket_path is not None else self.ws_server_url
+
     def ota_upload_url(self, upload_id: str) -> str:
         """Return the HTTP URL that takes the bytes for a reserved OTA upload id."""
-        parsed = urlparse(self.ws_server_url)
+        parsed = urlparse(self._transport_url())
         scheme = "https" if parsed.scheme == "wss" else "http"
         path = parsed.path.removesuffix("/ws")
         return urlunparse(
@@ -128,7 +164,7 @@ class MatterClientConnection:
         url = self.ota_upload_url(upload_id)
         LOGGER.debug("Uploading %s bytes of OTA image to %s", len(data), url)
         try:
-            async with self._aiohttp_session.post(
+            async with self._session().post(
                 url, data=data, headers={"Content-Type": "application/octet-stream"}
             ) as response:
                 try:
@@ -142,9 +178,15 @@ class MatterClientConnection:
     async def disconnect(self) -> None:
         """Disconnect the client."""
         LOGGER.debug("Closing client connection")
-        if self._ws_client is not None and not self._ws_client.closed:
-            await self._ws_client.close()
-        self._ws_client = None
+        # Detach first: a cancel while closing must not leave a half-closed connection behind.
+        ws_client, self._ws_client = self._ws_client, None
+        unix_session, self._unix_session = self._unix_session, None
+        try:
+            if ws_client is not None and not ws_client.closed:
+                await ws_client.close()
+        finally:
+            if unix_session is not None:
+                await unix_session.close()
 
     async def receive_message_or_raise(self) -> MessageType:
         """Receive (raw) message or raise."""
