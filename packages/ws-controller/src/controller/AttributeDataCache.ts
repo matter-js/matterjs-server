@@ -4,8 +4,18 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Behavior, ClusterBehavior, Diagnostic, Logger, MatterError, Millis, NodeId, Time } from "@matter/main";
-import { AttributeList, AttributeModel } from "@matter/main/model";
+import {
+    AttributeId,
+    Behavior,
+    ClusterBehavior,
+    Diagnostic,
+    Logger,
+    MatterError,
+    Millis,
+    NodeId,
+    Time,
+} from "@matter/main";
+import { AttributeList } from "@matter/main/model";
 import { DecodedAttributeReportValue } from "@matter/main/protocol";
 import { ClusterMap } from "../model/ModelMapper.js";
 import { buildAttributePath, convertMatterToWebSocketTagBased } from "../server/Converters.js";
@@ -274,7 +284,7 @@ export class AttributeDataCache {
  * authoritative. This matches how matter.js `ClientStructure` derives the peer's attribute set.
  */
 function isListed(attributeId: number, attributeList: unknown): boolean {
-    if (AttributeModel.globalIds.has(attributeId) || !Array.isArray(attributeList) || !attributeList.length) {
+    if (AttributeId.isGlobal(attributeId) || !Array.isArray(attributeList) || !attributeList.length) {
         return true;
     }
     return attributeList.includes(attributeId);

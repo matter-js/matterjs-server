@@ -127,6 +127,14 @@ describe("AttributeDataCache", () => {
             expect(cache.get(NODE_ID)![path(ON_OFF_TRANSITION_TIME)]).to.equal(3);
         });
 
+        it("stores a global attribute the AttributeList does not contain", async () => {
+            const cache = new AttributeDataCache();
+            await cache.add(nodeWithLevelControl({ currentLevel: 5, attributeList: [CURRENT_LEVEL, ATTRIBUTE_LIST] }));
+
+            expect(cache.updateAttribute(NODE_ID, report(0xf000, 1))).to.equal(true);
+            expect(cache.get(NODE_ID)![path(0xf000)]).to.equal(1);
+        });
+
         it("does not create a cache entry without a snapshot", () => {
             const cache = new AttributeDataCache();
 
