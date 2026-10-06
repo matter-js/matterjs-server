@@ -35,6 +35,7 @@ import "./clusters/device-energy-management-commands.js";
 import "./clusters/door-lock-commands.js";
 import "./clusters/energy-evse-commands.js";
 import "./clusters/icd-management-commands.js";
+import "./clusters/ikea-valve-calibration-commands.js";
 import "./clusters/level-control-commands.js";
 import "./clusters/media-playback-commands.js";
 import "./clusters/meter-identification-commands.js";

@@ -18640,6 +18640,70 @@ export const clusters: Record<number, ClusterDescription> = {
         },
         "features": {}
     },
+    "293403649": {
+        "id": 293403649,
+        "label": "IkeaValveCalibrationCluster",
+        "attributes": {
+            "0": {
+                "id": 0,
+                "cluster_id": 293403649,
+                "label": "CalibrationStatus",
+                "type": "Optional[unknown]",
+                "writable": false
+            },
+            "1": {
+                "id": 1,
+                "cluster_id": 293403649,
+                "label": "LastCalibrationError",
+                "type": "Optional[unknown]",
+                "writable": false
+            },
+            "65528": {
+                "id": 65528,
+                "cluster_id": 293403649,
+                "label": "GeneratedCommandList",
+                "type": "List[command-id]",
+                "writable": false
+            },
+            "65529": {
+                "id": 65529,
+                "cluster_id": 293403649,
+                "label": "AcceptedCommandList",
+                "type": "List[command-id]",
+                "writable": false
+            },
+            "65531": {
+                "id": 65531,
+                "cluster_id": 293403649,
+                "label": "AttributeList",
+                "type": "List[attrib-id]",
+                "writable": false
+            },
+            "65532": {
+                "id": 65532,
+                "cluster_id": 293403649,
+                "label": "FeatureMap",
+                "type": "map32",
+                "writable": false
+            },
+            "65533": {
+                "id": 65533,
+                "cluster_id": 293403649,
+                "label": "ClusterRevision",
+                "type": "uint16",
+                "writable": false
+            }
+        },
+        "commands": {
+            "0": {
+                "id": 0,
+                "cluster_id": 293403649,
+                "name": "triggerCalibration",
+                "label": "Trigger Calibration"
+            }
+        },
+        "features": {}
+    },
     "302775297": {
         "id": 302775297,
         "label": "HeimanCluster",

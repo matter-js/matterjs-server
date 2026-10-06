@@ -6,6 +6,7 @@ from chip.clusters.cluster_defs.AqaraRadarSensingUnionCluster import AqaraRadarS
 from chip.clusters.cluster_defs.DraftElectricalMeasurementCluster import DraftElectricalMeasurementCluster
 from chip.clusters.cluster_defs.EveCluster import EveCluster
 from chip.clusters.cluster_defs.HeimanCluster import HeimanCluster
+from chip.clusters.cluster_defs.IkeaValveCalibrationCluster import IkeaValveCalibrationCluster
 from chip.clusters.cluster_defs.InovelliCluster import InovelliCluster
 from chip.clusters.cluster_defs.NeoCluster import NeoCluster
 from chip.clusters.cluster_defs.TclDehumidifierCluster import TclDehumidifierCluster
@@ -19,6 +20,7 @@ ALL_CUSTOM_CLUSTERS: dict = {
     DraftElectricalMeasurementCluster.id: DraftElectricalMeasurementCluster,
     EveCluster.id: EveCluster,
     HeimanCluster.id: HeimanCluster,
+    IkeaValveCalibrationCluster.id: IkeaValveCalibrationCluster,
     InovelliCluster.id: InovelliCluster,
     NeoCluster.id: NeoCluster,
     TclDehumidifierCluster.id: TclDehumidifierCluster,
@@ -34,6 +36,7 @@ __all__ = [
     "DraftElectricalMeasurementCluster",
     "EveCluster",
     "HeimanCluster",
+    "IkeaValveCalibrationCluster",
     "InovelliCluster",
     "NeoCluster",
     "TclDehumidifierCluster",

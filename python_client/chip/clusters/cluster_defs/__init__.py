@@ -65,6 +65,7 @@ from .HeimanCluster import HeimanCluster
 from .HepaFilterMonitoring import HepaFilterMonitoring
 from .IcdManagement import IcdManagement
 from .Identify import Identify
+from .IkeaValveCalibrationCluster import IkeaValveCalibrationCluster
 from .IlluminanceMeasurement import IlluminanceMeasurement
 from .InovelliCluster import InovelliCluster
 from .JointFabricAdministrator import JointFabricAdministrator
@@ -215,6 +216,7 @@ __all__ = [
     "HepaFilterMonitoring",
     "IcdManagement",
     "Identify",
+    "IkeaValveCalibrationCluster",
     "IlluminanceMeasurement",
     "InovelliCluster",
     "JointFabricAdministrator",
