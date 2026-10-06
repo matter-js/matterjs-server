@@ -9,7 +9,7 @@ This page shows a detailed overview of the changes between versions without the 
 
 ## **WORK IN PROGRESS**
 
-- Enhancement: Adds the IKEA thermostat ValveCalibration vendor cluster (0x117cfc01) to the custom cluster definitions and the Python client, and a Dashboard panel that shows the calibration status and last error and starts a calibration
+- Enhancement: Adds the IKEA thermostat ValveCalibration vendor cluster (0x117cfc01) to the custom cluster and a Dashboard panel
 - Enhancement: Dashboard network view uses the Thread 1.4 role names: a Thread Router is shown as "Mesh Extender" and a REED as "Standby Mesh Extender". External (non-fabric) neighbors, whose role is only inferred from rx-on-when-idle, are now labeled "Always-on device" instead of a routing role. Wire values and the `ThreadRoutingRole` enum keep the Matter spec names
 - Enhancement: (@cyberb) `--listen-address` (env `LISTEN_ADDRESS`) accepts an absolute unix socket path, so the WebSocket API and dashboard can be served on a local socket, alone or next to TCP addresses; a socket file left behind by an unclean shutdown is replaced on the next start, and the Docker health check queries the socket
 - Enhancement: (@cyberb) The Python client connects over a unix socket when given a `unix://<path>` server URL, including OTA image uploads
