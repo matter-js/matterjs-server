@@ -143,7 +143,7 @@ await nestedAggregator.add(BridgedTemperatureSensor, {
     },
 });
 
-// Bridges exist that do not tag the children of a nested aggregator as bridged nodes
+// Malformed, but seen in the field: children of a nested aggregator without the Bridged Node device type
 await nestedAggregator.add(OnOffLightDevice, { id: "nested-untagged-light", number: 10 });
 await nestedAggregator.add(OnOffLightDevice, { id: "nested-untagged-light-2", number: 11 });
 

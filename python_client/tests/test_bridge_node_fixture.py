@@ -62,7 +62,7 @@ def test_the_bridge_reports_a_full_family_parts_list() -> None:
     ]
     assert node.get_attribute_value(_COMPOSED_SENSOR, 29, 3) == [5, 6]
     assert sorted(node.get_attribute_value(_NESTED_AGGREGATOR, 29, 3)) == [8, 9, 10, 11]
-    # the nested aggregator bridges a device that does not report the Bridged Node device type
+    # the nested aggregator holds endpoints that do not report the Bridged Node device type
     untagged_types = {
         device_type.deviceType
         for device_type in node.get_attribute_value(_NESTED_UNTAGGED_LIGHT, 29, 0)
@@ -80,8 +80,6 @@ def test_every_endpoint_resolves_to_the_device_it_belongs_to() -> None:
         _NESTED_AGGREGATOR: _PRIMARY_AGGREGATOR,
         _NESTED_LIGHT: _NESTED_AGGREGATOR,
         _NESTED_SENSOR: _NESTED_AGGREGATOR,
-        _NESTED_UNTAGGED_LIGHT: _NESTED_AGGREGATOR,
-        _NESTED_UNTAGGED_LIGHT_2: _NESTED_AGGREGATOR,
         _SECONDARY_LIGHT: _SECONDARY_AGGREGATOR,
     }
     expected_compose_parents = {
@@ -111,9 +109,8 @@ def test_every_endpoint_resolves_to_the_device_it_belongs_to() -> None:
     assert node.get_bridge_child_ids(_NESTED_AGGREGATOR) == (
         _NESTED_LIGHT,
         _NESTED_SENSOR,
-        _NESTED_UNTAGGED_LIGHT,
-        _NESTED_UNTAGGED_LIGHT_2,
     )
+    assert node.get_compose_child_ids(_NESTED_AGGREGATOR) == ()
     assert node.get_compose_child_ids(_COMPOSED_SENSOR) == (
         _COMPOSED_TEMPERATURE,
         _COMPOSED_HUMIDITY,
@@ -137,8 +134,6 @@ def test_bridged_and_composed_flags_follow_the_device_structure() -> None:
         _NESTED_AGGREGATOR,
         _NESTED_LIGHT,
         _NESTED_SENSOR,
-        _NESTED_UNTAGGED_LIGHT,
-        _NESTED_UNTAGGED_LIGHT_2,
         _SECONDARY_LIGHT,
     }
     assert composed == {_COMPOSED_TEMPERATURE, _COMPOSED_HUMIDITY}
@@ -151,9 +146,8 @@ def test_bridged_and_composed_flags_follow_the_device_structure() -> None:
 def test_device_info_names_the_device_an_endpoint_belongs_to() -> None:
     """Device info comes from the bridged device, and its parts share it.
 
-    The two endpoints the bridge does not describe get no info at all: the Aggregator above them
-    is a different device, and handing out its info would give both the same name and serial
-    number.
+    The two untagged lights below the nested Aggregator are no devices of the bridge and stand
+    alone, so they report the info of the node.
     """
     node = _bridge_node()
 
@@ -173,8 +167,54 @@ def test_device_info_names_the_device_an_endpoint_belongs_to() -> None:
         _NESTED_AGGREGATOR: "Nested Aggregator",
         _NESTED_LIGHT: "Nested Light",
         _NESTED_SENSOR: "Nested Sensor",
-        _NESTED_UNTAGGED_LIGHT: None,
-        _NESTED_UNTAGGED_LIGHT_2: None,
+        _NESTED_UNTAGGED_LIGHT: "Test Bridge",
+        _NESTED_UNTAGGED_LIGHT_2: "Test Bridge",
         _SECONDARY_AGGREGATOR: "Test Bridge",
         _SECONDARY_LIGHT: "Secondary Light",
     }
+
+
+def test_every_endpoint_has_device_info() -> None:
+    """Home Assistant reads `device_info.nodeLabel` of every endpoint without a None check."""
+    node = _bridge_node()
+
+    missing = [
+        endpoint_id
+        for endpoint_id, endpoint in node.endpoints.items()
+        if endpoint.device_info is None
+    ]
+
+    assert missing == []
+
+
+_NESTED_FIXTURE = Path(__file__).parent / "fixtures" / "nested_aggregator_node.json"
+
+
+def test_an_aggregator_inside_an_aggregator_bridges_its_tagged_children() -> None:
+    """Spec-conform nesting: Aggregator 1 holds light 4, 5 and Aggregator 2, which holds light 3.
+
+    The fixture is synthetic: built by hand in the spec-conform nested-Aggregator shape, not
+    captured from a real device.
+    """
+    node = MatterNode(dataclass_from_dict(MatterNodeData, json.loads(_NESTED_FIXTURE.read_text())))
+
+    assert node.is_bridge_device
+    assert node.get_bridge_parent(3) is node.endpoints[2]
+    assert node.get_bridge_parent(4) is node.endpoints[1]
+    assert node.get_bridge_parent(5) is node.endpoints[1]
+    # an Aggregator that is no Bridged Node stands alone, also below another Aggregator
+    assert node.get_bridge_parent(2) is None
+    assert node.get_compose_parent(2) is None
+    assert node.get_bridge_parent(1) is None
+    assert all(node.get_compose_parent(endpoint_id) is None for endpoint_id in node.endpoints)
+
+    labels = {
+        endpoint_id: getattr(node.endpoints[endpoint_id].device_info, "nodeLabel", None)
+        for endpoint_id in (3, 4, 5)
+    }
+    assert labels == {3: "Inner Light", 4: "Outer Light A", 5: "Outer Light B"}
+    for endpoint_id in (3, 4, 5):
+        info = node.endpoints[endpoint_id].device_info
+        assert info is not None
+        assert info.productName == labels[endpoint_id]
+    assert node.endpoints[2].device_info is node.device_info

@@ -1432,7 +1432,7 @@ describe("Integration Test", function () {
             expect(deviceTypesOf(bridgeNode, 8)).to.deep.equal([ON_OFF_LIGHT_DEVICE_TYPE, BRIDGED_NODE_DEVICE_TYPE]);
         });
 
-        it("reports bridged devices that carry no Bridged Node device type", function () {
+        it("reports Aggregator children that carry no Bridged Node device type", function () {
             expect(deviceTypesOf(bridgeNode, 10)).to.deep.equal([ON_OFF_LIGHT_DEVICE_TYPE]);
             expect(deviceTypesOf(bridgeNode, 11)).to.deep.equal([ON_OFF_LIGHT_DEVICE_TYPE]);
         });

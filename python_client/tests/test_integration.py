@@ -1335,10 +1335,9 @@ class TestBridgeTopology:
             self.NESTED_AGGREGATOR: self.PRIMARY_AGGREGATOR,
             self.NESTED_LIGHT: self.NESTED_AGGREGATOR,
             self.NESTED_SENSOR: self.NESTED_AGGREGATOR,
-            self.NESTED_UNTAGGED_LIGHT: self.NESTED_AGGREGATOR,
-            self.NESTED_UNTAGGED_LIGHT_2: self.NESTED_AGGREGATOR,
             self.SECONDARY_LIGHT: self.SECONDARY_AGGREGATOR,
         }
+        # children of an Aggregator without the Bridged Node device type stay standalone
         assert compose_parents == {
             self.COMPOSED_TEMPERATURE: self.COMPOSED_SENSOR,
             self.COMPOSED_HUMIDITY: self.COMPOSED_SENSOR,
@@ -1346,12 +1345,11 @@ class TestBridgeTopology:
         assert node.get_bridge_child_ids(self.NESTED_AGGREGATOR) == (
             self.NESTED_LIGHT,
             self.NESTED_SENSOR,
-            self.NESTED_UNTAGGED_LIGHT,
-            self.NESTED_UNTAGGED_LIGHT_2,
         )
+        assert node.get_compose_child_ids(self.NESTED_AGGREGATOR) == ()
 
     async def test_66_bridge_device_info(self, env):
-        """Each bridged device keeps its own info; the ones without info get none."""
+        """Each bridged device keeps its own info; untagged Aggregator children use the node info."""
         _require_state(env, "bridge_node_id")
         client: MatterTestClient = env["client"]
         node = client.get_node(env["bridge_node_id"])
@@ -1367,9 +1365,8 @@ class TestBridgeTopology:
         # parts of a composed bridged device share its info
         assert label(self.COMPOSED_TEMPERATURE) == "Composed Sensor"
         assert label(self.COMPOSED_HUMIDITY) == "Composed Sensor"
-        # the bridge does not describe these two, so they have no info of their own
-        assert label(self.NESTED_UNTAGGED_LIGHT) is None
-        assert label(self.NESTED_UNTAGGED_LIGHT_2) is None
+        assert label(self.NESTED_UNTAGGED_LIGHT) == "Test Bridge"
+        assert label(self.NESTED_UNTAGGED_LIGHT_2) == "Test Bridge"
         # an endpoint of the bridge itself falls back to the node
         assert label(self.LOCAL_LIGHT) == "Test Bridge"
 
@@ -1435,7 +1432,7 @@ class TestBridgeTopology:
         assert info.nodeLabel == "Runtime Light"
 
     async def test_69_endpoint_removed_at_runtime(self, env):
-        """An endpoint the bridge removes leaves the node model and its bridge relation."""
+        """An endpoint the bridge removes leaves the node model; its sibling stays."""
         _require_state(env, "bridge_node_id")
         client: MatterTestClient = env["client"]
         node_id = env["bridge_node_id"]
@@ -1451,12 +1448,8 @@ class TestBridgeTopology:
 
         node = client.get_node(node_id)
         assert self.NESTED_UNTAGGED_LIGHT_2 not in node.endpoints
-        assert self.NESTED_UNTAGGED_LIGHT_2 not in node.get_bridge_child_ids(
-            self.NESTED_AGGREGATOR
-        )
-        assert node.get_bridge_parent(self.NESTED_UNTAGGED_LIGHT) is node.endpoints[
-            self.NESTED_AGGREGATOR
-        ]
+        assert self.NESTED_UNTAGGED_LIGHT in node.endpoints
+        assert node.get_compose_parent(self.NESTED_UNTAGGED_LIGHT) is None
 
     async def test_70_remove_bridge(self, env):
         """Remove the bridge node again so the suite leaves no node behind."""

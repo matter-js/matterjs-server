@@ -932,6 +932,14 @@ class MatterClient:
             node_id = msg.data["node_id"]
             endpoint_id = msg.data["endpoint_id"]
             self.logger.debug("Endpoint added: %s/%s", node_id, endpoint_id)
+            # subscribers look the endpoint up; the node snapshot that carries it reaches them later
+            if (node := self._nodes.get(node_id)) is None or endpoint_id not in node.endpoints:
+                self.logger.debug(
+                    "Not signalling endpoint %s/%s that the node model does not contain",
+                    node_id,
+                    endpoint_id,
+                )
+                return
         if msg.event == EventType.NODE_EVENT:
             if self.logger.isEnabledFor(logging.DEBUG):
                 self.logger.debug(

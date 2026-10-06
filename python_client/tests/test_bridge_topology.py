@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import logging
 from typing import TYPE_CHECKING
+from unittest.mock import MagicMock
 
+from matter_server.client import MatterClient
 from matter_server.client.models import device_types
 from matter_server.client.models.node import MatterEndpoint, MatterNode
 from matter_server.common.helpers.util import dataclass_from_dict
-from matter_server.common.models import MatterNodeData
+from matter_server.common.models import EventMessage, EventType, MatterNodeData
 
 if TYPE_CHECKING:
     import pytest
@@ -24,6 +26,7 @@ _AGGREGATOR = 14
 _BRIDGED_NODE = 19
 _ON_OFF_LIGHT = 256
 _TEMPERATURE_SENSOR = 770
+_VENDOR_SPECIFIC = 0xFFF10001
 
 # BasicInformation (40) / BridgedDeviceBasicInformation (57) NodeLabel attribute
 _NODE_LABEL = 5
@@ -71,14 +74,80 @@ def _node_with_endpoints(
     return MatterNode(_node_data(attributes))
 
 
-def test_nested_aggregator_children_resolve_bridge_parent() -> None:
-    """A device nested under an Aggregator resolves get_bridge_parent().
+def _client_with(node: MatterNode) -> MatterClient:
+    """Return a client that holds the node, to announce removals the way the server does."""
+    client = MatterClient("ws://localhost:5580/ws", MagicMock())
+    client._nodes[node.node_id] = node
+    return client
 
-    Matterbridge's demo devices expose exactly this topology: an Aggregator
-    endpoint that is itself a bridged device (Aggregator + BridgedNode on the
-    same endpoint), with its own further bridged children that carry no
-    BridgedNode of their own. The root Aggregator lists the whole family, so
-    the nested children appear in both partsLists.
+
+def _announce_removal(client: MatterClient, endpoint_id: int) -> None:
+    client._handle_event_message(
+        EventMessage(event=EventType.ENDPOINT_REMOVED, data={"node_id": 1, "endpoint_id": endpoint_id})
+    )
+
+
+def test_nested_aggregator_children_resolve_bridge_parent() -> None:
+    """A Bridged Node below a nested Aggregator resolves get_bridge_parent() to it.
+
+    The root Aggregator lists the whole family, so the nested children appear in both
+    partsLists and resolve to the closest one.
+    """
+    node = _node_with_endpoints(
+        {
+            0: {
+                _DEVICE_TYPE_LIST: [{"0": _ROOT_NODE, "1": 1}],
+                _PARTS_LIST: [1, 100, 101, 102],
+            },
+            1: {
+                _DEVICE_TYPE_LIST: [{"0": _AGGREGATOR, "1": 1}],
+                _PARTS_LIST: [100, 101, 102],
+            },
+            100: {
+                _DEVICE_TYPE_LIST: [
+                    {"0": _AGGREGATOR, "1": 1},
+                    {"0": _BRIDGED_NODE, "1": 1},
+                ],
+                _PARTS_LIST: [101, 102],
+            },
+            101: {
+                _DEVICE_TYPE_LIST: [
+                    {"0": _ON_OFF_LIGHT, "1": 1},
+                    {"0": _BRIDGED_NODE, "1": 1},
+                ]
+            },
+            102: {
+                _DEVICE_TYPE_LIST: [
+                    {"0": _ON_OFF_LIGHT, "1": 1},
+                    {"0": _BRIDGED_NODE, "1": 1},
+                ]
+            },
+        }
+    )
+
+    aggregator = node.endpoints[100]
+
+    assert aggregator.is_bridged_device
+    assert node.get_bridge_parent(100) is node.endpoints[1]
+
+    for child_id in (101, 102):
+        child = node.endpoints[child_id]
+        assert child.is_bridged_device
+        assert node.get_bridge_parent(child_id) is aggregator
+        # the children are independent devices, not sub-parts of the aggregator
+        assert node.get_compose_parent(child_id) is None
+        assert not child.is_composed_device
+
+    assert node.get_bridge_child_ids(100) == (101, 102)
+    assert node.get_bridge_child_ids(1) == (100,)
+
+
+def test_untagged_children_of_a_bridged_aggregator_stand_alone() -> None:
+    """An Aggregator child without the Bridged Node device type is no device of the bridge.
+
+    Matterbridge's demo devices expose this topology. Composing the children under the bridged
+    Aggregator would change the device ids derived from the compose parent, so they stay
+    standalone and report the info of the node.
     """
     node = _node_with_endpoints(
         {
@@ -99,24 +168,63 @@ def test_nested_aggregator_children_resolve_bridge_parent() -> None:
             },
             101: {_DEVICE_TYPE_LIST: [{"0": _ON_OFF_LIGHT, "1": 1}]},
             102: {_DEVICE_TYPE_LIST: [{"0": _ON_OFF_LIGHT, "1": 1}]},
-        }
+        },
+        {
+            f"0/40/{_NODE_LABEL}": "the bridge itself",
+            f"100/57/{_NODE_LABEL}": "nested aggregator",
+        },
     )
-
-    aggregator = node.endpoints[100]
-
-    assert aggregator.is_bridged_device
-    assert node.get_bridge_parent(100) is node.endpoints[1]
 
     for child_id in (101, 102):
         child = node.endpoints[child_id]
-        assert child.is_bridged_device
-        assert node.get_bridge_parent(child_id) is aggregator
-        # the children are independent devices, not sub-parts of the aggregator
-        assert node.get_compose_parent(child_id) is None
+        assert not child.is_bridged_device
         assert not child.is_composed_device
+        assert node.get_bridge_parent(child_id) is None
+        assert node.get_compose_parent(child_id) is None
+        assert _node_label(child) == "the bridge itself"
 
-    assert node.get_bridge_child_ids(100) == (101, 102)
-    assert node.get_bridge_child_ids(1) == (100,)
+    assert node.get_bridge_child_ids(100) == ()
+    assert node.get_compose_child_ids(100) == ()
+
+
+def test_untagged_children_of_a_top_level_aggregator_stand_alone() -> None:
+    """Below an Aggregator that is no Bridged Node, an untagged child is no part of it."""
+    node = _node_with_endpoints(
+        {
+            0: {_DEVICE_TYPE_LIST: [{"0": _ROOT_NODE, "1": 1}], _PARTS_LIST: [1, 100]},
+            1: {
+                _DEVICE_TYPE_LIST: [{"0": _AGGREGATOR, "1": 1}],
+                _PARTS_LIST: [100],
+            },
+            100: {_DEVICE_TYPE_LIST: [{"0": _ON_OFF_LIGHT, "1": 1}]},
+        },
+        {f"0/40/{_NODE_LABEL}": "the bridge itself"},
+    )
+
+    assert node.get_bridge_parent(100) is None
+    assert node.get_compose_parent(100) is None
+    assert not node.endpoints[100].is_bridged_device
+    assert not node.endpoints[100].is_composed_device
+    assert node.get_compose_child_ids(1) == ()
+    assert _node_label(node.endpoints[100]) == "the bridge itself"
+
+
+def test_a_parent_of_a_device_type_unknown_to_the_client_composes_its_parts() -> None:
+    """A vendor-specific or newer device type is still a device its parts belong to."""
+    node = _node_with_endpoints(
+        {
+            0: {_DEVICE_TYPE_LIST: [{"0": _ROOT_NODE, "1": 1}], _PARTS_LIST: [1, 2]},
+            1: {
+                _DEVICE_TYPE_LIST: [{"0": _VENDOR_SPECIFIC, "1": 1}],
+                _PARTS_LIST: [2],
+            },
+            2: {_DEVICE_TYPE_LIST: [{"0": _TEMPERATURE_SENSOR, "1": 1}]},
+        }
+    )
+
+    assert node.endpoints[1].device_types == set()
+    assert node.get_compose_parent(2) is node.endpoints[1]
+    assert node.get_compose_child_ids(1) == (2,)
 
 
 def test_nested_aggregator_resolves_independent_of_endpoint_numbering() -> None:
@@ -143,8 +251,8 @@ def test_nested_aggregator_resolves_independent_of_endpoint_numbering() -> None:
                 _DEVICE_TYPE_LIST: [{"0": _AGGREGATOR, "1": 1}],
                 _PARTS_LIST: [20, 21, 22],
             },
-            21: {_DEVICE_TYPE_LIST: [{"0": _ON_OFF_LIGHT, "1": 1}]},
-            22: {_DEVICE_TYPE_LIST: [{"0": _ON_OFF_LIGHT, "1": 1}]},
+            21: {_DEVICE_TYPE_LIST: [{"0": _ON_OFF_LIGHT, "1": 1}, {"0": _BRIDGED_NODE, "1": 1}]},
+            22: {_DEVICE_TYPE_LIST: [{"0": _ON_OFF_LIGHT, "1": 1}, {"0": _BRIDGED_NODE, "1": 1}]},
         }
     )
 
@@ -308,11 +416,11 @@ def test_cyclic_parts_list_keeps_the_relations_a_tree() -> None:
         {
             0: {_DEVICE_TYPE_LIST: [{"0": _ROOT_NODE, "1": 1}], _PARTS_LIST: [1, 2]},
             1: {
-                _DEVICE_TYPE_LIST: [{"0": _AGGREGATOR, "1": 1}],
+                _DEVICE_TYPE_LIST: [{"0": _AGGREGATOR, "1": 1}, {"0": _BRIDGED_NODE, "1": 1}],
                 _PARTS_LIST: [2],
             },
             2: {
-                _DEVICE_TYPE_LIST: [{"0": _AGGREGATOR, "1": 1}],
+                _DEVICE_TYPE_LIST: [{"0": _AGGREGATOR, "1": 1}, {"0": _BRIDGED_NODE, "1": 1}],
                 _PARTS_LIST: [1],
             },
         }
@@ -366,17 +474,18 @@ def test_removing_an_endpoint_drops_the_devices_it_bridged() -> None:
                 _DEVICE_TYPE_LIST: [{"0": _AGGREGATOR, "1": 1}],
                 _PARTS_LIST: [100],
             },
-            100: {_DEVICE_TYPE_LIST: [{"0": _ON_OFF_LIGHT, "1": 1}]},
+            100: {_DEVICE_TYPE_LIST: [{"0": _ON_OFF_LIGHT, "1": 1}, {"0": _BRIDGED_NODE, "1": 1}]},
         }
     )
 
     assert node.endpoints[100].is_bridged_device
 
-    node._remove_endpoint(1)
+    _announce_removal(_client_with(node), 1)
 
     assert node.get_bridge_child_ids(1) == ()
     assert node.get_bridge_parent(100) is None
-    assert not node.endpoints[100].is_bridged_device
+    # the device type still marks it as a bridged device, only the Aggregator above it is gone
+    assert node.endpoints[100].is_bridged_device
 
 
 def test_update_resolves_against_the_new_topology() -> None:
@@ -388,7 +497,7 @@ def test_update_resolves_against_the_new_topology() -> None:
                 _DEVICE_TYPE_LIST: [{"0": _AGGREGATOR, "1": 1}],
                 _PARTS_LIST: [100],
             },
-            100: {_DEVICE_TYPE_LIST: [{"0": _ON_OFF_LIGHT, "1": 1}]},
+            100: {_DEVICE_TYPE_LIST: [{"0": _ON_OFF_LIGHT, "1": 1}, {"0": _BRIDGED_NODE, "1": 1}]},
         }
     )
 
@@ -506,8 +615,8 @@ def test_device_info_is_none_for_a_bridged_device_the_bridge_does_not_describe(
                     ],
                     _PARTS_LIST: [101, 102],
                 },
-                101: {_DEVICE_TYPE_LIST: [{"0": _ON_OFF_LIGHT, "1": 1}]},
-                102: {_DEVICE_TYPE_LIST: [{"0": _ON_OFF_LIGHT, "1": 1}]},
+                101: {_DEVICE_TYPE_LIST: [{"0": _ON_OFF_LIGHT, "1": 1}, {"0": _BRIDGED_NODE, "1": 1}]},
+                102: {_DEVICE_TYPE_LIST: [{"0": _ON_OFF_LIGHT, "1": 1}, {"0": _BRIDGED_NODE, "1": 1}]},
             },
             {
                 f"0/40/{_NODE_LABEL}": "the bridge itself",
@@ -529,6 +638,36 @@ def test_device_info_is_none_for_a_bridged_device_the_bridge_does_not_describe(
     assert not [
         record for record in caplog.records if "without BridgedDeviceBasicInformation" in record.message
     ]
+
+
+def test_device_info_of_an_endpoint_that_is_no_bridged_node_is_the_node_info() -> None:
+    """BridgedDeviceBasicInformation on an endpoint without the Bridged Node device type is ignored.
+
+    Such an endpoint is the device of the node: handing out its info would put another serial
+    number and name on the node's device.
+    """
+    node = _node_with_endpoints(
+        {
+            0: {_DEVICE_TYPE_LIST: [{"0": _ROOT_NODE, "1": 1}], _PARTS_LIST: [1, 100, 101]},
+            1: {
+                _DEVICE_TYPE_LIST: [{"0": _AGGREGATOR, "1": 1}],
+                _PARTS_LIST: [100, 101],
+            },
+            100: {
+                _DEVICE_TYPE_LIST: [{"0": _AGGREGATOR, "1": 1}],
+                _PARTS_LIST: [101],
+            },
+            101: {_DEVICE_TYPE_LIST: [{"0": _ON_OFF_LIGHT, "1": 1}]},
+        },
+        {
+            f"0/40/{_NODE_LABEL}": "the bridge itself",
+            f"100/57/{_NODE_LABEL}": "untagged aggregator",
+        },
+    )
+
+    assert not node.endpoints[100].is_bridged_device
+    assert _node_label(node.endpoints[100]) == "the bridge itself"
+    assert _node_label(node.endpoints[101]) == "the bridge itself"
 
 
 def test_device_types_follow_the_last_reported_list() -> None:
@@ -665,7 +804,7 @@ def test_root_endpoint_is_the_root_without_its_device_type_list() -> None:
                             _DEVICE_TYPE_LIST: [{"0": _AGGREGATOR, "1": 1}],
                             _PARTS_LIST: [2],
                         },
-                        2: {_DEVICE_TYPE_LIST: [{"0": _ON_OFF_LIGHT, "1": 1}]},
+                        2: {_DEVICE_TYPE_LIST: [{"0": _ON_OFF_LIGHT, "1": 1}, {"0": _BRIDGED_NODE, "1": 1}]},
                     }
                 ),
                 f"0/{_DESCRIPTOR}/{_PARTS_LIST}": [1, 2],
@@ -714,9 +853,9 @@ def test_child_ids_are_reported_in_endpoint_order() -> None:
                 _DEVICE_TYPE_LIST: [{"0": _AGGREGATOR, "1": 1}],
                 _PARTS_LIST: [11, 3, 19],
             },
-            3: {_DEVICE_TYPE_LIST: [{"0": _ON_OFF_LIGHT, "1": 1}]},
-            11: {_DEVICE_TYPE_LIST: [{"0": _ON_OFF_LIGHT, "1": 1}]},
-            19: {_DEVICE_TYPE_LIST: [{"0": _ON_OFF_LIGHT, "1": 1}]},
+            3: {_DEVICE_TYPE_LIST: [{"0": _ON_OFF_LIGHT, "1": 1}, {"0": _BRIDGED_NODE, "1": 1}]},
+            11: {_DEVICE_TYPE_LIST: [{"0": _ON_OFF_LIGHT, "1": 1}, {"0": _BRIDGED_NODE, "1": 1}]},
+            19: {_DEVICE_TYPE_LIST: [{"0": _ON_OFF_LIGHT, "1": 1}, {"0": _BRIDGED_NODE, "1": 1}]},
         }
     )
 
@@ -724,29 +863,112 @@ def test_child_ids_are_reported_in_endpoint_order() -> None:
 
 
 def test_removing_a_composed_parent_drops_its_parts() -> None:
-    """Removing a composed device leaves its parts without a compose parent."""
+    """Removing a composed device removes its parts too, while the snapshot still reports them.
+
+    The server announces a removal before it sends the snapshot without the endpoint. A part left
+    behind would resolve to no device when its own removal arrives.
+    """
     node = _node_with_endpoints(
         {
-            0: {_DEVICE_TYPE_LIST: [{"0": _ROOT_NODE, "1": 1}], _PARTS_LIST: [1, 30, 31]},
+            0: {_DEVICE_TYPE_LIST: [{"0": _ROOT_NODE, "1": 1}], _PARTS_LIST: [1, 30, 31, 32]},
             1: {
                 _DEVICE_TYPE_LIST: [{"0": _AGGREGATOR, "1": 1}],
-                _PARTS_LIST: [30, 31],
+                _PARTS_LIST: [30, 31, 32],
             },
             30: {
                 _DEVICE_TYPE_LIST: [{"0": _BRIDGED_NODE, "1": 1}],
-                _PARTS_LIST: [31],
+                _PARTS_LIST: [31, 32],
             },
-            31: {_DEVICE_TYPE_LIST: [{"0": _TEMPERATURE_SENSOR, "1": 1}]},
+            31: {_DEVICE_TYPE_LIST: [{"0": _ON_OFF_LIGHT, "1": 1}], _PARTS_LIST: [32]},
+            32: {_DEVICE_TYPE_LIST: [{"0": _TEMPERATURE_SENSOR, "1": 1}]},
         }
     )
 
-    assert node.get_compose_parent(31) is node.endpoints[30]
+    assert node.get_compose_parent(32) is node.endpoints[31]
 
-    node._remove_endpoint(30)
+    _announce_removal(_client_with(node), 30)
 
+    assert set(node.endpoints) == {0, 1}
     assert node.get_compose_child_ids(30) == ()
-    assert node.get_compose_parent(31) is None
-    assert node.get_bridge_parent(31) is node.endpoints[1]
+    assert node.get_compose_child_ids(31) == ()
+    assert node.get_bridge_child_ids(1) == ()
+
+
+def test_removing_an_unknown_endpoint_changes_nothing() -> None:
+    """A removal for an endpoint the model does not contain, or no longer contains, is ignored."""
+    node = _node_with_endpoints(
+        {
+            0: {_DEVICE_TYPE_LIST: [{"0": _ROOT_NODE, "1": 1}], _PARTS_LIST: [1, 100]},
+            1: {
+                _DEVICE_TYPE_LIST: [{"0": _AGGREGATOR, "1": 1}],
+                _PARTS_LIST: [100],
+            },
+            100: {_DEVICE_TYPE_LIST: [{"0": _ON_OFF_LIGHT, "1": 1}, {"0": _BRIDGED_NODE, "1": 1}]},
+        }
+    )
+
+    client = _client_with(node)
+    _announce_removal(client, 7)
+    _announce_removal(client, 100)
+    _announce_removal(client, 100)
+
+    assert set(node.endpoints) == {0, 1}
+    assert node.get_bridge_child_ids(1) == ()
+
+
+def test_removing_an_aggregator_missing_from_a_snapshot_drops_its_bridge_relations() -> None:
+    """A bridged device whose Aggregator is removed has no bridge parent, also before its own removal.
+
+    Both endpoints are missing from the snapshot, so the bridged device keeps its relations until
+    an announced removal changes them.
+    """
+    node = _node_with_endpoints(
+        {
+            0: {_DEVICE_TYPE_LIST: [{"0": _ROOT_NODE, "1": 1}], _PARTS_LIST: [1, 100]},
+            1: {
+                _DEVICE_TYPE_LIST: [{"0": _AGGREGATOR, "1": 1}],
+                _PARTS_LIST: [100],
+            },
+            100: {_DEVICE_TYPE_LIST: [{"0": _ON_OFF_LIGHT, "1": 1}, {"0": _BRIDGED_NODE, "1": 1}]},
+        }
+    )
+    node.update(_node_data(_descriptor_attributes({0: {_DEVICE_TYPE_LIST: [{"0": _ROOT_NODE, "1": 1}]}})))
+
+    assert node.get_bridge_parent(100) is node.endpoints[1]
+
+    _announce_removal(_client_with(node), 1)
+
+    assert 100 in node.endpoints
+    assert node.endpoints[100].is_bridged_device
+    assert node.get_bridge_child_ids(1) == ()
+    assert node.get_bridge_parent(100) is None
+
+
+def test_a_root_endpoint_with_another_device_type_composes_nothing() -> None:
+    """Endpoint 0 is the Root Node by specification, whatever device type it reports."""
+    node = _node_with_endpoints(
+        {
+            0: {_DEVICE_TYPE_LIST: [{"0": _ON_OFF_LIGHT, "1": 1}], _PARTS_LIST: [1]},
+            1: {_DEVICE_TYPE_LIST: [{"0": _TEMPERATURE_SENSOR, "1": 1}]},
+        }
+    )
+
+    assert node.get_compose_parent(1) is None
+    assert node.get_compose_child_ids(0) == ()
+
+
+def test_an_endpoint_reporting_the_root_node_device_type_composes_nothing() -> None:
+    """An endpoint other than 0 that reports the Root Node device type is no composed device."""
+    node = _node_with_endpoints(
+        {
+            0: {_DEVICE_TYPE_LIST: [{"0": _ROOT_NODE, "1": 1}], _PARTS_LIST: [5, 6]},
+            5: {_DEVICE_TYPE_LIST: [{"0": _ROOT_NODE, "1": 1}], _PARTS_LIST: [6]},
+            6: {_DEVICE_TYPE_LIST: [{"0": _ON_OFF_LIGHT, "1": 1}]},
+        }
+    )
+
+    assert node.get_compose_parent(6) is None
+    assert node.get_compose_child_ids(5) == ()
 
 
 def test_device_info_walks_a_deep_chain_without_recursing() -> None:
@@ -779,7 +1001,7 @@ def test_device_info_without_a_root_endpoint() -> None:
                         _DEVICE_TYPE_LIST: [{"0": _AGGREGATOR, "1": 1}],
                         _PARTS_LIST: [2],
                     },
-                    2: {_DEVICE_TYPE_LIST: [{"0": _ON_OFF_LIGHT, "1": 1}]},
+                    2: {_DEVICE_TYPE_LIST: [{"0": _ON_OFF_LIGHT, "1": 1}, {"0": _BRIDGED_NODE, "1": 1}]},
                 }
             )
         )
@@ -792,8 +1014,12 @@ def test_device_info_without_a_root_endpoint() -> None:
     assert node.endpoints[2].device_info is None
 
 
-def test_an_endpoint_missing_from_a_snapshot_is_dropped() -> None:
-    """The endpoints of a node are the ones its snapshot reports."""
+def test_an_endpoint_missing_from_a_snapshot_stays_until_its_removal() -> None:
+    """A snapshot without an endpoint keeps it and its relations, the announced removal drops them.
+
+    Consumers look the endpoint up when the server announces its removal, which can arrive after
+    a snapshot that no longer carries it.
+    """
     node = _node_with_endpoints(
         {
             0: {_DEVICE_TYPE_LIST: [{"0": _ROOT_NODE, "1": 1}], _PARTS_LIST: [1, 100]},
@@ -801,11 +1027,10 @@ def test_an_endpoint_missing_from_a_snapshot_is_dropped() -> None:
                 _DEVICE_TYPE_LIST: [{"0": _AGGREGATOR, "1": 1}],
                 _PARTS_LIST: [100],
             },
-            100: {_DEVICE_TYPE_LIST: [{"0": _ON_OFF_LIGHT, "1": 1}]},
+            100: {_DEVICE_TYPE_LIST: [{"0": _ON_OFF_LIGHT, "1": 1}, {"0": _BRIDGED_NODE, "1": 1}]},
         }
     )
-
-    assert node.get_bridge_parent(100) is node.endpoints[1]
+    aggregator = node.endpoints[1]
 
     node.update(
         _node_data(
@@ -815,15 +1040,146 @@ def test_an_endpoint_missing_from_a_snapshot_is_dropped() -> None:
                         _DEVICE_TYPE_LIST: [{"0": _ROOT_NODE, "1": 1}],
                         _PARTS_LIST: [100],
                     },
-                    100: {_DEVICE_TYPE_LIST: [{"0": _ON_OFF_LIGHT, "1": 1}]},
+                    100: {
+                        _DEVICE_TYPE_LIST: [
+                            {"0": _ON_OFF_LIGHT, "1": 1},
+                            {"0": _BRIDGED_NODE, "1": 1},
+                        ]
+                    },
                 }
             )
         )
     )
 
+    assert node.endpoints[1] is aggregator
+    assert node.get_bridge_parent(100) is aggregator
+
+    client = _client_with(node)
+    _announce_removal(client, 1)
+
     assert 1 not in node.endpoints
     assert node.get_bridge_parent(100) is None
-    assert not node.endpoints[100].is_bridged_device
+
+
+def test_an_endpoint_missing_from_a_snapshot_parents_no_new_endpoint() -> None:
+    """The last Descriptor of an endpoint the snapshot no longer reports claims nothing new."""
+    node = _node_with_endpoints(
+        {
+            0: {_DEVICE_TYPE_LIST: [{"0": _ROOT_NODE, "1": 1}], _PARTS_LIST: [1]},
+            1: {
+                _DEVICE_TYPE_LIST: [{"0": _ON_OFF_LIGHT, "1": 1}],
+                _PARTS_LIST: [2],
+            },
+        }
+    )
+
+    node.update(
+        _node_data(
+            _descriptor_attributes(
+                {
+                    0: {_DEVICE_TYPE_LIST: [{"0": _ROOT_NODE, "1": 1}], _PARTS_LIST: [2, 3]},
+                    2: {_DEVICE_TYPE_LIST: [{"0": _TEMPERATURE_SENSOR, "1": 1}]},
+                    3: {_DEVICE_TYPE_LIST: [{"0": _TEMPERATURE_SENSOR, "1": 1}]},
+                }
+            )
+        )
+    )
+
+    assert 1 in node.endpoints
+    assert node.get_compose_parent(2) is None
+    assert node.get_compose_child_ids(1) == ()
+
+
+def test_an_endpoint_missing_from_a_snapshot_is_parented_by_no_new_endpoint() -> None:
+    """A live endpoint that still lists an endpoint the snapshot no longer reports claims nothing."""
+    node = _node_with_endpoints(
+        {
+            0: {_DEVICE_TYPE_LIST: [{"0": _ROOT_NODE, "1": 1}], _PARTS_LIST: [1, 2]},
+            1: {_DEVICE_TYPE_LIST: [{"0": _ON_OFF_LIGHT, "1": 1}]},
+            2: {_DEVICE_TYPE_LIST: [{"0": _TEMPERATURE_SENSOR, "1": 1}]},
+        }
+    )
+
+    node.update(
+        _node_data(
+            _descriptor_attributes(
+                {
+                    0: {_DEVICE_TYPE_LIST: [{"0": _ROOT_NODE, "1": 1}], _PARTS_LIST: [1, 2]},
+                    1: {_DEVICE_TYPE_LIST: [{"0": _ON_OFF_LIGHT, "1": 1}], _PARTS_LIST: [2]},
+                }
+            )
+        )
+    )
+
+    assert 2 in node.endpoints
+    assert node.get_compose_parent(2) is None
+
+
+def test_a_part_missing_from_a_snapshot_leaves_with_its_device() -> None:
+    """Removing a device also removes its parts the snapshot no longer reports.
+
+    Left behind, such a part would resolve to no device when its own removal arrives, and Home
+    Assistant would then remove the device of the node instead.
+    """
+    node = _node_with_endpoints(
+        {
+            0: {_DEVICE_TYPE_LIST: [{"0": _ROOT_NODE, "1": 1}], _PARTS_LIST: [30, 31, 32]},
+            30: {_DEVICE_TYPE_LIST: [{"0": _ON_OFF_LIGHT, "1": 1}], _PARTS_LIST: [31, 32]},
+            31: {_DEVICE_TYPE_LIST: [{"0": _TEMPERATURE_SENSOR, "1": 1}], _PARTS_LIST: [32]},
+            32: {_DEVICE_TYPE_LIST: [{"0": _TEMPERATURE_SENSOR, "1": 1}]},
+        }
+    )
+    node.update(_node_data(_descriptor_attributes({0: {_DEVICE_TYPE_LIST: [{"0": _ROOT_NODE, "1": 1}]}})))
+
+    _announce_removal(_client_with(node), 30)
+
+    assert set(node.endpoints) == {0}
+
+
+def test_a_part_missing_from_a_snapshot_keeps_its_device_until_its_removal() -> None:
+    """A part the snapshot no longer reports still belongs to its device when its removal arrives.
+
+    Home Assistant resolves the device of a removed endpoint and only removes the device when the
+    endpoint is not a part of another one, so a part resolving to no device there would remove the
+    device of the node instead.
+    """
+    node = _node_with_endpoints(
+        {
+            0: {_DEVICE_TYPE_LIST: [{"0": _ROOT_NODE, "1": 1}], _PARTS_LIST: [1, 30, 31]},
+            1: {
+                _DEVICE_TYPE_LIST: [{"0": _AGGREGATOR, "1": 1}],
+                _PARTS_LIST: [30, 31],
+            },
+            30: {
+                _DEVICE_TYPE_LIST: [{"0": _BRIDGED_NODE, "1": 1}],
+                _PARTS_LIST: [31],
+            },
+            31: {_DEVICE_TYPE_LIST: [{"0": _TEMPERATURE_SENSOR, "1": 1}]},
+        }
+    )
+
+    node.update(
+        _node_data(
+            _descriptor_attributes(
+                {
+                    0: {_DEVICE_TYPE_LIST: [{"0": _ROOT_NODE, "1": 1}], _PARTS_LIST: [1]},
+                    1: {_DEVICE_TYPE_LIST: [{"0": _AGGREGATOR, "1": 1}]},
+                }
+            )
+        )
+    )
+
+    assert node.get_bridge_parent(30) is node.endpoints[1]
+    assert node.get_compose_parent(31) is node.endpoints[30]
+
+    client = _client_with(node)
+    _announce_removal(client, 31)
+
+    assert node.get_compose_child_ids(30) == ()
+
+    _announce_removal(client, 30)
+
+    assert set(node.endpoints) == {0, 1}
 
 
 def test_a_bridged_device_is_reported_again_after_it_came_back(
@@ -837,7 +1193,7 @@ def test_a_bridged_device_is_reported_again_after_it_came_back(
                 _DEVICE_TYPE_LIST: [{"0": _AGGREGATOR, "1": 1}],
                 _PARTS_LIST: [100],
             },
-            100: {_DEVICE_TYPE_LIST: [{"0": _ON_OFF_LIGHT, "1": 1}]},
+            100: {_DEVICE_TYPE_LIST: [{"0": _ON_OFF_LIGHT, "1": 1}, {"0": _BRIDGED_NODE, "1": 1}]},
         }
     )
     node._remove_endpoint(100)
@@ -851,8 +1207,11 @@ def test_a_bridged_device_is_reported_again_after_it_came_back(
     ]
 
 
-def test_an_endpoint_that_stops_reporting_its_descriptor_parents_nothing() -> None:
-    """A snapshot without an endpoint's Descriptor drops its device types and its children."""
+def test_an_endpoint_that_stops_reporting_its_descriptor_keeps_its_children() -> None:
+    """A snapshot without an endpoint's Descriptor keeps its device types and its children.
+
+    Without the Descriptor the snapshot says nothing about either, so both stay.
+    """
     node = _node_with_endpoints(
         {
             0: {_DEVICE_TYPE_LIST: [{"0": _ROOT_NODE, "1": 1}], _PARTS_LIST: [1, 100]},
@@ -860,7 +1219,7 @@ def test_an_endpoint_that_stops_reporting_its_descriptor_parents_nothing() -> No
                 _DEVICE_TYPE_LIST: [{"0": _AGGREGATOR, "1": 1}],
                 _PARTS_LIST: [100],
             },
-            100: {_DEVICE_TYPE_LIST: [{"0": _ON_OFF_LIGHT, "1": 1}]},
+            100: {_DEVICE_TYPE_LIST: [{"0": _ON_OFF_LIGHT, "1": 1}, {"0": _BRIDGED_NODE, "1": 1}]},
         }
     )
 
@@ -883,6 +1242,40 @@ def test_an_endpoint_that_stops_reporting_its_descriptor_parents_nothing() -> No
         )
     )
 
-    assert node.endpoints[1].device_types == set()
-    assert node.get_bridge_parent(100) is None
+    assert node.endpoints[1].device_types == {device_types.Aggregator}
+    assert node.get_bridge_parent(100) is node.endpoints[1]
     assert node.get_compose_parent(100) is None
+
+
+def test_kept_relations_never_close_a_cycle_with_a_named_one(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A relation the snapshot names wins over kept ones that would close a cycle with it."""
+    node = _node_with_endpoints(
+        {
+            0: {_DEVICE_TYPE_LIST: [{"0": _ROOT_NODE, "1": 1}], _PARTS_LIST: [3, 4, 5]},
+            3: {_DEVICE_TYPE_LIST: [{"0": _ON_OFF_LIGHT, "1": 1}], _PARTS_LIST: [4, 5]},
+            4: {_DEVICE_TYPE_LIST: [{"0": _ON_OFF_LIGHT, "1": 1}], _PARTS_LIST: [5]},
+            5: {_DEVICE_TYPE_LIST: [{"0": _TEMPERATURE_SENSOR, "1": 1}]},
+        }
+    )
+
+    with caplog.at_level(logging.WARNING):
+        node.update(
+            _node_data(
+                _descriptor_attributes(
+                    {
+                        0: {_DEVICE_TYPE_LIST: [{"0": _ROOT_NODE, "1": 1}], _PARTS_LIST: [3, 4, 5]},
+                        3: {_DEVICE_TYPE_LIST: [{"0": _ON_OFF_LIGHT, "1": 1}]},
+                        4: {_DEVICE_TYPE_LIST: [{"0": _ON_OFF_LIGHT, "1": 1}]},
+                        5: {_DEVICE_TYPE_LIST: [{"0": _TEMPERATURE_SENSOR, "1": 1}], _PARTS_LIST: [3]},
+                    }
+                )
+            )
+        )
+
+    assert node.get_compose_parent(3) is node.endpoints[5]
+    # the snapshot names no parent for 4 and 5; only the relation that closes the cycle is dropped
+    assert node.get_compose_parent(4) is node.endpoints[3]
+    assert node.get_compose_parent(5) is None
+    assert [record for record in caplog.records if "made cyclic" in record.message]
