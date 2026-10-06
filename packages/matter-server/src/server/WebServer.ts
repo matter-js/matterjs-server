@@ -5,7 +5,9 @@
  */
 
 import { type HttpServer, Logger, type WebServerHandler } from "@matter-server/ws-controller";
+import { lstat, unlink } from "node:fs/promises";
 import { createServer } from "node:http";
+import { connect } from "node:net";
 
 const logger = Logger.get("WebServer");
 
@@ -61,14 +63,20 @@ export class WebServer {
         }
     }
 
-    #startServer(server: HttpServer, host: string | undefined): Promise<void> {
-        const displayHost = host ?? "0.0.0.0";
+    async #startServer(server: HttpServer, host: string | undefined): Promise<void> {
+        const socketPath = host !== undefined && isUnixSocketPath(host) ? host : undefined;
+        const displayAddress =
+            socketPath !== undefined ? `unix socket ${socketPath}` : `http://${host ?? "0.0.0.0"}:${this.#port}`;
+
+        if (socketPath !== undefined) {
+            await removeStaleSocket(socketPath);
+        }
 
         return new Promise<void>((resolve, reject) => {
             let resolvedOrErrored = false;
 
-            server.listen({ host, port: this.#port }, () => {
-                logger.notice(`Webserver listening on http://${displayHost}:${this.#port}`);
+            server.listen(socketPath !== undefined ? { path: socketPath } : { host, port: this.#port }, () => {
+                logger.notice(`Webserver listening on ${displayAddress}`);
                 if (!resolvedOrErrored) {
                     resolvedOrErrored = true;
                     resolve();
@@ -76,7 +84,7 @@ export class WebServer {
             });
 
             server.on("error", err => {
-                logger.fatal(`Webserver error on ${displayHost}:${this.#port}`, err);
+                logger.fatal(`Webserver error on ${displayAddress}`, err);
                 if (!resolvedOrErrored) {
                     resolvedOrErrored = true;
                     reject(err);
@@ -123,9 +131,41 @@ export class WebServer {
     }
 }
 
+function isUnixSocketPath(address: string): boolean {
+    return address.startsWith("/");
+}
+
+/**
+ * Removes a socket file left behind by a server that did not shut down cleanly, so the next start
+ * does not fail with EADDRINUSE. Only a socket that refuses connections is removed; a socket that
+ * accepts them and any non-socket file make `listen()` fail, and other probe errors are rethrown.
+ */
+async function removeStaleSocket(path: string): Promise<void> {
+    // A missing or unreadable path has nothing to remove; listen() reports the actual error.
+    const stats = await lstat(path).catch(() => undefined);
+    if (!stats?.isSocket()) {
+        return;
+    }
+
+    const stale = await new Promise<boolean>((resolve, reject) => {
+        const probe = connect({ path });
+        probe.once("connect", () => {
+            probe.destroy();
+            resolve(false);
+        });
+        probe.once("error", error =>
+            "code" in error && error.code === "ECONNREFUSED" ? resolve(true) : reject(error),
+        );
+    });
+    if (stale) {
+        logger.info(`Removing stale unix socket ${path}`);
+        await unlink(path);
+    }
+}
+
 export namespace WebServer {
     export interface Config {
-        /** IP addresses to bind to. null means bind to all interfaces. */
+        /** IP addresses or absolute unix socket paths to bind to. null means bind to all interfaces. */
         listenAddresses: string[] | null;
         port: number;
     }

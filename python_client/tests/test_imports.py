@@ -189,3 +189,58 @@ def test_wago_window_covering_extension_attributes_exist() -> None:
     assert tags["wagoTravelTimeUp"] == 0x15340001
     assert tags["wagoTravelTimeDown"] == 0x15340002
     assert tags["wagoSlatRotationTime"] == 0x15340003
+
+
+def test_aqara_fp400_clusters():
+    """Aqara FP400 clusters expose structs, linked responses and signed fields."""
+    from chip.tlv import uint
+    from matter_server.common.custom_clusters import (
+        AqaraAmbientSensingConfigurationCluster,
+        AqaraOccupantLocationCluster,
+        AqaraRadarSensingUnionCluster,
+    )
+
+    config = AqaraAmbientSensingConfigurationCluster
+    assert config.id == 0x115FFC0A
+    assert config.Attributes.InstallStatus.attribute_id == 0x0007
+    assert config.Attributes.Zones.attribute_id == 0x0010
+    assert config.Commands.SetZones.command_id == 0x0A
+    assert config.Commands.SetZones.response_type == "SetZonesResponse"
+    assert config.Commands.RemoveZone.response_type == "RemoveZoneResponse"
+
+    zone = config.Structs.AqaraZoneStruct(
+        zoneID=uint(1), zoneType=uint(0), cells=b"\x00" * 40, enabled=True
+    )
+    decoded = config.Attributes.Zones.FromTagDictOrRawValue(
+        [{0: uint(1), 1: uint(0), 2: b"\x00" * 40, 3: True}]
+    )
+    assert decoded == [zone]
+
+    assert AqaraRadarSensingUnionCluster.id == 0x115FFC0B
+    assert AqaraRadarSensingUnionCluster.Events.MotionDetected.event_id == 0
+
+    location = AqaraOccupantLocationCluster
+    assert location.id == 0x115FFC0C
+    assert location.Attributes.ActivityState.attribute_id == 0x0007
+    target = location.Structs.AqaraTargetStruct
+    # required fields are plain (signed) types; only inZoneID is optional
+    assert target.descriptor.GetFieldByLabel("x").Type is int
+    assert target.descriptor.GetFieldByLabel("inZoneID").Type == (uint | None)
+    assert zone.descriptor.GetFieldByLabel("cells").Type is bytes
+    event = location.Events.LocationInfo(
+        targets=[target(targetID=uint(0), x=-5, y=228, cell=uint(1032))]
+    )
+    assert location.Events.LocationInfo.FromTLV(event.ToTLV()).targets[0].x == -5
+
+
+def test_signed_custom_cluster_attributes():
+    """int32 attributes of decorator-defined clusters are generated as signed ints."""
+    from matter_server.common.custom_clusters import (
+        DraftElectricalMeasurementCluster,
+        ThirdRealityMeteringCluster,
+    )
+
+    demand = ThirdRealityMeteringCluster.Attributes.InstantaneousDemand
+    assert demand.attribute_type.Type == (int | None)
+    power = DraftElectricalMeasurementCluster.Attributes.ActivePower
+    assert power.attribute_type.Type == (int | None)

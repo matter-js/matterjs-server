@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { AsyncObservable, Environment, MockStorageService, Observable } from "@matter/general";
+import { AsyncObservable, Environment, Millis, MockStorageService, Observable } from "@matter/general";
 import { ThreadCredentialsRegistry } from "@matter/thread-br-client";
 import { createServer } from "node:http";
 import WebSocket from "ws";
@@ -65,6 +65,9 @@ function makeStubController(credentials: ThreadCredentialsRegistry) {
         },
         listCached() {
             return [];
+        },
+        remainingTtl() {
+            return Millis(3_600_000);
         },
         refreshAllKnown() {},
     };
