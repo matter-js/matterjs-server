@@ -399,8 +399,9 @@ describe("WebSocketConnection", () => {
                 });
                 // Kernel socket buffers absorb several MB before bufferedAmount grows, so send until it
                 // does, then add frames that can only be delivered through the queue.
+                const maxFillBytes = 64 * 1024 * 1024;
                 let frameCount = 0;
-                while (serverSocket.bufferedAmount <= 64 * 1024 && frameCount < 2000) {
+                while (serverSocket.bufferedAmount <= 64 * 1024 && frameCount * frameBytes < maxFillBytes) {
                     conn.sendReliable(f(frameBytes, `m${frameCount++}-`));
                 }
                 expect(serverSocket.bufferedAmount, "backpressure was not reached").to.be.greaterThan(64 * 1024);
