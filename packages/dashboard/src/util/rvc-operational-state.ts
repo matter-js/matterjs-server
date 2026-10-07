@@ -5,6 +5,7 @@
  */
 
 import { asObject, pickNumber, tagField, toNumber, toText } from "./attribute-shapes.js";
+import { OPERATIONAL_MANUFACTURER_RANGE, unnamedEnumLabel } from "./enum-label.js";
 
 export const RVC_OPERATIONAL_STATE_CLUSTER_ID = 97; // 0x0061
 
@@ -105,11 +106,11 @@ export enum RvcOperationalCommand {
  * display label alongside the id; it is used only when the enum does not recognise the id.
  */
 export function operationalStateLabel(id: number, deviceLabel?: string): string {
-    return OPERATIONAL_STATE_NAMES[id] ?? deviceLabel ?? `Unknown (${id})`;
+    return OPERATIONAL_STATE_NAMES[id] ?? deviceLabel ?? unnamedEnumLabel(id, OPERATIONAL_MANUFACTURER_RANGE);
 }
 
 export function errorStateLabel(id: number, deviceLabel?: string): string {
-    return ERROR_STATE_NAMES[id] ?? deviceLabel ?? `Unknown (${id})`;
+    return ERROR_STATE_NAMES[id] ?? deviceLabel ?? unnamedEnumLabel(id, OPERATIONAL_MANUFACTURER_RANGE);
 }
 
 /** Decoded ErrorStateStruct, used for both the attribute and command responses. */

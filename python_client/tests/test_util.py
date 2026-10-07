@@ -170,3 +170,20 @@ def test_rvc_run_mode_tag_value_is_enum() -> None:
     )
 
     assert result[0].modeTags[0].value == clusters.RvcRunMode.Enums.ModeTag.kIdle
+
+
+def test_parse_value_keeps_manufacturer_enum_values_as_raw_ints() -> None:
+    """Characterization: a vendor value outside the named members reaches the caller unchanged."""
+    modes = parse_value(
+        "supportedModes",
+        [{"0": "Vendor", "1": 0, "2": [{"1": 0x8000}]}],
+        clusters.OvenMode.Attributes.SupportedModes.attribute_type.Type,
+    )
+    error = parse_value(
+        "operationalError",
+        {"0": 0x80},
+        clusters.OperationalState.Attributes.OperationalError.attribute_type.Type,
+    )
+
+    assert modes[0].modeTags[0].value == 0x8000
+    assert error.errorStateID == 0x80

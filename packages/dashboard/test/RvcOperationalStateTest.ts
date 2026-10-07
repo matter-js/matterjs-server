@@ -47,6 +47,10 @@ describe("RVC Operational State", () => {
             expect(describeOperationalState(99)).to.equal("Unknown (99)");
         });
 
+        it("labels a manufacturer-range state without a device label", () => {
+            expect(describeOperationalState(0x80)).to.equal("Manufacturer 0x80");
+        });
+
         it("uses the OperationalStateList label for a manufacturer-specific id", () => {
             const stateList = [{ "0": 128, "1": "Sanitising" }];
             expect(describeOperationalState(128, stateList)).to.equal("Sanitising");
@@ -59,6 +63,13 @@ describe("RVC Operational State", () => {
     });
 
     describe("errorStateLabel", () => {
+        it("labels a manufacturer-range error without a device label", () => {
+            expect(errorStateLabel(0x80)).to.equal("Manufacturer 0x80");
+            expect(errorStateLabel(0xbf)).to.equal("Manufacturer 0xBF");
+            expect(errorStateLabel(0xc0)).to.equal("Unknown (192)");
+            expect(errorStateLabel(0x80, "Jammed")).to.equal("Jammed");
+        });
+
         it("maps the spec error ids to their labels", () => {
             expect(errorStateLabel(ErrorState.NoError)).to.equal("No Error");
             expect(errorStateLabel(ErrorState.UnableToStartOrResume)).to.equal("Unable to Start or Resume");

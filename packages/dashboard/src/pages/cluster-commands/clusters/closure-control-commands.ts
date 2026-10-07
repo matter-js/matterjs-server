@@ -15,7 +15,6 @@ import "../../../components/ha-svg-icon.js";
 import { handleAsync } from "../../../util/async-handler.js";
 import {
     CLOSURE_CONTROL_CLUSTER_ID,
-    CLOSURE_ERROR_LABELS,
     CURRENT_POSITION_LABELS,
     type ClosureCurrentState,
     type ClosureFeatures,
@@ -24,6 +23,7 @@ import {
     SPEED_LABELS,
     TARGET_POSITION_LABELS,
     calibrate,
+    closureErrorLabel,
     moveTo,
     readCountdownTime,
     readCurrentErrorList,
@@ -113,7 +113,7 @@ class ClosureControlClusterCommands extends BaseClusterCommands {
                                           e => html`
                                               <span class="error-chip">
                                                   <ha-svg-icon .path=${mdiAlertCircle}></ha-svg-icon>
-                                                  ${CLOSURE_ERROR_LABELS[e] ?? `Error ${e}`}
+                                                  ${closureErrorLabel(e)}
                                               </span>
                                           `,
                                       )}
