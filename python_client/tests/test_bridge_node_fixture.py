@@ -218,3 +218,41 @@ def test_an_aggregator_inside_an_aggregator_bridges_its_tagged_children() -> Non
         assert info is not None
         assert info.productName == labels[endpoint_id]
     assert node.endpoints[2].device_info is node.device_info
+
+
+_DALI_FIXTURE = Path(__file__).parent / "fixtures" / "zigbee_dali_bridge_node.json"
+
+
+def test_rooms_of_a_dali_bridge_bridge_their_lights() -> None:
+    """Captured from a Zigbee-DALI bridge whose rooms are Bridged Node Aggregators holding the lights.
+
+    Reduced to the Descriptor, Basic Information and Bridged Device Basic Information clusters,
+    with the unique id replaced.
+    """
+    node = MatterNode(dataclass_from_dict(MatterNodeData, json.loads(_DALI_FIXTURE.read_text())))
+
+    assert node.is_bridge_device
+    rooms = {2: "Ground Floor", 3: "First Floor", 4: "Outdoor"}
+    lights = {5: 2, 6: 2, 7: 2, 8: 3, 9: 3, 10: 4, 11: 4}
+    for room in rooms:
+        assert node.get_bridge_parent(room) is node.endpoints[1]
+    for light, room in lights.items():
+        assert node.get_bridge_parent(light) is node.endpoints[room]
+    assert node.get_bridge_child_ids(1) == (2, 3, 4)
+    assert node.get_bridge_child_ids(2) == (5, 6, 7)
+    assert all(node.get_compose_parent(endpoint_id) is None for endpoint_id in node.endpoints)
+
+    labels = {
+        endpoint_id: getattr(node.endpoints[endpoint_id].device_info, "nodeLabel", None)
+        for endpoint_id in (*rooms, *lights)
+    }
+    assert labels == {
+        **rooms,
+        5: "Main Light",
+        6: "Sofa Light",
+        7: "Desk Light",
+        8: "Bedroom Main",
+        9: "Bedroom Bedside",
+        10: "Patio Light",
+        11: "Entrance Light",
+    }
