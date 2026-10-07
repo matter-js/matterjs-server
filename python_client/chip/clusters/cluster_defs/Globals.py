@@ -198,7 +198,6 @@ class Globals:
             kUnsupportedWrite = 0x88
             kResourceExhausted = 0x89
             kNotFound = 0x8B
-            kUnreportableAttribute = 0x8C
             kInvalidDataType = 0x8D
             kUnsupportedRead = 0x8F
             kDataVersionMismatch = 0x92
@@ -207,7 +206,6 @@ class Globals:
             kBusy = 0x9C
             kAccessRestricted = 0x9D
             kUnsupportedCluster = 0xC3
-            kNoUpstreamSubscription = 0xC5
             kNeedsTimedInteraction = 0xC6
             kUnsupportedEvent = 0xC7
             kPathsExhausted = 0xC8

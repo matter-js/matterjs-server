@@ -53,6 +53,35 @@ describe("device energy management mode util", () => {
         expect(info.supportedModes[0].tags[0].label).to.equal("Tag 0x1234");
     });
 
+    it("labels a standard-range manufacturer mode tag without a MfgCode", () => {
+        const info = deviceEnergyManagementModeInfo(
+            {
+                "1/159/0": [
+                    {
+                        "0": "Custom",
+                        "1": 0,
+                        "2": [{ "1": 0x8000 }, { "1": 0xbfff }, { "1": 0x4000 }, { "1": 0x7fff }, { "1": 0xc000 }],
+                    },
+                ],
+            },
+            1,
+        );
+        expect(info.supportedModes[0].tags.map(tag => tag.label)).to.deep.equal([
+            "Manufacturer 0x8000",
+            "Manufacturer 0xBFFF",
+            "NoOptimization",
+            "Tag 0x7FFF",
+            "Tag 0xC000",
+        ]);
+    });
+
+    it("labels a manufacturer ModeChangeStatus code", () => {
+        expect(decodeChangeToModeResult({ status: 0x80 }).statusName).to.equal("Manufacturer 0x80");
+        expect(decodeChangeToModeResult({ status: 0xbf }).statusName).to.equal("Manufacturer 0xBF");
+        expect(decodeChangeToModeResult({ status: 0x7f }).statusName).to.not.match(/^Manufacturer/);
+        expect(decodeChangeToModeResult({ status: 0xc0 }).statusName).to.not.match(/^Manufacturer/);
+    });
+
     it("keeps a manufacturer tag in its vendor namespace instead of the standard table", () => {
         const info = deviceEnergyManagementModeInfo(
             // MfgCode present, and a Value that collides with the standard "Auto" tag.

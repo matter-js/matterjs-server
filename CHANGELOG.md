@@ -9,6 +9,9 @@ This page shows a detailed overview of the changes between versions without the 
 
 ## **WORK IN PROGRESS**
 
+- Enhancement: Update matter.js to the latest 0.18.0 nightly
+    - Adds support for Matter 1.6.1 (including Python client)
+- Enhancement: Dashboard network view uses the Thread 1.4 role names: a Thread Router is shown as "Mesh Extender" and a REED as "Standby Mesh Extender". External (non-fabric) neighbors, whose role is only inferred from rx-on-when-idle, are now labeled "Always-on device" instead of a routing role. Wire values and the `ThreadRoutingRole` enum keep the Matter spec names
 - Enhancement: (@cyberb) `--listen-address` (env `LISTEN_ADDRESS`) accepts an absolute unix socket path, so the WebSocket API and dashboard can be served on a local socket, alone or next to TCP addresses; a socket file left behind by an unclean shutdown is replaced on the next start, and the Docker health check queries the socket
 - Enhancement: (@cyberb) The Python client connects over a unix socket when given a `unix://<path>` server URL, including OTA image uploads
 - Enhancement: `LISTEN_ADDRESS` accepts a comma-separated list of addresses or interface names, like the repeatable `--listen-address` option
@@ -30,6 +33,7 @@ This page shows a detailed overview of the changes between versions without the 
 - Enhancement: (@lboue) Allows creating temporary/expiring PIN users (UserType=ExpiringUser) and configuring the lock's ExpiringUserTimeout to the Dashboard DoorLock cluster panel
 - Enhance ment: (@RAR) Adds the vendor clusters of the Aqara Spatial Multi-Sensor FP400 (AmbientSensingConfiguration 0x115ffc0a with detection zones, RadarSensingUnion 0x115ffc0b, OccupantLocation 0x115ffc0c with the target position event) to the custom cluster definitions and the Python client
 - Adjustment: Dashboard network view uses the Thread 1.4 role names
+- Fix: Dashboard shows manufacturer-specific enum values (vendor mode tags, operational and error states, closure errors) as "Manufacturer 0x…"
 - Fix: (@RAR) List values of decorator-defined custom clusters are converted in both directions, so bytes inside a list (Aqara `SetZones`) reach the device as bytes instead of strings. The same fix sends `SupportedModes` of the derived Mode clusters (RVC Run/Clean, Dishwasher, Laundry Washer, Oven, Microwave Oven, Refrigerator, Device Energy Management, EVSE and Water Heater Mode) keyed by tag like every other attribute value, instead of keyed by field name
 - Fix: (@RAR) The Python client generator resolves struct, signed integer, list and response types of decorator-defined custom clusters; the `int32` attributes `DraftElectricalMeasurementCluster.activePower` and `ThirdRealityMeteringCluster.instantaneousDemand` are now generated as signed
 - Fix: WebSocket clients that read slowly are no longer disconnected when the server queues messages for them; the queued messages are now delivered

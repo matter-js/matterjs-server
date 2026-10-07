@@ -44,13 +44,13 @@ class WebRtcTransportDefinitions:
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="urLs", Tag=0, Type=typing.List[str]),
+                        ClusterObjectFieldDescriptor(Label="URLs", Tag=0, Type=typing.List[str]),
                         ClusterObjectFieldDescriptor(Label="username", Tag=1, Type=typing.Optional[str]),
                         ClusterObjectFieldDescriptor(Label="credential", Tag=2, Type=typing.Optional[str]),
                         ClusterObjectFieldDescriptor(Label="caid", Tag=3, Type=typing.Optional[uint]),
                     ])
 
-            urLs: typing.List[str] = field(default_factory=lambda: [])
+            URLs: typing.List[str] = field(default_factory=lambda: [])
             username: typing.Optional[str] = None
             credential: typing.Optional[str] = None
             caid: typing.Optional[uint] = None

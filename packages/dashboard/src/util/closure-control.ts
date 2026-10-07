@@ -6,6 +6,7 @@
 
 import type { MatterClient, MatterNode } from "@matter-server/ws-client";
 import { asObject, pickNumber } from "./attribute-shapes.js";
+import { CLOSURE_ERROR_MANUFACTURER_RANGE, unnamedEnumLabel } from "./enum-label.js";
 
 /** ClosureControl cluster (Matter spec §5.4). */
 export const CLOSURE_CONTROL_CLUSTER_ID = 260; // 0x0104
@@ -36,6 +37,10 @@ export const CLOSURE_ERROR_LABELS: Record<number, string> = {
     3: "Maintenance required",
     4: "Internal interference",
 };
+
+export function closureErrorLabel(error: number): string {
+    return CLOSURE_ERROR_LABELS[error] ?? unnamedEnumLabel(error, CLOSURE_ERROR_MANUFACTURER_RANGE);
+}
 
 /** MoveTo / OverallTargetState.position (TargetPositionEnum, spec §5.4.6.2). */
 export const TARGET_POSITION_LABELS: Record<number, string> = {

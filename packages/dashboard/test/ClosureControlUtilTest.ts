@@ -9,6 +9,7 @@ import {
     CURRENT_POSITION_LABELS,
     TARGET_POSITION_LABELS,
     calibrate,
+    closureErrorLabel,
     moveTo,
     parseClosureFeatures,
     readCountdownTime,
@@ -198,5 +199,18 @@ describe("closure-control util", () => {
             await moveTo(client, 1, 6, {});
             expect(calls).to.deep.equal([{ command: "MoveTo", payload: {} }]);
         });
+    });
+});
+
+describe("closureErrorLabel", () => {
+    it("names a standard error", () => {
+        expect(closureErrorLabel(0)).to.equal("Physically blocked");
+    });
+
+    it("labels a manufacturer-range error", () => {
+        expect(closureErrorLabel(0x80)).to.equal("Manufacturer 0x80");
+        expect(closureErrorLabel(0xbf)).to.equal("Manufacturer 0xBF");
+        expect(closureErrorLabel(0x7f)).to.equal("Unknown (127)");
+        expect(closureErrorLabel(0xc0)).to.equal("Unknown (192)");
     });
 });
