@@ -13,7 +13,7 @@
 import { Environment, MockStorageService, NodeId, Observable } from "@matter/main";
 import { EndpointNumber } from "@matter/main/types";
 import { createServer, type Server } from "node:http";
-import { WebSocket, WebSocketServer } from "ws";
+import { WebSocket } from "ws";
 import { MatterController } from "../src/controller/MatterController.js";
 import { ConfigStorage } from "../src/server/ConfigStorage.js";
 import { WebSocketControllerHandler } from "../src/server/WebSocketControllerHandler.js";
@@ -79,10 +79,8 @@ describe("endpoint event order", () => {
     let handler: WebSocketControllerHandler;
     let client: WebSocket;
     let fakeCommandHandler: ReturnType<typeof createFakeCommandHandler>;
-    let originalEmit: typeof WebSocketServer.prototype.emit;
 
     beforeEach(async () => {
-        originalEmit = WebSocketServer.prototype.emit;
         const env = new Environment("test");
         new MockStorageService(env);
         const config = await ConfigStorage.create(env);
@@ -102,7 +100,6 @@ describe("endpoint event order", () => {
     });
 
     afterEach(async () => {
-        WebSocketServer.prototype.emit = originalEmit;
         client?.close();
         await handler?.unregister().catch(() => undefined);
         await new Promise<void>(resolve => httpServer.close(() => resolve()));

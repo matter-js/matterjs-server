@@ -72,14 +72,18 @@ export class Nodes {
         queue.push(endpointId);
     }
 
-    /** Returns insertion-ordered queue; empty if nothing pending. */
-    drainPendingEndpointAdds(nodeId: NodeId): EndpointNumber[] {
+    /**
+     * Returns the queued additions in insertion order, keeping only endpoints `isCarried` accepts: an
+     * endpoint removed again before the rebuild is not in the snapshot, so announcing it would point a
+     * client at an endpoint its node model does not have.
+     */
+    drainPendingEndpointAdds(nodeId: NodeId, isCarried: (endpointId: EndpointNumber) => boolean): EndpointNumber[] {
         const queue = this.#pendingEndpointAdds.get(nodeId);
         if (queue === undefined || queue.length === 0) {
             return [];
         }
         this.#pendingEndpointAdds.delete(nodeId);
-        return queue;
+        return queue.filter(isCarried);
     }
 
     seedState(nodeId: NodeId, initialState: NodeStates): void {

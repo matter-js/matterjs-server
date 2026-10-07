@@ -9,6 +9,8 @@ import { EndpointNumber } from "@matter/main/types";
 import { NodeStates } from "@project-chip/matter.js/device";
 import { Nodes } from "../src/controller/Nodes.js";
 
+const carried = () => true;
+
 const TEST_NODE_ID = NodeId(1);
 const OTHER_NODE_ID = NodeId(2);
 
@@ -238,7 +240,7 @@ describe("Nodes", () => {
             const nodes = new Nodes();
             nodes.queueEndpointAdded(TEST_NODE_ID, EndpointNumber(32));
             nodes.delete(TEST_NODE_ID);
-            expect(nodes.drainPendingEndpointAdds(TEST_NODE_ID)).to.deep.equal([]);
+            expect(nodes.drainPendingEndpointAdds(TEST_NODE_ID, carried)).to.deep.equal([]);
         });
     });
 
@@ -250,7 +252,7 @@ describe("Nodes", () => {
         });
 
         it("returns an empty array when nothing is queued", () => {
-            expect(nodes.drainPendingEndpointAdds(TEST_NODE_ID)).to.deep.equal([]);
+            expect(nodes.drainPendingEndpointAdds(TEST_NODE_ID, carried)).to.deep.equal([]);
         });
 
         it("preserves insertion order across multiple queues", () => {
@@ -258,7 +260,7 @@ describe("Nodes", () => {
             nodes.queueEndpointAdded(TEST_NODE_ID, EndpointNumber(33));
             nodes.queueEndpointAdded(TEST_NODE_ID, EndpointNumber(34));
 
-            expect(nodes.drainPendingEndpointAdds(TEST_NODE_ID)).to.deep.equal([
+            expect(nodes.drainPendingEndpointAdds(TEST_NODE_ID, carried)).to.deep.equal([
                 EndpointNumber(32),
                 EndpointNumber(33),
                 EndpointNumber(34),
@@ -267,16 +269,26 @@ describe("Nodes", () => {
 
         it("clears the queue after draining", () => {
             nodes.queueEndpointAdded(TEST_NODE_ID, EndpointNumber(32));
-            nodes.drainPendingEndpointAdds(TEST_NODE_ID);
-            expect(nodes.drainPendingEndpointAdds(TEST_NODE_ID)).to.deep.equal([]);
+            nodes.drainPendingEndpointAdds(TEST_NODE_ID, carried);
+            expect(nodes.drainPendingEndpointAdds(TEST_NODE_ID, carried)).to.deep.equal([]);
+        });
+
+        it("drops an endpoint the rebuilt snapshot does not carry", () => {
+            nodes.queueEndpointAdded(TEST_NODE_ID, EndpointNumber(32));
+            nodes.queueEndpointAdded(TEST_NODE_ID, EndpointNumber(33));
+
+            expect(
+                nodes.drainPendingEndpointAdds(TEST_NODE_ID, endpointId => endpointId === EndpointNumber(33)),
+            ).to.deep.equal([EndpointNumber(33)]);
+            expect(nodes.drainPendingEndpointAdds(TEST_NODE_ID, carried)).to.deep.equal([]);
         });
 
         it("isolates queues per node", () => {
             nodes.queueEndpointAdded(TEST_NODE_ID, EndpointNumber(1));
             nodes.queueEndpointAdded(OTHER_NODE_ID, EndpointNumber(2));
 
-            expect(nodes.drainPendingEndpointAdds(TEST_NODE_ID)).to.deep.equal([EndpointNumber(1)]);
-            expect(nodes.drainPendingEndpointAdds(OTHER_NODE_ID)).to.deep.equal([EndpointNumber(2)]);
+            expect(nodes.drainPendingEndpointAdds(TEST_NODE_ID, carried)).to.deep.equal([EndpointNumber(1)]);
+            expect(nodes.drainPendingEndpointAdds(OTHER_NODE_ID, carried)).to.deep.equal([EndpointNumber(2)]);
         });
     });
 });

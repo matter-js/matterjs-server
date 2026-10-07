@@ -743,7 +743,10 @@ export class ControllerCommandHandler {
         }
         this.events.nodeStructureChanged.emit(nodeId);
 
-        for (const endpointId of this.#nodes.drainPendingEndpointAdds(nodeId)) {
+        const { attributeCache } = this.#nodes;
+        for (const endpointId of this.#nodes.drainPendingEndpointAdds(nodeId, endpointId =>
+            attributeCache.hasEndpoint(nodeId, endpointId),
+        )) {
             this.events.nodeEndpointAdded.emit(nodeId, endpointId);
         }
     }

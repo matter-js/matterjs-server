@@ -102,6 +102,16 @@ export class AttributeDataCache {
         inFlight?.pending.push([path, convertedValue]);
     }
 
+    /** Whether the cached snapshot of the node carries any attribute of the endpoint. */
+    hasEndpoint(nodeId: NodeId, endpointId: EndpointNumber): boolean {
+        const attributes = this.#cache.get(nodeId);
+        if (attributes === undefined) {
+            return false;
+        }
+        const prefix = `${endpointId}/`;
+        return Object.keys(attributes).some(path => path.startsWith(prefix));
+    }
+
     /**
      * Drop the attributes of one endpoint, for a node that no longer has it.
      *
