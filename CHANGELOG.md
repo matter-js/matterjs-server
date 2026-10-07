@@ -19,13 +19,14 @@ This page shows a detailed overview of the changes between versions without the 
 - Enhancement: (@lboue) Added a command panel for the ServiceArea cluster to the Dashboard
 - Enhancement: (@lboue) Added a command panel for the WaterHeaterManagement cluster to the Dashboard
 - Enhancement: (@lboue) Added a command panel for the DoorLock cluster to the Dashboard
-- Enhancement: (@lboue) Added Presets and Thermostat Suggestions panels to Dashboard
+- Enhancement: (@lboue) Added Presets and Thermostat Suggestions panels for Thermostat cluster to Dashboard
 - Enhancement: (@lboue) Added a Forecast panel for the DeviceEnergyManagement cluster to the Dashboard
 - Enhancement: (@lboue) Added a command panel for the DeviceEnergyManagementMode cluster to the Dashboard
 - Enhancement: (@lboue) Added a command panel for the MediaPlayback cluster to the Dashboard
 - Enhancement: (@lboue) Added a command panel for the ClosureDimension cluster to the Dashboard
 - Enhancement: (@lboue) Added a command panel for the DoorLock cluster to the Dashboard
-- Enhancement: (@lboue) Added a decode and control panel for the EnergyEvse cluster to the Dashboard, including a weekly charging schedule editor
+- Enhancement: (@lboue) Added a command panel for the EnergyEvse cluster to the Dashboard
+- Enhancement: Adds the IKEA thermostat ValveCalibration vendor cluster (0x117cfc01) to the custom cluster and a Dashboard panel
 - Enhancement: (@lboue) Allows creating temporary/expiring PIN users (UserType=ExpiringUser) and configuring the lock's ExpiringUserTimeout to the Dashboard DoorLock cluster panel
 - Enhance ment: (@RAR) Adds the vendor clusters of the Aqara Spatial Multi-Sensor FP400 (AmbientSensingConfiguration 0x115ffc0a with detection zones, RadarSensingUnion 0x115ffc0b, OccupantLocation 0x115ffc0c with the target position event) to the custom cluster definitions and the Python client
 - Adjustment: Dashboard network view uses the Thread 1.4 role names
