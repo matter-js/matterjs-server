@@ -416,7 +416,7 @@ describe("WebSocketConnection", () => {
                 expect(closeCode, "connection was closed").to.equal(undefined);
                 expect(received.length).to.equal(frameCount);
                 expect(received[0]).to.equal("m0-xxxxx");
-                expect(received[frameCount - 1]).to.equal(`m${frameCount - 1}-xxxx`);
+                expect(received[frameCount - 1]).to.equal(`m${frameCount - 1}-`.padEnd(8, "x").slice(0, 8));
             } finally {
                 conn?.dispose();
                 client?.terminate();
