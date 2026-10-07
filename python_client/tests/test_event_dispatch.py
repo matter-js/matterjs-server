@@ -139,10 +139,10 @@ _BRIDGE_WITH_COMPOSED_DEVICE = {
     [
         # the server's order: the removals come before the snapshot without the endpoints
         ([3, 4, 5, "snapshot"], [(3, 3)]),
-        ([5, 4, 3, "snapshot"], [(5, 4), (4, 3), (3, 3)]),
+        ([5, 4, 3, "snapshot"], [(5, 3), (4, 3), (3, 3)]),
         ([4, 3, 5, "snapshot"], [(4, 3), (3, 3)]),
         (["snapshot", 3, 4, 5], [(3, 3)]),
-        (["snapshot", 5, 4, 3], [(5, 4), (4, 3), (3, 3)]),
+        (["snapshot", 5, 4, 3], [(5, 3), (4, 3), (3, 3)]),
     ],
 )
 def test_endpoint_removed_resolves_every_part_to_its_device(
@@ -301,8 +301,9 @@ def test_a_snapshot_naming_another_parent_replaces_the_relation() -> None:
 
     _send_snapshot(client, _with(_BRIDGED_NODE_WITH_TWO_PARTS, {"4/29/3": [5]}))
 
-    assert node.get_compose_parent(5) is node.endpoints[4]
-    assert node.get_compose_child_ids(3) == (4,)
+    assert node.get_closest_compose_parent(5) is node.endpoints[4]
+    assert node.get_compose_parent(5) is node.endpoints[3]
+    assert node.get_compose_child_ids(3) == (4, 5)
 
 
 @pytest.mark.parametrize(

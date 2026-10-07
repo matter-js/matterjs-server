@@ -3,17 +3,15 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
+
+import pytest
 
 from matter_server.client import MatterClient
 from matter_server.client.models import device_types
 from matter_server.client.models.node import MatterEndpoint, MatterNode
 from matter_server.common.helpers.util import dataclass_from_dict
 from matter_server.common.models import EventMessage, EventType, MatterNodeData
-
-if TYPE_CHECKING:
-    import pytest
 
 # Descriptor cluster id and attribute ids
 _DESCRIPTOR = 29
@@ -326,8 +324,11 @@ def test_parts_of_a_bridged_composed_device_stay_composed() -> None:
         assert node.get_bridge_parent(part_id) is None
 
 
-def test_composed_device_parts_resolve_to_their_closest_parent() -> None:
-    """A composed device that lists its whole family maps parts to the closest parent."""
+def test_composed_device_parts_resolve_to_their_device() -> None:
+    """A part nested below another part belongs to the top of the composition.
+
+    The closest parent is still resolved from a partsList that lists the whole family.
+    """
     node = _node_with_endpoints(
         {
             0: {
@@ -346,8 +347,30 @@ def test_composed_device_parts_resolve_to_their_closest_parent() -> None:
         }
     )
 
+    assert node.get_closest_compose_parent(2) is node.endpoints[1]
+    assert node.get_closest_compose_parent(3) is node.endpoints[2]
     assert node.get_compose_parent(2) is node.endpoints[1]
-    assert node.get_compose_parent(3) is node.endpoints[2]
+    assert node.get_compose_parent(3) is node.endpoints[1]
+    assert node.get_compose_child_ids(1) == (2, 3)
+    assert node.get_compose_child_ids(2) == ()
+
+
+@pytest.mark.parametrize("order", [(10, 20, 30), (30, 20, 10)])
+def test_a_part_two_levels_below_a_bridged_device_belongs_to_it_in_any_order(order: tuple[int, ...]) -> None:
+    """Consumers derive the device of a part from its compose parent, whatever order the snapshot has."""
+    endpoints: dict[int, dict[int, object]] = {
+        0: {_DEVICE_TYPE_LIST: [{"0": _ROOT_NODE, "1": 1}], _PARTS_LIST: [1, 10, 20, 30]},
+        1: {_DEVICE_TYPE_LIST: [{"0": _AGGREGATOR, "1": 1}], _PARTS_LIST: [10, 20, 30]},
+        30: {_DEVICE_TYPE_LIST: [{"0": _BRIDGED_NODE, "1": 1}], _PARTS_LIST: [10, 20]},
+        20: {_DEVICE_TYPE_LIST: [{"0": _ON_OFF_LIGHT, "1": 1}], _PARTS_LIST: [10]},
+        10: {_DEVICE_TYPE_LIST: [{"0": _ON_OFF_LIGHT, "1": 1}]},
+    }
+    node = _node_with_endpoints({endpoint_id: endpoints[endpoint_id] for endpoint_id in (0, 1, *order)})
+
+    assert node.get_closest_compose_parent(10) is node.endpoints[20]
+    assert node.get_compose_parent(10) is node.endpoints[30]
+    assert node.get_compose_parent(20) is node.endpoints[30]
+    assert node.get_compose_child_ids(30) == (10, 20)
 
 
 def test_root_children_have_neither_parent() -> None:
@@ -884,7 +907,9 @@ def test_removing_a_composed_parent_drops_its_parts() -> None:
         }
     )
 
-    assert node.get_compose_parent(32) is node.endpoints[31]
+    assert node.get_closest_compose_parent(32) is node.endpoints[31]
+    assert node.get_compose_parent(32) is node.endpoints[30]
+    assert node.get_compose_child_ids(30) == (31, 32)
 
     _announce_removal(_client_with(node), 30)
 
@@ -1276,6 +1301,7 @@ def test_kept_relations_never_close_a_cycle_with_a_named_one(
 
     assert node.get_compose_parent(3) is node.endpoints[5]
     # the snapshot names no parent for 4 and 5; only the relation that closes the cycle is dropped
-    assert node.get_compose_parent(4) is node.endpoints[3]
+    assert node.get_closest_compose_parent(4) is node.endpoints[3]
+    assert node.get_compose_parent(4) is node.endpoints[5]
     assert node.get_compose_parent(5) is None
     assert [record for record in caplog.records if "made cyclic" in record.message]

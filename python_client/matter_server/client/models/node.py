@@ -116,7 +116,7 @@ class MatterEndpoint:
             seen.add(endpoint.endpoint_id)
             if endpoint.is_bridged_device:
                 return endpoint.get_cluster(Clusters.BridgedDeviceBasicInformation)
-            parent = endpoint.node.get_compose_parent(endpoint.endpoint_id)
+            parent = endpoint.node.get_closest_compose_parent(endpoint.endpoint_id)
             if parent is None:
                 break
             endpoint = parent
@@ -338,14 +338,34 @@ class MatterNode:
         return endpoint_obj.get_cluster(cluster)
 
     def get_compose_parent(self, endpoint_id: int) -> MatterEndpoint | None:
-        """Return endpoint of parent if the endpoint belongs to a Composed device."""
+        """Return the endpoint of the composed device the endpoint is a part of, at any depth.
+
+        Consumers derive the device of a part from this endpoint, so a part nested below another
+        part resolves to the top of the composition, not to its closest parent.
+        """
+        if (parent_id := self._composed_endpoints.get(endpoint_id)) is None:
+            return None
+        seen = {endpoint_id, parent_id}
+        while (next_id := self._composed_endpoints.get(parent_id)) is not None and next_id not in seen:
+            seen.add(next_id)
+            parent_id = next_id
+        return self.endpoints.get(parent_id)
+
+    def get_closest_compose_parent(self, endpoint_id: int) -> MatterEndpoint | None:
+        """Return the closest endpoint the endpoint is a part of."""
         if (parent_id := self._composed_endpoints.get(endpoint_id)) is None:
             return None
         return self.endpoints.get(parent_id)
 
     def get_compose_child_ids(self, endpoint_id: int) -> tuple[int, ...]:
-        """Return endpoint IDs of any child if the endpoint represents a Composed device."""
-        return tuple(sorted(x for x, y in self._composed_endpoints.items() if y == endpoint_id))
+        """Return endpoint IDs of the parts, at any depth, of the composed device the endpoint is the top of."""
+        return tuple(
+            sorted(
+                child_id
+                for child_id in self._composed_endpoints
+                if (parent := self.get_compose_parent(child_id)) is not None and parent.endpoint_id == endpoint_id
+            )
+        )
 
     def get_bridge_parent(self, endpoint_id: int) -> MatterEndpoint | None:
         """Return the Aggregator endpoint that bridges the given endpoint, if any."""
