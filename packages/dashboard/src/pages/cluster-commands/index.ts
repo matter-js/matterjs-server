@@ -40,6 +40,6 @@ import "./clusters/level-control-commands.js";
 import "./clusters/media-playback-commands.js";
 import "./clusters/meter-identification-commands.js";
 import "./clusters/on-off-commands.js";
-import "./clusters/rvc-operational-state-commands.js";
+import "./clusters/operational-state-commands.js";
 import "./clusters/service-area-commands.js";
 import "./clusters/thermostat-commands.js";
