@@ -442,6 +442,35 @@ describe("ws-client", () => {
                 expect(client.nodes[nodeKey]).to.exist;
             });
 
+            it("hands a thread diagnostics listener only the batch that arrived", async () => {
+                server.onCommand("start_listening", () => []);
+                await client.startListening();
+
+                const received = new Array<string>();
+                client.addThreadDiagnosticsListener(batch => received.push(batch.extPanIdHex));
+
+                server.sendEvent("thread_diagnostics_updated", {
+                    extPanIdHex: "1122334455667788",
+                    networkName: "A",
+                    collectedAt: 1,
+                    source: "meshcop",
+                    nodes: [],
+                });
+                server.sendEvent("thread_diagnostics_updated", {
+                    extPanIdHex: "8877665544332211",
+                    networkName: "B",
+                    collectedAt: 2,
+                    source: "meshcop",
+                    nodes: [],
+                });
+                await new Promise(resolve => setTimeout(resolve, 100));
+
+                // The accumulating map holds both; a listener that rebuilt its state from it would
+                // reinstate the first network on the second event.
+                expect(received).to.deep.equal(["1122334455667788", "8877665544332211"]);
+                expect(client.threadDiagnostics.size).to.equal(2);
+            });
+
             it("should receive attribute_updated event with BigInt node_id", async () => {
                 const nodeId = BigInt("18446744069414584320");
 
