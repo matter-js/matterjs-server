@@ -972,6 +972,19 @@ export class ControllerCommandHandler {
         };
     }
 
+    /** A missing endpoint or cluster is a client mistake, so it is reported as InvalidArguments, not as a device status. */
+    #clusterEndpoint(nodeId: NodeId, endpointId: EndpointNumber, clusterName: string): Endpoint {
+        const { endpoints } = this.#nodes.get(nodeId).node;
+        if (!endpoints.has(endpointId)) {
+            throw ServerError.invalidArguments(`Endpoint ${endpointId} does not exist`);
+        }
+        const endpoint = endpoints.for(endpointId);
+        if (!endpoint.behaviors.has(clusterName)) {
+            throw ServerError.invalidArguments(`Cluster "${clusterName}" does not exist on endpoint ${endpointId}`);
+        }
+        return endpoint;
+    }
+
     /**
      * Write a single attribute on a remote node. Uses `setStateOf(string, ...)` (not `set({...})`)
      * because peer cluster behaviors are dynamically registered and aren't on the agent's cached property getters.
@@ -983,15 +996,15 @@ export class ControllerCommandHandler {
         attributeName: string,
         value: unknown,
     ): Promise<{ status: number; clusterStatus?: number }> {
-        const node = this.#nodes.get(nodeId);
         const clusterEntry = ClusterMap[clusterId];
         if (!clusterEntry) {
             throw ServerError.invalidArguments(`Cluster Id "${clusterId}" unknown`);
         }
         const clusterProperty = clusterEntry.model.propertyName;
+        const endpoint = this.#clusterEndpoint(nodeId, endpointId, clusterProperty);
 
         try {
-            await node.node.endpoints.for(endpointId).setStateOf(clusterProperty, { [attributeName]: value });
+            await endpoint.setStateOf(clusterProperty, { [attributeName]: value });
             return { status: 0 };
         } catch (error) {
             if (error instanceof MatterAggregateError) {
@@ -1095,9 +1108,8 @@ export class ControllerCommandHandler {
         }
         const clusterName = clusterEntry.model.propertyName;
         const commandName = camelize(data.commandName);
-        const commands = (
-            this.#nodes.get(nodeId).node.endpoints.for(endpointId).commands as Record<string, Record<string, unknown>>
-        )[clusterName];
+        const endpoint = this.#clusterEndpoint(nodeId, endpointId, clusterName);
+        const commands = (endpoint.commands as Record<string, Record<string, unknown>>)[clusterName];
         if (!commands[commandName]) {
             throw ServerError.invalidArguments(`Command "${commandName}" does not exist on cluster "${clusterName}"`);
         }

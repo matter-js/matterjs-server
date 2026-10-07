@@ -12,8 +12,8 @@ const logger = Logger.get("WebSocketConnection");
 export interface OutboundSocket {
     readonly bufferedAmount: number;
     readonly readyState: number;
-    /** `cb` is invoked when the frame is flushed. Like `ws`, it must fire asynchronously, not inline. */
-    send(data: string, cb?: (err?: Error) => void): void;
+    /** `cb` is invoked when the frame is flushed (`err` is `null` on success). Like `ws`, it must fire asynchronously, not inline. */
+    send(data: string, cb?: (err?: Error | null) => void): void;
     close(code?: number, reason?: string): void;
     terminate(): void;
 }
@@ -240,10 +240,10 @@ export class WebSocketConnection {
         if (this.#outbox.size === 0 && this.#inFlightCount === 0) this.#exitQueued();
     }
 
-    #onFlushed(err?: Error): void {
+    #onFlushed(err?: Error | null): void {
         this.#inFlightCount--;
         if (this.#disposed) return;
-        if (err !== undefined) {
+        if (err != null) {
             // A send error means the socket is dead. Dispose to release the queued closures, then
             // terminate to force the close event the handler needs to drop this connection — a
             // graceful close may never complete on an already-broken socket.

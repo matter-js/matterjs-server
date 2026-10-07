@@ -5,6 +5,8 @@
  */
 
 import { Millis } from "@matter/main";
+import { once } from "node:events";
+import { WebSocket, WebSocketServer } from "ws";
 import { OutboundSocket, WebSocketConnection } from "../src/server/WebSocketConnection.js";
 
 const OPEN = 1;
@@ -25,9 +27,9 @@ class FakeSocket implements OutboundSocket {
     terminated = false;
     readonly sent = new Array<string>();
     readonly closes = new Array<{ code?: number; reason?: string }>();
-    #pending = new Array<{ bytes: number; cb?: (err?: Error) => void }>();
+    #pending = new Array<{ bytes: number; cb?: (err?: Error | null) => void }>();
 
-    send(data: string, cb?: (err?: Error) => void): void {
+    send(data: string, cb?: (err?: Error | null) => void): void {
         this.sent.push(data);
         const bytes = Buffer.byteLength(data);
         this.bufferedAmount += bytes;
@@ -45,11 +47,11 @@ class FakeSocket implements OutboundSocket {
     }
 
     /** Release the oldest in-flight frame, as if the peer drained it: shrink the buffer, fire its callback. */
-    flushOne(err?: Error): void {
+    flushOne(err?: Error | null): void {
         const p = this.#pending.shift();
         if (p === undefined) throw new Error("no pending send to flush");
         this.bufferedAmount -= p.bytes;
-        p.cb?.(err);
+        p.cb?.(err ?? null);
     }
 
     get pendingCount(): number {
@@ -363,6 +365,64 @@ describe("WebSocketConnection", () => {
             }
 
             expect(socket.terminated).to.equal(false);
+        });
+    });
+
+    describe("against a real ws socket", () => {
+        // A successful ws/Node write calls back with null, which must not count as a failed send
+        it("delivers all queued frames and keeps the connection open after a backpressure episode", async () => {
+            const wss = new WebSocketServer({ host: "127.0.0.1", port: 0 });
+            await once(wss, "listening");
+            const queuedFrames = 10;
+            const frameBytes = 512 * 1024;
+            let conn: WebSocketConnection | undefined;
+            let client: WebSocket | undefined;
+            try {
+                const address = wss.address();
+                if (typeof address !== "object" || address === null) throw new Error("server has no TCP address");
+                const serverSide = once(wss, "connection");
+                client = new WebSocket(`ws://127.0.0.1:${address.port}`);
+                const received = new Array<string>();
+                let closeCode: number | undefined;
+                client.on("message", data => received.push(data.toString().slice(0, 8)));
+                client.on("close", code => (closeCode = code));
+                await once(client, "open");
+                const serverSocket: WebSocket = (await serverSide)[0];
+
+                // Stop reading so the kernel buffers fill and bufferedAmount on the server side grows.
+                client.pause();
+                conn = new WebSocketConnection(serverSocket, {
+                    connId: "real-ws",
+                    highWaterBytes: 64 * 1024,
+                    highWaterCeilingBytes: 64 * 1024,
+                    watchdog: Millis(300_000),
+                });
+                // Kernel socket buffers absorb several MB before bufferedAmount grows, so send until it
+                // does, then add frames that can only be delivered through the queue.
+                const maxFillBytes = 64 * 1024 * 1024;
+                let frameCount = 0;
+                while (serverSocket.bufferedAmount <= 64 * 1024 && frameCount * frameBytes < maxFillBytes) {
+                    conn.sendReliable(f(frameBytes, `m${frameCount++}-`));
+                }
+                expect(serverSocket.bufferedAmount, "backpressure was not reached").to.be.greaterThan(64 * 1024);
+                for (let i = 0; i < queuedFrames; i++) conn.sendOrdered(f(frameBytes, `m${frameCount++}-`));
+
+                client.resume();
+                const deadline = Date.now() + 10_000;
+                while (received.length < frameCount && closeCode === undefined && Date.now() < deadline) {
+                    await new Promise(resolve => setTimeout(resolve, 10));
+                }
+
+                expect(closeCode, "connection was closed").to.equal(undefined);
+                expect(received.length).to.equal(frameCount);
+                expect(received[0]).to.equal("m0-xxxxx");
+                expect(received[frameCount - 1]).to.equal(`m${frameCount - 1}-`.padEnd(8, "x").slice(0, 8));
+            } finally {
+                conn?.dispose();
+                client?.terminate();
+                for (const c of wss.clients) c.terminate();
+                await new Promise<void>(resolve => wss.close(() => resolve()));
+            }
         });
     });
 });

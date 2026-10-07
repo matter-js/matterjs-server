@@ -10,32 +10,35 @@ This page shows a detailed overview of the changes between versions without the 
 ## **WORK IN PROGRESS**
 
 - Enhancement: Update matter.js to the latest 0.18.0 nightly
-    - Adds support for Matter 1.6.1
-    - Python client also updated for Matter 1.6.1
-    - Dashboard shows manufacturer-specific enum values (vendor mode tags, operational and error states, closure errors) as "Manufacturer 0x…"
+    - Adds support for Matter 1.6.1 (including Python client)
 - Enhancement: Dashboard network view uses the Thread 1.4 role names: a Thread Router is shown as "Mesh Extender" and a REED as "Standby Mesh Extender". External (non-fabric) neighbors, whose role is only inferred from rx-on-when-idle, are now labeled "Always-on device" instead of a routing role. Wire values and the `ThreadRoutingRole` enum keep the Matter spec names
 - Enhancement: (@cyberb) `--listen-address` (env `LISTEN_ADDRESS`) accepts an absolute unix socket path, so the WebSocket API and dashboard can be served on a local socket, alone or next to TCP addresses; a socket file left behind by an unclean shutdown is replaced on the next start, and the Docker health check queries the socket
 - Enhancement: (@cyberb) The Python client connects over a unix socket when given a `unix://<path>` server URL, including OTA image uploads
 - Enhancement: `LISTEN_ADDRESS` accepts a comma-separated list of addresses or interface names, like the repeatable `--listen-address` option
-- Enhancement: (@lboue) Added a command panel for the OperationalState, RvcOperationalState and OvenCavityOperationalState clusters to the Dashboard
-- Enhancement: (@lboue) Added a command panel for the ServiceArea cluster to the Dashboard
 - Enhancement: Adds CLI flag `--thread-rest-probe-port` (env `THREAD_REST_PROBE_PORT`) to configure the OTBR REST API port probed on discovered Thread Border Routers (default 8081), and raises the per-request REST probe timeout from 1500 ms to 3000 ms for Border Routers with a slow `/diagnostics` endpoint (a Border Router that accepts the connection and then stalls now delays the first diagnostics batch by up to 9 seconds instead of 4.5)
 - Enhancement: Adds CLI flag `--custom-cluster-poll-interval` (env `CUSTOM_CLUSTER_POLL_INTERVAL`) to configure the polling interval for custom cluster attributes without subscription support (legacy Eve Energy devices); defaults to the previous 60 seconds and accepts 60 to 86400 seconds
 - Enhancement: (@lboue) Dashboard Endpoints list and endpoint's Clusters panel show each endpoint's resolved label and Descriptor semantic tags (TagList) to simplify identification
+- Enhancement: (@lboue) Added a command panel for the OperationalState, RvcOperationalState and OvenCavityOperationalState clusters to the Dashboard
+- Enhancement: (@lboue) Added a command panel for the ServiceArea cluster to the Dashboard
+- Enhancement: (@lboue) Added a command panel for the WaterHeaterManagement cluster to the Dashboard
 - Enhancement: (@lboue) Added a command panel for the DoorLock cluster to the Dashboard
-- Enhancement: (@lboue) Added Presets and Thermostat Suggestions panels to Dashboard
-- Enhancement: (@lboue) Added a command panel for the DeviceEnergyManagementMode cluster to the Dashboard
+- Enhancement: (@lboue) Added Presets and Thermostat Suggestions panels for Thermostat cluster to Dashboard
 - Enhancement: (@lboue) Added a Forecast panel for the DeviceEnergyManagement cluster to the Dashboard
+- Enhancement: (@lboue) Added a command panel for the DeviceEnergyManagementMode cluster to the Dashboard
 - Enhancement: (@lboue) Added a command panel for the MediaPlayback cluster to the Dashboard
 - Enhancement: (@lboue) Added a command panel for the ClosureDimension cluster to the Dashboard
 - Enhancement: (@lboue) Added a command panel for the DoorLock cluster to the Dashboard
-- Enhancement: (@lboue) Added a decode and control panel for the EnergyEvse cluster to the Dashboard, including a weekly charging schedule editor
+- Enhancement: (@lboue) Added a command panel for the EnergyEvse cluster to the Dashboard
+- Enhancement: Adds the IKEA thermostat ValveCalibration vendor cluster (0x117cfc01) to the custom cluster and a Dashboard panel
 - Enhancement: (@lboue) Allows creating temporary/expiring PIN users (UserType=ExpiringUser) and configuring the lock's ExpiringUserTimeout to the Dashboard DoorLock cluster panel
-- Enhancement: (@lboue) Added Presets and Thermostat Suggestions (Thermostat cluster PRES/TSUGGEST features) panels to the Dashboard
 - Enhance ment: (@RAR) Adds the vendor clusters of the Aqara Spatial Multi-Sensor FP400 (AmbientSensingConfiguration 0x115ffc0a with detection zones, RadarSensingUnion 0x115ffc0b, OccupantLocation 0x115ffc0c with the target position event) to the custom cluster definitions and the Python client
+- Adjustment: Dashboard network view uses the Thread 1.4 role names
+- Fix: Dashboard shows manufacturer-specific enum values (vendor mode tags, operational and error states, closure errors) as "Manufacturer 0x…"
 - Fix: (@RAR) List values of decorator-defined custom clusters are converted in both directions, so bytes inside a list (Aqara `SetZones`) reach the device as bytes instead of strings. The same fix sends `SupportedModes` of the derived Mode clusters (RVC Run/Clean, Dishwasher, Laundry Washer, Oven, Microwave Oven, Refrigerator, Device Energy Management, EVSE and Water Heater Mode) keyed by tag like every other attribute value, instead of keyed by field name
 - Fix: (@RAR) The Python client generator resolves struct, signed integer, list and response types of decorator-defined custom clusters; the `int32` attributes `DraftElectricalMeasurementCluster.activePower` and `ThirdRealityMeteringCluster.instantaneousDemand` are now generated as signed
+- Fix: WebSocket clients that read slowly are no longer disconnected when the server queues messages for them; the queued messages are now delivered
 - Fix: Large negative 64-bit values keep their precision in WebSocket messages, and a text value starting with `__BIGINT__` is no longer turned into a number or rejected; the server and the ws-client share one bigint-aware JSON implementation
+- Fix: Verified endpoint and cluster existence for `device_command` and `write_attribute` and return proper errors
 - Fix: The server exits with code 1 when it fails to start (for example when the WebSocket port is in use), so systemd or Docker can restart it; before, it logged the error and kept running without a listener
 - Fix: Door Lock PIN fields (`credentialData`, `pinCode`) are redacted from the debug logs
 - Fix: BLE proxy connections are pinged every 15 seconds and terminated after 45 to 60 seconds of silence, so a proxy client that loses power is detected instead of staying registered indefinitely
