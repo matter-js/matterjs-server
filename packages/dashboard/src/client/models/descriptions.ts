@@ -12045,7 +12045,7 @@ export const clusters: Record<number, ClusterDescription> = {
                 "id": 4,
                 "cluster_id": 1024,
                 "label": "LightSensorType",
-                "type": "Optional[Nullable[uint8]]",
+                "type": "Optional[Nullable[LightSensorTypeEnum]]",
                 "writable": false
             },
             "65528": {

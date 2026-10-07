@@ -1284,7 +1284,9 @@ function generateEnum(w: PythonWriter, model: ValueModel, clusterName?: string):
     const usedValues = new Set<number>();
 
     for (const m of members) {
-        const value = m.id ?? 0;
+        // Entries without an id describe a reserved value range (e.g. manufacturer codes), not a value
+        if (m.id === undefined) continue;
+        const value = m.id;
         usedValues.add(value);
         if (value > maxValue) maxValue = value;
         w.line(`${toKName(m.name)} = ${hex2(value)}`);

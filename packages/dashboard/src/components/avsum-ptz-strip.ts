@@ -178,15 +178,16 @@ export class AvsumPtzStrip extends LitElement {
                     features.mPresets && presets.length > 0
                         ? html`<div class="group presets">
                               ${presets.map(
-                                  p => html`<button
-                                      class="chip"
-                                      title="p=${p.settings.pan ?? 0}° · t=${p.settings.tilt ?? 0}° · z=${
-                                          p.settings.zoom ?? 1
-                                      }×"
-                                      @click=${handleAsync(() => this._handleGoPreset(p.presetId))}
-                                  >
-                                      ${p.name}
-                                  </button>`,
+                                  p =>
+                                      html`<button
+                                          class="chip"
+                                          title="p=${p.settings.pan ?? 0}° · t=${p.settings.tilt ?? 0}° · z=${
+                                              p.settings.zoom ?? 1
+                                          }×"
+                                          @click=${handleAsync(() => this._handleGoPreset(p.presetId))}
+                                      >
+                                          ${p.name}
+                                      </button>`,
                               )}
                           </div>`
                         : nothing
