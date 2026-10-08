@@ -32,7 +32,7 @@ class Thermostat(Cluster):
                 ClusterObjectFieldDescriptor(Label="absMaxCoolSetpointLimit", Tag=0x00000006, Type=typing.Optional[int]),
                 ClusterObjectFieldDescriptor(Label="PICoolingDemand", Tag=0x00000007, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="PIHeatingDemand", Tag=0x00000008, Type=typing.Optional[uint]),
-                ClusterObjectFieldDescriptor(Label="HVACSystemTypeConfiguration", Tag=0x00000009, Type=typing.Optional[uint]),
+                ClusterObjectFieldDescriptor(Label="HVACSystemTypeConfiguration", Tag=0x00000009, Type=typing.Optional[Thermostat.Bitmaps.HVACSystemTypeBitmap]),
                 ClusterObjectFieldDescriptor(Label="localTemperatureCalibration", Tag=0x00000010, Type=typing.Optional[int]),
                 ClusterObjectFieldDescriptor(Label="occupiedCoolingSetpoint", Tag=0x00000011, Type=typing.Optional[int]),
                 ClusterObjectFieldDescriptor(Label="occupiedHeatingSetpoint", Tag=0x00000012, Type=typing.Optional[int]),
@@ -49,17 +49,17 @@ class Thermostat(Cluster):
                 ClusterObjectFieldDescriptor(Label="thermostatRunningMode", Tag=0x0000001E, Type=typing.Optional[Thermostat.Enums.ThermostatRunningModeEnum]),
                 ClusterObjectFieldDescriptor(Label="temperatureSetpointHold", Tag=0x00000023, Type=typing.Optional[Thermostat.Enums.TemperatureSetpointHoldEnum]),
                 ClusterObjectFieldDescriptor(Label="temperatureSetpointHoldDuration", Tag=0x00000024, Type=typing.Union[None, Nullable, uint]),
-                ClusterObjectFieldDescriptor(Label="thermostatProgrammingOperationMode", Tag=0x00000025, Type=typing.Optional[uint]),
+                ClusterObjectFieldDescriptor(Label="thermostatProgrammingOperationMode", Tag=0x00000025, Type=typing.Optional[Thermostat.Bitmaps.ProgrammingOperationModeBitmap]),
                 ClusterObjectFieldDescriptor(Label="thermostatRunningState", Tag=0x00000029, Type=typing.Optional[Thermostat.Bitmaps.RelayStateBitmap]),
                 ClusterObjectFieldDescriptor(Label="setpointChangeSource", Tag=0x00000030, Type=typing.Optional[Thermostat.Enums.SetpointChangeSourceEnum]),
                 ClusterObjectFieldDescriptor(Label="setpointChangeAmount", Tag=0x00000031, Type=typing.Union[None, Nullable, int]),
                 ClusterObjectFieldDescriptor(Label="setpointChangeSourceTimestamp", Tag=0x00000032, Type=typing.Optional[uint]),
-                ClusterObjectFieldDescriptor(Label="occupiedSetback", Tag=0x00000034, Type=typing.Optional[uint]),
-                ClusterObjectFieldDescriptor(Label="occupiedSetbackMin", Tag=0x00000035, Type=typing.Optional[uint]),
-                ClusterObjectFieldDescriptor(Label="occupiedSetbackMax", Tag=0x00000036, Type=typing.Optional[uint]),
-                ClusterObjectFieldDescriptor(Label="unoccupiedSetback", Tag=0x00000037, Type=typing.Optional[uint]),
-                ClusterObjectFieldDescriptor(Label="unoccupiedSetbackMin", Tag=0x00000038, Type=typing.Optional[uint]),
-                ClusterObjectFieldDescriptor(Label="unoccupiedSetbackMax", Tag=0x00000039, Type=typing.Optional[uint]),
+                ClusterObjectFieldDescriptor(Label="occupiedSetback", Tag=0x00000034, Type=typing.Union[None, Nullable, uint]),
+                ClusterObjectFieldDescriptor(Label="occupiedSetbackMin", Tag=0x00000035, Type=typing.Union[None, Nullable, uint]),
+                ClusterObjectFieldDescriptor(Label="occupiedSetbackMax", Tag=0x00000036, Type=typing.Union[None, Nullable, uint]),
+                ClusterObjectFieldDescriptor(Label="unoccupiedSetback", Tag=0x00000037, Type=typing.Union[None, Nullable, uint]),
+                ClusterObjectFieldDescriptor(Label="unoccupiedSetbackMin", Tag=0x00000038, Type=typing.Union[None, Nullable, uint]),
+                ClusterObjectFieldDescriptor(Label="unoccupiedSetbackMax", Tag=0x00000039, Type=typing.Union[None, Nullable, uint]),
                 ClusterObjectFieldDescriptor(Label="emergencyHeatDelta", Tag=0x0000003A, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="ACType", Tag=0x00000040, Type=typing.Optional[Thermostat.Enums.ACTypeEnum]),
                 ClusterObjectFieldDescriptor(Label="ACCapacity", Tag=0x00000041, Type=typing.Optional[uint]),
@@ -100,7 +100,7 @@ class Thermostat(Cluster):
     absMaxCoolSetpointLimit: typing.Optional[int] = None
     PICoolingDemand: typing.Optional[uint] = None
     PIHeatingDemand: typing.Optional[uint] = None
-    HVACSystemTypeConfiguration: typing.Optional[uint] = None
+    HVACSystemTypeConfiguration: typing.Optional[Thermostat.Bitmaps.HVACSystemTypeBitmap] = None
     localTemperatureCalibration: typing.Optional[int] = None
     occupiedCoolingSetpoint: typing.Optional[int] = None
     occupiedHeatingSetpoint: typing.Optional[int] = None
@@ -117,17 +117,17 @@ class Thermostat(Cluster):
     thermostatRunningMode: typing.Optional[Thermostat.Enums.ThermostatRunningModeEnum] = None
     temperatureSetpointHold: typing.Optional[Thermostat.Enums.TemperatureSetpointHoldEnum] = None
     temperatureSetpointHoldDuration: typing.Union[None, Nullable, uint] = None
-    thermostatProgrammingOperationMode: typing.Optional[uint] = None
+    thermostatProgrammingOperationMode: typing.Optional[Thermostat.Bitmaps.ProgrammingOperationModeBitmap] = None
     thermostatRunningState: typing.Optional[Thermostat.Bitmaps.RelayStateBitmap] = None
     setpointChangeSource: typing.Optional[Thermostat.Enums.SetpointChangeSourceEnum] = None
     setpointChangeAmount: typing.Union[None, Nullable, int] = None
     setpointChangeSourceTimestamp: typing.Optional[uint] = None
-    occupiedSetback: typing.Optional[uint] = None
-    occupiedSetbackMin: typing.Optional[uint] = None
-    occupiedSetbackMax: typing.Optional[uint] = None
-    unoccupiedSetback: typing.Optional[uint] = None
-    unoccupiedSetbackMin: typing.Optional[uint] = None
-    unoccupiedSetbackMax: typing.Optional[uint] = None
+    occupiedSetback: typing.Union[None, Nullable, uint] = None
+    occupiedSetbackMin: typing.Union[None, Nullable, uint] = None
+    occupiedSetbackMax: typing.Union[None, Nullable, uint] = None
+    unoccupiedSetback: typing.Union[None, Nullable, uint] = None
+    unoccupiedSetbackMin: typing.Union[None, Nullable, uint] = None
+    unoccupiedSetbackMax: typing.Union[None, Nullable, uint] = None
     emergencyHeatDelta: typing.Optional[uint] = None
     ACType: typing.Optional[Thermostat.Enums.ACTypeEnum] = None
     ACCapacity: typing.Optional[uint] = None
@@ -379,6 +379,17 @@ class Thermostat(Cluster):
             kTimeOfUseCostSavings = 0x20
             kPreCoolingOrPreHeating = 0x40
             kConflictingSuggestions = 0x80
+
+        class HVACSystemTypeBitmap(IntFlag):
+            kCoolingStage = 0x3
+            kHeatingStage = 0xC
+            kHeatingIsHeatPump = 0x10
+            kHeatingUsesFuel = 0x20
+
+        class ProgrammingOperationModeBitmap(IntFlag):
+            kScheduleActive = 0x1
+            kAutoRecovery = 0x2
+            kEconomy = 0x4
 
     class Structs:
         @dataclass
@@ -806,9 +817,9 @@ class Thermostat(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
+                return ClusterObjectFieldDescriptor(Type=typing.Optional[Thermostat.Bitmaps.HVACSystemTypeBitmap])
 
-            value: typing.Optional[uint] = None
+            value: typing.Optional[Thermostat.Bitmaps.HVACSystemTypeBitmap] = None
 
         @dataclass
         class LocalTemperatureCalibration(ClusterAttributeDescriptor):
@@ -1078,9 +1089,9 @@ class Thermostat(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
+                return ClusterObjectFieldDescriptor(Type=typing.Optional[Thermostat.Bitmaps.ProgrammingOperationModeBitmap])
 
-            value: typing.Optional[uint] = None
+            value: typing.Optional[Thermostat.Bitmaps.ProgrammingOperationModeBitmap] = None
 
         @dataclass
         class ThermostatRunningState(ClusterAttributeDescriptor):
@@ -1158,9 +1169,9 @@ class Thermostat(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
+                return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, uint])
 
-            value: typing.Optional[uint] = None
+            value: typing.Union[None, Nullable, uint] = None
 
         @dataclass
         class OccupiedSetbackMin(ClusterAttributeDescriptor):
@@ -1174,9 +1185,9 @@ class Thermostat(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
+                return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, uint])
 
-            value: typing.Optional[uint] = None
+            value: typing.Union[None, Nullable, uint] = None
 
         @dataclass
         class OccupiedSetbackMax(ClusterAttributeDescriptor):
@@ -1190,9 +1201,9 @@ class Thermostat(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
+                return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, uint])
 
-            value: typing.Optional[uint] = None
+            value: typing.Union[None, Nullable, uint] = None
 
         @dataclass
         class UnoccupiedSetback(ClusterAttributeDescriptor):
@@ -1206,9 +1217,9 @@ class Thermostat(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
+                return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, uint])
 
-            value: typing.Optional[uint] = None
+            value: typing.Union[None, Nullable, uint] = None
 
         @dataclass
         class UnoccupiedSetbackMin(ClusterAttributeDescriptor):
@@ -1222,9 +1233,9 @@ class Thermostat(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
+                return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, uint])
 
-            value: typing.Optional[uint] = None
+            value: typing.Union[None, Nullable, uint] = None
 
         @dataclass
         class UnoccupiedSetbackMax(ClusterAttributeDescriptor):
@@ -1238,9 +1249,9 @@ class Thermostat(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
+                return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, uint])
 
-            value: typing.Optional[uint] = None
+            value: typing.Union[None, Nullable, uint] = None
 
         @dataclass
         class EmergencyHeatDelta(ClusterAttributeDescriptor):

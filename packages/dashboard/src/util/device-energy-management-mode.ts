@@ -6,6 +6,7 @@
 
 import { attributeArray } from "./access-control.js";
 import { asObject, pickNumber, tagField as field, toNumber, toText } from "./attribute-shapes.js";
+import { MODE_CHANGE_STATUS_MANUFACTURER_RANGE, MODE_TAG_MANUFACTURER_RANGE, unnamedEnumLabel } from "./enum-label.js";
 import { formatHex } from "./format_hex.js";
 
 export const DEVICE_ENERGY_MANAGEMENT_MODE_CLUSTER_ID = 159;
@@ -74,7 +75,9 @@ function attr(attributes: Record<string, unknown>, endpoint: number, attributeId
  */
 function modeTagLabel(value: number, mfgCode: number | undefined): string {
     if (mfgCode !== undefined) return `Mfg ${formatHex(mfgCode)} tag ${formatHex(value)}`;
-    return MODE_TAG_NAMES[value] ?? `Tag ${formatHex(value)}`;
+    const name = MODE_TAG_NAMES[value];
+    if (name !== undefined) return name;
+    return unnamedEnumLabel(value, MODE_TAG_MANUFACTURER_RANGE, `Tag ${formatHex(value)}`);
 }
 
 /** ModeTagStruct is field-tag keyed: "0" MfgCode (optional), "1" Value. */
@@ -123,7 +126,7 @@ export function decodeChangeToModeResult(response: unknown): ChangeToModeResult 
     return {
         success: status === 0,
         status,
-        statusName: MODE_CHANGE_STATUS_NAMES[status] ?? `Unknown (${status})`,
+        statusName: MODE_CHANGE_STATUS_NAMES[status] ?? unnamedEnumLabel(status, MODE_CHANGE_STATUS_MANUFACTURER_RANGE),
         statusText: obj === null ? undefined : (toText(obj["statusText"]) ?? undefined),
     };
 }

@@ -6934,28 +6934,28 @@ export const clusters: Record<number, ClusterDescription> = {
                 "id": 1,
                 "cluster_id": 101,
                 "label": "MaxMembershipCount",
-                "type": "Optional[uint16]",
+                "type": "uint16",
                 "writable": false
             },
             "2": {
                 "id": 2,
                 "cluster_id": 101,
                 "label": "MaxMcastAddrCount",
-                "type": "Optional[uint16]",
+                "type": "uint16",
                 "writable": false
             },
             "3": {
                 "id": 3,
                 "cluster_id": 101,
                 "label": "UsedMcastAddrCount",
-                "type": "Optional[uint16]",
+                "type": "uint16",
                 "writable": false
             },
             "4": {
                 "id": 4,
                 "cluster_id": 101,
                 "label": "FabricUnderTest",
-                "type": "Optional[fabric-idx]",
+                "type": "fabric-idx",
                 "writable": false
             },
             "65528": {
@@ -8181,7 +8181,7 @@ export const clusters: Record<number, ClusterDescription> = {
             "1": {
                 "id": 1,
                 "cluster_id": 151,
-                "label": "ActiveMessageIDs",
+                "label": "ActiveMessageIds",
                 "type": "List[MessageID]",
                 "writable": false
             },
@@ -10731,21 +10731,21 @@ export const clusters: Record<number, ClusterDescription> = {
                 "id": 7,
                 "cluster_id": 513,
                 "label": "PiCoolingDemand",
-                "type": "Optional[unknown]",
-                "writable": true
+                "type": "Optional[uint8]",
+                "writable": false
             },
             "8": {
                 "id": 8,
                 "cluster_id": 513,
                 "label": "PiHeatingDemand",
-                "type": "Optional[unknown]",
-                "writable": true
+                "type": "Optional[uint8]",
+                "writable": false
             },
             "9": {
                 "id": 9,
                 "cluster_id": 513,
                 "label": "HvacSystemTypeConfiguration",
-                "type": "Optional[unknown]",
+                "type": "Optional[HVACSystemTypeBitmap]",
                 "writable": true
             },
             "16": {
@@ -10864,7 +10864,7 @@ export const clusters: Record<number, ClusterDescription> = {
                 "id": 37,
                 "cluster_id": 513,
                 "label": "ThermostatProgrammingOperationMode",
-                "type": "Optional[unknown]",
+                "type": "Optional[ProgrammingOperationModeBitmap]",
                 "writable": true
             },
             "41": {
@@ -10899,43 +10899,43 @@ export const clusters: Record<number, ClusterDescription> = {
                 "id": 52,
                 "cluster_id": 513,
                 "label": "OccupiedSetback",
-                "type": "Optional[unknown]",
+                "type": "Optional[Nullable[UnsignedTemperature]]",
                 "writable": true
             },
             "53": {
                 "id": 53,
                 "cluster_id": 513,
                 "label": "OccupiedSetbackMin",
-                "type": "Optional[unknown]",
-                "writable": true
+                "type": "Optional[Nullable[UnsignedTemperature]]",
+                "writable": false
             },
             "54": {
                 "id": 54,
                 "cluster_id": 513,
                 "label": "OccupiedSetbackMax",
-                "type": "Optional[unknown]",
-                "writable": true
+                "type": "Optional[Nullable[UnsignedTemperature]]",
+                "writable": false
             },
             "55": {
                 "id": 55,
                 "cluster_id": 513,
                 "label": "UnoccupiedSetback",
-                "type": "Optional[unknown]",
+                "type": "Optional[Nullable[UnsignedTemperature]]",
                 "writable": true
             },
             "56": {
                 "id": 56,
                 "cluster_id": 513,
                 "label": "UnoccupiedSetbackMin",
-                "type": "Optional[unknown]",
-                "writable": true
+                "type": "Optional[Nullable[UnsignedTemperature]]",
+                "writable": false
             },
             "57": {
                 "id": 57,
                 "cluster_id": 513,
                 "label": "UnoccupiedSetbackMax",
-                "type": "Optional[unknown]",
-                "writable": true
+                "type": "Optional[Nullable[UnsignedTemperature]]",
+                "writable": false
             },
             "58": {
                 "id": 58,
@@ -12045,7 +12045,7 @@ export const clusters: Record<number, ClusterDescription> = {
                 "id": 4,
                 "cluster_id": 1024,
                 "label": "LightSensorType",
-                "type": "Optional[Nullable[uint8]]",
+                "type": "Optional[Nullable[LightSensorTypeEnum]]",
                 "writable": false
             },
             "65528": {
@@ -14202,13 +14202,13 @@ export const clusters: Record<number, ClusterDescription> = {
                 "id": 4,
                 "cluster_id": 1073,
                 "label": "AmbientContextTypeSupported",
-                "type": "List[ModeSelect.SemanticTagStruct]",
+                "type": "List[semtag]",
                 "writable": false
             },
             "5": {
                 "id": 5,
                 "cluster_id": 1073,
-                "label": "ObjectCountReached",
+                "label": "ObjectCountThresholdReached",
                 "type": "Optional[bool]",
                 "writable": false
             },
@@ -14231,7 +14231,7 @@ export const clusters: Record<number, ClusterDescription> = {
                 "cluster_id": 1073,
                 "label": "SimultaneousDetectionLimit",
                 "type": "Optional[uint8]",
-                "writable": true
+                "writable": false
             },
             "9": {
                 "id": 9,
@@ -17712,7 +17712,7 @@ export const clusters: Record<number, ClusterDescription> = {
                 "cluster_id": 1875,
                 "label": "AdministratorFabricIndex",
                 "type": "Nullable[fabric-idx]",
-                "writable": true
+                "writable": false
             },
             "65528": {
                 "id": 65528,
@@ -18636,6 +18636,70 @@ export const clusters: Record<number, ClusterDescription> = {
                 "cluster_id": 291503116,
                 "name": "removeDetectionTarget",
                 "label": "Remove Detection Target"
+            }
+        },
+        "features": {}
+    },
+    "293403649": {
+        "id": 293403649,
+        "label": "IkeaValveCalibrationCluster",
+        "attributes": {
+            "0": {
+                "id": 0,
+                "cluster_id": 293403649,
+                "label": "CalibrationStatus",
+                "type": "Optional[unknown]",
+                "writable": false
+            },
+            "1": {
+                "id": 1,
+                "cluster_id": 293403649,
+                "label": "LastCalibrationError",
+                "type": "Optional[unknown]",
+                "writable": false
+            },
+            "65528": {
+                "id": 65528,
+                "cluster_id": 293403649,
+                "label": "GeneratedCommandList",
+                "type": "List[command-id]",
+                "writable": false
+            },
+            "65529": {
+                "id": 65529,
+                "cluster_id": 293403649,
+                "label": "AcceptedCommandList",
+                "type": "List[command-id]",
+                "writable": false
+            },
+            "65531": {
+                "id": 65531,
+                "cluster_id": 293403649,
+                "label": "AttributeList",
+                "type": "List[attrib-id]",
+                "writable": false
+            },
+            "65532": {
+                "id": 65532,
+                "cluster_id": 293403649,
+                "label": "FeatureMap",
+                "type": "map32",
+                "writable": false
+            },
+            "65533": {
+                "id": 65533,
+                "cluster_id": 293403649,
+                "label": "ClusterRevision",
+                "type": "uint16",
+                "writable": false
+            }
+        },
+        "commands": {
+            "0": {
+                "id": 0,
+                "cluster_id": 293403649,
+                "name": "triggerCalibration",
+                "label": "Trigger Calibration"
             }
         },
         "features": {}

@@ -681,6 +681,28 @@ describe("Integration Test", function () {
             expect(attrs["1/65/0"]).to.deep.equal([{ "0": "room", "1": "office" }]);
         });
 
+        it("should return InvalidArguments when writing a cluster the endpoint does not have", async function () {
+            const error = await client.sendCommandExpectError("write_attribute", {
+                node_id: commissionedNodeId,
+                attribute_path: "1/258/23", // WindowCovering.Mode
+                value: 0,
+            });
+
+            expect(error.error_code).to.equal(ServerErrorCode.InvalidArguments);
+            expect(error.details).to.include("windowCovering");
+        });
+
+        it("should return InvalidArguments when writing to an endpoint the node does not have", async function () {
+            const error = await client.sendCommandExpectError("write_attribute", {
+                node_id: commissionedNodeId,
+                attribute_path: "99/40/5",
+                value: "x",
+            });
+
+            expect(error.error_code).to.equal(ServerErrorCode.InvalidArguments);
+            expect(error.details).to.include("Endpoint 99");
+        });
+
         it("should reject when writing a read-only attribute", async function () {
             // ClusterRevision (0xFFFD) is read-only; either rejection shape is a valid failure signal.
             try {
@@ -733,6 +755,34 @@ describe("Integration Test", function () {
 
             expect(result.groupID).to.equal(1);
             expect(result.groupId).to.equal(1);
+        });
+
+        it("should return InvalidArguments for a cluster the endpoint does not have", async function () {
+            const error = await client.sendCommandExpectError("device_command", {
+                node_id: commissionedNodeId,
+                endpoint_id: 1,
+                cluster_id: 0x0102, // WindowCovering
+                command_name: "upOrOpen",
+                payload: {},
+                response_type: null,
+            });
+
+            expect(error.error_code).to.equal(ServerErrorCode.InvalidArguments);
+            expect(error.details).to.include("windowCovering");
+        });
+
+        it("should return InvalidArguments for an endpoint the node does not have", async function () {
+            const error = await client.sendCommandExpectError("device_command", {
+                node_id: commissionedNodeId,
+                endpoint_id: 99,
+                cluster_id: 6,
+                command_name: "toggle",
+                payload: {},
+                response_type: null,
+            });
+
+            expect(error.error_code).to.equal(ServerErrorCode.InvalidArguments);
+            expect(error.details).to.include("Endpoint 99");
         });
     });
 

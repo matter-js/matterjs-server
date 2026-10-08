@@ -109,14 +109,14 @@ class IcdManagement(Cluster):
                     Fields=[
                         ClusterObjectFieldDescriptor(Label="checkInNodeID", Tag=1, Type=uint),
                         ClusterObjectFieldDescriptor(Label="monitoredSubject", Tag=2, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="key", Tag=3, Type=typing.Optional[uint]),
+                        ClusterObjectFieldDescriptor(Label="key", Tag=3, Type=typing.Optional[bytes]),
                         ClusterObjectFieldDescriptor(Label="clientType", Tag=4, Type=IcdManagement.Enums.ClientTypeEnum),
                         ClusterObjectFieldDescriptor(Label="fabricIndex", Tag=254, Type=uint),
                     ])
 
             checkInNodeID: uint = 0
             monitoredSubject: uint = 0
-            key: typing.Optional[uint] = None
+            key: typing.Optional[bytes] = None
             clientType: IcdManagement.Enums.ClientTypeEnum = 0
             fabricIndex: uint = 0
 

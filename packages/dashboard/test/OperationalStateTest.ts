@@ -95,7 +95,7 @@ describe("Operational State", () => {
         it("uses the OperationalStateList label for a manufacturer-specific id", () => {
             const stateList = [{ "0": 128, "1": "Sanitising" }];
             expect(describeOperationalState(BASE, 128, stateList)).to.equal("Sanitising");
-            expect(describeOperationalState(BASE, 129, stateList)).to.equal("Unknown (129)");
+            expect(describeOperationalState(BASE, 129, stateList)).to.equal("Manufacturer 0x81");
         });
 
         it("prefers the enum name over a list entry for a known id", () => {
@@ -123,6 +123,14 @@ describe("Operational State", () => {
         it("uses the device label only for an id the enum does not know", () => {
             expect(errorStateLabel(BASE, 130, "Door Open")).to.equal("Door Open");
             expect(errorStateLabel(BASE, ErrorState.NoError, "All Good")).to.equal("No Error");
+        });
+
+        it("labels a manufacturer-range id without a device label", () => {
+            expect(errorStateLabel(BASE, 0x80)).to.equal("Manufacturer 0x80");
+            expect(errorStateLabel(RVC, 0xbf)).to.equal("Manufacturer 0xBF");
+            expect(errorStateLabel(BASE, 0x7f)).to.equal("Unknown (127)");
+            expect(errorStateLabel(BASE, 0xc0)).to.equal("Unknown (192)");
+            expect(describeOperationalState(OVEN, 0x80)).to.equal("Manufacturer 0x80");
         });
     });
 

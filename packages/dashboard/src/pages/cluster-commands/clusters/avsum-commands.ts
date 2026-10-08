@@ -204,15 +204,16 @@ class AvsumClusterCommands extends BaseClusterCommands {
                                           </div>
                                           <div class="chip-row">
                                               ${items.map(
-                                                  p => html`<button
-                                                      class="chip"
-                                                      title="p=${this._fmtDeg(p.settings.pan ?? 0)} · t=${this._fmtDeg(
-                                                          p.settings.tilt ?? 0,
-                                                      )} · z=${p.settings.zoom ?? 1}×"
-                                                      @click=${handleAsync(() => this._goPreset(p.presetId))}
-                                                  >
-                                                      ${p.name}
-                                                  </button>`,
+                                                  p =>
+                                                      html`<button
+                                                          class="chip"
+                                                          title="p=${this._fmtDeg(p.settings.pan ?? 0)} · t=${this._fmtDeg(
+                                                              p.settings.tilt ?? 0,
+                                                          )} · z=${p.settings.zoom ?? 1}×"
+                                                          @click=${handleAsync(() => this._goPreset(p.presetId))}
+                                                      >
+                                                          ${p.name}
+                                                      </button>`,
                                               )}
                                               ${
                                                   items.length === 0
@@ -223,39 +224,40 @@ class AvsumClusterCommands extends BaseClusterCommands {
                                           <details class="manager">
                                               <summary>Manage presets…</summary>
                                               ${items.map(
-                                                  p => html`<div class="preset-row">
-                                                      <span class="pid">#${p.presetId}</span>
-                                                      <span class="pname">${p.name}</span>
-                                                      <span class="pcoord">
-                                                          p=${this._fmtDeg(p.settings.pan ?? 0)} ·
-                                                          t=${this._fmtDeg(p.settings.tilt ?? 0)} ·
-                                                          z=${p.settings.zoom ?? 1}×
-                                                      </span>
-                                                      <span class="grow"></span>
-                                                      <md-outlined-icon-button
-                                                          title="Overwrite with current MPTZ"
-                                                          @click=${handleAsync(() => this._savePresetUpdate(p.presetId))}
-                                                      >
-                                                          <ha-svg-icon .path=${mdiContentSaveOutline}></ha-svg-icon>
-                                                      </md-outlined-icon-button>
-                                                      <md-outlined-icon-button
-                                                          title="Rename (also overwrites position with current MPTZ)"
-                                                          aria-label="Rename preset"
-                                                          @click=${handleAsync(() =>
-                                                              this._renamePreset(p.presetId, p.name),
-                                                          )}
-                                                      >
-                                                          <ha-svg-icon .path=${mdiPencil}></ha-svg-icon>
-                                                      </md-outlined-icon-button>
-                                                      <md-outlined-icon-button
-                                                          title="Remove"
-                                                          @click=${handleAsync(() =>
-                                                              this._removePreset(p.presetId, p.name),
-                                                          )}
-                                                      >
-                                                          <ha-svg-icon .path=${mdiTrashCan}></ha-svg-icon>
-                                                      </md-outlined-icon-button>
-                                                  </div>`,
+                                                  p =>
+                                                      html`<div class="preset-row">
+                                                          <span class="pid">#${p.presetId}</span>
+                                                          <span class="pname">${p.name}</span>
+                                                          <span class="pcoord">
+                                                              p=${this._fmtDeg(p.settings.pan ?? 0)} ·
+                                                              t=${this._fmtDeg(p.settings.tilt ?? 0)} ·
+                                                              z=${p.settings.zoom ?? 1}×
+                                                          </span>
+                                                          <span class="grow"></span>
+                                                          <md-outlined-icon-button
+                                                              title="Overwrite with current MPTZ"
+                                                              @click=${handleAsync(() => this._savePresetUpdate(p.presetId))}
+                                                          >
+                                                              <ha-svg-icon .path=${mdiContentSaveOutline}></ha-svg-icon>
+                                                          </md-outlined-icon-button>
+                                                          <md-outlined-icon-button
+                                                              title="Rename (also overwrites position with current MPTZ)"
+                                                              aria-label="Rename preset"
+                                                              @click=${handleAsync(() =>
+                                                                  this._renamePreset(p.presetId, p.name),
+                                                              )}
+                                                          >
+                                                              <ha-svg-icon .path=${mdiPencil}></ha-svg-icon>
+                                                          </md-outlined-icon-button>
+                                                          <md-outlined-icon-button
+                                                              title="Remove"
+                                                              @click=${handleAsync(() =>
+                                                                  this._removePreset(p.presetId, p.name),
+                                                              )}
+                                                          >
+                                                              <ha-svg-icon .path=${mdiTrashCan}></ha-svg-icon>
+                                                          </md-outlined-icon-button>
+                                                      </div>`,
                                               )}
                                               <div class="add-bar">
                                                   <input

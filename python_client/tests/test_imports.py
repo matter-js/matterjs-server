@@ -72,6 +72,7 @@ def test_custom_cluster_imports():
         DraftElectricalMeasurementCluster,
         EveCluster,
         HeimanCluster,
+        IkeaValveCalibrationCluster,
         InovelliCluster,
         NeoCluster,
         ThirdRealityMeteringCluster,
@@ -87,6 +88,9 @@ def test_custom_cluster_imports():
     assert WagoCluster is not None
     assert hasattr(WagoCluster.Attributes, "DirectlyConnected")
     assert hasattr(WagoCluster.Attributes, "SwitchType")
+    assert hasattr(IkeaValveCalibrationCluster.Attributes, "CalibrationStatus")
+    assert hasattr(IkeaValveCalibrationCluster.Attributes, "LastCalibrationError")
+    assert hasattr(IkeaValveCalibrationCluster.Commands, "TriggerCalibration")
 
 
 def test_eve_new_attributes_exist():

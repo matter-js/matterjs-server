@@ -1,4 +1,4 @@
-"""IlluminanceMeasurement cluster definition (auto-generated, DO NOT edit)."""
+"""IkeaValveCalibrationCluster cluster definition (auto-generated, DO NOT edit)."""
 
 from __future__ import annotations
 
@@ -15,18 +15,15 @@ from ..Types import Nullable, NullValue
 
 
 @dataclass
-class IlluminanceMeasurement(Cluster):
-    id: typing.ClassVar[int] = 0x00000400
+class IkeaValveCalibrationCluster(Cluster):
+    id: typing.ClassVar[int] = 0x117CFC01
 
     @ChipUtility.classproperty
     def descriptor(cls) -> ClusterObjectDescriptor:
         return ClusterObjectDescriptor(
             Fields=[
-                ClusterObjectFieldDescriptor(Label="measuredValue", Tag=0x00000000, Type=typing.Union[Nullable, uint]),
-                ClusterObjectFieldDescriptor(Label="minMeasuredValue", Tag=0x00000001, Type=typing.Union[Nullable, uint]),
-                ClusterObjectFieldDescriptor(Label="maxMeasuredValue", Tag=0x00000002, Type=typing.Union[Nullable, uint]),
-                ClusterObjectFieldDescriptor(Label="tolerance", Tag=0x00000003, Type=typing.Optional[uint]),
-                ClusterObjectFieldDescriptor(Label="lightSensorType", Tag=0x00000004, Type=typing.Union[None, Nullable, IlluminanceMeasurement.Enums.LightSensorTypeEnum]),
+                ClusterObjectFieldDescriptor(Label="calibrationStatus", Tag=0x00000000, Type=typing.Optional[uint]),
+                ClusterObjectFieldDescriptor(Label="lastCalibrationError", Tag=0x00000001, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="generatedCommandList", Tag=0x0000FFF8, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="acceptedCommandList", Tag=0x0000FFF9, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="attributeList", Tag=0x0000FFFB, Type=typing.List[uint]),
@@ -34,85 +31,39 @@ class IlluminanceMeasurement(Cluster):
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    measuredValue: typing.Union[Nullable, uint] = NullValue
-    minMeasuredValue: typing.Union[Nullable, uint] = NullValue
-    maxMeasuredValue: typing.Union[Nullable, uint] = NullValue
-    tolerance: typing.Optional[uint] = None
-    lightSensorType: typing.Union[None, Nullable, IlluminanceMeasurement.Enums.LightSensorTypeEnum] = None
+    calibrationStatus: typing.Optional[uint] = None
+    lastCalibrationError: typing.Optional[uint] = None
     generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])
     acceptedCommandList: typing.List[uint] = field(default_factory=lambda: [])
     attributeList: typing.List[uint] = field(default_factory=lambda: [])
     featureMap: uint = 0
     clusterRevision: uint = 0
 
-    class Enums:
-        class LightSensorTypeEnum(MatterIntEnum):
-            kPhotodiode = 0x00
-            kCmos = 0x01
-            # All received enum values that are not listed above will be mapped
-            # to kUnknownEnumValue. This is a helper enum value that should only
-            # be used by code to process how it handles receiving an unknown
-            # enum value. This specific value should never be transmitted.
-            kUnknownEnumValue = 2
+    class Commands:
+        @dataclass
+        class TriggerCalibration(ClusterCommand):
+            cluster_id: typing.ClassVar[int] = 0x117CFC01
+            command_id: typing.ClassVar[int] = 0x00000000
+            is_client: typing.ClassVar[bool] = True
+            response_type: typing.ClassVar[typing.Optional[str]] = None
+
+            @ChipUtility.classproperty
+            def descriptor(cls) -> ClusterObjectDescriptor:
+                return ClusterObjectDescriptor(
+                    Fields=[
+                    ])
+
 
     class Attributes:
         @dataclass
-        class MeasuredValue(ClusterAttributeDescriptor):
+        class CalibrationStatus(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
-                return 0x00000400
+                return 0x117CFC01
 
             @ChipUtility.classproperty
             def attribute_id(cls) -> int:
                 return 0x00000000
-
-            @ChipUtility.classproperty
-            def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Union[Nullable, uint])
-
-            value: typing.Union[Nullable, uint] = NullValue
-
-        @dataclass
-        class MinMeasuredValue(ClusterAttributeDescriptor):
-            @ChipUtility.classproperty
-            def cluster_id(cls) -> int:
-                return 0x00000400
-
-            @ChipUtility.classproperty
-            def attribute_id(cls) -> int:
-                return 0x00000001
-
-            @ChipUtility.classproperty
-            def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Union[Nullable, uint])
-
-            value: typing.Union[Nullable, uint] = NullValue
-
-        @dataclass
-        class MaxMeasuredValue(ClusterAttributeDescriptor):
-            @ChipUtility.classproperty
-            def cluster_id(cls) -> int:
-                return 0x00000400
-
-            @ChipUtility.classproperty
-            def attribute_id(cls) -> int:
-                return 0x00000002
-
-            @ChipUtility.classproperty
-            def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Union[Nullable, uint])
-
-            value: typing.Union[Nullable, uint] = NullValue
-
-        @dataclass
-        class Tolerance(ClusterAttributeDescriptor):
-            @ChipUtility.classproperty
-            def cluster_id(cls) -> int:
-                return 0x00000400
-
-            @ChipUtility.classproperty
-            def attribute_id(cls) -> int:
-                return 0x00000003
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
@@ -121,26 +72,26 @@ class IlluminanceMeasurement(Cluster):
             value: typing.Optional[uint] = None
 
         @dataclass
-        class LightSensorType(ClusterAttributeDescriptor):
+        class LastCalibrationError(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
-                return 0x00000400
+                return 0x117CFC01
 
             @ChipUtility.classproperty
             def attribute_id(cls) -> int:
-                return 0x00000004
+                return 0x00000001
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, IlluminanceMeasurement.Enums.LightSensorTypeEnum])
+                return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: typing.Union[None, Nullable, IlluminanceMeasurement.Enums.LightSensorTypeEnum] = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class GeneratedCommandList(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
-                return 0x00000400
+                return 0x117CFC01
 
             @ChipUtility.classproperty
             def attribute_id(cls) -> int:
@@ -156,7 +107,7 @@ class IlluminanceMeasurement(Cluster):
         class AcceptedCommandList(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
-                return 0x00000400
+                return 0x117CFC01
 
             @ChipUtility.classproperty
             def attribute_id(cls) -> int:
@@ -172,7 +123,7 @@ class IlluminanceMeasurement(Cluster):
         class AttributeList(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
-                return 0x00000400
+                return 0x117CFC01
 
             @ChipUtility.classproperty
             def attribute_id(cls) -> int:
@@ -188,7 +139,7 @@ class IlluminanceMeasurement(Cluster):
         class FeatureMap(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
-                return 0x00000400
+                return 0x117CFC01
 
             @ChipUtility.classproperty
             def attribute_id(cls) -> int:
@@ -204,7 +155,7 @@ class IlluminanceMeasurement(Cluster):
         class ClusterRevision(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
-                return 0x00000400
+                return 0x117CFC01
 
             @ChipUtility.classproperty
             def attribute_id(cls) -> int:

@@ -1733,9 +1733,10 @@ class DoorLockClusterCommands extends BaseClusterCommands {
                             supportedOperatingModes(this.node, this.endpoint),
                             editor.operatingMode,
                         ).map(
-                            mode => html`<option value=${mode} .selected=${mode === editor.operatingMode}>
-                                ${formatOperatingMode(mode)}
-                            </option>`,
+                            mode =>
+                                html`<option value=${mode} .selected=${mode === editor.operatingMode}>
+                                    ${formatOperatingMode(mode)}
+                                </option>`,
                         )}
                     </select>
                     ${this.#renderEditorActions()}

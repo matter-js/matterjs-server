@@ -97,6 +97,7 @@ __all__ = [
     "HepaFilterMonitoring",
     "IcdManagement",
     "Identify",
+    "IkeaValveCalibrationCluster",
     "IlluminanceMeasurement",
     "InovelliCluster",
     "JointFabricAdministrator",

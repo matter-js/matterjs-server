@@ -368,11 +368,6 @@ function typeNameOf(model: ValueModel): string | undefined {
     return undefined;
 }
 
-/** Entry model of a list; decorator-defined lists keep it under `operationalBase`. */
-function listEntryOf(model: ValueModel): ValueModel | undefined {
-    return model.children?.[0] ?? (model as any).operationalBase?.children?.[0];
-}
-
 /**
  * Resolve a Matter.js ValueModel to its Python type, taking into account
  * nullable/optional qualifiers, lists, enums, structs, etc.
@@ -391,7 +386,7 @@ function resolvePythonType(
 
     if (type === "list" || metatype === "array") {
         // List type - get the entry type
-        const entryModel = listEntryOf(model);
+        const entryModel = model.listEntry;
         let entryType = "uint";
         if (entryModel) {
             // Resolve the base scalar type directly for list entries.
@@ -734,7 +729,7 @@ function resolveClusterChildren(cluster: ClusterModel): {
                     collect(base.children as ValueModel[], false);
                 }
             }
-            const entry = listEntryOf(m);
+            const entry = m.listEntry;
             if (entry) collect([entry], false);
             collect((m.children ?? []) as ValueModel[], false);
         }
@@ -1289,7 +1284,9 @@ function generateEnum(w: PythonWriter, model: ValueModel, clusterName?: string):
     const usedValues = new Set<number>();
 
     for (const m of members) {
-        const value = m.id ?? 0;
+        // Entries without an id describe a reserved value range (e.g. manufacturer codes), not a value
+        if (m.id === undefined) continue;
+        const value = m.id;
         usedValues.add(value);
         if (value > maxValue) maxValue = value;
         w.line(`${toKName(m.name)} = ${hex2(value)}`);

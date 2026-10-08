@@ -22,11 +22,11 @@ class Groupcast(Cluster):
     def descriptor(cls) -> ClusterObjectDescriptor:
         return ClusterObjectDescriptor(
             Fields=[
-                ClusterObjectFieldDescriptor(Label="membership", Tag=0x00000000, Type=typing.Optional[typing.List[Groupcast.Structs.MembershipStruct]]),
-                ClusterObjectFieldDescriptor(Label="maxMembershipCount", Tag=0x00000001, Type=typing.Optional[uint]),
-                ClusterObjectFieldDescriptor(Label="maxMcastAddrCount", Tag=0x00000002, Type=typing.Optional[uint]),
-                ClusterObjectFieldDescriptor(Label="usedMcastAddrCount", Tag=0x00000003, Type=typing.Optional[uint]),
-                ClusterObjectFieldDescriptor(Label="fabricUnderTest", Tag=0x00000004, Type=typing.Optional[uint]),
+                ClusterObjectFieldDescriptor(Label="membership", Tag=0x00000000, Type=typing.List[Groupcast.Structs.MembershipStruct]),
+                ClusterObjectFieldDescriptor(Label="maxMembershipCount", Tag=0x00000001, Type=uint),
+                ClusterObjectFieldDescriptor(Label="maxMcastAddrCount", Tag=0x00000002, Type=uint),
+                ClusterObjectFieldDescriptor(Label="usedMcastAddrCount", Tag=0x00000003, Type=uint),
+                ClusterObjectFieldDescriptor(Label="fabricUnderTest", Tag=0x00000004, Type=uint),
                 ClusterObjectFieldDescriptor(Label="generatedCommandList", Tag=0x0000FFF8, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="acceptedCommandList", Tag=0x0000FFF9, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="attributeList", Tag=0x0000FFFB, Type=typing.List[uint]),
@@ -34,11 +34,11 @@ class Groupcast(Cluster):
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    membership: typing.Optional[typing.List[Groupcast.Structs.MembershipStruct]] = None
-    maxMembershipCount: typing.Optional[uint] = None
-    maxMcastAddrCount: typing.Optional[uint] = None
-    usedMcastAddrCount: typing.Optional[uint] = None
-    fabricUnderTest: typing.Optional[uint] = None
+    membership: typing.List[Groupcast.Structs.MembershipStruct] = field(default_factory=lambda: [])
+    maxMembershipCount: uint = 0
+    maxMcastAddrCount: uint = 0
+    usedMcastAddrCount: uint = 0
+    fabricUnderTest: uint = 0
     generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])
     acceptedCommandList: typing.List[uint] = field(default_factory=lambda: [])
     attributeList: typing.List[uint] = field(default_factory=lambda: [])
@@ -240,9 +240,9 @@ class Groupcast(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[typing.List[Groupcast.Structs.MembershipStruct]])
+                return ClusterObjectFieldDescriptor(Type=typing.List[Groupcast.Structs.MembershipStruct])
 
-            value: typing.Optional[typing.List[Groupcast.Structs.MembershipStruct]] = None
+            value: typing.List[Groupcast.Structs.MembershipStruct] = field(default_factory=lambda: [])
 
         @dataclass
         class MaxMembershipCount(ClusterAttributeDescriptor):
@@ -256,9 +256,9 @@ class Groupcast(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
+                return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: typing.Optional[uint] = None
+            value: uint = 0
 
         @dataclass
         class MaxMcastAddrCount(ClusterAttributeDescriptor):
@@ -272,9 +272,9 @@ class Groupcast(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
+                return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: typing.Optional[uint] = None
+            value: uint = 0
 
         @dataclass
         class UsedMcastAddrCount(ClusterAttributeDescriptor):
@@ -288,9 +288,9 @@ class Groupcast(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
+                return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: typing.Optional[uint] = None
+            value: uint = 0
 
         @dataclass
         class FabricUnderTest(ClusterAttributeDescriptor):
@@ -304,9 +304,9 @@ class Groupcast(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
+                return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: typing.Optional[uint] = None
+            value: uint = 0
 
         @dataclass
         class GeneratedCommandList(ClusterAttributeDescriptor):
