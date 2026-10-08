@@ -9,6 +9,7 @@ This page shows a detailed overview of the changes between versions without the 
 
 ## **WORK IN PROGRESS**
 
+- Enhancement: `open_commissioning_window` also returns `discriminator`, `vendor_id`, `product_id` and `commissioning_timeout` (seconds) as reported by matter.js, so clients can hand the window to another ecosystem without decoding the QR code
 - Enhancement: Migrates the controller to the matter.js `ServerNode`/`ClientNode` API, replacing the deprecated `CommissioningController`/`PairedNode` surface, and updates matter.js to 0.18.0-alpha
 - Enhancement: (lboue) Added a command panel for the DoorLock cluster to Dashboard
 - Enhancement: (lboue) Added Presets and Thermostat Suggestions (Thermostat cluster PRES/TSUGGEST features) panels to Dashboard

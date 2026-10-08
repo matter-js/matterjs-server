@@ -710,6 +710,11 @@ class TestCommissioningWindow:
         assert len(result.setup_manual_code) > 0
         assert isinstance(result.setup_qr_code, str)
         assert result.setup_qr_code.startswith("MT:")
+        assert isinstance(result.discriminator, int)
+        assert 0 <= result.discriminator <= 0xFFF
+        assert result.vendor_id == 0xFFF1
+        assert result.product_id == 0x8000
+        assert result.commissioning_timeout == 180
 
 
 # ============================================================================

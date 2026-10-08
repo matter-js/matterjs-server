@@ -12,6 +12,7 @@
  */
 
 import { ServerErrorCode } from "@matter-server/ws-controller";
+import { QrPairingCodeCodec } from "@matter/main/types";
 import { ChildProcess } from "child_process";
 import { stat } from "node:fs/promises";
 import { request as httpRequest, type IncomingMessage } from "node:http";
@@ -717,6 +718,19 @@ describe("Integration Test", function () {
             expect(result.setup_manual_code).to.be.a("string").with.length.greaterThan(0);
             expect(result.setup_qr_code).to.be.a("string");
             expect(result.setup_qr_code.startsWith("MT:")).to.be.true;
+
+            const [qrData] = QrPairingCodeCodec.decode(result.setup_qr_code);
+            expect(result.setup_pin_code).to.equal(qrData.passcode);
+            expect(result.discriminator).to.equal(qrData.discriminator);
+            expect(result.vendor_id).to.equal(0xfff1);
+            expect(result.product_id).to.equal(0x8000);
+            expect(result.commissioning_timeout).to.equal(180);
+        });
+
+        it("should report the default timeout when none is requested", async function () {
+            const result = await client.openCommissioningWindow(commissionedNodeId);
+
+            expect(result.commissioning_timeout).to.equal(900);
         });
     });
 

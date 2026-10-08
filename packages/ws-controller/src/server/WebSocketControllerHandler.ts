@@ -20,7 +20,7 @@ import {
 } from "@matter/main";
 import { WebRtcTransportProvider } from "@matter/main/clusters";
 import { ControllerCommissioningFlowOptions, OperationalDataset } from "@matter/main/protocol";
-import { EndpointNumber, QrPairingCodeCodec } from "@matter/main/types";
+import { EndpointNumber } from "@matter/main/types";
 import { WebSocketServer } from "ws";
 import { ControllerCommandHandler } from "../controller/ControllerCommandHandler.js";
 import { MatterController, registerThreadCredentialsFromHex } from "../controller/MatterController.js";
@@ -1507,12 +1507,16 @@ export class WebSocketControllerHandler implements WebServerHandler {
     ): Promise<ResponseOf<"open_commissioning_window">> {
         const { node_id, timeout /*, iteration, option, discriminator*/ } = args;
         const nodeId = NodeId(node_id);
-        const { manualCode, qrCode } = await this.#commandHandler.openCommissioningWindow({
-            nodeId,
-            timeout,
-        });
-        const pairingCodeCodec = QrPairingCodeCodec.decode(qrCode);
-        return { setup_pin_code: pairingCodeCodec[0].passcode, setup_manual_code: manualCode, setup_qr_code: qrCode };
+        const window = await this.#commandHandler.openCommissioningWindow({ nodeId, timeout });
+        return {
+            setup_pin_code: window.passcode,
+            setup_manual_code: window.manualCode,
+            setup_qr_code: window.qrCode,
+            discriminator: window.discriminator,
+            vendor_id: window.vendorId,
+            product_id: window.productId,
+            commissioning_timeout: window.commissioningTimeout,
+        };
     }
 
     async #handleDiscoverCommissionableNodes(
