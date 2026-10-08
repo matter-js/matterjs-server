@@ -102,6 +102,7 @@ import {
     ServerError,
     UpdateSource,
 } from "../types/WebSocketMessageTypes.js";
+import { isBridgeNode } from "../util/bridgeDetection.js";
 import { formatNodeId } from "../util/formatNodeId.js";
 import { pingIp } from "../util/network.js";
 import { CustomClusterPoller } from "./CustomClusterPoller.js";
@@ -641,9 +642,13 @@ export class ControllerCommandHandler {
         nodeObservers.on(node.events.nodeEndpointAdded, endpointId =>
             this.#nodes.queueEndpointAdded(nodeId, endpointId),
         );
-        nodeObservers.on(node.events.nodeEndpointRemoved, endpointId =>
-            this.events.nodeEndpointRemoved.emit(nodeId, endpointId),
-        );
+        nodeObservers.on(node.events.nodeEndpointRemoved, endpointId => {
+            // Drop the endpoint before announcing it, so a read that follows the event never serves
+            // attributes of an endpoint the node no longer has. The full rebuild follows on the
+            // structure change.
+            this.#nodes.attributeCache.deleteEndpoint(nodeId, endpointId);
+            this.events.nodeEndpointRemoved.emit(nodeId, endpointId);
+        });
 
         this.#nodes.set(nodeId, node);
 
@@ -834,12 +839,17 @@ export class ControllerCommandHandler {
     /**
      * Await the node's attribute cache being populated so a direct read returns a complete snapshot
      * rather than the empty-then-node_updated sequence the lazy fallback in getNodeDetails produces.
+     * A rebuild that is already running is awaited too, so a read after a structure change serves the
+     * new structure instead of the one the node reported before it.
      */
     async ensureNodePopulated(nodeId: NodeId): Promise<void> {
         const node = this.#nodes.get(nodeId);
-        if (node.initialized && !this.#nodes.attributeCache.has(nodeId)) {
-            await this.#nodes.attributeCache.add(node);
+        const attributeCache = this.#nodes.attributeCache;
+        if (node.initialized && !attributeCache.has(nodeId)) {
+            await attributeCache.add(node);
+            return;
         }
+        await attributeCache.settled(nodeId);
     }
 
     /**
@@ -850,8 +860,6 @@ export class ControllerCommandHandler {
     getNodeDetails(nodeId: NodeId, lastInterviewDate?: Date): MatterNodeData {
         const node = this.#nodes.get(nodeId);
         const attributeCache = this.#nodes.attributeCache;
-
-        let isBridge = false;
 
         // Ensure the cache is populated if node is initialized but cache doesn't exist yet.
         // Populate runs asynchronously, so this call returns an empty snapshot; emit node_updated once
@@ -875,20 +883,13 @@ export class ControllerCommandHandler {
         // Get cached attributes (empty object if node not yet initialized)
         const attributes = attributeCache.get(nodeId) ?? {};
 
-        // Bridge detection: Check endpoint 1's Descriptor cluster (29) DeviceTypeList attribute (0)
-        // for device type 14 (Aggregator), matching Python Matter Server behavior
-        const endpoint1DeviceTypes = attributes["1/29/0"];
-        if (Array.isArray(endpoint1DeviceTypes)) {
-            isBridge = endpoint1DeviceTypes.some(entry => entry["0"] === 14);
-        }
-
         return {
             node_id: node.nodeId,
             date_commissioned: getDateAsString(new Date(node.state.commissioning.commissionedAt ?? Date.now())),
             last_interview: getDateAsString(lastInterviewDate ?? new Date()),
             interview_version: 6,
             available: this.#nodes.isAvailable(nodeId),
-            is_bridge: isBridge,
+            is_bridge: isBridgeNode(attributes),
             attributes,
             attribute_subscriptions: [],
             matter_version: determineMatterVersion(attributes),

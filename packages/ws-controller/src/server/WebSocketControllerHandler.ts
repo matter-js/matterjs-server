@@ -332,6 +332,16 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 }
             };
 
+            // python-matter-server wire contract: the node_updated carrying a new endpoint must reach
+            // the client before endpoint_added announces it, or a client that resolves the endpoint
+            // against its own node model does not know it yet.
+            const flushNodeUpdatedFor = (nodeId: NodeId) => {
+                if (!pendingNodeUpdated.delete(nodeId)) return;
+                if (this.#closed || this.#shuttingDown || !listening || connectionClosed) return;
+                if (!this.#commandHandler.hasNode(nodeId)) return;
+                sendNodeFullDetails("node_updated", nodeId);
+            };
+
             const sendNodeDetailsEvent = <E extends EventTypes>(eventName: E, nodeId: NodeId) => {
                 if (this.#closed || this.#shuttingDown || !listening) return;
 
@@ -480,6 +490,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
 
             observers.on(this.#commandHandler.events.nodeEndpointAdded, (nodeId, endpointId) => {
                 if (this.#closed || this.#shuttingDown || !listening) return;
+                flushNodeUpdatedFor(nodeId);
                 logger.info(
                     `[${connId}] Sending endpoint_added event for Node ${this.#commandHandler.formatNode(nodeId)} endpoint ${endpointId}`,
                 );

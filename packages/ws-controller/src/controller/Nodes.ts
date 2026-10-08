@@ -72,14 +72,18 @@ export class Nodes {
         queue.push(endpointId);
     }
 
-    /** Returns insertion-ordered queue; empty if nothing pending. */
+    /**
+     * Returns the queued additions in insertion order, keeping only endpoints the cached snapshot
+     * carries: an endpoint removed again before the rebuild is not in it, so announcing it would point
+     * a client at an endpoint its node model does not have.
+     */
     drainPendingEndpointAdds(nodeId: NodeId): EndpointNumber[] {
         const queue = this.#pendingEndpointAdds.get(nodeId);
         if (queue === undefined || queue.length === 0) {
             return [];
         }
         this.#pendingEndpointAdds.delete(nodeId);
-        return queue;
+        return queue.filter(endpointId => this.#attributeCache.hasEndpoint(nodeId, endpointId));
     }
 
     seedState(nodeId: NodeId, initialState: NodeStates): void {
