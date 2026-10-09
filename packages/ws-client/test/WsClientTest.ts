@@ -6,6 +6,7 @@
 
 import WebSocket from "ws";
 import {
+    type ClientEventDetail,
     CommandTimeoutError,
     ConnectionClosedError,
     DEFAULT_COMMAND_TIMEOUT,
@@ -503,6 +504,117 @@ describe("ws-client", () => {
                 expect(nodesChangedCalled).to.be.true;
                 const nodeKey = String(nodeId);
                 expect(client.nodes[nodeKey]?.attributes["1/6/0"]).to.equal(true);
+            });
+
+            it("names the node and attribute an attribute_updated event concerns", async () => {
+                const nodeId = BigInt("18446744069414584320");
+                server.onCommand("start_listening", () => [
+                    {
+                        node_id: nodeId,
+                        date_commissioned: "2025-01-01T00:00:00.000000",
+                        last_interview: "2025-01-01T00:00:00.000000",
+                        interview_version: 6,
+                        available: true,
+                        is_bridge: false,
+                        attributes: { "1/6/0": false },
+                    },
+                ]);
+                await client.startListening();
+
+                const details = new Array<ClientEventDetail | undefined>();
+                client.addEventListener("nodes_changed", detail => {
+                    details.push(detail);
+                });
+
+                server.sendEvent("attribute_updated", [nodeId, "1/6/0", true]);
+                await new Promise(resolve => setTimeout(resolve, 100));
+
+                expect(details).to.deep.equal([{ reason: "attribute_updated", nodeId, attributeKey: "1/6/0" }]);
+            });
+
+            it("names the node a node_added event concerns", async () => {
+                server.onCommand("start_listening", () => []);
+                await client.startListening();
+
+                const nodeId = BigInt("18446744069414584320");
+                const details = new Array<ClientEventDetail | undefined>();
+                client.addEventListener("nodes_changed", detail => {
+                    details.push(detail);
+                });
+
+                server.sendEvent("node_added", {
+                    node_id: nodeId,
+                    date_commissioned: "2025-01-01T00:00:00.000000",
+                    last_interview: "2025-01-01T00:00:00.000000",
+                    interview_version: 6,
+                    available: true,
+                    is_bridge: false,
+                    attributes: {},
+                });
+                await new Promise(resolve => setTimeout(resolve, 100));
+
+                expect(details).to.deep.equal([{ reason: "node_added", nodeId }]);
+            });
+
+            it("names the node a node_updated event concerns", async () => {
+                server.onCommand("start_listening", () => []);
+                await client.startListening();
+
+                const details = new Array<ClientEventDetail | undefined>();
+                client.addEventListener("nodes_changed", detail => {
+                    details.push(detail);
+                });
+
+                server.sendEvent("node_updated", {
+                    node_id: 7,
+                    date_commissioned: "2025-01-01T00:00:00.000000",
+                    last_interview: "2025-01-01T00:00:00.000000",
+                    interview_version: 6,
+                    available: true,
+                    is_bridge: false,
+                    attributes: {},
+                });
+                await new Promise(resolve => setTimeout(resolve, 100));
+
+                expect(details).to.deep.equal([{ reason: "node_updated", nodeId: 7 }]);
+            });
+
+            it("names the node a node_removed event concerns", async () => {
+                server.onCommand("start_listening", () => []);
+                await client.startListening();
+
+                const details = new Array<ClientEventDetail | undefined>();
+                client.addEventListener("nodes_changed", detail => {
+                    details.push(detail);
+                });
+
+                server.sendEvent("node_removed", 7);
+                await new Promise(resolve => setTimeout(resolve, 100));
+
+                expect(details).to.deep.equal([{ reason: "node_removed", nodeId: 7 }]);
+            });
+
+            it("passes the detail to a listener that declares no parameter without breaking it", async () => {
+                server.onCommand("start_listening", () => []);
+                await client.startListening();
+
+                let calls = 0;
+                client.addEventListener("nodes_changed", () => {
+                    calls++;
+                });
+
+                server.sendEvent("node_added", {
+                    node_id: 1,
+                    date_commissioned: "2025-01-01T00:00:00.000000",
+                    last_interview: "2025-01-01T00:00:00.000000",
+                    interview_version: 6,
+                    available: true,
+                    is_bridge: false,
+                    attributes: {},
+                });
+                await new Promise(resolve => setTimeout(resolve, 100));
+
+                expect(calls).to.equal(1);
             });
         });
 

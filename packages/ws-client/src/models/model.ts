@@ -955,3 +955,23 @@ export function isTestNodeId(nodeId: number | bigint): boolean {
     const bigId = typeof nodeId === "bigint" ? nodeId : BigInt(nodeId);
     return bigId >= TEST_NODE_START;
 }
+
+/** Why a `nodes_changed` event fired. */
+export type NodesChangedReason = "node_added" | "node_removed" | "node_updated" | "attribute_updated";
+
+/**
+ * Metadata carried by a `nodes_changed` event.
+ *
+ * `nodes_changed` fires for every node on the fabric, so a listener interested in one node re-runs
+ * for all of them. The detail narrows that without a second event type; listeners taking no argument
+ * keep working unchanged.
+ */
+export interface NodesChangedDetail {
+    reason: NodesChangedReason;
+    nodeId: number | bigint;
+    /** `endpoint/cluster/attribute` of the changed attribute; only set when `reason` is `attribute_updated`. */
+    attributeKey?: string;
+}
+
+/** Metadata passed to {@link MatterClient.addEventListener} listeners; only `nodes_changed` carries any. */
+export type ClientEventDetail = NodesChangedDetail;

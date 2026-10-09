@@ -9,6 +9,7 @@ This page shows a detailed overview of the changes between versions without the 
 
 ## **WORK IN PROGRESS**
 
+- Enhancement: `nodes_changed` events carry a detail naming the node they concern (`reason`, `nodeId`, and `attributeKey` for attribute updates), so a listener interested in one node can skip events for other nodes. Listeners that take no argument are unaffected
 - Enhancement: Update matter.js to the latest 0.18.0 nightly
     - Adds support for Matter 1.6.1 (including Python client)
 - Enhancement: Finishes the migration to the new matter.js controller API
