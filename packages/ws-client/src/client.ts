@@ -12,6 +12,7 @@ import {
     AllCredentialsSummary,
     APICommands,
     BindingTarget,
+    ClientEventDetail,
     CommissionableNodeData,
     CommissioningParameters,
     ErrorResultMessage,
@@ -107,7 +108,7 @@ export class MatterClient {
     > = {};
     // Start with random offset for defense-in-depth and easier debugging across sessions
     private msgId = Math.floor(Math.random() * 0x7fffffff);
-    private eventListeners: Record<string, Array<() => void>> = {};
+    private eventListeners: Record<string, Array<(detail?: ClientEventDetail) => void>> = {};
     private webrtcCallbackListeners: Array<(data: WebRtcCallbackData) => void> = [];
     private cameraSessionEndedListeners: Array<(data: CameraSessionEndedData) => void> = [];
     private cameraStreamEvictedListeners: Array<(data: CameraStreamEvictedData) => void> = [];
@@ -134,7 +135,11 @@ export class MatterClient {
         return this.connection.serverInfo!;
     }
 
-    addEventListener(event: string, listener: () => void) {
+    /**
+     * Listen for a client event. `nodes_changed` passes a {@link NodesChangedDetail} naming the node it
+     * concerns, so a listener interested in one node can ignore the rest; other events pass nothing.
+     */
+    addEventListener(event: string, listener: (detail?: ClientEventDetail) => void) {
         if (!this.eventListeners[event]) {
             this.eventListeners[event] = [];
         }
@@ -780,20 +785,20 @@ export class MatterClient {
         if (event.event === "node_added") {
             const node = new MatterNode(event.data);
             this.nodes = { ...this.nodes, [toNodeKey(node.node_id)]: node };
-            this.fireEvent("nodes_changed");
+            this.fireEvent("nodes_changed", { reason: "node_added", nodeId: node.node_id });
             return;
         }
         if (event.event === "node_removed") {
             delete this.nodes[toNodeKey(event.data)];
             this.nodes = { ...this.nodes };
-            this.fireEvent("nodes_changed");
+            this.fireEvent("nodes_changed", { reason: "node_removed", nodeId: event.data });
             return;
         }
 
         if (event.event === "node_updated") {
             const node = new MatterNode(event.data);
             this.nodes = { ...this.nodes, [toNodeKey(node.node_id)]: node };
-            this.fireEvent("nodes_changed");
+            this.fireEvent("nodes_changed", { reason: "node_updated", nodeId: node.node_id });
             return;
         }
 
@@ -805,7 +810,7 @@ export class MatterClient {
                 const node = new MatterNode(existingNode.data);
                 node.attributes[attributeKey] = attributeValue;
                 this.nodes = { ...this.nodes, [nodeKey]: node };
-                this.fireEvent("nodes_changed");
+                this.fireEvent("nodes_changed", { reason: "attribute_updated", nodeId, attributeKey });
             }
             return;
         }
@@ -862,11 +867,11 @@ export class MatterClient {
         }
     }
 
-    private fireEvent(event: string) {
+    private fireEvent(event: string, detail?: ClientEventDetail) {
         const listeners = this.eventListeners[event];
         if (listeners) {
             for (const listener of listeners) {
-                listener();
+                listener(detail);
             }
         }
     }
