@@ -44,6 +44,7 @@ interface ConfigData {
     wifiSsid?: string;
     wifiCredentials?: string;
     threadDataset?: string;
+    peerSettingsRepairedFor?: string[];
 }
 
 export class ConfigStorage {
@@ -58,6 +59,7 @@ export class ConfigStorage {
         wifiSsid: undefined,
         wifiCredentials: undefined,
         threadDataset: undefined,
+        peerSettingsRepairedFor: undefined,
     };
     #additionalWifiCredentials: WifiCredentialEntry[] = new Array<WifiCredentialEntry>();
     #additionalThreadCredentials: ThreadCredentialEntry[] = new Array<ThreadCredentialEntry>();
@@ -119,7 +121,19 @@ export class ConfigStorage {
         const threadDataset = (await this.#configStore.has("threadDataset"))
             ? await this.#configStore.get<string>("threadDataset", "")
             : undefined;
-        await this.set({ fabricLabel, nextNodeId, wifiSsid, wifiCredentials, threadDataset });
+        // Written as a single scope before this server could be started against more than one fabric.
+        const storedRepairs = (await this.#configStore.has("peerSettingsRepairedFor"))
+            ? await this.#configStore.get<string | string[]>("peerSettingsRepairedFor", [])
+            : undefined;
+        const peerSettingsRepairedFor = typeof storedRepairs === "string" ? [storedRepairs] : storedRepairs;
+        await this.set({
+            fabricLabel,
+            nextNodeId,
+            wifiSsid,
+            wifiCredentials,
+            threadDataset,
+            peerSettingsRepairedFor,
+        });
 
         if (await this.#configStore.has("additionalWifiCredentials")) {
             const raw = await this.#configStore.get<Array<Record<string, string>>>(
@@ -153,6 +167,17 @@ export class ConfigStorage {
     }
     get nextNodeId() {
         return this.#data.nextNodeId;
+    }
+
+    hasRepairedPeerSettings(scope: string) {
+        return this.#data.peerSettingsRepairedFor?.includes(scope) === true;
+    }
+
+    async markPeerSettingsRepaired(scope: string) {
+        if (this.hasRepairedPeerSettings(scope)) {
+            return;
+        }
+        await this.set({ peerSettingsRepairedFor: [...(this.#data.peerSettingsRepairedFor ?? []), scope] });
     }
 
     /**

@@ -52,7 +52,6 @@ function stubHandler(capture: Capture): { handler: ControllerCommandHandler; cap
 
     const controller = {
         fabric: { fabricIndex: FABRIC_INDEX },
-        getCommissionedNodes: () => [NodeId(1n), GROUP_NODE_ID, NodeId.fromTemporaryLocalNodeId(3)],
         node: {
             peers: {
                 forAddress(address: PeerAddress) {
@@ -83,13 +82,6 @@ function freshCapture(): Capture {
 }
 
 describe("groupcast", () => {
-    it("keeps a group out of the commissioned node list", () => {
-        const { handler } = stubHandler(freshCapture());
-
-        // A groupcast adds the group to the peer set with a peerAddress, which getCommissionedNodes filters on.
-        expect(handler.getCommissionedNodeIds()).to.deep.equal([NodeId(1n), NodeId.fromTemporaryLocalNodeId(3)]);
-    });
-
     describe("handleGroupWriteAttribute", () => {
         it("multicasts to a group address with a wildcard endpoint and no timed request", async () => {
             const { handler, capture } = stubHandler(freshCapture());

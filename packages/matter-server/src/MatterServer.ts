@@ -24,6 +24,7 @@ import {
     WebServerHandler,
     WebSocketControllerHandler,
 } from "@matter-server/ws-controller";
+import { Seconds, Time } from "@matter/main";
 import { Ble } from "@matter/main/protocol";
 import { getCliOptions, getOriginalArgv, type LogLevel as CliLogLevel } from "./cli.js";
 import { controllerOptionsFrom } from "./controller-options.js";
@@ -106,6 +107,7 @@ let legacyData: LegacyData;
 let legacyDataWriter: LegacyDataWriter | undefined;
 let fileLoggerClose: (() => Promise<void>) | undefined;
 let stopping = false;
+const SHUTDOWN_AFTER_START_FAILURE_TIMEOUT = Seconds(30);
 let startCompleted: Promise<void> = Promise.resolve();
 
 async function start() {
@@ -180,6 +182,14 @@ async function start() {
         await config.lockFabricLabel(label);
     }
 
+    // Registered before the controller is built: the controller node records BLE availability as behavior
+    // state at construction, and that state is what decides whether a BLE scanner is installed.
+    let bleProxyHandler: BleProxyHandler | undefined;
+    if (cliOptions.bleProxy) {
+        bleProxyHandler = new BleProxyHandler();
+        env.set(Ble, new ProxyBle(bleProxyHandler, env));
+    }
+
     controller = await MatterController.create(
         env,
         config,
@@ -204,19 +214,6 @@ async function start() {
         controller.commandHandler.events.nodeDecommissioned.on(nodeId => {
             legacyDataWriter!.queueRemoval(nodeId);
         });
-    }
-
-    // Register the proxy Ble on the environment and the /ble WebSocket handler.
-    // Done after MatterController.create() because the controller's BLE bootstrap reads env.Ble
-    // and we want the proxy to win even if some path auto-installs a default.
-    let bleProxyHandler: BleProxyHandler | undefined;
-    if (cliOptions.bleProxy) {
-        const existingBle = env.has(Ble) ? env.get(Ble) : undefined;
-        if (existingBle) {
-            logger.info(`Replacing existing BLE implementation (${existingBle.constructor.name}) with ProxyBle`);
-        }
-        bleProxyHandler = new BleProxyHandler();
-        env.set(Ble, new ProxyBle(bleProxyHandler, env));
     }
 
     const wsHandler = new WebSocketControllerHandler(controller, config, MATTER_SERVER_VERSION);
@@ -256,12 +253,13 @@ async function stop() {
 
     // Wait for start() to finish (or fail) before tearing down, so we don't
     // race against in-flight initialization that could re-create resources.
-    try {
-        await startCompleted;
-    } catch {
-        // start() failed - that's fine, we still need to clean up
-    }
+    await startCompleted;
 
+    await shutdown();
+}
+
+/** Open handles (controller, mDNS, runtime workers) keep the process alive until this has run. */
+async function shutdown() {
     try {
         await server?.stop();
     } catch (err) {
@@ -302,11 +300,17 @@ async function stop() {
 }
 
 startCompleted = start().catch(async err => {
-    if (!stopping) {
-        logger.fatal("Server failed to start", err);
-        process.exitCode = 1;
+    if (stopping) {
+        // stop() owns the teardown when it ran first; it continues once this settles.
+        return;
     }
-    await config?.close();
+    // Makes a later SIGINT/SIGTERM return early instead of starting a second teardown.
+    stopping = true;
+    logger.fatal("Server failed to start", err);
+    // The process must not outlive a failed start, even if the teardown hangs.
+    Time.getTimer("Shutdown after start failure", SHUTDOWN_AFTER_START_FAILURE_TIMEOUT, () => process.exit(1)).start();
+    await shutdown();
+    process.exit(1);
 });
 
 process.on("SIGINT", () => void stop().catch(err => console.error(err)));

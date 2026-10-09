@@ -18,10 +18,10 @@ const DOCUMENTED_ICE_SERVERS = [
     { urls: ["turn:turn.example:3478", "turns:turn.example:5349"], username: "u", credential: "p", caid: 7 },
 ];
 
-/** The same servers as `ICEServerStruct`: `urls` becomes the mandatory `urLs` list. */
+/** The same servers as `ICEServerStruct`: `urls` becomes the mandatory list. */
 const CLUSTER_ICE_SERVERS = [
-    { urLs: ["stun:stun.example:3478"] },
-    { urLs: ["turn:turn.example:3478", "turns:turn.example:5349"], username: "u", credential: "p", caid: 7 },
+    { urls: ["stun:stun.example:3478"] },
+    { urls: ["turn:turn.example:3478", "turns:turn.example:5349"], username: "u", credential: "p", caid: 7 },
 ];
 
 function refusal(run: () => unknown): ServerError {

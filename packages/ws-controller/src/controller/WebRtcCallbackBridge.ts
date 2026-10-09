@@ -13,9 +13,9 @@ const logger = Logger.get("WebRtcCallbackBridge");
 
 /** The same wire shape `camera_start_stream` accepts (`urls`, not the struct's `URLs`, § 11.4.5.3). */
 function toWireIceServer(server: WebRtcTransportDefinitions.IceServer): CameraIceServer {
-    const { urLs, username, credential, caid } = server;
+    const { urls, username, credential, caid } = server;
     return {
-        urls: urLs,
+        urls,
         ...(username === undefined ? {} : { username }),
         ...(credential === undefined ? {} : { credential }),
         ...(caid === undefined ? {} : { caid }),

@@ -4,7 +4,7 @@ How to choose a log level in matter-server. The goal is consistency: the same ki
 always lands on the same level, and each level means one thing.
 
 matter-server is an **end-user-driven** application — a Matter controller with a Home
-Assistant-compatible WebSocket API and a dashboard. It wraps `@project-chip/matter.js`, whose
+Assistant-compatible WebSocket API and a dashboard. It builds on matter.js, whose
 logs flow through this server's logger **at the levels matter.js already chose**. This scheme
 is therefore **identical to matter.js's** (see its `docs/LOGGING.md`): adopting the same
 levels means library logs stay coherent with ours — no remapping.

@@ -24,11 +24,9 @@ import {
     Time,
     Timestamp,
 } from "@matter/main";
-import { VendorInfo, DclCertificateService, DclVendorInfoService, OperationalDataset } from "@matter/main/protocol";
+import { DclCertificateService, DclVendorInfoService, OperationalDataset, VendorInfo } from "@matter/main/protocol";
 import { VendorId } from "@matter/main/types";
 import { Endpoint } from "@matter/node";
-import { WebRtcTransportRequestorServer } from "@matter/node/behaviors/web-rtc-transport-requestor";
-import { CameraControllerDevice } from "@matter/node/devices/camera-controller";
 import {
     BorderRouterRegistry,
     connectMeshcop,
@@ -36,7 +34,6 @@ import {
     OtbrRestDiagnosticSource,
     ThreadCredentialsRegistry,
 } from "@matter/thread-br-client";
-import { CommissioningController } from "@project-chip/matter.js";
 import { createReadStream } from "node:fs";
 import { Readable } from "node:stream";
 import { pathToFileURL } from "node:url";
@@ -44,7 +41,8 @@ import { CameraStreamManager } from "../camera/CameraStreamManager.js";
 import { MatterCameraDeviceIo } from "../camera/MatterCameraDeviceIo.js";
 import { ConfigStorage } from "../server/ConfigStorage.js";
 import { ServerError } from "../types/WebSocketMessageTypes.js";
-import { ControllerCommandHandler } from "./ControllerCommandHandler.js";
+import { CameraControllerEndpoint, ControllerCommandHandler } from "./ControllerCommandHandler.js";
+import { ControllerNode, createControllerNode } from "./ControllerNode.js";
 import { LegacyDataInjector, LegacyServerData } from "./LegacyDataInjector.js";
 import { NetworkTopologyService } from "./NetworkTopologyService.js";
 import { OtaImageInfo, OtaUploadOptions, OtaUploadRegistry } from "./OtaUploadRegistry.js";
@@ -118,23 +116,6 @@ export interface MatterControllerOptions {
      * (legacy Eve Energy devices). Defaults to, and is floored at, 60 seconds.
      */
     customClusterPollInterval?: Duration;
-}
-
-/**
- * Parse a version string into a numeric version in MMmmpp format.
- * For alpha/beta versions, only the base version (major.minor.patch) is used.
- * @param version Version string like "0.2.10" or "0.2.10-alpha.0"
- * @returns Numeric version like 210 for "0.2.10"
- */
-function parseVersionToNumber(version: string): number {
-    // Extract base version (before any -alpha, -beta, etc.)
-    const baseVersion = version.split("-")[0];
-    const parts = baseVersion.split(".");
-    const major = parseInt(parts[0] ?? "0", 10);
-    const minor = parseInt(parts[1] ?? "0", 10);
-    const patch = parseInt(parts[2] ?? "0", 10);
-    // Format: MMmmpp (2 digits each)
-    return major * 10000 + minor * 100 + patch;
 }
 
 /**
@@ -215,7 +196,7 @@ export function parseRestBaseUrl(baseUrl: string): { host: string; port: number 
 
 export class MatterController {
     #env: Environment;
-    #controllerInstance?: CommissioningController;
+    #controller?: ControllerNode;
     #commandHandler?: ControllerCommandHandler;
     #config: ConfigStorage;
     #serverId: string;
@@ -238,7 +219,6 @@ export class MatterController {
     readonly #threadDiagnostics: ThreadDiagnosticsService;
     #networkTopology?: NetworkTopologyService;
     #cameraStreams?: CameraStreamManager;
-    #webRtcRequestor?: Endpoint<typeof CameraControllerDevice>;
     #services: SharedEnvironmentServices;
 
     static async create(
@@ -399,37 +379,25 @@ export class MatterController {
         }
         this.#services.get(DclCertificateService);
 
-        this.#controllerInstance = new CommissioningController({
-            environment: {
-                environment: this.#env,
-                id: this.#serverId,
-            },
-            autoConnect: false, // Do not auto-connect to the commissioned nodes
-            adminFabricLabel: this.#config.fabricLabel,
+        this.#controller = await createControllerNode({
+            environment: this.#env,
+            id: this.#serverId,
             adminVendorId: vendorId !== undefined ? VendorId(vendorId) : undefined,
             adminFabricId: fabricId !== undefined ? FabricId(fabricId) : undefined,
-            rootNodeId: NodeId(112233), // TODO Remove when we switch to random IDs
+            adminFabricLabel: this.#config.fabricLabel,
+            serverVersion: this.#serverVersion,
             enableOtaProvider: !this.#disableOtaProvider,
-            tcp: true,
-            transportPreference: "tcp",
-            basicInformation: {
-                vendorName: "Open Home Foundation",
-                productName: "OHF Matter Server",
-                productId: 1,
-                hardwareVersion: 1,
-                hardwareVersionString: "1.0",
-                softwareVersion: parseVersionToNumber(this.#serverVersion) || 1,
-                softwareVersionString: this.#serverVersion.split("-")[0], // Base version without alpha/beta suffix
-            },
+            peerSettingsRepair: this.#config,
         });
     }
 
     get commandHandler() {
-        if (this.#controllerInstance === undefined) {
+        const controller = this.#controller;
+        if (controller === undefined) {
             throw ServerError.sdkStackError("Controller is not initialized");
         }
         if (this.#commandHandler === undefined) {
-            this.#commandHandler = new ControllerCommandHandler(this.#controllerInstance, {
+            this.#commandHandler = new ControllerCommandHandler(controller, {
                 bleEnabled: this.#env.vars.get("ble.enable", false),
                 bleProxyEnabled: this.#bleProxyEnabled,
                 otaEnabled: !this.#disableOtaProvider,
@@ -440,8 +408,8 @@ export class MatterController {
 
             this.#commandHandler.events.started.once(async () => {
                 if (this.#stopped) return;
-                this.#controllerInstance!.node.behaviors.require(DclBehavior);
-                await this.#controllerInstance!.node.setStateOf(DclBehavior, {
+                controller.node.behaviors.require(DclBehavior);
+                await controller.node.setStateOf(DclBehavior, {
                     fetchTestCertificates: true,
                     acceptTestCertificates: this.#enableTestNetDcl,
                 });
@@ -462,8 +430,6 @@ export class MatterController {
                 if (!this.#disableOtaProvider && this.#enableTestNetDcl) {
                     initPromises.push(this.#enableTestOtaImages());
                 }
-
-                initPromises.push(this.#enableWebRtcRequestor());
 
                 if (!this.#threadDiagnosticsDisabled) {
                     // Diagnostics-only discovery — never gate node init / WS availability on it.
@@ -575,25 +541,11 @@ export class MatterController {
         }
     }
 
-    get webRtcRequestor(): Endpoint<typeof CameraControllerDevice> {
-        if (!this.#webRtcRequestor) {
+    get webRtcRequestor(): Endpoint<CameraControllerEndpoint> {
+        if (this.#controller === undefined) {
             throw new Error("WebRTC requestor endpoint not initialized");
         }
-        return this.#webRtcRequestor;
-    }
-
-    async #enableWebRtcRequestor(): Promise<void> {
-        if (!this.#controllerInstance) {
-            throw new Error("Controller not started");
-        }
-        const node = this.#controllerInstance.node;
-        if (node.endpoints.has("camera-controller")) {
-            this.#webRtcRequestor = node.endpoints.for("camera-controller") as Endpoint<typeof CameraControllerDevice>;
-            return;
-        }
-        this.#webRtcRequestor = await node.add(
-            new Endpoint(CameraControllerDevice.with(WebRtcTransportRequestorServer), { id: "camera-controller" }),
-        );
+        return this.#controller.webRtcRequestor;
     }
 
     /**
@@ -601,10 +553,10 @@ export class MatterController {
      * Lazily initializes the service if not already present.
      */
     async vendorInfoService() {
-        if (this.#controllerInstance === undefined) {
+        if (this.#controller === undefined) {
             throw ServerError.sdkStackError("Controller is not initialized");
         }
-        const service = await this.#controllerInstance.node.act(agent => agent.get(DclBehavior).vendorInfoService);
+        const service = await this.#controller.node.act(agent => agent.get(DclBehavior).vendorInfoService);
         await service.construction;
         return service;
     }
@@ -614,10 +566,10 @@ export class MatterController {
      * Lazily initializes the service if not already present.
      */
     async certificateService() {
-        if (this.#controllerInstance === undefined) {
+        if (this.#controller === undefined) {
             throw ServerError.sdkStackError("Controller is not initialized");
         }
-        const service = await this.#controllerInstance.node.act(agent => agent.get(DclBehavior).certificateService);
+        const service = await this.#controller.node.act(agent => agent.get(DclBehavior).certificateService);
         await service.construction;
         return service;
     }
@@ -627,10 +579,10 @@ export class MatterController {
      * Lazily initializes the service if not already present.
      */
     async otaUpdateService() {
-        if (this.#controllerInstance === undefined) {
+        if (this.#controller === undefined) {
             throw ServerError.sdkStackError("Controller is not initialized");
         }
-        const service = await this.#controllerInstance.node.act(agent => agent.get(DclBehavior).otaUpdateService);
+        const service = await this.#controller.node.act(agent => agent.get(DclBehavior).otaUpdateService);
         await service.construction;
         return service;
     }
@@ -651,13 +603,14 @@ export class MatterController {
     }
 
     async injectCommissionedDates() {
-        if (this.#controllerInstance === undefined || this.#legacyCommissionedDates === undefined) {
+        const controller = this.#controller;
+        if (controller === undefined || this.#legacyCommissionedDates === undefined) {
             return;
         }
         for (const [nodeIdStr, commissionedAt] of this.#legacyCommissionedDates) {
             try {
-                const peerAddress = this.#controllerInstance.fabric.addressOf(NodeId(BigInt(nodeIdStr)));
-                const node = await this.#controllerInstance.node.peers.forAddress(peerAddress);
+                const peerAddress = controller.fabric.addressOf(NodeId(BigInt(nodeIdStr)));
+                const node = await controller.node.peers.forAddress(peerAddress);
                 const commissioningState = node.maybeStateOf(CommissioningClient);
                 if (commissioningState !== undefined && commissioningState.commissionedAt === undefined) {
                     await node.setStateOf(CommissioningClient, { commissionedAt });
@@ -687,20 +640,45 @@ export class MatterController {
         }
     }
 
+    /**
+     * Shut down every part of the controller.
+     *
+     * Each step runs even when an earlier one fails: the controller node holds a storage lock and the
+     * shared environment services hold network resources, so skipping either on the way out leaves the
+     * process unable to start again. Failures are collected and reported once everything is down.
+     */
     async stop() {
         this.#stopped = true;
         await this.#settleBackgroundInit();
-        this.#networkTopology?.stop();
+        const errors = new Array<Error>();
+        const shutDown = async (what: string, work: () => unknown) => {
+            try {
+                await work();
+            } catch (error) {
+                errors.push(
+                    error instanceof Error
+                        ? new Error(`Could not stop ${what}: ${error.message}`, { cause: error })
+                        : new Error(`Could not stop ${what}: ${String(error)}`),
+                );
+            }
+        };
+
+        await shutDown("the network topology service", () => this.#networkTopology?.stop());
         if (!this.#threadDiagnosticsDisabled) {
-            await this.#threadDiagnostics.stop();
-            await this.#borderRouterRegistry.stop();
+            await shutDown("Thread diagnostics", () => this.#threadDiagnostics.stop());
+            await shutDown("the border router registry", () => this.#borderRouterRegistry.stop());
         }
         // Must run before the command handler closes: an open session would pin its streams on the device.
         await this.#cameraStreams
             ?.stopAll()
             .catch(err => logger.warn("Failed to release camera sessions on stop", err));
-        await this.#commandHandler?.close(); // This closes also the controller instance if started
-        await this.#services.close();
+        await shutDown("the command handler", async () => this.#commandHandler?.close());
+        await shutDown("the controller node", async () => this.#controller?.close());
+        await shutDown("the environment services", () => this.#services.close());
+
+        if (errors.length > 0) {
+            throw new MatterAggregateError(errors, "Controller shutdown incomplete");
+        }
     }
 
     /**
@@ -708,10 +686,11 @@ export class MatterController {
      * Must be called after the controller is started.
      */
     async #enableTestOtaImages() {
-        if (this.#controllerInstance === undefined) {
-            throw ServerError.sdkStackError("Controller is not initialized");
+        const otaProvider = this.#controller?.otaProvider;
+        if (otaProvider === undefined) {
+            throw new Error("OTA provider not initialized");
         }
-        await this.#controllerInstance.otaProvider.setStateOf(SoftwareUpdateManager, {
+        await otaProvider.setStateOf(SoftwareUpdateManager, {
             allowTestOtaImages: true,
         });
         logger.info("Enabled test OTA images (test-net DCL)");

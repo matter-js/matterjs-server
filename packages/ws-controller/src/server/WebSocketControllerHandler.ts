@@ -15,13 +15,13 @@ import {
     Logger,
     LogLevel,
     Millis,
+    NodeConnectionState,
     NodeId,
     ObserverGroup,
 } from "@matter/main";
 import { WebRtcTransportProvider } from "@matter/main/clusters";
 import { ControllerCommissioningFlowOptions, OperationalDataset } from "@matter/main/protocol";
-import { EndpointNumber, QrPairingCodeCodec } from "@matter/main/types";
-import { NodeStates } from "@project-chip/matter.js/device";
+import { EndpointNumber } from "@matter/main/types";
 import { WebSocketServer } from "ws";
 import type { CameraSignallingCommandName } from "../camera/cameraCommands.js";
 import {
@@ -418,6 +418,16 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 }
             };
 
+            // python-matter-server wire contract: the node_updated carrying a new endpoint must reach
+            // the client before endpoint_added announces it, or a client that resolves the endpoint
+            // against its own node model does not know it yet.
+            const flushNodeUpdatedFor = (nodeId: NodeId) => {
+                if (!pendingNodeUpdated.delete(nodeId)) return;
+                if (this.#closed || this.#shuttingDown || !listening || connectionClosed) return;
+                if (!this.#commandHandler.hasNode(nodeId)) return;
+                sendNodeFullDetails("node_updated", nodeId);
+            };
+
             const sendNodeDetailsEvent = <E extends EventTypes>(eventName: E, nodeId: NodeId) => {
                 if (this.#closed || this.#shuttingDown || !listening) return;
 
@@ -541,7 +551,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
 
             observers.on(this.#commandHandler.events.nodeStateChanged, (nodeId, state) => {
                 // Track last interview time when node becomes connected
-                if (state === NodeStates.Connected) {
+                if (state === NodeConnectionState.Connected) {
                     this.#lastInterviewDates.set(nodeId, new Date());
                 }
                 // Availability changes (and node_updated events) are handled by nodeAvailabilityChanged
@@ -566,6 +576,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
 
             observers.on(this.#commandHandler.events.nodeEndpointAdded, (nodeId, endpointId) => {
                 if (this.#closed || this.#shuttingDown || !listening) return;
+                flushNodeUpdatedFor(nodeId);
                 logger.info(
                     `[${connId}] Sending endpoint_added event for Node ${this.#commandHandler.formatNode(nodeId)} endpoint ${endpointId}`,
                 );
@@ -608,7 +619,10 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 // serialize lazily so a superseded batch is never serialized.
                 try {
                     connection.sendCoalescable(`thread:${batch.extPanIdHex}`, () =>
-                        toBigIntAwareJson({ event: "thread_diagnostics_updated", data: serializeBatch(batch) }),
+                        toBigIntAwareJson({
+                            event: "thread_diagnostics_updated",
+                            data: serializeBatch(batch, this.#controller.threadDiagnostics.remainingTtl(batch)),
+                        }),
                     );
                 } catch (err) {
                     logger.error(`[${connId}] Failed to send thread_diagnostics_updated`, err);
@@ -1737,7 +1751,8 @@ export class WebSocketControllerHandler implements WebServerHandler {
     ): Promise<ResponseOf<"get_thread_diagnostics">> {
         if (args.ext_pan_id === undefined) {
             this.#controller.threadDiagnostics.refreshAllKnown({ force: args.force });
-            return this.#controller.threadDiagnostics.listCached().map(serializeBatch);
+            const diagnostics = this.#controller.threadDiagnostics;
+            return diagnostics.listCached().map(batch => serializeBatch(batch, diagnostics.remainingTtl(batch)));
         }
         if (!/^[0-9a-fA-F]{16}$/.test(args.ext_pan_id)) {
             throw ServerError.invalidArguments(`Invalid ext_pan_id "${args.ext_pan_id}": expected 16 hex characters`);
@@ -1747,7 +1762,9 @@ export class WebSocketControllerHandler implements WebServerHandler {
         });
         // Explicit null (not undefined) so the "no response" guard doesn't turn "nothing cached /
         // diagnostics disabled" into a generic sdk_stack_error.
-        return batch === undefined ? null : serializeBatch(batch);
+        return batch === undefined
+            ? null
+            : serializeBatch(batch, this.#controller.threadDiagnostics.remainingTtl(batch));
     }
 
     async #handleGetNetworkTopology(args: ArgsOf<"get_network_topology">): Promise<ResponseOf<"get_network_topology">> {
@@ -1850,12 +1867,16 @@ export class WebSocketControllerHandler implements WebServerHandler {
     ): Promise<ResponseOf<"open_commissioning_window">> {
         const { node_id, timeout /*, iteration, option, discriminator*/ } = args;
         const nodeId = this.#targetNodeId(node_id, "open_commissioning_window");
-        const { manualCode, qrCode } = await this.#commandHandler.openCommissioningWindow({
-            nodeId,
-            timeout,
-        });
-        const pairingCodeCodec = QrPairingCodeCodec.decode(qrCode);
-        return { setup_pin_code: pairingCodeCodec[0].passcode, setup_manual_code: manualCode, setup_qr_code: qrCode };
+        const window = await this.#commandHandler.openCommissioningWindow({ nodeId, timeout });
+        return {
+            setup_pin_code: window.passcode,
+            setup_manual_code: window.manualCode,
+            setup_qr_code: window.qrCode,
+            discriminator: window.discriminator,
+            vendor_id: window.vendorId,
+            product_id: window.productId,
+            commissioning_timeout: window.commissioningTimeout,
+        };
     }
 
     async #handleDiscoverCommissionableNodes(

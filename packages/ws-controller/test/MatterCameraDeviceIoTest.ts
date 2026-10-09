@@ -347,8 +347,8 @@ describe("MatterCameraDeviceIo.invoke (webrtcProvider routing)", () => {
     }
 
     function makeHandler(overrides: Partial<HandlerStub> = {}): ControllerCommandHandler {
-        const stub: HandlerStub & { getNode: () => { node: unknown } } = {
-            getNode: () => ({ node: {} }),
+        const stub: HandlerStub & { getNode: () => unknown } = {
+            getNode: () => ({}),
             invokeCommand: overrides.invokeCommand ?? (async () => undefined),
             invokeWebRtcProviderCommand: overrides.invokeWebRtcProviderCommand ?? (async () => undefined),
             removeTrackedWebRtcSession: overrides.removeTrackedWebRtcSession ?? (async () => {}),
@@ -606,7 +606,7 @@ describe("MatterCameraDeviceIo.readWebRtcSessions", () => {
 
     function makeHandler(endpoint: FakeEndpoint | undefined): ControllerCommandHandler {
         const stub = {
-            getNode: () => ({ node: { endpoints: { for: () => endpoint } } }),
+            getNode: () => ({ endpoints: { for: () => endpoint } }),
             localNodeId: LOCAL_NODE_ID,
         };
         return stub as unknown as ControllerCommandHandler;
@@ -717,7 +717,7 @@ describe("MatterCameraDeviceIo.missingCameraClusters", () => {
 
     function makeHandler(endpoint: FakeEndpoint | undefined): ControllerCommandHandler {
         const stub = {
-            getNode: () => ({ node: { endpoints: { for: () => endpoint } } }),
+            getNode: () => ({ endpoints: { for: () => endpoint } }),
         };
         return stub as unknown as ControllerCommandHandler;
     }

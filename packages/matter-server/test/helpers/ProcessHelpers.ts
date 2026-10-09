@@ -24,6 +24,10 @@ export const DEVICE_PORT = 5550;
 export const MANUAL_PAIRING_CODE = "34970112332";
 export const DEVICE_PASSCODE = 20202021;
 export const DEVICE_DISCRIMINATOR = 3840;
+export const BRIDGE_DEVICE_PORT = 5551;
+export const BRIDGE_MANUAL_PAIRING_CODE = "34970312335";
+export const BRIDGE_DEVICE_PASSCODE = 20202023;
+export const BRIDGE_DEVICE_DISCRIMINATOR = 3842;
 
 /**
  * Creates temporary storage directories for server and device, plus a log file path.
@@ -67,6 +71,7 @@ export function startServer(
     logFilePath?: string,
     logLevel = process.env.MATTER_LOG_LEVEL ?? "info",
     enableTestNetDcl = true,
+    extraArgs: string[] = [],
 ): ChildProcess {
     const args = [
         "--enable-source-maps",
@@ -81,6 +86,7 @@ export function startServer(
     if (logFilePath !== undefined) {
         args.push(`--log-file=${logFilePath}`);
     }
+    args.push(...extraArgs);
     const serverProcess = spawn("node", args, {
         cwd: process.cwd(),
         detached: true,
@@ -123,13 +129,51 @@ export function startTestDevice(storagePath: string): ChildProcess {
 }
 
 /**
+ * Starts the test bridge device process with persistent stdout/stderr logging.
+ */
+export function startTestBridgeDevice(storagePath: string): ChildProcess {
+    const proc = spawn(
+        "npx",
+        [
+            "tsx",
+            "test/fixtures/TestBridgeDevice.ts",
+            `--storage-path=${storagePath}`,
+            `--port=${BRIDGE_DEVICE_PORT}`,
+            `--discriminator=${BRIDGE_DEVICE_DISCRIMINATOR}`,
+            `--passcode=${BRIDGE_DEVICE_PASSCODE}`,
+        ],
+        {
+            cwd: process.cwd(),
+            detached: true,
+            stdio: ["pipe", "pipe", "pipe"],
+        },
+    );
+
+    proc.stdout?.on("data", (data: Buffer) => {
+        console.log("[bridge]", data.toString().trim());
+    });
+    proc.stderr?.on("data", (data: Buffer) => {
+        console.log("[bridge:err]", data.toString().trim());
+    });
+
+    return proc;
+}
+
+/**
  * Waits for a port to be ready by attempting WebSocket connections.
  */
 export async function waitForPort(port: number, timeoutMs = 30_000): Promise<void> {
+    await waitForWebSocket(`ws://localhost:${port}/ws`, timeoutMs);
+}
+
+/**
+ * Waits for a WebSocket URL (including `ws+unix:` URLs) to accept connections.
+ */
+export async function waitForWebSocket(url: string, timeoutMs = 30_000): Promise<void> {
     const start = Date.now();
     while (Date.now() - start < timeoutMs) {
         try {
-            const ws = new WebSocket(`ws://localhost:${port}/ws`);
+            const ws = new WebSocket(url);
             await new Promise<void>((resolve, reject) => {
                 ws.on("open", () => {
                     ws.close();
@@ -142,7 +186,7 @@ export async function waitForPort(port: number, timeoutMs = 30_000): Promise<voi
             await new Promise(r => setTimeout(r, 500));
         }
     }
-    throw new Error(`Timeout waiting for port ${port}`);
+    throw new Error(`Timeout waiting for ${url}`);
 }
 
 /**

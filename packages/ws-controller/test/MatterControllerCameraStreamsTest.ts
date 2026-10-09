@@ -4,16 +4,22 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Crypto, Environment, MockStorageService } from "@matter/general";
+import { Crypto, Entropy, Environment, MockStorageService, Network, NetworkSimulator } from "@matter/general";
 import { MatterController } from "../src/controller/MatterController.js";
 import { ConfigStorage } from "../src/server/ConfigStorage.js";
 import { ServerError, ServerErrorCode } from "../src/types/WebSocketMessageTypes.js";
+
+const simulator = new NetworkSimulator();
+let hostIndex = 0;
 
 function freshEnv(): Environment {
     const env = new Environment("test");
     new MockStorageService(env);
     // Crypto is stateless, so the default environment's instance is safe to share.
-    env.set(Crypto, Environment.default.get(Crypto));
+    const crypto = Environment.default.get(Crypto);
+    env.set(Entropy, crypto);
+    env.set(Crypto, crypto);
+    env.set(Network, simulator.addHost(++hostIndex));
     return env;
 }
 

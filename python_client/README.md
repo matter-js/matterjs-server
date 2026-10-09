@@ -64,6 +64,10 @@ async with aiohttp.ClientSession() as session:
     nodes = client.get_nodes()
 ```
 
+To reach a server that listens on a unix socket (`--listen-address /path/to/socket`), pass
+`unix:///path/to/socket` as the server URL. The client then opens its own session on that socket
+for the WebSocket and the OTA upload, and the session passed in stays unused.
+
 ### OHF-only extensions
 
 Beyond the `python-matter-server` API, the client exposes commands the Matter.js server adds:

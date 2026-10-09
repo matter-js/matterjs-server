@@ -25,7 +25,7 @@ class ThirdRealityMeteringCluster(Cluster):
                 ClusterObjectFieldDescriptor(Label="currentSummationDelivered", Tag=0x00000000, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="multiplier", Tag=0x00000301, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="divisor", Tag=0x00000302, Type=typing.Optional[uint]),
-                ClusterObjectFieldDescriptor(Label="instantaneousDemand", Tag=0x00000400, Type=typing.Optional[uint]),
+                ClusterObjectFieldDescriptor(Label="instantaneousDemand", Tag=0x00000400, Type=typing.Optional[int]),
                 ClusterObjectFieldDescriptor(Label="generatedCommandList", Tag=0x0000FFF8, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="acceptedCommandList", Tag=0x0000FFF9, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="attributeList", Tag=0x0000FFFB, Type=typing.List[uint]),
@@ -36,7 +36,7 @@ class ThirdRealityMeteringCluster(Cluster):
     currentSummationDelivered: typing.Optional[uint] = None
     multiplier: typing.Optional[uint] = None
     divisor: typing.Optional[uint] = None
-    instantaneousDemand: typing.Optional[uint] = None
+    instantaneousDemand: typing.Optional[int] = None
     generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])
     acceptedCommandList: typing.List[uint] = field(default_factory=lambda: [])
     attributeList: typing.List[uint] = field(default_factory=lambda: [])
@@ -104,9 +104,9 @@ class ThirdRealityMeteringCluster(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
+                return ClusterObjectFieldDescriptor(Type=typing.Optional[int])
 
-            value: typing.Optional[uint] = None
+            value: typing.Optional[int] = None
 
         @dataclass
         class GeneratedCommandList(ClusterAttributeDescriptor):

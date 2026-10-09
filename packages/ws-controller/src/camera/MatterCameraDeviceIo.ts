@@ -138,7 +138,7 @@ export class MatterCameraDeviceIo implements CameraDeviceIo {
     }
 
     async readCameraState(nodeId: NodeId, endpointId: EndpointNumber): Promise<CameraState | undefined> {
-        const node = this.#handler.getNode(nodeId).node;
+        const node = this.#handler.getNode(nodeId);
         const endpoint = node.endpoints.for(endpointId);
         if (endpoint === undefined || !endpoint.behaviors.has(CameraAvStreamManagementClient)) {
             return undefined;
@@ -152,7 +152,7 @@ export class MatterCameraDeviceIo implements CameraDeviceIo {
 
     /** Stream ids come from both the revision-2 lists and the deprecated revision-1 fields (§11.4.5.5). */
     async readWebRtcSessions(nodeId: NodeId, endpointId: EndpointNumber): Promise<DeviceWebRtcSession[] | undefined> {
-        const endpoint = this.#handler.getNode(nodeId).node.endpoints.for(endpointId);
+        const endpoint = this.#handler.getNode(nodeId).endpoints.for(endpointId);
         if (endpoint === undefined || !endpoint.behaviors.has(WebRtcTransportProviderClient)) return undefined;
         const localNodeId = this.#handler.localNodeId;
         return endpoint.stateOf(WebRtcTransportProviderClient).currentSessions.map(session => ({
@@ -167,7 +167,7 @@ export class MatterCameraDeviceIo implements CameraDeviceIo {
     }
 
     async missingCameraClusters(nodeId: NodeId, endpointId: EndpointNumber): Promise<number[]> {
-        const endpoint = this.#handler.getNode(nodeId).node.endpoints.for(endpointId);
+        const endpoint = this.#handler.getNode(nodeId).endpoints.for(endpointId);
         const missing = new Array<number>();
         if (endpoint === undefined || !endpoint.behaviors.has(CameraAvStreamManagementClient)) {
             missing.push(CameraAvStreamManagement.Cluster.id);
@@ -187,7 +187,7 @@ export class MatterCameraDeviceIo implements CameraDeviceIo {
         sessionEstablishing?: (webRtcSessionId: number) => void;
     }): Promise<unknown> {
         if (args.cluster === "avsm") {
-            const node = this.#handler.getNode(args.nodeId).node;
+            const node = this.#handler.getNode(args.nodeId);
             // Widened: the command name is a runtime string validated by the manager.
             const cluster: Specifier.ClusterLike = CameraAvStreamManagement.Cluster;
             return this.#handler.invokeCommand(node, {
@@ -210,7 +210,7 @@ export class MatterCameraDeviceIo implements CameraDeviceIo {
             });
         }
 
-        const node = this.#handler.getNode(args.nodeId).node;
+        const node = this.#handler.getNode(args.nodeId);
         const cluster: Specifier.ClusterLike = WebRtcTransportProvider.Cluster;
         const invoke = (): Promise<unknown> =>
             this.#handler.invokeCommand(node, {

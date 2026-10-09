@@ -10,6 +10,9 @@ from .AirQuality import AirQuality
 from .AmbientContextSensing import AmbientContextSensing
 from .ApplicationBasic import ApplicationBasic
 from .ApplicationLauncher import ApplicationLauncher
+from .AqaraAmbientSensingConfigurationCluster import AqaraAmbientSensingConfigurationCluster
+from .AqaraOccupantLocationCluster import AqaraOccupantLocationCluster
+from .AqaraRadarSensingUnionCluster import AqaraRadarSensingUnionCluster
 from .AudioOutput import AudioOutput
 from .BasicInformation import BasicInformation
 from .Binding import Binding
@@ -62,6 +65,7 @@ from .HeimanCluster import HeimanCluster
 from .HepaFilterMonitoring import HepaFilterMonitoring
 from .IcdManagement import IcdManagement
 from .Identify import Identify
+from .IkeaValveCalibrationCluster import IkeaValveCalibrationCluster
 from .IlluminanceMeasurement import IlluminanceMeasurement
 from .InovelliCluster import InovelliCluster
 from .JointFabricAdministrator import JointFabricAdministrator
@@ -157,6 +161,9 @@ __all__ = [
     "AmbientContextSensing",
     "ApplicationBasic",
     "ApplicationLauncher",
+    "AqaraAmbientSensingConfigurationCluster",
+    "AqaraOccupantLocationCluster",
+    "AqaraRadarSensingUnionCluster",
     "AudioOutput",
     "BasicInformation",
     "Binding",
@@ -209,6 +216,7 @@ __all__ = [
     "HepaFilterMonitoring",
     "IcdManagement",
     "Identify",
+    "IkeaValveCalibrationCluster",
     "IlluminanceMeasurement",
     "InovelliCluster",
     "JointFabricAdministrator",

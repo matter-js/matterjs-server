@@ -5,7 +5,7 @@
  */
 
 import { toBigIntAwareJson } from "@matter-server/ws-client";
-import { AsyncObservable, Environment, MockStorageService, Observable } from "@matter/general";
+import { AsyncObservable, Environment, Millis, MockStorageService, Observable } from "@matter/general";
 import { CaseAuthenticatedTag, EndpointNumber, NodeId } from "@matter/main";
 import { WebRtcTransportProvider } from "@matter/main/clusters/web-rtc-transport-provider";
 import { Status, StatusResponseError } from "@matter/main/types";
@@ -208,6 +208,9 @@ function makeStubController(
         },
         listCached() {
             return [];
+        },
+        remainingTtl() {
+            return Millis(3_600_000);
         },
         refreshAllKnown() {},
     };
@@ -687,7 +690,7 @@ describe("WebSocket Credentials API", () => {
                 ice_servers: [{ urls: "stun:stun.example:3478" }],
             },
         });
-        expect(fields?.iceServers).to.deep.equal([{ urLs: ["stun:stun.example:3478"] }]);
+        expect(fields?.iceServers).to.deep.equal([{ urls: ["stun:stun.example:3478"] }]);
     });
 
     it("relays ProvideIceCandidates as cluster-shaped fields and answers null", async () => {

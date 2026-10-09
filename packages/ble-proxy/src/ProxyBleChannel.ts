@@ -264,6 +264,7 @@ export class ProxyBleCentralInterface implements Transport {
                         onMatterMessageListener(channelRef.channel, data);
                     }
                 },
+                mtu,
             );
             sessionRef.session = btpSession;
 

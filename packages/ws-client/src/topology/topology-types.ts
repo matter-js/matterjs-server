@@ -9,13 +9,17 @@ import type { BorderRouterEntry, MatterNodeData } from "../models/model.js";
 /**
  * Minimal structural view of a node required to derive network topology.
  *
- * The derivation only ever reads `node_id` and the flat `attributes`
- * map, so it accepts this narrow shape rather than the full {@link MatterNode}
- * class. Both the client-side `MatterNode` and any server-side node record that
- * exposes these fields satisfy it, which lets the topology pipeline run in the
- * browser (dashboard) and in Node (server) without a shared node class.
+ * The derivation only ever reads `node_id`, the flat `attributes` map and — where
+ * reachability matters — `available`, so it accepts this narrow shape rather than the
+ * full {@link MatterNode} class. Both the client-side `MatterNode` and any server-side
+ * node record that exposes these fields satisfy it, which lets the topology pipeline run
+ * in the browser (dashboard) and in Node (server) without a shared node class.
+ *
+ * `available` is optional so callers holding only the topology attributes still fit;
+ * an absent value is treated as online.
  */
-export type TopologySourceNode = Pick<MatterNodeData, "node_id" | "attributes">;
+export type TopologySourceNode = Pick<MatterNodeData, "node_id" | "attributes"> &
+    Partial<Pick<MatterNodeData, "available">>;
 
 /**
  * Network type detected from NetworkCommissioning cluster feature map.

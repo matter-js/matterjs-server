@@ -80,8 +80,7 @@ function entryMaxOf(field: FieldModel): number {
 
 const resolution = required(avsm.get(DatatypeModel, "VideoResolutionStruct"), "VideoResolutionStruct");
 const iceServer = required(webRtcDefinitions.get(DatatypeModel, "ICEServerStruct"), "ICEServerStruct");
-// matter.js 0.17 names the spec's `URLs` field `UrLs` (fixed in 0.18).
-const iceServerUrls = requireField(iceServer, "UrLs");
+const iceServerUrls = requireField(iceServer, "Urls");
 
 const provideOffer = providerCommand("ProvideOffer");
 

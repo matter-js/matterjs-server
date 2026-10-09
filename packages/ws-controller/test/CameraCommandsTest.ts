@@ -266,7 +266,7 @@ describe("cameraCommands", () => {
                 metadata_enabled: true,
             });
             expect(parsed.sdp).to.equal("v=0");
-            expect(parsed.iceServers).to.deep.equal([{ urLs: ["stun:example.com"] }]);
+            expect(parsed.iceServers).to.deep.equal([{ urls: ["stun:example.com"] }]);
             expect(parsed.iceTransportPolicy).to.equal("relay");
             expect(parsed.metadataEnabled).to.equal(true);
         });
@@ -316,7 +316,7 @@ describe("cameraCommands", () => {
             });
             expect(parsed.iceServers).to.deep.equal([
                 {
-                    urLs: ["turn:a.example:3478", "turns:a.example:5349"],
+                    urls: ["turn:a.example:3478", "turns:a.example:5349"],
                     username: "u",
                     credential: "p",
                     caid: 7,

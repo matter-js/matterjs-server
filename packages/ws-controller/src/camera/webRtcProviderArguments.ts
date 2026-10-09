@@ -70,7 +70,7 @@ const ICE_SERVER_KEY_SET: Record<keyof Required<CameraIceServer>, true> = {
 const ICE_SERVER_KEYS: readonly string[] = Object.keys(ICE_SERVER_KEY_SET);
 
 /**
- * Wire `urls` (W3C `RTCIceServer`, one URL or a list) becomes matter.js `urLs` (always a list, § 11.4.5.3).
+ * Wire `urls` (W3C `RTCIceServer`, one URL or a list) becomes the struct's `urls` (always a list, § 11.4.5.3).
  * Keys are matched exactly, not by {@link canonicalKey}.
  */
 function toIceServer(value: unknown, field: string): WebRtcTransportDefinitions.IceServer {
@@ -84,7 +84,7 @@ function toIceServer(value: unknown, field: string): WebRtcTransportDefinitions.
         );
     }
     return {
-        urLs: urlList.map((url, index) =>
+        urls: urlList.map((url, index) =>
             toBoundedString(url, `${field}.urls[${index}]`, ICE_SERVER_LIMITS.maxUrlLength),
         ),
         ...(username === undefined

@@ -12,7 +12,7 @@ from ...tlv import float32, uint
 from ..ClusterObjects import (Cluster, ClusterAttributeDescriptor, ClusterCommand, ClusterEvent, ClusterObject,
                               ClusterObjectDescriptor, ClusterObjectFieldDescriptor)
 from ..Types import Nullable, NullValue
-from .ModeSelect import ModeSelect
+from .Globals import Globals
 
 
 @dataclass
@@ -27,8 +27,8 @@ class AmbientContextSensing(Cluster):
                 ClusterObjectFieldDescriptor(Label="objectIdentified", Tag=0x00000001, Type=typing.Optional[bool]),
                 ClusterObjectFieldDescriptor(Label="audioContextDetected", Tag=0x00000002, Type=typing.Optional[bool]),
                 ClusterObjectFieldDescriptor(Label="ambientContextType", Tag=0x00000003, Type=typing.Optional[typing.List[AmbientContextSensing.Structs.AmbientContextTypeStruct]]),
-                ClusterObjectFieldDescriptor(Label="ambientContextTypeSupported", Tag=0x00000004, Type=typing.Optional[typing.List[ModeSelect.Structs.SemanticTagStruct]]),
-                ClusterObjectFieldDescriptor(Label="objectCountReached", Tag=0x00000005, Type=typing.Optional[bool]),
+                ClusterObjectFieldDescriptor(Label="ambientContextTypeSupported", Tag=0x00000004, Type=typing.Optional[typing.List[Globals.Structs.semtag]]),
+                ClusterObjectFieldDescriptor(Label="objectCountThresholdReached", Tag=0x00000005, Type=typing.Optional[bool]),
                 ClusterObjectFieldDescriptor(Label="objectCountConfig", Tag=0x00000006, Type=typing.Optional[AmbientContextSensing.Structs.ObjectCountConfigStruct]),
                 ClusterObjectFieldDescriptor(Label="objectCount", Tag=0x00000007, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="simultaneousDetectionLimit", Tag=0x00000008, Type=typing.Optional[uint]),
@@ -46,8 +46,8 @@ class AmbientContextSensing(Cluster):
     objectIdentified: typing.Optional[bool] = None
     audioContextDetected: typing.Optional[bool] = None
     ambientContextType: typing.Optional[typing.List[AmbientContextSensing.Structs.AmbientContextTypeStruct]] = None
-    ambientContextTypeSupported: typing.Optional[typing.List[ModeSelect.Structs.SemanticTagStruct]] = None
-    objectCountReached: typing.Optional[bool] = None
+    ambientContextTypeSupported: typing.Optional[typing.List[Globals.Structs.semtag]] = None
+    objectCountThresholdReached: typing.Optional[bool] = None
     objectCountConfig: typing.Optional[AmbientContextSensing.Structs.ObjectCountConfigStruct] = None
     objectCount: typing.Optional[uint] = None
     simultaneousDetectionLimit: typing.Optional[uint] = None
@@ -90,10 +90,10 @@ class AmbientContextSensing(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="ambientContextSensed", Tag=0, Type=typing.Optional[typing.List[ModeSelect.Structs.SemanticTagStruct]]),
+                        ClusterObjectFieldDescriptor(Label="ambientContextSensed", Tag=0, Type=typing.Optional[typing.List[Globals.Structs.semtag]]),
                     ])
 
-            ambientContextSensed: typing.Optional[typing.List[ModeSelect.Structs.SemanticTagStruct]] = None
+            ambientContextSensed: typing.Optional[typing.List[Globals.Structs.semtag]] = None
 
         @dataclass
         class ObjectCountConfigStruct(ClusterObject):
@@ -101,11 +101,11 @@ class AmbientContextSensing(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="countingObject", Tag=0, Type=typing.Optional[ModeSelect.Structs.SemanticTagStruct]),
+                        ClusterObjectFieldDescriptor(Label="countingObject", Tag=0, Type=typing.Optional[Globals.Structs.semtag]),
                         ClusterObjectFieldDescriptor(Label="objectCountThreshold", Tag=1, Type=typing.Optional[uint]),
                     ])
 
-            countingObject: typing.Optional[ModeSelect.Structs.SemanticTagStruct] = None
+            countingObject: typing.Optional[Globals.Structs.semtag] = None
             objectCountThreshold: typing.Optional[uint] = None
 
         @dataclass
@@ -116,7 +116,7 @@ class AmbientContextSensing(Cluster):
                     Fields=[
                         ClusterObjectFieldDescriptor(Label="startTimestamp", Tag=0, Type=typing.Optional[uint]),
                         ClusterObjectFieldDescriptor(Label="endTimestamp", Tag=1, Type=typing.Optional[uint]),
-                        ClusterObjectFieldDescriptor(Label="ambientContextType", Tag=2, Type=typing.Optional[typing.List[ModeSelect.Structs.SemanticTagStruct]]),
+                        ClusterObjectFieldDescriptor(Label="ambientContextType", Tag=2, Type=typing.Optional[typing.List[Globals.Structs.semtag]]),
                         ClusterObjectFieldDescriptor(Label="crowdDetected", Tag=3, Type=typing.Optional[bool]),
                         ClusterObjectFieldDescriptor(Label="crowdCount", Tag=4, Type=typing.Optional[uint]),
                         ClusterObjectFieldDescriptor(Label="confidence", Tag=5, Type=typing.Optional[uint]),
@@ -124,7 +124,7 @@ class AmbientContextSensing(Cluster):
 
             startTimestamp: typing.Optional[uint] = None
             endTimestamp: typing.Optional[uint] = None
-            ambientContextType: typing.Optional[typing.List[ModeSelect.Structs.SemanticTagStruct]] = None
+            ambientContextType: typing.Optional[typing.List[Globals.Structs.semtag]] = None
             crowdDetected: typing.Optional[bool] = None
             crowdCount: typing.Optional[uint] = None
             confidence: typing.Optional[uint] = None
@@ -206,12 +206,12 @@ class AmbientContextSensing(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[typing.List[ModeSelect.Structs.SemanticTagStruct]])
+                return ClusterObjectFieldDescriptor(Type=typing.Optional[typing.List[Globals.Structs.semtag]])
 
-            value: typing.Optional[typing.List[ModeSelect.Structs.SemanticTagStruct]] = None
+            value: typing.Optional[typing.List[Globals.Structs.semtag]] = None
 
         @dataclass
-        class ObjectCountReached(ClusterAttributeDescriptor):
+        class ObjectCountThresholdReached(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x00000431
@@ -418,12 +418,12 @@ class AmbientContextSensing(Cluster):
                 return ClusterObjectDescriptor(
                     Fields=[
                         ClusterObjectFieldDescriptor(Label="ambientContextDetected", Tag=0, Type=typing.Optional[AmbientContextSensing.Structs.AmbientContextTypeStruct]),
-                        ClusterObjectFieldDescriptor(Label="objectCountReached", Tag=1, Type=typing.Optional[bool]),
+                        ClusterObjectFieldDescriptor(Label="objectCountThresholdReached", Tag=1, Type=typing.Optional[bool]),
                         ClusterObjectFieldDescriptor(Label="objectCount", Tag=2, Type=typing.Optional[uint]),
                     ])
 
             ambientContextDetected: typing.Optional[AmbientContextSensing.Structs.AmbientContextTypeStruct] = None
-            objectCountReached: typing.Optional[bool] = None
+            objectCountThresholdReached: typing.Optional[bool] = None
             objectCount: typing.Optional[uint] = None
 
         @dataclass
@@ -440,7 +440,9 @@ class AmbientContextSensing(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="eventStartTime", Tag=0, Type=typing.Optional[uint]),
+                        ClusterObjectFieldDescriptor(Label="eventStartTimePos", Tag=0, Type=typing.Optional[uint]),
+                        ClusterObjectFieldDescriptor(Label="eventStartTimeSys", Tag=1, Type=typing.Optional[uint]),
                     ])
 
-            eventStartTime: typing.Optional[uint] = None
+            eventStartTimePos: typing.Optional[uint] = None
+            eventStartTimeSys: typing.Optional[uint] = None
