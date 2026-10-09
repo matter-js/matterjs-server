@@ -20,6 +20,10 @@ function freshEnv(): Environment {
     env.set(Entropy, crypto);
     env.set(Crypto, crypto);
     env.set(Network, simulator.addHost(++hostIndex));
+    // stop() waits for an in-flight DCL download, so a real DCL makes the test as slow as the internet.
+    env.vars.set("dcl.productionurl", "http://127.0.0.1:1/");
+    env.vars.set("dcl.testurl", "http://127.0.0.1:1/");
+    env.vars.set("dcl.fetchgithubcertificates", false);
     return env;
 }
 
