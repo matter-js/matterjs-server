@@ -95,6 +95,25 @@ npm run send-command -- ws://localhost:5580/ws device_command '{"node_id": 1, "e
 
 The script connects to the server, sends the command, and keeps the connection open to log all incoming messages (results and events). Press `Ctrl+C` to disconnect.
 
+## Certification tests
+
+`npm run cert` runs the matter.js controller certification suite (`support/chip-testing/test/cert`) against this server as the device-under-test controller. The matter.js adapter starts the server itself with a temporary storage path and a free port, so your normal storage is not touched.
+
+```bash
+npm run cert -- [--tc TC-IDM-2.1] [--matterjs-ref <ref>] [--dry-run]
+```
+
+Steps: build this repo, clone (or fetch) matter.js into `.cert/matter.js` (git-ignored), check out the ref, `npm ci && npm run build` there, then run the tests. The exit code is the test exit code; a failing step prints its name and exits nonzero.
+
+- `--tc <id>`: run only `test/cert/<id>.test.ts` (default: the whole suite). The id must look like `TC-IDM-2.1`.
+- `--matterjs-ref <ref>`: matter.js branch, tag or commit to test. Overrides the `MATTERJS_REF` environment variable. Default: the commit of the pinned `@matter/main` dev version, or the tag `v<version>` for a release version.
+- `--dry-run`: print the planned steps as one JSON object per line and run nothing.
+- `MATTER_CERT_APP_DIR` (macOS only, required): directory with the locally built CHIP example apps.
+- Evidence is written to `.cert/evidence`.
+- `CERT_PLATFORM=linux|darwin` overrides the detected platform; for testing the runner only.
+
+Prerequisites: on Linux, Docker (the CHIP binaries come from the `cert-bins` image); on macOS, locally built CHIP apps referenced by `MATTER_CERT_APP_DIR`.
+
 ## Websocket commands
 
 [Websocket documentation](/docs/websockets_api.md)
