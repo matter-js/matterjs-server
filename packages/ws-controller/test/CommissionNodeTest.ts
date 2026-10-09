@@ -104,6 +104,24 @@ describe("commissionNode", () => {
         );
     });
 
+    it("reports a wrong pairing code as such", async () => {
+        const { passcode, discriminator } = device.state.commissioning;
+        const port = device.state.network.operationalPort;
+
+        await expect(
+            commissioning(() =>
+                handler.commissionNode({
+                    nodeId: NODE_ID,
+                    passcode: passcode + 1,
+                    longDiscriminator: discriminator,
+                    knownAddress: { ip: "10.10.10.2", port },
+                }),
+            ),
+        ).rejectedWith(/pairing code does not match/);
+
+        expect(handler.isNodeIdInUse(NODE_ID)).equals(false);
+    });
+
     it("falls back to discovery without a caller-chosen node id", async () => {
         // The node id is the server's to allocate, but a library caller may omit it. Nothing about the
         // fallback depends on it: whether the device joined is the peer's own answer.

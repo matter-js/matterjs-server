@@ -19,7 +19,9 @@ import { OtaProviderEndpoint } from "@matter/node/endpoints/ota-provider";
 import { CameraControllerEndpoint } from "./ControllerCommandHandler.js";
 import { PeerSettingsRepairMarker, repairRestoredPeers } from "./restoredPeers.js";
 
-const ControllerRootEndpoint = ServerNode.RootEndpoint.with(ControllerBehavior);
+// A controller joins fabrics, it does not serve groupcast, and the Groupcast listener would pull in the
+// Auxiliary ACL feature with it.
+const ControllerRootEndpoint = ServerNode.RootEndpointWithoutGroupcast.with(ControllerBehavior);
 type ControllerRootEndpoint = typeof ControllerRootEndpoint;
 
 /**

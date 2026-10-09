@@ -20,7 +20,7 @@ import { BooleanStateServer } from "@matter/node/behaviors/boolean-state";
 import { OnOffLightDevice } from "@matter/node/devices/on-off-light";
 import { FabricId } from "@matter/types";
 
-const ControllerRootEndpoint = ServerNode.RootEndpoint.with(ControllerBehavior);
+const ControllerRootEndpoint = ServerNode.RootEndpointWithoutGroupcast.with(ControllerBehavior);
 
 /**
  * A controller and a light on one simulated network, so the bus runs against a real peer endpoint tree

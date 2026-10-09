@@ -9,6 +9,7 @@ import {
     Abort,
     AsyncObservable,
     camelize,
+    causedBy,
     ClientNode,
     CommissioningClient,
     Duration,
@@ -54,6 +55,7 @@ import {
     DeviceAttestationCheck,
     Fabric,
     Invoke,
+    PasscodeMismatchError,
     PeerAddress,
     PeerSet,
     Read,
@@ -1474,6 +1476,14 @@ export class ControllerCommandHandler {
             // command, not an unmapped throw with a node the server tracks and never announced.
             await this.#registerNode(nodeId);
         } catch (error) {
+            // PASE rejects the device's key confirmation, which is what a mistyped pairing code looks
+            // like on the wire. Saying so lets a client offer the code again instead of a generic retry.
+            if (error instanceof Error && causedBy(error, PasscodeMismatchError)) {
+                throw ServerError.nodeCommissionFailed(
+                    "The pairing code does not match the device. Check the code and commission again.",
+                    error,
+                );
+            }
             // Preserve the original error message with context
             const originalMessage = error instanceof Error ? error.message : String(error);
             throw ServerError.nodeCommissionFailed(
