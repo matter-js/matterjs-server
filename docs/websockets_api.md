@@ -350,7 +350,7 @@ Open a commissioning window to allow another controller to commission a device a
 }
 ```
 
-Response includes pairing codes and, *(Matter.js only)*, the window's structured fields, so a client can hand the window to another ecosystem without decoding the QR code. `discriminator` is the long (12-bit) discriminator the device advertises while the window is open, `commissioning_timeout` is the window duration in seconds. The `discriminator` request argument is ignored; a random discriminator is used:
+Response includes pairing codes and, *(Matter.js only)*, the window's structured fields, so a client can hand the window to another ecosystem without decoding the QR code. `discriminator` is the long (12-bit) discriminator the device advertises while the window is open, `commissioning_timeout` is the window duration in seconds. Detect these fields by their presence, not by `schema_version`. The `discriminator` request argument is ignored; a random discriminator is used:
 ```json
 {
   "message_id": "1",

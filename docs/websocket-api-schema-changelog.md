@@ -103,7 +103,7 @@ OHF extensions; python-matter-server codes stop at 11. Each carries JSON details
 
 ### Commissioning window
 
-- **`discriminator`, `vendor_id`, `product_id`, `commissioning_timeout` in the `open_commissioning_window` result**. `discriminator` is the long (12-bit) discriminator the device advertises while the window is open, `vendor_id`/`product_id` are the device's Vendor-ID and Product-ID from the BasicInformation cluster, `commissioning_timeout` is the window duration in seconds. They match the values encoded in the returned pairing codes; they are returned separately so clients (for example mobile apps sharing the device to another ecosystem) need no Matter QR decoder.
+- **`discriminator`, `vendor_id`, `product_id`, `commissioning_timeout` in the `open_commissioning_window` result** (presence-detectable only: some schema-13 servers send them too, so check for the fields, not the schema version). `discriminator` is the long (12-bit) discriminator the device advertises while the window is open, `vendor_id`/`product_id` are the device's Vendor-ID and Product-ID from the BasicInformation cluster, `commissioning_timeout` is the window duration in seconds. They match the values encoded in the returned pairing codes; they are returned separately so clients (for example mobile apps sharing the device to another ecosystem) need no Matter QR decoder.
 
 ## Schema 13
 

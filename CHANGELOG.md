@@ -48,7 +48,7 @@ This page shows a detailed overview of the changes between versions without the 
     - Adds support for Matter 1.6.1 (including Python client)
 - Enhancement: Finishes the migration to the new matter.js controller API
 - Fix: A wrong pairing code is reported as such instead of as a generic commissioning failure, so a client can ask for the code again
-- Enhancement: (@RaHehl) `open_commissioning_window` also returns `discriminator`, `vendor_id`, `product_id` and `commissioning_timeout` (seconds) as reported by matter.js, so clients can hand the data to another ecosystem without decoding the QR code
+- Enhancement: (@RaHehl) `open_commissioning_window` also returns `discriminator`, `vendor_id`, `product_id` and `commissioning_timeout` (seconds) as reported by matter.js, so clients can hand the data to another ecosystem without decoding the QR code. Detect the fields by their presence, not by the schema version
 - Enhancement: Dashboard network view uses the Thread 1.4 role names: a Thread Router is shown as "Mesh Extender" and a REED as "Standby Mesh Extender". External (non-fabric) neighbors, whose role is only inferred from rx-on-when-idle, are now labeled "Always-on device" instead of a routing role. Wire values and the `ThreadRoutingRole` enum keep the Matter spec names
 - Enhancement: (@cyberb) `--listen-address` (env `LISTEN_ADDRESS`) accepts an absolute unix socket path, so the WebSocket API and dashboard can be served on a local socket, alone or next to TCP addresses; a socket file left behind by an unclean shutdown is replaced on the next start, and the Docker health check queries the socket
 - Enhancement: (@cyberb) The Python client connects over a unix socket when given a `unix://<path>` server URL, including OTA image uploads
