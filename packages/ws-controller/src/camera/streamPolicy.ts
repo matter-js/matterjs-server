@@ -20,8 +20,11 @@ import type { SdpVideoConstraints, SelectedVideoCodecLimits, VideoCodecLimits } 
 import { receivableCodecs } from "./sdpConstraints.js";
 import { audioCodecName } from "./wireNames.js";
 
-/** KeyFrameInterval in milliseconds; LiveView favours fast recovery over bitrate. */
-const LIVE_VIEW_KEY_FRAME_INTERVAL_MS = 2000;
+/**
+ * The value §11.2.6.11.10 recommends. Some cameras accept no other: the Aqara G350 refuses 2000, 3000,
+ * 3999, 5000 and 8000 with DynamicConstraintError.
+ */
+export const KEY_FRAME_INTERVAL_MS = 4000;
 const DEFAULT_MAX_BIT_RATE = 8000000;
 
 export interface RateDistortionPoint {
@@ -141,9 +144,19 @@ function offerFrameRateCeiling(limits: VideoCodecLimits, resolution: Resolution)
     return ceilings.length === 0 ? undefined : Math.min(...ceilings);
 }
 
+/**
+ * The first window to request, and the lowest frame rate any later window may go down to: the
+ * caller's `min_frame_rate`, or 1. The first window's own minimum frame rate is the target rate, not
+ * this floor.
+ */
+export interface VideoPlan {
+    readonly envelope: VideoEnvelope;
+    readonly frameRateFloor: number;
+}
+
 /** `limit` is the ceiling in force after every narrowing (sensor, offer or caller). */
 export type VideoSelection =
-    | { readonly envelope: VideoEnvelope }
+    | { readonly plan: VideoPlan }
     | {
           readonly unsatisfiable: "bounds";
           readonly field: "min_resolution" | "min_frame_rate" | "min_bit_rate";
@@ -156,9 +169,11 @@ function resolutionText(resolution: Resolution): string {
 }
 
 /**
- * Wide by default, so the camera can adapt (§11.2.1.2.2); each step only narrows. A caller-stated floor
- * out of reach fails the request. Server-derived floors (viewport minimum, trade-off point bit rate,
- * frame rate 1) are clamped down instead.
+ * The best window both the camera and the offer allow. Resolution and bit rate are ranges, so the
+ * camera can adapt (§11.2.1.2.2). Frame rate is one target rate unless the caller states a minimum:
+ * cameras refuse ranges reaching below a frame rate floor they do not publish. A caller-stated floor
+ * out of reach fails the request. Server-derived floors (viewport minimum, trade-off point bit rate)
+ * are clamped down instead.
  */
 export function computeVideoEnvelope(args: VideoEnvelopeArgs): VideoSelection {
     const { capabilities, limits, hints, overlays } = args;
@@ -215,7 +230,7 @@ export function computeVideoEnvelope(args: VideoEnvelopeArgs): VideoSelection {
     const minResolution =
         hints?.minResolution === undefined ? derivedFloor : clampUp(derivedFloor, hints.minResolution);
 
-    const minFrameRate = hints?.minFrameRate ?? Math.min(1, maxFrameRate);
+    const minFrameRate = hints?.minFrameRate ?? maxFrameRate;
 
     // The trade-off point at or just below the ceiling states the bitrate that resolution needs.
     const applicable = codecPoints
@@ -238,18 +253,96 @@ export function computeVideoEnvelope(args: VideoEnvelopeArgs): VideoSelection {
     const minBitRate = hints?.minBitRate ?? (derivedBitRateFloor <= maxBitRate ? derivedBitRateFloor : 1);
 
     return {
-        envelope: {
-            overlays,
-            codec,
-            minResolution,
-            maxResolution,
-            minFrameRate,
-            maxFrameRate,
-            minBitRate,
-            maxBitRate,
-            keyFrameInterval: LIVE_VIEW_KEY_FRAME_INTERVAL_MS,
+        plan: {
+            envelope: {
+                overlays,
+                codec,
+                minResolution,
+                maxResolution,
+                minFrameRate,
+                maxFrameRate,
+                minBitRate,
+                maxBitRate,
+                keyFrameInterval: KEY_FRAME_INTERVAL_MS,
+            },
+            frameRateFloor: hints?.minFrameRate ?? Math.min(1, maxFrameRate),
         },
     };
+}
+
+/** Lowers the frame rate ceiling; the minimum follows it down unless the caller stated one. */
+function withMaxFrameRate(envelope: VideoEnvelope, maxFrameRate: number): VideoEnvelope {
+    return { ...envelope, maxFrameRate, minFrameRate: Math.min(envelope.minFrameRate, maxFrameRate) };
+}
+
+/** Equal in every field a retry step can lower. */
+export function sameVideoEnvelope(a: VideoEnvelope, b: VideoEnvelope): boolean {
+    return (
+        a.maxBitRate === b.maxBitRate &&
+        a.minFrameRate === b.minFrameRate &&
+        a.maxFrameRate === b.maxFrameRate &&
+        a.maxResolution.width === b.maxResolution.width &&
+        a.maxResolution.height === b.maxResolution.height
+    );
+}
+
+/** How many times each ceiling of a {@link VideoPlan} is halved for a retry. */
+export type VideoRetrySteps = Readonly<Record<VideoRetryDimension, number>>;
+export type VideoRetryDimension = "bitRate" | "frameRate" | "resolution";
+
+export const NO_RETRY_STEPS: VideoRetrySteps = { bitRate: 0, frameRate: 0, resolution: 0 };
+/** Bounded, so a camera refusing everything fails after a known number of attempts. */
+const MAX_RETRY_STEPS: VideoRetrySteps = { bitRate: 4, frameRate: 2, resolution: 2 };
+
+/**
+ * The retry order after a DynamicConstraintError. Cameras refuse a window that does not lie inside one
+ * of their fixed profiles, and no attribute publishes a profile's bit rate ceiling, so bit rate goes
+ * first. A capacity refusal skips bit rate: it does not change what the encoder budget is charged.
+ */
+export const UNSERVABLE_RETRY_ORDER: readonly VideoRetryDimension[] = ["bitRate", "frameRate", "resolution"];
+export const CAPACITY_RETRY_ORDER: readonly VideoRetryDimension[] = ["frameRate", "resolution"];
+
+function repeat<T>(times: number, value: T, lower: (value: T) => T): T {
+    let result = value;
+    for (let taken = 0; taken < times; taken++) result = lower(result);
+    return result;
+}
+
+/**
+ * The plan's window with each ceiling halved as often as `steps` says, never below its floor, so every
+ * window stays inside the caller's bounds and the offer's decode ceiling.
+ */
+export function videoRetryWindow(plan: VideoPlan, steps: VideoRetrySteps): VideoEnvelope {
+    const { envelope, frameRateFloor } = plan;
+    const maxBitRate = repeat(steps.bitRate, envelope.maxBitRate, rate =>
+        Math.max(envelope.minBitRate, Math.floor(rate / 2)),
+    );
+    const maxFrameRate = repeat(steps.frameRate, envelope.maxFrameRate, rate =>
+        Math.max(frameRateFloor, Math.floor(rate / 2)),
+    );
+    // Quartering the pixel count halves each side, which is how encoders step resolution down.
+    const maxResolution = repeat(steps.resolution, envelope.maxResolution, resolution =>
+        clampUp(scaleToPixels(resolution, pixels(resolution) / 4), envelope.minResolution),
+    );
+    return { ...withMaxFrameRate(envelope, maxFrameRate), maxBitRate, maxResolution };
+}
+
+/**
+ * The steps of the next window to try: the first dimension in `order` that can still step to a window
+ * `accepts` takes advances, the others keep their steps. Undefined when none can.
+ */
+export function nextVideoRetry(
+    steps: VideoRetrySteps,
+    order: readonly VideoRetryDimension[],
+    accepts: (steps: VideoRetrySteps) => boolean,
+): VideoRetrySteps | undefined {
+    for (const dimension of order) {
+        for (let count = steps[dimension] + 1; count <= MAX_RETRY_STEPS[dimension]; count++) {
+            const next = { ...steps, [dimension]: count };
+            if (accepts(next)) return next;
+        }
+    }
+    return undefined;
 }
 
 function pixelRate(resolution: Resolution, frameRate: number): number {
@@ -270,9 +363,14 @@ export interface BudgetedVideoEnvelope {
 
 /**
  * Narrows into what is left of `MaxEncodedPixelRate` (§11.2.7.2). Only ceilings move, never below the
- * envelope's floors; a conflict goes to the device (§11.2.1.2.2). A budget already fully spent narrows nothing.
+ * resolution floor or `frameRateFloor`; a conflict goes to the device (§11.2.1.2.2). A budget already
+ * fully spent narrows nothing.
  */
-export function budgetVideoEnvelope(envelope: VideoEnvelope, budget: VideoPixelRateBudget): BudgetedVideoEnvelope {
+export function budgetVideoEnvelope(
+    envelope: VideoEnvelope,
+    budget: VideoPixelRateBudget,
+    frameRateFloor: number,
+): BudgetedVideoEnvelope {
     const { maxEncodedPixelRate } = budget;
     if (maxEncodedPixelRate === undefined) return { envelope };
     // The spec states no per-stream formula; this is the reference server's accounting
@@ -287,8 +385,8 @@ export function budgetVideoEnvelope(envelope: VideoEnvelope, budget: VideoPixelR
 
     const maxResolution = clampUp(scaleToPixels(envelope.maxResolution, free), envelope.minResolution);
     const affordable = Math.max(1, Math.floor(free / pixels(maxResolution)));
-    const maxFrameRate = Math.max(envelope.minFrameRate, Math.min(envelope.maxFrameRate, affordable));
-    const budgeted = { ...envelope, maxResolution, maxFrameRate };
+    const maxFrameRate = Math.max(frameRateFloor, Math.min(envelope.maxFrameRate, affordable));
+    const budgeted = { ...withMaxFrameRate(envelope, maxFrameRate), maxResolution };
 
     const rateLowered = maxFrameRate < envelope.maxFrameRate;
     const sizeLowered = !fitsUnder(envelope.maxResolution, maxResolution);
@@ -338,7 +436,9 @@ export function satisfiesVideoCallerBounds(candidate: AllocatedVideoStream, boun
     return true;
 }
 
-function fitsComputedEnvelope(candidate: AllocatedVideoStream, envelope: VideoEnvelope): boolean {
+/** The frame rate range is measured from `frameRateFloor`: the plan's target rate is a request, not a floor. */
+function fitsPlan(candidate: AllocatedVideoStream, plan: VideoPlan): boolean {
+    const envelope = plan.envelope;
     return (
         overlaysMatch(candidate.overlays, envelope.overlays) &&
         resolutionContains(
@@ -346,7 +446,7 @@ function fitsComputedEnvelope(candidate: AllocatedVideoStream, envelope: VideoEn
             { min: candidate.minResolution, max: candidate.maxResolution },
         ) &&
         contains(
-            { min: envelope.minFrameRate, max: envelope.maxFrameRate },
+            { min: plan.frameRateFloor, max: envelope.maxFrameRate },
             { min: candidate.minFrameRate, max: candidate.maxFrameRate },
         ) &&
         contains(
@@ -356,14 +456,14 @@ function fitsComputedEnvelope(candidate: AllocatedVideoStream, envelope: VideoEn
     );
 }
 
-/** The candidate's range must lie inside the envelope, not merely overlap it. */
+/** The candidate's range must lie inside the plan's, not merely overlap it. */
 export function findReusableVideoStream(
     streams: AllocatedVideoStream[],
-    envelope: VideoEnvelope,
+    plan: VideoPlan,
     bounds: VideoCallerBounds,
 ): AllocatedVideoStream | undefined {
     const candidates = streams.filter(
-        candidate => satisfiesVideoCallerBounds(candidate, bounds) && fitsComputedEnvelope(candidate, envelope),
+        candidate => satisfiesVideoCallerBounds(candidate, bounds) && fitsPlan(candidate, plan),
     );
 
     // Starting an encoder is the expensive part, so a stream already running wins.
@@ -379,24 +479,6 @@ export function findDegradedVideoStream(
 
     // Prefer the most capable stream, since this rung is already a compromise.
     return candidates.sort((a, b) => pixels(b.maxResolution) - pixels(a.maxResolution))[0];
-}
-
-/** The next envelope to attempt after a device rejection, or none when nothing is left to give up. */
-export function narrowEnvelope(envelope: VideoEnvelope): VideoEnvelope | undefined {
-    if (!fitsUnder(envelope.maxResolution, envelope.minResolution)) {
-        // Quartering the pixel budget halves each linear dimension, matching how encoders step down resolution.
-        const halved = scaleToPixels(envelope.maxResolution, pixels(envelope.maxResolution) / 4);
-        // Per dimension: a ceiling below the floor on either axis is a ConstraintError.
-        const maxResolution = clampUp(halved, envelope.minResolution);
-        if (!fitsUnder(envelope.maxResolution, maxResolution)) {
-            return { ...envelope, maxResolution };
-        }
-    }
-    if (envelope.maxFrameRate > envelope.minFrameRate && envelope.maxFrameRate > 1) {
-        const maxFrameRate = Math.max(envelope.minFrameRate, Math.floor(envelope.maxFrameRate / 2), 1);
-        return { ...envelope, maxFrameRate };
-    }
-    return undefined;
 }
 
 const DEFAULT_AUDIO_BIT_RATE = 64000;

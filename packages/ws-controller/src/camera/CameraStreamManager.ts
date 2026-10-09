@@ -66,12 +66,18 @@ import {
     computeVideoEnvelope,
     findDegradedVideoStream,
     findReusableVideoStream,
-    narrowEnvelope,
+    CAPACITY_RETRY_ORDER,
+    KEY_FRAME_INTERVAL_MS,
+    nextVideoRetry,
+    NO_RETRY_STEPS,
+    sameVideoEnvelope,
     satisfiesAudioCallerBounds,
     satisfiesVideoCallerBounds,
     statedHints,
     trackRequest,
+    UNSERVABLE_RETRY_ORDER,
     videoCallerBounds,
+    videoRetryWindow,
 } from "./streamPolicy.js";
 import type {
     AudioCallerBounds,
@@ -80,6 +86,7 @@ import type {
     RateDistortionPoint,
     TrackRequest,
     VideoHints,
+    VideoRetrySteps,
 } from "./streamPolicy.js";
 import {
     audioCodecName,
@@ -92,11 +99,8 @@ import {
 
 const logger = Logger.get("CameraStreamManager");
 
-/** Bounded so a device that rejects everything fails fast rather than walking to 1x1. */
-const MAX_NARROWING_ROUNDS = 3;
-
-/** Allocate attempts per request, shared by narrowing and eviction. Bounds how long the endpoint lock is held. */
-export const MAX_ALLOCATE_ATTEMPTS = 8;
+/** Allocate attempts per request, shared by the retry windows and eviction. Bounds how long the endpoint lock is held. */
+export const MAX_ALLOCATE_ATTEMPTS = 12;
 
 type LadderReaction =
     /** The device cannot serve this range. A smaller request may succeed. */
@@ -125,7 +129,7 @@ function ladderReaction(status: number | undefined): LadderReaction {
  * What an allocated stream delivers, not what was requested. `overlays` stays as the camera reports it,
  * so `#restoreFreedVideoStream` sends a conformant allocate.
  */
-function envelopeOfVideoStream(stream: AllocatedVideoStream, keyFrameInterval: number): VideoEnvelope {
+function envelopeOfVideoStream(stream: AllocatedVideoStream): VideoEnvelope {
     return {
         overlays: stream.overlays,
         codec: stream.videoCodec,
@@ -135,7 +139,7 @@ function envelopeOfVideoStream(stream: AllocatedVideoStream, keyFrameInterval: n
         maxFrameRate: stream.maxFrameRate,
         minBitRate: stream.minBitRate,
         maxBitRate: stream.maxBitRate,
-        keyFrameInterval,
+        keyFrameInterval: KEY_FRAME_INTERVAL_MS,
     };
 }
 
@@ -1022,33 +1026,49 @@ export class CameraStreamManager {
 
         const bounds = videoCallerBounds(args.limits, streamUsage, args.hints);
         // No encoder budget on reuse: an existing stream already spends it.
-        const reused = findReusableVideoStream([...liveStreams, ...unreported], selection.envelope, bounds);
+        const reused = findReusableVideoStream([...liveStreams, ...unreported], selection.plan, bounds);
         if (reused !== undefined) {
             return {
                 streamId: reused.videoStreamId,
-                envelope: envelopeOfVideoStream(reused, selection.envelope.keyFrameInterval),
+                envelope: envelopeOfVideoStream(reused),
                 provenance: existingStreamProvenance(this.leaseReusedVideoStream(nodeId, endpointId, reused)),
             };
         }
 
         // Unreported allocations count, so the free budget is not overstated.
-        const budgeted = (
-            streams: AllocatedVideoStream[],
-            snapshots: AllocatedSnapshotStream[],
-        ): BudgetedVideoEnvelope =>
-            budgetVideoEnvelope(selection.envelope, {
-                maxEncodedPixelRate: state.maxEncodedPixelRate,
-                videoStreams: [...streams, ...unreported],
-                snapshotStreams: snapshots,
-            });
-        let budget = budgeted(liveStreams, liveSnapshotStreams);
+        const budgeted = (steps: VideoRetrySteps): BudgetedVideoEnvelope =>
+            budgetVideoEnvelope(
+                videoRetryWindow(selection.plan, steps),
+                {
+                    maxEncodedPixelRate: state.maxEncodedPixelRate,
+                    videoStreams: [...liveStreams, ...unreported],
+                    snapshotStreams: liveSnapshotStreams,
+                },
+                selection.plan.frameRateFloor,
+            );
+        const nextRetry = (refused: VideoEnvelope, reaction: LadderReaction): VideoRetrySteps | undefined =>
+            nextVideoRetry(
+                retrySteps,
+                reaction === "narrow" ? UNSERVABLE_RETRY_ORDER : CAPACITY_RETRY_ORDER,
+                steps => !sameVideoEnvelope(budgeted(steps).envelope, refused),
+            );
+        let retrySteps = NO_RETRY_STEPS;
+        /** Where the last unservable refusal left the steps; freeing capacity cannot make those windows servable. */
+        let servableSteps = NO_RETRY_STEPS;
+        let roomMade = false;
+        let budget = budgeted(retrySteps);
         let envelope = budget.envelope;
+        const restartAfterFreeing = (): void => {
+            roomMade = true;
+            retrySteps = servableSteps;
+            budget = budgeted(retrySteps);
+            envelope = budget.envelope;
+        };
 
         // A stream the degraded rung could hand out is never evicted for the same request.
         const evictable = liveStreams.filter(stream => !satisfiesVideoCallerBounds(stream, bounds));
 
         let lastStatus: number | undefined;
-        let narrowingsLeft = MAX_NARROWING_ROUNDS;
         const freed = new Array<() => void>();
         const evicted = new Array<number>();
         const reporting = (resolved: ResolvedStream): ResolvedStream =>
@@ -1109,14 +1129,14 @@ export class CameraStreamManager {
                         deviceStatus: lastStatus,
                     });
                 }
-                // Narrow before evicting; an eviction does not refill the narrowing rounds (AGENTS.md).
-                if (narrowingsLeft > 0) {
-                    const narrowed = narrowEnvelope(envelope);
-                    if (narrowed !== undefined) {
-                        narrowingsLeft -= 1;
-                        envelope = narrowed;
-                        continue;
-                    }
+                // Capacity refusals narrow only until the first eviction, which restarts at `servableSteps` (AGENTS.md).
+                const next = reaction === "narrow" || !roomMade ? nextRetry(envelope, reaction) : undefined;
+                if (next !== undefined) {
+                    if (reaction === "narrow") servableSteps = next;
+                    retrySteps = next;
+                    budget = budgeted(retrySteps);
+                    envelope = budget.envelope;
+                    continue;
                 }
                 if (reaction !== "make-room" || !allowEviction) break;
                 // No allocate follows the last attempt, so an eviction there would be for nothing.
@@ -1136,8 +1156,7 @@ export class CameraStreamManager {
                     );
                     if (snapshotRoom.freed) {
                         freed.push(snapshotRoom.spend);
-                        budget = budgeted(liveStreams, liveSnapshotStreams);
-                        envelope = budget.envelope;
+                        restartAfterFreeing();
                         continue;
                     }
                 }
@@ -1147,15 +1166,13 @@ export class CameraStreamManager {
                     evictable.filter(stream => liveStreams.includes(stream)),
                     state.streamUsagePriorities,
                     scope,
-                    envelope.keyFrameInterval,
                 );
                 if (madeRoom === undefined) break;
                 // Strictly shrinking, so eviction cannot keep finding the same victim.
                 liveStreams = liveStreams.filter(stream => stream.videoStreamId !== madeRoom.streamId);
                 freed.push(madeRoom.spend);
                 evicted.push(madeRoom.streamId);
-                budget = budgeted(liveStreams, liveSnapshotStreams);
-                envelope = budget.envelope;
+                restartAfterFreeing();
             }
         }
 
@@ -1164,7 +1181,7 @@ export class CameraStreamManager {
         if (degraded !== undefined) {
             return reporting({
                 streamId: degraded.videoStreamId,
-                envelope: envelopeOfVideoStream(degraded, envelope.keyFrameInterval),
+                envelope: envelopeOfVideoStream(degraded),
                 degraded: true,
                 provenance: existingStreamProvenance(this.leaseReusedVideoStream(nodeId, endpointId, degraded)),
             });
@@ -1391,7 +1408,6 @@ export class CameraStreamManager {
         streams: AllocatedVideoStream[],
         priorities: number[],
         scope: AllocationScope,
-        keyFrameInterval: number,
     ): Promise<{ streamId: number; spend: () => void } | undefined> {
         const ours = (stream: AllocatedVideoStream): boolean =>
             this.ownsStream(nodeId, endpointId, "video", stream.videoStreamId);
@@ -1423,7 +1439,7 @@ export class CameraStreamManager {
             streamId: victim.videoStreamId,
         });
         const spend = scope.returnUnlessSpent(() =>
-            this.#restoreFreedVideoStream(nodeId, endpointId, victim, keyFrameInterval).catch(error => {
+            this.#restoreFreedVideoStream(nodeId, endpointId, victim).catch(error => {
                 logger.warn(
                     `Could not allocate a replacement for video stream ${victim.videoStreamId} on node ${nodeId}, which was deallocated to make room the request did not use; the camera is one stream poorer:`,
                     error,
@@ -1547,16 +1563,14 @@ export class CameraStreamManager {
     /**
      * Allocate a stream with the parameters of one the make-room rung took, when the request did not use
      * the capacity. Not an undo: the camera issues a new id, and the old one stays forgotten. The
-     * replacement is leased as ours whoever allocated the original. The device does not report
-     * `keyFrameInterval`, so the failed request's value is used.
+     * replacement is leased as ours whoever allocated the original.
      */
     async #restoreFreedVideoStream(
         nodeId: NodeId,
         endpointId: EndpointNumber,
         freed: AllocatedVideoStream,
-        keyFrameInterval: number,
     ): Promise<void> {
-        const envelope = envelopeOfVideoStream(freed, keyFrameInterval);
+        const envelope = envelopeOfVideoStream(freed);
         const response = await this.io.invoke({
             nodeId,
             endpointId,
