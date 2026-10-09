@@ -785,8 +785,7 @@ export class ControllerCommandHandler {
 
         await this.#snapshotNode(nodeId, node);
 
-        // A peer whose structure only arrives later — read from the device, or loaded after this point —
-        // is snapshotted when it does, and consumers are told the node changed.
+        // A peer's structure can arrive after registration, read from the device or loaded later.
         nodeObservers.on(node.lifecycle.seeded, () =>
             this.#snapshotNode(nodeId, node)
                 .then(() => this.#markNodeUpdatePending(node, "node seeded"))
@@ -1431,9 +1430,7 @@ export class ControllerCommandHandler {
             await peer.commission(options);
         } catch (error) {
             // `CommissioningClient` commits the peer address before it brings the node online, so this
-            // peer — not the chosen node id — is what says whether the device joined. A device that did
-            // keeps its record and must not be commissioned a second time; otherwise the record
-            // forDescriptor persisted is ours to remove, and the caller may still try discovery.
+            // peer — not the chosen node id — is what says whether the device joined.
             if (peer.lifecycle.isCommissioned) {
                 throw error;
             }
@@ -1473,9 +1470,8 @@ export class ControllerCommandHandler {
             await awaitSeeded(peer, this.#shutdown);
             nodeId = nodeIdOf(peer);
 
-            // Inside the same guard: the device has joined by now, so a failure to take it into the
-            // registry is still a failed command to the caller, not an unmapped throw with a node the
-            // server already tracks and never announced.
+            // The device has joined by now, so failing to take it into the registry is still a failed
+            // command, not an unmapped throw with a node the server tracks and never announced.
             await this.#registerNode(nodeId);
         } catch (error) {
             // Preserve the original error message with context
@@ -1511,7 +1507,7 @@ export class ControllerCommandHandler {
     async handleDiscovery({ findBy }: DiscoveryRequest): Promise<DiscoveryResponse> {
         const discovered = await this.#node.peers.discover({
             ...(findBy ?? {}),
-            timeout: Seconds(3), // Just check for 3 sec
+            timeout: Seconds(3),
             // Commissionable discovery over IP only: this command reports mDNS advertisements, and a
             // BLE-discovered instance has no address or port to report.
             discoveryCapabilities: { onIpNetwork: true },

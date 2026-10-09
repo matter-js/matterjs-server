@@ -29,13 +29,11 @@ type ControllerRootEndpoint = typeof ControllerRootEndpoint;
  * @returns Numeric version like 210 for "0.2.10"
  */
 function parseVersionToNumber(version: string): number {
-    // Extract base version (before any -alpha, -beta, etc.)
     const baseVersion = version.split("-")[0];
     const parts = baseVersion.split(".");
     const major = parseInt(parts[0] ?? "0", 10);
     const minor = parseInt(parts[1] ?? "0", 10);
     const patch = parseInt(parts[2] ?? "0", 10);
-    // Format: MMmmpp (2 digits each)
     return major * 10000 + minor * 100 + patch;
 }
 export interface ControllerNodeOptions {
@@ -54,7 +52,6 @@ export interface ControllerNodeOptions {
     peerSettingsRepair?: PeerSettingsRepairMarker;
 }
 
-/** What a consumer of the controller node needs, without the right to close it. */
 export interface ControllerResources {
     readonly node: ServerNode;
     readonly fabric: Fabric;
@@ -74,7 +71,6 @@ export interface ControllerNode extends ControllerResources {
     close(): Promise<void>;
 }
 
-/** Build the controller node with its fabric, the WebRTC requestor and the optional OTA provider. */
 export async function createControllerNode(options: ControllerNodeOptions): Promise<ControllerNode> {
     const { environment, id, adminVendorId, adminFabricId, adminFabricLabel, serverVersion } = options;
     const adminNodeId = NodeId(112233); // TODO Remove when we switch to random IDs

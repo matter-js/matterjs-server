@@ -6,7 +6,6 @@
 
 import { ClientNode, InternalError, NodeId } from "@matter/main";
 
-/** A commissioned peer always carries its address; anything else never reaches the node registry. */
 export function nodeIdOf(node: ClientNode): NodeId {
     const nodeId = node.peerAddress?.nodeId;
     if (nodeId === undefined) {

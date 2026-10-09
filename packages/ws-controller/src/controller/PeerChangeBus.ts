@@ -115,17 +115,10 @@ export class PeerChangeBus {
         }
     }
 
-    /**
-     * Latch data reporting on the same signal the legacy bus used, rather than sampling connection
-     * state when a change happens to arrive: a read issued while the peer is reconnecting still has to
-     * reach consumers, and sampling would drop it.
-     */
     #watch(peer: ClientNode) {
         if (peer.lifecycle.connectionState === NodeConnectionState.Connected) {
             this.#reporting.add(peer);
         }
-        // Per peer, because the group is what releases the peer again: a shared group holds every
-        // decommissioned node's events, and with them the node, for as long as the controller runs.
         const observers = new ObserverGroup();
         this.#peerObservers.set(peer, observers);
         observers.on(peer.eventsOf(NetworkClient).subscriptionStatusChanged, isActive => {
@@ -134,8 +127,7 @@ export class PeerChangeBus {
             }
         });
         // `changed` bubbles, so it also reports a child endpoint being destroyed. Only the peer's own
-        // root going down is a teardown; treating a child as one suppresses that endpoint's removal and
-        // every later one, because the latch is never cleared.
+        // root going down is a teardown.
         observers.on(peer.lifecycle.changed, (type, endpoint) => {
             if (type === EndpointLifecycle.Change.Destroying && endpoint === peer) {
                 this.#tearingDown.add(peer);

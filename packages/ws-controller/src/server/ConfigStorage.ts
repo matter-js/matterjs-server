@@ -169,7 +169,6 @@ export class ConfigStorage {
         return this.#data.nextNodeId;
     }
 
-    /** Whether the peers of this storage scope have had their auto-connect settings repaired. */
     hasRepairedPeerSettings(scope: string) {
         return this.#data.peerSettingsRepairedFor?.includes(scope) === true;
     }

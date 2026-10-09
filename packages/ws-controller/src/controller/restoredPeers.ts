@@ -8,11 +8,7 @@ import { ClientNode, Logger, NetworkClient, ServerNode } from "@matter/main";
 
 const logger = Logger.get("RestoredPeers");
 
-/**
- * One-shot record of the peer auto-connect settings repair, scoped to the storage the peers live in.
- */
 export interface PeerSettingsRepairMarker {
-    /** Whether the repair has already run for this storage scope. */
     hasRepairedPeerSettings(scope: string): boolean;
 
     markPeerSettingsRepaired(scope: string): Promise<void>;
@@ -68,7 +64,6 @@ export async function repairRestoredPeers(
     return repaired;
 }
 
-/** @returns true when the peer's stored settings needed a rewrite */
 export async function repairRestoredPeer(peer: ClientNode): Promise<boolean> {
     const network = peer.maybeStateOf(NetworkClient);
     if (network === undefined) {
@@ -83,8 +78,6 @@ export async function repairRestoredPeer(peer: ClientNode): Promise<boolean> {
         patch.autoSubscribe = true;
     }
     if (network.defaultSubscription !== undefined) {
-        // Subscription parameters are matter.js's to choose now; a stored set from the hand-driven era
-        // would pin this peer to those intervals forever.
         patch.defaultSubscription = undefined;
     }
 

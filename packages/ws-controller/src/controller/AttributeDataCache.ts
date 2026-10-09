@@ -38,10 +38,6 @@ export class AttributeDataCache {
     #inFlight = new Map<NodeId, PopulateContext>();
 
     /**
-     * Add a node to the cache and populate its attributes.
-     * No entry is created if the node is not yet initialized.
-     */
-    /**
      * Whether the node's model carries something to snapshot.
      *
      * This is the one place that decides it. A peer restored from storage carries its endpoints and
@@ -54,6 +50,7 @@ export class AttributeDataCache {
         return isCommissioned && isReady && node.endpoints.size > 1;
     }
 
+    /** Populates the node's attributes, and does nothing for a node with no structure to read. */
     add(node: ClientNode): Promise<void> {
         return this.#populateFromNode(node, false);
     }
