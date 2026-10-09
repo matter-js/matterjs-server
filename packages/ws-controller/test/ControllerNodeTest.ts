@@ -15,7 +15,7 @@ import {
     NetworkSimulator,
     SupportedStorageTypes,
 } from "@matter/general";
-import { createControllerNode, ControllerNodeOptions } from "../src/controller/MatterController.js";
+import { ControllerNodeOptions, createControllerNode } from "../src/controller/ControllerNode.js";
 
 const NODE_ID = "controller";
 
@@ -89,9 +89,13 @@ describe("createControllerNode", () => {
 
     it("repairs restored peers before handing the node over", async () => {
         const marker = {
-            peerSettingsRepairedFor: undefined as string | undefined,
+            repaired: new Array<string>(),
             markedFor: new Array<string>(),
+            hasRepairedPeerSettings(scope: string) {
+                return this.repaired.includes(scope);
+            },
             async markPeerSettingsRepaired(scope: string) {
+                this.repaired.push(scope);
                 this.markedFor.push(scope);
             },
         };
@@ -104,7 +108,7 @@ describe("createControllerNode", () => {
 
     it("closes the node when the peer repair fails", async () => {
         const marker = {
-            peerSettingsRepairedFor: undefined,
+            hasRepairedPeerSettings: () => false,
             async markPeerSettingsRepaired() {
                 throw new Error("storage is gone");
             },
@@ -123,7 +127,7 @@ describe("createControllerNode", () => {
         // A label the fabric cannot take, so the failure lands after the node — and the storage it
         // opened — already exist.
         const { driver, controller } = build({ adminFabricLabel: "l".repeat(33) });
-        await expect(controller).rejectedWith(/between 1 and 32 characters/);
+        await expect(controller).rejectedWith(/at most 32 characters/);
 
         expect(driver.initialized).equals(false);
     });

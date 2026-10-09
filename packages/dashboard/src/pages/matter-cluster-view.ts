@@ -21,18 +21,15 @@ import { clusters } from "../client/models/descriptions.js";
 import { showAlertDialog } from "../components/dialog-box/show-dialog-box.js";
 import { showAttributeWriteDialog } from "../components/dialogs/dev/show-attribute-write-dialog.js";
 import { showCommandInvokeDialog } from "../components/dialogs/dev/show-command-invoke-dialog.js";
+import { renderSemanticTagChips } from "../components/semantic-tag-chips.js";
 import "../components/ha-svg-icon";
 import "../pages/components/node-details";
 // Cluster command components (auto-register on import)
 import { computeActiveClusterFeatures } from "../util/cluster-features.js";
 import { DevModeService } from "../util/dev-mode-service.js";
+import { getEndpointLabel } from "../util/endpoint-label.js";
 import { formatHex, formatNodeAddress, getEffectiveFabricIndex } from "../util/format_hex.js";
-import {
-    decodeSemanticTagList,
-    describeSemanticTagListEntry,
-    DESCRIPTOR_CLUSTER_ID,
-    TAG_LIST_ATTR,
-} from "../util/semantic-tags.js";
+import { decodeSemanticTagList, DESCRIPTOR_CLUSTER_ID, TAG_LIST_ATTR } from "../util/semantic-tags.js";
 import { infoPanelStyles, notFoundStyles } from "../util/shared-styles.js";
 import {
     BaseClusterCommands,
@@ -146,10 +143,11 @@ class MatterClusterView extends LitElement {
         const nodeHex = formatNodeAddress(fabricIndex, this.node.node_id);
 
         const clusterName = clusters[this.cluster]?.label ?? "Custom/Unknown Cluster";
+        const endpointLabel = getEndpointLabel(this.node, this.endpoint);
 
         return html`
             <dashboard-header
-                .title=${`Node ${this.node.node_id} ${nodeHex}  |  Endpoint ${this.endpoint}  |  Cluster ${this.cluster} (${clusterName})`}
+                .title=${`Node ${this.node.node_id} ${nodeHex}  |  Endpoint ${this.endpoint}${endpointLabel ? ` (${endpointLabel})` : ""}  |  Cluster ${this.cluster} (${clusterName})`}
                 .backButton=${`#node/${this.node.node_id}/${this.endpoint}`}
             ></dashboard-header>
 
@@ -475,20 +473,7 @@ class MatterClusterView extends LitElement {
         return html`
             <div class="info-section">
                 <div class="info-section-header">Semantic Tags (TagList)</div>
-                ${
-                    tagList.length === 0
-                        ? html`<p class="empty">No semantic tags</p>`
-                        : html`
-                              <ul class="chip-list">
-                                  ${tagList.map(entry => {
-                                      const { text, title, erroneous } = describeSemanticTagListEntry(entry);
-                                      return html`<li class=${erroneous ? "chip chip-error" : "chip"} title=${title}>
-                                          ${text}
-                                      </li>`;
-                                  })}
-                              </ul>
-                          `
-                }
+                ${tagList.length === 0 ? html`<p class="empty">No semantic tags</p>` : renderSemanticTagChips(tagList)}
             </div>
         `;
     }
@@ -778,13 +763,6 @@ class MatterClusterView extends LitElement {
                 background: var(--md-sys-color-surface-container-high);
                 padding: 0 4px;
                 border-radius: 3px;
-            }
-
-            .chip.chip-error {
-                color: var(--md-sys-color-on-error-container);
-                background: var(--md-sys-color-error-container);
-                border: 1px solid var(--md-sys-color-error);
-                font-family: var(--monospace-font);
             }
         `,
     ];

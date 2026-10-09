@@ -24,13 +24,15 @@ describe("setFabricLabel", () => {
 
         const fabric = controller.env.get(FabricManager).fabrics[0];
         handler = new ControllerCommandHandler(
-            controller,
-            fabric,
-            undefined,
-            await controller.add(new Endpoint(CameraControllerEndpoint, { id: "camera-controller" })),
-            false,
-            false,
-            false,
+            {
+                node: controller,
+                fabric,
+                otaProvider: undefined,
+                webRtcRequestor: await controller.add(
+                    new Endpoint(CameraControllerEndpoint, { id: "camera-controller" }),
+                ),
+            },
+            { bleEnabled: false, bleProxyEnabled: false, otaEnabled: false },
         );
         await MockTime.resolve(handler.initializeNodes(), { macrotasks: true });
         await awaitSubscribed();

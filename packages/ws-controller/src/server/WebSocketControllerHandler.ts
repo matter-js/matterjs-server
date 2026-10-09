@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import { redactSensitiveCommandFields } from "@matter-server/ws-client";
 import {
     MatterError,
     Diagnostic,
@@ -331,6 +332,16 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 }
             };
 
+            // python-matter-server wire contract: the node_updated carrying a new endpoint must reach
+            // the client before endpoint_added announces it, or a client that resolves the endpoint
+            // against its own node model does not know it yet.
+            const flushNodeUpdatedFor = (nodeId: NodeId) => {
+                if (!pendingNodeUpdated.delete(nodeId)) return;
+                if (this.#closed || this.#shuttingDown || !listening || connectionClosed) return;
+                if (!this.#commandHandler.hasNode(nodeId)) return;
+                sendNodeFullDetails("node_updated", nodeId);
+            };
+
             const sendNodeDetailsEvent = <E extends EventTypes>(eventName: E, nodeId: NodeId) => {
                 if (this.#closed || this.#shuttingDown || !listening) return;
 
@@ -479,6 +490,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
 
             observers.on(this.#commandHandler.events.nodeEndpointAdded, (nodeId, endpointId) => {
                 if (this.#closed || this.#shuttingDown || !listening) return;
+                flushNodeUpdatedFor(nodeId);
                 logger.info(
                     `[${connId}] Sending endpoint_added event for Node ${this.#commandHandler.formatNode(nodeId)} endpoint ${endpointId}`,
                 );
@@ -521,7 +533,10 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 // serialize lazily so a superseded batch is never serialized.
                 try {
                     connection.sendCoalescable(`thread:${batch.extPanIdHex}`, () =>
-                        toBigIntAwareJson({ event: "thread_diagnostics_updated", data: serializeBatch(batch) }),
+                        toBigIntAwareJson({
+                            event: "thread_diagnostics_updated",
+                            data: serializeBatch(batch, this.#controller.threadDiagnostics.remainingTtl(batch)),
+                        }),
                     );
                 } catch (err) {
                     logger.error(`[${connId}] Failed to send thread_diagnostics_updated`, err);
@@ -679,8 +694,10 @@ export class WebSocketControllerHandler implements WebServerHandler {
         let messageId: string | undefined;
         let command: string | undefined;
         try {
-            logger.debug(`[${connId}] WebSocket request`, () => data);
+            // Parse before logging: an unparseable frame cannot be redacted and may carry a credential.
             const request = parseBigIntAwareJson(data) as { message_id: string; command: string; args: any };
+            // Deferred: matter.js calls this only at DEBUG, keeping redaction off the hot path.
+            logger.debug(`[${connId}] WebSocket request`, () => redactSensitiveCommandFields(request));
             const { args } = request;
             messageId = request.message_id;
             command = request.command;
@@ -1394,7 +1411,8 @@ export class WebSocketControllerHandler implements WebServerHandler {
     ): Promise<ResponseOf<"get_thread_diagnostics">> {
         if (args?.ext_pan_id === undefined) {
             this.#controller.threadDiagnostics.refreshAllKnown({ force: args?.force });
-            return this.#controller.threadDiagnostics.listCached().map(serializeBatch);
+            const diagnostics = this.#controller.threadDiagnostics;
+            return diagnostics.listCached().map(batch => serializeBatch(batch, diagnostics.remainingTtl(batch)));
         }
         if (!/^[0-9a-fA-F]{16}$/.test(args.ext_pan_id)) {
             throw ServerError.invalidArguments(`Invalid ext_pan_id "${args.ext_pan_id}": expected 16 hex characters`);
@@ -1404,7 +1422,9 @@ export class WebSocketControllerHandler implements WebServerHandler {
         });
         // Explicit null (not undefined) so the "no response" guard doesn't turn "nothing cached /
         // diagnostics disabled" into a generic sdk_stack_error.
-        return batch === undefined ? null : serializeBatch(batch);
+        return batch === undefined
+            ? null
+            : serializeBatch(batch, this.#controller.threadDiagnostics.remainingTtl(batch));
     }
 
     async #handleGetNetworkTopology(args: ArgsOf<"get_network_topology">): Promise<ResponseOf<"get_network_topology">> {

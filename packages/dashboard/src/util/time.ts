@@ -24,3 +24,31 @@ export function formatEpochTime(matterEpochSeconds: number, relativeTo: Date = n
             : { year: "numeric", month: "2-digit", day: "2-digit" };
     return `${date.toLocaleDateString(undefined, dateOptions)} ${time}`;
 }
+
+/** Formats a Matter epoch-s instant as the value of an `<input type="datetime-local">`, in the viewer's own time zone. */
+export function toLocalDateTimeInputValue(matterEpochSeconds: number): string {
+    const date = new Date((matterEpochSeconds + MATTER_EPOCH_OFFSET_SECONDS) * 1000);
+    const pad = (value: number) => String(value).padStart(2, "0");
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+/**
+ * Reads an `<input type="datetime-local">` value back as a Matter epoch-s instant, or undefined when it
+ * is empty, unparsable, or outside the uint32 wire field. The browser reports such values with no time
+ * zone, so `new Date(value)` reads it as the viewer's own local time, the same zone
+ * `toLocalDateTimeInputValue` formatted it in.
+ */
+export function fromLocalDateTimeInputValue(value: string): number | undefined {
+    if (value.trim() === "") return undefined;
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return undefined;
+    const seconds = Math.floor(date.getTime() / 1000) - MATTER_EPOCH_OFFSET_SECONDS;
+    if (seconds < 0 || seconds > MATTER_EPOCH_MAX_SECONDS) return undefined;
+    // A local time inside a DST spring-forward gap does not exist; `new Date` silently moves it forward
+    // rather than rejecting it, which would send an expiry an hour off the one that was typed.
+    return toLocalDateTimeInputValue(seconds) === value.trim() ? seconds : undefined;
+}
+
+/** `min`/`max` for an `<input type="datetime-local">` bound to a Matter epoch-s field, in the viewer's zone. */
+export const MATTER_EPOCH_MIN_INPUT_VALUE = toLocalDateTimeInputValue(0);
+export const MATTER_EPOCH_MAX_INPUT_VALUE = toLocalDateTimeInputValue(MATTER_EPOCH_MAX_SECONDS);

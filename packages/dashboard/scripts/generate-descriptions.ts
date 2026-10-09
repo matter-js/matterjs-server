@@ -23,13 +23,34 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const EVENT_LIST_ATTRIBUTE_ID = 0xfffa;
 
 /**
+ * Names decamelize can't segment as a unit: an acronym with an embedded capital preceded by a lowercase
+ * letter (e.g. the "C" in "SoC"), or letters split apart by a digit (e.g. "V2X"). decamelize splits on
+ * every lowercase-to-uppercase and letter-to-digit transition, so it reads each of those as its own word
+ * start: "SoCReporting" -> "so creporting", "V2X" -> "v2 x". Protecting the acronym behind a
+ * digit-suffixed placeholder sidesteps the split, since decamelize does treat digit-to-letter as a boundary.
+ */
+const ACRONYMS = ["SoC", "V2X"];
+
+/**
  * Convert camelCase name to human-readable label with a title case.
  * e.g., "OnOffLight" -> "On Off Light" when "addSpaces" is set to true, else camelize with first letter uppercase
  */
 function toLabel(name: string, addSpaces = false): string {
-    const words = addSpaces ? decamelize(name, " ") : name;
+    if (!addSpaces) {
+        return name.replace(/\b\w/g, char => char.toUpperCase());
+    }
+    let protectedName = name;
+    ACRONYMS.forEach((acronym, index) => {
+        protectedName = protectedName.split(acronym).join(`Acronym${index}`);
+    });
     // Title case: capitalize the first letter of each word
-    return words.replace(/\b\w/g, char => char.toUpperCase());
+    const label = decamelize(protectedName, " ").replace(/\b\w/g, char => char.toUpperCase());
+    // Global, and tolerant of a separator decamelize might insert before the digit (e.g. "Acronym 0"):
+    // a plain string .replace() would only fix the first occurrence and only the exact "AcronymN" spelling.
+    return ACRONYMS.reduce(
+        (text, acronym, index) => text.replace(new RegExp(`Acronym\\s*${index}`, "g"), acronym),
+        label,
+    );
 }
 
 interface DeviceType {

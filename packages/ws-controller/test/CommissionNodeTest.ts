@@ -33,13 +33,15 @@ describe("commissionNode", () => {
             adminNodeId: NodeId(112233),
         });
         handler = new ControllerCommandHandler(
-            controller,
-            fabric,
-            undefined,
-            await controller.add(new Endpoint(CameraControllerEndpoint, { id: "camera-controller" })),
-            false,
-            false,
-            false,
+            {
+                node: controller,
+                fabric,
+                otaProvider: undefined,
+                webRtcRequestor: await controller.add(
+                    new Endpoint(CameraControllerEndpoint, { id: "camera-controller" }),
+                ),
+            },
+            { bleEnabled: false, bleProxyEnabled: false, otaEnabled: false },
         );
         await MockTime.resolve(handler.start(), { macrotasks: true });
     });
@@ -89,6 +91,17 @@ describe("commissionNode", () => {
 
         expect(nodeId).equals(NODE_ID);
         expect(handler.isNodeIdInUse(NODE_ID)).equals(true);
+    });
+
+    it("reports every device that advertised, not just one", async () => {
+        const second = await site.addDevice("device2");
+
+        const discovered = await MockTime.resolve(handler.handleDiscovery({}), { macrotasks: true });
+
+        const discriminators = discovered.map(({ longDiscriminator }) => longDiscriminator).sort();
+        expect(discriminators).deep.equals(
+            [device.state.commissioning.discriminator, second.state.commissioning.discriminator].sort(),
+        );
     });
 
     it("falls back to discovery when the supplied address is stale", async () => {

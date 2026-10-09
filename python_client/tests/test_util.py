@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from chip.clusters import Objects as clusters
 from chip.clusters.Types import NullValue
 from chip.tlv import uint
@@ -9,6 +11,7 @@ from matter_server.common.helpers.util import (
     dataclass_from_dict,
     dataclass_to_dict,
     dataclass_to_tag_dict,
+    parse_value,
 )
 from matter_server.common.models import CommissioningParameters
 
@@ -149,3 +152,56 @@ def test_commissioning_parameters_from_server_without_structured_fields() -> Non
     assert params.vendor_id is None
     assert params.product_id is None
     assert params.commissioning_timeout is None
+@pytest.mark.parametrize(
+    "cluster_name",
+    [
+        "DeviceEnergyManagementMode",
+        "DishwasherMode",
+        "EnergyEvseMode",
+        "LaundryWasherMode",
+        "OvenMode",
+        "RefrigeratorAndTemperatureControlledCabinetMode",
+        "RvcCleanMode",
+        "RvcRunMode",
+        "WaterHeaterMode",
+    ],
+)
+def test_mode_option_struct_parses_mode_tags(cluster_name: str) -> None:
+    """Derived mode clusters inherit the modeTags list entry type from ModeBase."""
+    cluster = getattr(clusters, cluster_name)
+
+    result = parse_value(
+        "supportedModes",
+        [{"0": "Auto", "1": 0, "2": [{"1": 0}]}],
+        cluster.Attributes.SupportedModes.attribute_type.Type,
+    )
+
+    assert isinstance(result[0].modeTags[0], cluster.Structs.ModeTagStruct)
+    assert result[0].modeTags[0].value == 0
+
+
+def test_rvc_run_mode_tag_value_is_enum() -> None:
+    result = parse_value(
+        "supportedModes",
+        [{"0": "Idle", "1": 0, "2": [{"1": 16384}]}],
+        clusters.RvcRunMode.Attributes.SupportedModes.attribute_type.Type,
+    )
+
+    assert result[0].modeTags[0].value == clusters.RvcRunMode.Enums.ModeTag.kIdle
+
+
+def test_parse_value_keeps_manufacturer_enum_values_as_raw_ints() -> None:
+    """Characterization: a vendor value outside the named members reaches the caller unchanged."""
+    modes = parse_value(
+        "supportedModes",
+        [{"0": "Vendor", "1": 0, "2": [{"1": 0x8000}]}],
+        clusters.OvenMode.Attributes.SupportedModes.attribute_type.Type,
+    )
+    error = parse_value(
+        "operationalError",
+        {"0": 0x80},
+        clusters.OperationalState.Attributes.OperationalError.attribute_type.Type,
+    )
+
+    assert modes[0].modeTags[0].value == 0x8000
+    assert error.errorStateID == 0x80

@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Bytes, Logger, Observable } from "@matter/main";
+import { Bytes, Duration, Logger, Millis, Observable } from "@matter/main";
 import {
     type BorderRouterEntry,
     type BorderRouterRegistry,
@@ -38,6 +38,35 @@ export type ThreadDiagnosticsPartialReason =
     | "in_progress"
     | "meshcop_no_responses_yet"
     | "rest_no_responses_yet";
+
+/**
+ * Whether a partial describes a query that was still running when it was taken, or one that ended
+ * without data. This is the single statement of why the two are cached differently.
+ *
+ * A `streaming` partial is a snapshot of a query in flight — with whatever nodes had answered by
+ * then, which for the `*_no_responses_yet` reasons is none. What ages is the status itself: the
+ * query it describes finished or died long ago, so the snapshot stops being a current account of
+ * the network and expires like a complete batch.
+ *
+ * A `terminal` one reports a query that ended without data. It carries only the reason, and that
+ * reason stays worth showing however old it is, so it outlives the TTL.
+ *
+ * Exhaustive by construction: a reason added to {@link ThreadDiagnosticsPartialReason} without a
+ * kind here is a compile error, not a batch that silently outlives its data.
+ */
+const PARTIAL_REASON_KIND: Record<ThreadDiagnosticsPartialReason, "streaming" | "terminal"> = {
+    petition_rejected: "terminal",
+    dtls_failed: "terminal",
+    border_router_unreachable: "terminal",
+    no_credentials: "terminal",
+    no_source: "terminal",
+    rest_unreachable: "terminal",
+    rest_protocol: "terminal",
+    timeout: "terminal",
+    in_progress: "streaming",
+    meshcop_no_responses_yet: "streaming",
+    rest_no_responses_yet: "streaming",
+};
 
 export interface ThreadDiagnosticsBatch {
     /** 16-char lowercase hex of the extPanId. Internal cache key; serializeBatch uppercases for wire. */
@@ -90,7 +119,7 @@ export interface ThreadDiagnosticsServiceOpts {
     debounceMs?: number;
     /** OTBR REST probe port. Defaults to 8081. */
     restProbePort?: number;
-    /** OTBR REST probe timeout in ms. Defaults to 1500. */
+    /** OTBR REST probe timeout in ms. Defaults to 3000. */
     restProbeTimeoutMs?: number;
     /** @internal — for testing. Override the probe factory. */
     probeRest?: (host: string, port: number, timeoutMs: number) => Promise<OtbrRestCapability | null>;
@@ -135,7 +164,7 @@ export class ThreadDiagnosticsService {
     static readonly DEFAULT_FIRST_BATCH_MS = 5_000;
     static readonly DEFAULT_DEBOUNCE_MS = 5_000;
     static readonly DEFAULT_REST_PROBE_PORT = 8081;
-    static readonly DEFAULT_REST_PROBE_TIMEOUT_MS = 1_500;
+    static readonly DEFAULT_REST_PROBE_TIMEOUT_MS = 3_000;
 
     readonly events = {
         batchUpdated: new Observable<[ThreadDiagnosticsBatch]>(),
@@ -185,8 +214,38 @@ export class ThreadDiagnosticsService {
         }
     }
 
+    /** Port probed for the OTBR REST API on every discovered Border Router address. */
+    get restProbePort(): number {
+        return this.#restProbePort;
+    }
+
+    /**
+     * Every cached batch a caller may still act on: anything within the TTL, plus a terminal
+     * partial at any age. {@link PARTIAL_REASON_KIND} says which is which and why.
+     *
+     * Past the TTL a batch that describes a network is stale evidence, and a client receiving it
+     * cannot tell how old it is. A terminal partial is kept because the panel that renders its
+     * reason shows nothing at all when the batch is absent, so withholding it would replace a
+     * stale explanation with none.
+     */
     listCached(): ReadonlyArray<ThreadDiagnosticsBatch> {
-        return Array.from(this.#cache.values());
+        const now = Date.now();
+        return Array.from(this.#cache.values()).filter(batch => {
+            const terminalPartial =
+                batch.partialReason !== undefined && PARTIAL_REASON_KIND[batch.partialReason] === "terminal";
+            return terminalPartial || now - batch.collectedAt < this.#cacheTtlMs;
+        });
+    }
+
+    /**
+     * How much longer {@link listCached} will serve this batch. `undefined` for a batch that never
+     * expires — one reporting a query that ended without data.
+     */
+    remainingTtl(batch: ThreadDiagnosticsBatch): Duration | undefined {
+        if (batch.partialReason !== undefined && PARTIAL_REASON_KIND[batch.partialReason] === "terminal") {
+            return undefined;
+        }
+        return Duration.max(0, Millis(this.#cacheTtlMs - (Date.now() - batch.collectedAt)));
     }
 
     /**

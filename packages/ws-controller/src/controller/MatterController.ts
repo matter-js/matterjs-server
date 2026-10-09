@@ -8,9 +8,9 @@ import { cdSigners, paaRoots, vendors } from "@matter/dcl-data/node";
 import {
     Bytes,
     CommissioningClient,
-    ControllerBehavior,
     Crypto,
     DclBehavior,
+    Duration,
     Environment,
     FabricId,
     GlobalFabricId,
@@ -18,25 +18,14 @@ import {
     MatterAggregateError,
     Millis,
     NodeId,
-    ServerNode,
     SharedEnvironmentServices,
     SoftwareUpdateManager,
     Time,
     Timestamp,
 } from "@matter/main";
-import {
-    Ble,
-    DclCertificateService,
-    DclVendorInfoService,
-    Fabric,
-    FabricAuthority,
-    FabricManager,
-    OperationalDataset,
-    VendorInfo,
-} from "@matter/main/protocol";
+import { DclCertificateService, DclVendorInfoService, OperationalDataset, VendorInfo } from "@matter/main/protocol";
 import { VendorId } from "@matter/main/types";
 import { Endpoint } from "@matter/node";
-import { OtaProviderEndpoint } from "@matter/node/endpoints/ota-provider";
 import {
     BorderRouterRegistry,
     connectMeshcop,
@@ -49,15 +38,12 @@ import { Readable } from "node:stream";
 import { pathToFileURL } from "node:url";
 import { ConfigStorage } from "../server/ConfigStorage.js";
 import { CameraControllerEndpoint, ControllerCommandHandler } from "./ControllerCommandHandler.js";
+import { ControllerNode, createControllerNode } from "./ControllerNode.js";
 import { LegacyDataInjector, LegacyServerData } from "./LegacyDataInjector.js";
 import { NetworkTopologyService } from "./NetworkTopologyService.js";
 import { OtaImageInfo, OtaUploadOptions, OtaUploadRegistry } from "./OtaUploadRegistry.js";
-import { PeerSettingsRepairMarker, repairRestoredPeers } from "./restoredPeers.js";
 import { resolveServerId } from "./ServerIdResolver.js";
 import { ThreadDiagnosticsService } from "./ThreadDiagnosticsService.js";
-
-const ControllerRootEndpoint = ServerNode.RootEndpoint.with(ControllerBehavior);
-type ControllerRootEndpoint = typeof ControllerRootEndpoint;
 
 const logger = Logger.get("MatterController");
 
@@ -114,25 +100,18 @@ export interface MatterControllerOptions {
      * dataset from config) is unaffected. Defaults to false.
      */
     disableThreadDiagnostics?: boolean;
+    /**
+     * TCP port of the OTBR REST API probed on discovered Border Routers. Defaults to
+     * {@link ThreadDiagnosticsService.DEFAULT_REST_PROBE_PORT}.
+     */
+    threadRestProbePort?: number;
     /** Staging directory and limits for two-step OTA firmware uploads. */
     otaUpload?: OtaUploadOptions;
-}
-
-/**
- * Parse a version string into a numeric version in MMmmpp format.
- * For alpha/beta versions, only the base version (major.minor.patch) is used.
- * @param version Version string like "0.2.10" or "0.2.10-alpha.0"
- * @returns Numeric version like 210 for "0.2.10"
- */
-function parseVersionToNumber(version: string): number {
-    // Extract base version (before any -alpha, -beta, etc.)
-    const baseVersion = version.split("-")[0];
-    const parts = baseVersion.split(".");
-    const major = parseInt(parts[0] ?? "0", 10);
-    const minor = parseInt(parts[1] ?? "0", 10);
-    const patch = parseInt(parts[2] ?? "0", 10);
-    // Format: MMmmpp (2 digits each)
-    return major * 10000 + minor * 100 + patch;
+    /**
+     * Interval between polling cycles for custom cluster attributes that do not support subscriptions
+     * (legacy Eve Energy devices). Defaults to, and is floored at, 60 seconds.
+     */
+    customClusterPollInterval?: Duration;
 }
 
 /**
@@ -199,119 +178,16 @@ export function topologyAttributeReader(
 /**
  * Split an `OtbrRestCapability.baseUrl` (e.g. `http://[fd00::1]:8081`) into the
  * host + port the {@link OtbrRestClient} constructor expects. Square-bracketed
- * IPv6 hosts are stripped — the client wraps them again itself.
+ * IPv6 hosts are stripped — the client wraps them again itself. `URL` drops a
+ * scheme-default port, so an OTBR probed on 80 must resolve to 80, not to the
+ * probe default.
  */
-function parseRestBaseUrl(baseUrl: string): { host: string; port: number } {
+export function parseRestBaseUrl(baseUrl: string): { host: string; port: number } {
     const url = new URL(baseUrl);
     let host = url.hostname;
     if (host.startsWith("[") && host.endsWith("]")) host = host.slice(1, -1);
-    const port = url.port === "" ? 8081 : Number(url.port);
+    const port = url.port === "" ? (url.protocol === "https:" ? 443 : 80) : Number(url.port);
     return { host, port };
-}
-
-export interface ControllerNodeOptions {
-    environment: Environment;
-    id: string;
-    adminVendorId?: VendorId;
-    adminFabricId?: FabricId;
-    adminFabricLabel: string;
-    serverVersion: string;
-    enableOtaProvider: boolean;
-
-    /**
-     * Where the one-shot repair of peers commissioned by an earlier version records that it has run.
-     * Omit to skip the repair.
-     */
-    peerSettingsRepair?: PeerSettingsRepairMarker;
-}
-
-/**
- * The controller node with the fabric and endpoints built alongside it, owned as one resource.
- *
- * `ServerNode.create` takes the storage lock, so everything built after it belongs to the same lifetime
- * and a single {@link ControllerNode.close} is what releases the lock.
- */
-export interface ControllerNode {
-    readonly node: ServerNode<ControllerRootEndpoint>;
-    readonly fabric: Fabric;
-    readonly otaProvider?: Endpoint<typeof OtaProviderEndpoint>;
-    readonly webRtcRequestor: Endpoint<CameraControllerEndpoint>;
-
-    close(): Promise<void>;
-}
-
-/**
- * Build the controller node, its fabric and the optional OTA provider endpoint.
- */
-export async function createControllerNode(options: ControllerNodeOptions): Promise<ControllerNode> {
-    const { environment, id, adminVendorId, adminFabricId, adminFabricLabel, serverVersion } = options;
-    const adminNodeId = NodeId(112233); // TODO Remove when we switch to random IDs
-
-    const node = await ServerNode.create(ControllerRootEndpoint, {
-        environment,
-        id,
-        network: {
-            ble: false,
-            tcp: true,
-            transportPreference: "tcp",
-        },
-        basicInformation: {
-            vendorName: "Open Home Foundation",
-            productName: "OHF Matter Server",
-            productId: 1,
-            hardwareVersion: 1,
-            hardwareVersionString: "1.0",
-            softwareVersion: parseVersionToNumber(serverVersion) || 1,
-            softwareVersionString: serverVersion.split("-")[0], // Base version without alpha/beta suffix
-            vendorId: adminVendorId,
-        },
-        controller: {
-            adminFabricLabel,
-            adminFabricId,
-            adminNodeId,
-            ble: (environment.maybeGet(Ble) ?? Environment.default.maybeGet(Ble)) !== undefined,
-        },
-        // A controller is never itself commissionable, and subscription persistence is a device feature.
-        commissioning: { enabled: false },
-        subscriptions: { persistenceEnabled: false },
-    });
-
-    try {
-        const otaProvider = options.enableOtaProvider
-            ? await node.add(new Endpoint(OtaProviderEndpoint, { id: "ota-provider" }))
-            : undefined;
-        const webRtcRequestor = await node.add(new Endpoint(CameraControllerEndpoint, { id: "camera-controller" }));
-
-        await node.env.load(FabricManager);
-        const fabricAuthority = await node.env.load(FabricAuthority);
-        // Rotates the operational keypair on every start where a fabric already exists, so no long-lived
-        // operational key is kept on disk. Peers still trust us: the NOC is reissued under the same CA and
-        // fabric identifiers.
-        const fabric = await fabricAuthority.defaultFabric({
-            adminFabricLabel,
-            adminVendorId,
-            adminNodeId,
-            adminFabricId,
-        });
-
-        if (options.peerSettingsRepair !== undefined) {
-            await repairRestoredPeers(node, id, options.peerSettingsRepair);
-        }
-
-        return { node, fabric, otaProvider, webRtcRequestor, close: () => node.close() };
-    } catch (error) {
-        // The node already holds the storage lock and the caller has no handle to it yet, so a close that
-        // fails has to travel with the original error rather than be logged away.
-        try {
-            await node.close();
-        } catch (closeError) {
-            throw new MatterAggregateError(
-                [error, closeError].map(e => (e instanceof Error ? e : new Error(String(e)))),
-                "Controller node build failed and the node could not be closed",
-            );
-        }
-        throw error;
-    }
 }
 
 export class MatterController {
@@ -328,6 +204,7 @@ export class MatterController {
     #bleProxyEnabled = false;
     #enableTimeSync = false;
     #threadDiagnosticsDisabled = false;
+    #customClusterPollInterval?: Duration;
     #otaUploadOptions: OtaUploadOptions = {};
     #otaUploads?: OtaUploadRegistry;
     readonly #borderRouterRegistry: BorderRouterRegistry;
@@ -419,10 +296,12 @@ export class MatterController {
         this.#bleProxyEnabled = options.bleProxyEnabled ?? this.#bleProxyEnabled;
         this.#enableTimeSync = options.enableTimeSync ?? this.#enableTimeSync;
         this.#threadDiagnosticsDisabled = options.disableThreadDiagnostics ?? this.#threadDiagnosticsDisabled;
+        this.#customClusterPollInterval = options.customClusterPollInterval;
         this.#otaUploadOptions = options.otaUpload ?? this.#otaUploadOptions;
         this.#services = this.#env.asDependent();
         this.#threadDiagnostics = new ThreadDiagnosticsService({
             enabled: !this.#threadDiagnosticsDisabled,
+            restProbePort: options.threadRestProbePort,
             borderRouters: this.#borderRouterRegistry,
             credentials: this.#credentials,
             makeRestSource: cap => {
@@ -513,17 +392,14 @@ export class MatterController {
             throw new Error("Controller not initialized");
         }
         if (this.#commandHandler === undefined) {
-            this.#commandHandler = new ControllerCommandHandler(
-                controller.node,
-                controller.fabric,
-                controller.otaProvider,
-                controller.webRtcRequestor,
-                this.#env.vars.get("ble.enable", false),
-                this.#bleProxyEnabled,
-                !this.#disableOtaProvider,
-                this.#enableTimeSync,
-                !this.#threadDiagnosticsDisabled,
-            );
+            this.#commandHandler = new ControllerCommandHandler(controller, {
+                bleEnabled: this.#env.vars.get("ble.enable", false),
+                bleProxyEnabled: this.#bleProxyEnabled,
+                otaEnabled: !this.#disableOtaProvider,
+                timeSyncEnabled: this.#enableTimeSync,
+                threadDiagnosticsEnabled: !this.#threadDiagnosticsDisabled,
+                customClusterPollInterval: this.#customClusterPollInterval,
+            });
 
             this.#commandHandler.events.started.once(async () => {
                 if (this.#stopped) return;

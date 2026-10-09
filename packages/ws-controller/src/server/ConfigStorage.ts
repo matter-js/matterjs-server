@@ -44,7 +44,7 @@ interface ConfigData {
     wifiSsid?: string;
     wifiCredentials?: string;
     threadDataset?: string;
-    peerSettingsRepairedFor?: string;
+    peerSettingsRepairedFor?: string[];
 }
 
 export class ConfigStorage {
@@ -121,9 +121,11 @@ export class ConfigStorage {
         const threadDataset = (await this.#configStore.has("threadDataset"))
             ? await this.#configStore.get<string>("threadDataset", "")
             : undefined;
-        const peerSettingsRepairedFor = (await this.#configStore.has("peerSettingsRepairedFor"))
-            ? await this.#configStore.get<string>("peerSettingsRepairedFor", "")
+        // Written as a single scope before this server could be started against more than one fabric.
+        const storedRepairs = (await this.#configStore.has("peerSettingsRepairedFor"))
+            ? await this.#configStore.get<string | string[]>("peerSettingsRepairedFor", [])
             : undefined;
+        const peerSettingsRepairedFor = typeof storedRepairs === "string" ? [storedRepairs] : storedRepairs;
         await this.set({
             fabricLabel,
             nextNodeId,
@@ -167,13 +169,16 @@ export class ConfigStorage {
         return this.#data.nextNodeId;
     }
 
-    /** Storage scope whose peers had their network settings repaired, or undefined while outstanding. */
-    get peerSettingsRepairedFor() {
-        return this.#data.peerSettingsRepairedFor;
+    /** Whether the peers of this storage scope have had their network settings repaired. */
+    hasRepairedPeerSettings(scope: string) {
+        return this.#data.peerSettingsRepairedFor?.includes(scope) === true;
     }
 
     async markPeerSettingsRepaired(scope: string) {
-        await this.set({ peerSettingsRepairedFor: scope });
+        if (this.hasRepairedPeerSettings(scope)) {
+            return;
+        }
+        await this.set({ peerSettingsRepairedFor: [...(this.#data.peerSettingsRepairedFor ?? []), scope] });
     }
 
     /**

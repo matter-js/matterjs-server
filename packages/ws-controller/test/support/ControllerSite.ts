@@ -65,6 +65,14 @@ export class TestSite {
         return { controller, device, light };
     }
 
+    /** A second commissionable device on the same simulated network. */
+    async addDevice(id: string) {
+        const device = await this.#addNode({ id });
+        await device.add(OnOffLightDevice.with(BooleanStateServer), { id: `${id}-light` });
+        await device.start();
+        return device;
+    }
+
     async commission(controller: ServerNode, device: ServerNode) {
         // Session ids collide without entropy while pairing.
         const controllerCrypto = controller.env.get(Crypto) as MockCrypto;

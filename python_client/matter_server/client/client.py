@@ -774,8 +774,8 @@ class MatterClient:
         message = self._prepare_message(command, require_schema, **kwargs)
         future: asyncio.Future[Any] = self._loop.create_future()
         self._result_futures[message.message_id] = future
-        await self.connection.send_message(message)
         try:
+            await self.connection.send_message(message)
             return await future
         finally:
             self._result_futures.pop(message.message_id)
@@ -851,7 +851,10 @@ class MatterClient:
             future = self._result_futures.get(msg.message_id)
 
             if future is None:
-                # no listener for this result
+                self.logger.debug("No listener for result of message id %s", msg.message_id)
+                return
+            if future.done():
+                self.logger.debug("Result arrived for already settled message id %s", msg.message_id)
                 return
 
             if isinstance(msg, SuccessResultMessage):
@@ -905,7 +908,7 @@ class MatterClient:
             self._signal_event(EventType.ENDPOINT_REMOVED, data=msg.data, node_id=node_id)
             # cleanup endpoint only after signalling subscribers
             if node := self._nodes.get(node_id):
-                node.endpoints.pop(endpoint_id, None)
+                node._remove_endpoint(endpoint_id)
             return
         if msg.event == EventType.ATTRIBUTE_UPDATED:
             # data is tuple[node_id, attribute_path, new_value]
@@ -929,6 +932,14 @@ class MatterClient:
             node_id = msg.data["node_id"]
             endpoint_id = msg.data["endpoint_id"]
             self.logger.debug("Endpoint added: %s/%s", node_id, endpoint_id)
+            # subscribers look the endpoint up; the node snapshot that carries it reaches them later
+            if (node := self._nodes.get(node_id)) is None or endpoint_id not in node.endpoints:
+                self.logger.debug(
+                    "Not signalling endpoint %s/%s that the node model does not contain",
+                    node_id,
+                    endpoint_id,
+                )
+                return
         if msg.event == EventType.NODE_EVENT:
             if self.logger.isEnabledFor(logging.DEBUG):
                 self.logger.debug(

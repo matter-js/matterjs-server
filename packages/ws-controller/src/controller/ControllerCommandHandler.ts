@@ -9,9 +9,9 @@ import {
     Abort,
     AsyncObservable,
     camelize,
-    ChannelType,
     ClientNode,
     CommissioningClient,
+    Duration,
     FabricId,
     FabricIndex,
     IcdClient,
@@ -111,9 +111,11 @@ import {
     ServerError,
     UpdateSource,
 } from "../types/WebSocketMessageTypes.js";
+import { isBridgeNode } from "../util/bridgeDetection.js";
 import { formatNodeId } from "../util/formatNodeId.js";
 import { pingIp } from "../util/network.js";
 import { nodeIdOf } from "../util/nodeIdOf.js";
+import type { ControllerResources } from "./ControllerNode.js";
 import { CustomClusterPoller } from "./CustomClusterPoller.js";
 import { NodeAttributeReader } from "./NodeProcessor.js";
 import { Nodes } from "./Nodes.js";
@@ -243,6 +245,18 @@ export function uniqueByLastAdvertisement<T extends { id: string }>(discovered: 
     return Array.from(unique.values());
 }
 
+export interface ControllerCommandHandlerOptions {
+    bleEnabled: boolean;
+    bleProxyEnabled: boolean;
+    otaEnabled: boolean;
+    /** Defaults to false. */
+    timeSyncEnabled?: boolean;
+    /** Defaults to false. */
+    threadDiagnosticsEnabled?: boolean;
+    /** Interval between custom cluster polling cycles. Defaults to, and is floored at, 60 seconds. */
+    customClusterPollInterval?: Duration;
+}
+
 export class ControllerCommandHandler {
     #node: ServerNode;
     #fabric: Fabric;
@@ -297,21 +311,20 @@ export class ControllerCommandHandler {
     /** Aborted by {@link ControllerCommandHandler.close}, so no command outlives the handler. */
     #shutdown = new Abort();
 
-    constructor(
-        controllerNode: ServerNode,
-        fabric: Fabric,
-        otaProvider: Endpoint<typeof OtaProviderEndpoint> | undefined,
-        webRtcRequestor: Endpoint<CameraControllerEndpoint>,
-        bleEnabled: boolean,
-        bleProxyEnabled: boolean,
-        otaEnabled: boolean,
-        timeSyncEnabled = false,
-        threadDiagnosticsEnabled = false,
-    ) {
-        this.#node = controllerNode;
-        this.#fabric = fabric;
-        this.#otaProvider = otaProvider;
-        this.#webRtcRequestor = webRtcRequestor;
+    constructor(controller: ControllerResources, options: ControllerCommandHandlerOptions) {
+        const {
+            bleEnabled,
+            bleProxyEnabled,
+            otaEnabled,
+            timeSyncEnabled = false,
+            threadDiagnosticsEnabled = false,
+            customClusterPollInterval,
+        } = options;
+
+        this.#node = controller.node;
+        this.#fabric = controller.fabric;
+        this.#otaProvider = controller.otaProvider;
+        this.#webRtcRequestor = controller.webRtcRequestor;
 
         this.#bleEnabled = bleEnabled;
         this.#bleProxyEnabled = bleProxyEnabled;
@@ -326,7 +339,7 @@ export class ControllerCommandHandler {
 
         // Initialize custom cluster poller for Eve energy attributes etc.
         // Reads automatically trigger change events through the normal attribute flow
-        this.#customClusterPoller = new CustomClusterPoller(attributeReader);
+        this.#customClusterPoller = new CustomClusterPoller(attributeReader, customClusterPollInterval);
 
         if (threadDiagnosticsEnabled) {
             this.#threadDetailsPoller = new ThreadDetailsPoller(attributeReader);
@@ -429,6 +442,10 @@ export class ControllerCommandHandler {
 
         this.#busObservers.on(bus.events.endpointRemoved, (nodeId, endpointId) => {
             this.#guard(nodeId, "endpoint removal", () => {
+                // Drop the endpoint before announcing it, so a read that follows the event never serves
+                // attributes of an endpoint the node no longer has. The full rebuild follows on the
+                // structure change.
+                this.#nodes.attributeCache.deleteEndpoint(nodeId, endpointId);
                 this.events.nodeEndpointRemoved.emit(nodeId, endpointId);
                 this.#markNodeUpdatePending(this.#nodes.get(nodeId), "endpoint removed");
             });
@@ -716,7 +733,6 @@ export class ControllerCommandHandler {
         // A node commissioned moments ago may not have its commissioning behavior active yet, so the
         // handle has to be created on demand rather than looked up.
         const node = await this.#node.peers.forAddress(this.#peerOf(nodeId));
-        const attributeCache = this.#nodes.attributeCache;
 
         // Per-node ObserverGroup so all subscriptions are cleaned up on decommission
         const nodeObservers = new ObserverGroup();
@@ -760,18 +776,30 @@ export class ControllerCommandHandler {
 
         this.#nodes.seedState(nodeId, node.lifecycle.connectionState);
 
-        if (node.lifecycle.isSeeded) {
-            await attributeCache.add(node);
-            const attributes = attributeCache.get(nodeId);
-            if (attributes) {
-                const peer = this.#peerOf(nodeId);
-                this.#customClusterPoller.registerNode(peer, attributes);
-                this.#threadDetailsPoller?.registerNode(peer, attributes);
-                this.#timeSyncManager?.registerNode(peer, attributes);
-            }
-        }
+        await this.#snapshotNode(nodeId, node);
+
+        // A peer whose structure only arrives later — read from the device, or loaded after this point —
+        // is snapshotted when it does, and consumers are told the node changed.
+        nodeObservers.on(node.lifecycle.seeded, () =>
+            this.#snapshotNode(nodeId, node)
+                .then(() => this.#markNodeUpdatePending(node, "node seeded"))
+                .catch(error => logger.warn(`Failed to cache node "${this.formatNode(nodeId)}":`, error)),
+        );
 
         return node;
+    }
+
+    /** Build the node's attribute snapshot and point the pollers at it. */
+    async #snapshotNode(nodeId: NodeId, node: ClientNode): Promise<void> {
+        await this.#nodes.attributeCache.add(node);
+        const attributes = this.#nodes.attributeCache.get(nodeId);
+        if (attributes === undefined) {
+            return;
+        }
+        const peer = this.#peerOf(nodeId);
+        this.#customClusterPoller.registerNode(peer, attributes);
+        this.#threadDetailsPoller?.registerNode(peer, attributes);
+        this.#timeSyncManager?.registerNode(peer, attributes);
     }
 
     /**
@@ -949,12 +977,18 @@ export class ControllerCommandHandler {
     /**
      * Await the node's attribute cache being populated so a direct read returns a complete snapshot
      * rather than the empty-then-node_updated sequence the lazy fallback in getNodeDetails produces.
+     * A rebuild that is already running is awaited too, so a read after a structure change serves the
+     * new structure instead of the one the node reported before it.
      */
     async ensureNodePopulated(nodeId: NodeId): Promise<void> {
         const node = this.#nodes.get(nodeId);
-        if (node.lifecycle.isSeeded && !this.#nodes.attributeCache.has(nodeId)) {
-            await this.#nodes.attributeCache.add(node);
+        const attributeCache = this.#nodes.attributeCache;
+        if (!attributeCache.has(nodeId)) {
+            // A no-op for a node with nothing to snapshot yet, so the cache stays the only judge of that.
+            await attributeCache.add(node);
+            return;
         }
+        await attributeCache.settled(nodeId);
     }
 
     /**
@@ -965,8 +999,6 @@ export class ControllerCommandHandler {
     getNodeDetails(nodeId: NodeId, lastInterviewDate?: Date): MatterNodeData {
         const node = this.#nodes.get(nodeId);
         const attributeCache = this.#nodes.attributeCache;
-
-        let isBridge = false;
 
         // Ensure the cache is populated if node is initialized but cache doesn't exist yet.
         // Populate runs asynchronously, so this call returns an empty snapshot; emit node_updated once
@@ -990,13 +1022,6 @@ export class ControllerCommandHandler {
         // Get cached attributes (empty object if node not yet initialized)
         const attributes = attributeCache.get(nodeId) ?? {};
 
-        // Bridge detection: Check endpoint 1's Descriptor cluster (29) DeviceTypeList attribute (0)
-        // for device type 14 (Aggregator), matching Python Matter Server behavior
-        const endpoint1DeviceTypes = attributes["1/29/0"];
-        if (Array.isArray(endpoint1DeviceTypes)) {
-            isBridge = endpoint1DeviceTypes.some(entry => entry["0"] === 14);
-        }
-
         return {
             node_id: nodeId,
             date_commissioned: getDateAsString(
@@ -1005,7 +1030,7 @@ export class ControllerCommandHandler {
             last_interview: getDateAsString(lastInterviewDate ?? new Date()),
             interview_version: 6,
             available: this.#nodes.isAvailable(nodeId),
-            is_bridge: isBridge,
+            is_bridge: isBridgeNode(attributes),
             attributes,
             attribute_subscriptions: [],
             matter_version: determineMatterVersion(attributes),
@@ -1089,6 +1114,19 @@ export class ControllerCommandHandler {
         };
     }
 
+    /** A missing endpoint or cluster is a client mistake, so it is reported as InvalidArguments, not as a device status. */
+    #clusterEndpoint(nodeId: NodeId, endpointId: EndpointNumber, clusterName: string): Endpoint {
+        const { endpoints } = this.#nodes.get(nodeId);
+        if (!endpoints.has(endpointId)) {
+            throw ServerError.invalidArguments(`Endpoint ${endpointId} does not exist`);
+        }
+        const endpoint = endpoints.for(endpointId);
+        if (!endpoint.behaviors.has(clusterName)) {
+            throw ServerError.invalidArguments(`Cluster "${clusterName}" does not exist on endpoint ${endpointId}`);
+        }
+        return endpoint;
+    }
+
     /**
      * Write a single attribute on a remote node. Uses `setStateOf(string, ...)` (not `set({...})`)
      * because peer cluster behaviors are dynamically registered and aren't on the agent's cached property getters.
@@ -1100,15 +1138,15 @@ export class ControllerCommandHandler {
         attributeName: string,
         value: unknown,
     ): Promise<{ status: number; clusterStatus?: number }> {
-        const node = this.#nodes.get(nodeId);
         const clusterEntry = ClusterMap[clusterId];
         if (!clusterEntry) {
             throw ServerError.invalidArguments(`Cluster Id "${clusterId}" unknown`);
         }
         const clusterProperty = clusterEntry.model.propertyName;
+        const endpoint = this.#clusterEndpoint(nodeId, endpointId, clusterProperty);
 
         try {
-            await node.endpoints.for(endpointId).setStateOf(clusterProperty, { [attributeName]: value });
+            await endpoint.setStateOf(clusterProperty, { [attributeName]: value });
             return { status: 0 };
         } catch (error) {
             if (error instanceof MatterAggregateError) {
@@ -1238,9 +1276,8 @@ export class ControllerCommandHandler {
         }
         const clusterName = clusterEntry.model.propertyName;
         const commandName = camelize(data.commandName);
-        const commands = (
-            this.#nodes.get(nodeId).endpoints.for(endpointId).commands as Record<string, Record<string, unknown>>
-        )[clusterName];
+        const endpoint = this.#clusterEndpoint(nodeId, endpointId, clusterName);
+        const commands = (endpoint.commands as Record<string, Record<string, unknown>>)[clusterName];
         if (!commands[commandName]) {
             throw ServerError.invalidArguments(`Command "${commandName}" does not exist on cluster "${clusterName}"`);
         }
@@ -1257,7 +1294,7 @@ export class ControllerCommandHandler {
         }
 
         // Build dedup key from validated/converted fields
-        const serializedData = commandData !== undefined ? toBigIntAwareJson(commandData as object) : "";
+        const serializedData = commandData !== undefined ? toBigIntAwareJson(commandData) : "";
         const dedupKey = `${nodeId}:${endpointId}:${clusterId}:${commandName}:${serializedData}`;
 
         // Check for in-flight duplicate
@@ -1389,12 +1426,7 @@ export class ControllerCommandHandler {
         return nodeId !== undefined && !this.isNodeIdInUse(nodeId);
     }
 
-    /**
-     * Commission a device whose address the caller supplied, skipping discovery.
-     *
-     * `runCommissioning` shields the peer from the expired-node cull while the flow runs and rejects a
-     * parallel attempt on the same node; `peers.commission` applies it for the discovery path itself.
-     */
+    /** Commission a device whose address the caller supplied, skipping discovery. */
     async #commissionAtAddress(
         knownAddress: NonNullable<CommissioningRequest["knownAddress"]>,
         options: CommissioningDiscovery.Options,
@@ -1403,7 +1435,7 @@ export class ControllerCommandHandler {
             addresses: [{ type: "udp", ip: knownAddress.ip, port: knownAddress.port }],
         });
         try {
-            await this.#node.peers.runCommissioning(peer, () => peer.commission(options));
+            await peer.commission(options);
         } catch (error) {
             // This peer, not the node id: an id already taken by an unrelated device fails the attempt
             // before anything joins, and the record forDescriptor persisted is then still ours to remove.
@@ -1454,6 +1486,11 @@ export class ControllerCommandHandler {
             peer ??= await this.#node.peers.commission(options);
             await awaitSeeded(peer, this.#shutdown);
             nodeId = nodeIdOf(peer);
+
+            // Inside the same guard: the device has joined by now, so a failure to take it into the
+            // registry is still a failed command to the caller, not an unmapped throw with a node the
+            // server already tracks and never announced.
+            await this.#registerNode(nodeId);
         } catch (error) {
             // Preserve the original error message with context
             const originalMessage = error instanceof Error ? error.message : String(error);
@@ -1462,8 +1499,6 @@ export class ControllerCommandHandler {
                 error instanceof Error ? error : undefined,
             );
         }
-
-        await this.#registerNode(nodeId);
 
         this.events.nodeAdded.emit(nodeId);
         return { nodeId };
@@ -1493,32 +1528,28 @@ export class ControllerCommandHandler {
             timeout: Seconds(3), // Just check for 3 sec
             // Commissionable discovery over IP only: this command reports mDNS advertisements, and a
             // BLE-discovered instance has no address or port to report.
-            scannerFilter: scanner => scanner.type === ChannelType.UDP,
+            discoveryCapabilities: { onIpNetwork: true },
         });
 
         const unique = uniqueByLastAdvertisement(discovered);
         logger.info(`Discovered ${unique.length} commissionable device(s)`);
 
-        const latest = unique[unique.length - 1];
-        if (latest === undefined) {
-            return [];
-        }
+        const devices = new Array<DiscoveryResponse[number]>();
+        for (const peer of unique) {
+            // The descriptor is the advertisement as received, so it carries the wire fields directly.
+            const descriptor = await peer.act(agent => agent.get(CommissioningClient).descriptor);
+            if (descriptor === undefined) {
+                continue;
+            }
+            const { deviceIdentifier = "", addresses = [], DT, DN, RI, PH, PI, T, VP, SII, SAI } = descriptor;
+            const discriminator = "D" in descriptor ? (descriptor.D ?? 0) : 0;
+            const commissioningMode = "CM" in descriptor ? (descriptor.CM ?? 0) : 0;
 
-        // The descriptor is the advertisement as received, so it carries the wire fields directly.
-        const descriptor = await latest.act(agent => agent.get(CommissioningClient).descriptor);
-        if (descriptor === undefined) {
-            return [];
-        }
-        const { deviceIdentifier = "", addresses = [], DT, DN, RI, PH, PI, T, VP, SII, SAI } = descriptor;
-        const discriminator = "D" in descriptor ? (descriptor.D ?? 0) : 0;
-        const commissioningMode = "CM" in descriptor ? (descriptor.CM ?? 0) : 0;
+            const vendorId = VP === undefined ? -1 : VP.includes("+") ? parseInt(VP.split("+")[0]) : parseInt(VP);
+            const productId = VP === undefined ? -1 : VP.includes("+") ? parseInt(VP.split("+")[1]) : -1;
+            const firstAddress = addresses[0];
 
-        const vendorId = VP === undefined ? -1 : VP.includes("+") ? parseInt(VP.split("+")[0]) : parseInt(VP);
-        const productId = VP === undefined ? -1 : VP.includes("+") ? parseInt(VP.split("+")[1]) : -1;
-        const firstAddress = addresses[0];
-
-        return [
-            {
+            devices.push({
                 commissioningMode,
                 deviceName: DN ?? "",
                 deviceType: DT ?? 0,
@@ -1539,8 +1570,9 @@ export class ControllerCommandHandler {
                 addresses: addresses.filter(ServerAddress.isIp).map(({ ip }) => ip),
                 mrpSessionIdleInterval: SII,
                 mrpSessionActiveInterval: SAI,
-            },
-        ];
+            });
+        }
+        return devices;
     }
 
     async getNodeIpAddresses(nodeId: NodeId, preferCache = true) {

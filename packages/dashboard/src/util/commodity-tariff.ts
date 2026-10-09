@@ -150,12 +150,16 @@ function enumName(value: unknown, names: Record<number, string>): string | undef
     return names[raw] ?? `Unknown (${raw})`;
 }
 
+export function currencyInfo(code: unknown, decimalPoints: unknown): CurrencyInfo | undefined {
+    const codeValue = toNumber(code);
+    const decimalPointsValue = toNumber(decimalPoints);
+    if (codeValue === undefined || decimalPointsValue === undefined) return undefined;
+    if (decimalPointsValue < 0 || decimalPointsValue > MAX_DECIMAL_POINTS) return undefined;
+    return { code: codeValue, decimalPoints: decimalPointsValue, symbol: CURRENCY_SYMBOLS[codeValue] };
+}
+
 function decodeCurrency(value: unknown): CurrencyInfo | undefined {
-    const code = toNumber(field(value, 0));
-    const decimalPoints = toNumber(field(value, 1));
-    if (code === undefined || decimalPoints === undefined) return undefined;
-    if (decimalPoints < 0 || decimalPoints > MAX_DECIMAL_POINTS) return undefined;
-    return { code, decimalPoints, symbol: CURRENCY_SYMBOLS[code] };
+    return currencyInfo(field(value, 0), field(value, 1));
 }
 
 /**

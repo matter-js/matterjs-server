@@ -5,6 +5,7 @@
  */
 
 import { parseBigIntAwareJson, toBigIntAwareJson } from "./json-utils.js";
+import { redactSensitiveCommandFields } from "./logging-redaction.js";
 import { CommandMessage, ServerInfoMessage } from "./models/model.js";
 
 /**
@@ -100,7 +101,7 @@ export class Connection {
         if (!this.socket) {
             throw new Error("Not connected");
         }
-        console.debug("WebSocket send message", message);
+        console.debug("WebSocket send message", redactSensitiveCommandFields(message));
         this.socket.send(toBigIntAwareJson(message));
     }
 }

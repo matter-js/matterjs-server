@@ -123,14 +123,59 @@ describe("endpoints util", () => {
             ]);
         });
 
-        it("falls back to listing every endpoint when a PartsList cycle leaves no roots", () => {
-            // 1 and 2 list each other as children, so both end up in hasParent and roots is empty.
-            // The fallback pass still walks the (cyclic) children edges, breaking the cycle at
-            // whichever endpoint it starts from, but every endpoint appears exactly once.
+        it("keeps a PartsList cycle a tree, listing every endpoint once", () => {
+            // 1 and 2 list each other as children. The first relation is accepted, the one that
+            // would close the cycle is not, so 2 stays a root and every endpoint appears once.
             const n = node({ "1/29/3": [2], "2/29/3": [1] });
             expect(getEndpointTree(n, [1, 2])).to.deep.equal([
-                { endpointId: 1, depth: 0 },
+                { endpointId: 2, depth: 0 },
+                { endpointId: 1, depth: 1 },
+            ]);
+        });
+
+        it("nests a bridge that lists the whole family below its aggregators", () => {
+            // The shape of packages/matter-server/test/fixtures/TestBridgeDevice.ts: endpoint 2
+            // lists every descendant, endpoint 4 its two parts, endpoint 7 its bridged children.
+            const n = node({
+                "0/29/3": [1, 2, 3, 4, 5, 6, 7, 8],
+                "1/29/3": [],
+                "2/29/3": [3, 4, 5, 6, 7, 8],
+                "3/29/3": [],
+                "4/29/3": [5, 6],
+                "5/29/3": [],
+                "6/29/3": [],
+                "7/29/3": [8],
+                "8/29/3": [],
+            });
+            expect(getEndpointTree(n, [0, 1, 2, 3, 4, 5, 6, 7, 8])).to.deep.equal([
+                { endpointId: 0, depth: 0 },
+                { endpointId: 1, depth: 1 },
                 { endpointId: 2, depth: 1 },
+                { endpointId: 3, depth: 2 },
+                { endpointId: 4, depth: 2 },
+                { endpointId: 5, depth: 3 },
+                { endpointId: 6, depth: 3 },
+                { endpointId: 7, depth: 2 },
+                { endpointId: 8, depth: 3 },
+            ]);
+        });
+
+        it("keeps a part with its own device when an ancestor lists only some of the family", () => {
+            // Endpoint 1 lists 30 and 31 but not 32, so only the relation between the candidates
+            // decides: 30 lists 31, 1 does not list 30's other parts.
+            const n = node({
+                "0/29/3": [1, 30, 31, 32],
+                "1/29/3": [30, 31],
+                "30/29/3": [31, 32],
+                "31/29/3": [],
+                "32/29/3": [],
+            });
+            expect(getEndpointTree(n, [0, 1, 30, 31, 32])).to.deep.equal([
+                { endpointId: 0, depth: 0 },
+                { endpointId: 1, depth: 1 },
+                { endpointId: 30, depth: 2 },
+                { endpointId: 31, depth: 3 },
+                { endpointId: 32, depth: 3 },
             ]);
         });
     });

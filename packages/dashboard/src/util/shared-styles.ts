@@ -34,8 +34,45 @@ export const reducedMotionStyles = css`
     }
 `;
 
+export const chipListStyles = css`
+    .chip-list {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    .chip {
+        font-size: 0.85rem;
+        color: var(--md-sys-color-on-secondary-container);
+        background: var(--md-sys-color-secondary-container);
+        padding: 4px 10px;
+        border-radius: 8px;
+    }
+
+    .chip-list.chip-compact .chip {
+        font-size: 0.75rem;
+        line-height: 1.3;
+        padding: 3px 9px;
+        display: inline-flex;
+        align-items: center;
+        white-space: nowrap;
+    }
+
+    .chip.chip-error {
+        color: var(--md-sys-color-on-error-container);
+        background: var(--md-sys-color-error-container);
+        border: 1px solid var(--md-sys-color-error);
+        font-family: var(--monospace-font);
+    }
+`;
+
 /** Bordered panel holding one or more `.info-section` blocks, each optionally listing `.chip`s. */
 export const infoPanelStyles = css`
+    ${chipListStyles}
+
     .info-panel {
         background-color: var(--md-sys-color-surface-container);
         border: 1px solid var(--md-sys-color-outline-variant);
@@ -53,23 +90,6 @@ export const infoPanelStyles = css`
         font-weight: 500;
         color: var(--md-sys-color-on-surface);
         margin-bottom: 10px;
-    }
-
-    .chip-list {
-        list-style: none;
-        margin: 0;
-        padding: 0;
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-    }
-
-    .chip {
-        font-size: 0.85rem;
-        color: var(--md-sys-color-on-secondary-container);
-        background: var(--md-sys-color-secondary-container);
-        padding: 4px 10px;
-        border-radius: 8px;
     }
 `;
 

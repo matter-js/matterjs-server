@@ -4,10 +4,29 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { NodeId } from "@matter/main";
+import { ClientNode, NodeId } from "@matter/main";
 import { NodeConnectionState } from "@matter/main";
 import { EndpointNumber } from "@matter/main/types";
 import { Nodes } from "../src/controller/Nodes.js";
+
+/** A commissioned, seeded node whose endpoints each report the OnOff attribute. */
+function nodeWithEndpoints(nodeId: NodeId, endpointNumbers: number[]): ClientNode {
+    const onOff = { cluster: { id: 6, schema: { attributes: [{ id: 0, propertyName: "onOff" }] } } };
+    return {
+        id: `peer-${nodeId}`,
+        peerAddress: { fabricIndex: 1, nodeId },
+        lifecycle: { isCommissioned: true, isSeeded: true, isReady: true },
+        // Iterable and sized, the two things the cache asks of an endpoint collection.
+        endpoints: Object.assign(
+            endpointNumbers.map(number => ({
+                number,
+                behaviors: { active: [onOff] },
+                stateOf: () => ({ onOff: true }),
+            })),
+            { size: endpointNumbers.length },
+        ),
+    } as unknown as ClientNode;
+}
 
 const TEST_NODE_ID = NodeId(1);
 const OTHER_NODE_ID = NodeId(2);
@@ -164,8 +183,10 @@ describe("Nodes", () => {
     describe("pending endpoint adds", () => {
         let nodes: Nodes;
 
-        beforeEach(() => {
+        beforeEach(async () => {
             nodes = new Nodes();
+            await nodes.attributeCache.add(nodeWithEndpoints(TEST_NODE_ID, [0, 1, 32, 33, 34]));
+            await nodes.attributeCache.add(nodeWithEndpoints(OTHER_NODE_ID, [0, 2]));
         });
 
         it("returns an empty array when nothing is queued", () => {
@@ -188,6 +209,21 @@ describe("Nodes", () => {
             nodes.queueEndpointAdded(TEST_NODE_ID, EndpointNumber(32));
             nodes.drainPendingEndpointAdds(TEST_NODE_ID);
             expect(nodes.drainPendingEndpointAdds(TEST_NODE_ID)).to.deep.equal([]);
+        });
+
+        it("drops an endpoint the cached snapshot does not carry", () => {
+            nodes.queueEndpointAdded(TEST_NODE_ID, EndpointNumber(32));
+            nodes.queueEndpointAdded(TEST_NODE_ID, EndpointNumber(40));
+
+            expect(nodes.drainPendingEndpointAdds(TEST_NODE_ID)).to.deep.equal([EndpointNumber(32)]);
+            expect(nodes.drainPendingEndpointAdds(TEST_NODE_ID)).to.deep.equal([]);
+        });
+
+        it("drains nothing for a node without a cached snapshot", () => {
+            const unknownNode = NodeId(3);
+            nodes.queueEndpointAdded(unknownNode, EndpointNumber(32));
+
+            expect(nodes.drainPendingEndpointAdds(unknownNode)).to.deep.equal([]);
         });
 
         it("isolates queues per node", () => {

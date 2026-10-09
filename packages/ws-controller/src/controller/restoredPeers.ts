@@ -12,8 +12,8 @@ const logger = Logger.get("RestoredPeers");
  * One-shot record of the peer network settings repair, scoped to the storage the peers live in.
  */
 export interface PeerSettingsRepairMarker {
-    /** Storage scope the repair has already run for, or undefined while it is outstanding. */
-    readonly peerSettingsRepairedFor: string | undefined;
+    /** Whether the repair has already run for this storage scope. */
+    hasRepairedPeerSettings(scope: string): boolean;
 
     markPeerSettingsRepaired(scope: string): Promise<void>;
 }
@@ -37,7 +37,7 @@ export async function repairRestoredPeers(
     scope: string,
     marker: PeerSettingsRepairMarker,
 ): Promise<number> {
-    if (marker.peerSettingsRepairedFor === scope) {
+    if (marker.hasRepairedPeerSettings(scope)) {
         return 0;
     }
 

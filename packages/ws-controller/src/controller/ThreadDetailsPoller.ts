@@ -18,7 +18,7 @@ import {
     isLongIdleTimeDevice,
     THREAD_TOPOLOGY_ATTRIBUTE_PATHS,
 } from "@matter-server/ws-client";
-import { asError, Diagnostic, Hours, Logger } from "@matter/main";
+import { asError, Diagnostic, Hours, Logger, Millis } from "@matter/main";
 import { PeerAddress, PeerAddressMap } from "@matter/main/protocol";
 import { AttributesData } from "../types/CommandHandler.js";
 import { formatNodeId } from "../util/formatNodeId.js";
@@ -31,7 +31,7 @@ const POLL_INTERVAL = Hours(24);
 
 // Twice the time sync startup base delay: nodes initialize at roughly 10 per minute, so this clears
 // initialization on all but the largest installations before the first sweep.
-const INITIAL_DELAY_MS = 2 * TIME_SYNC_STARTUP_BASE_DELAY;
+const INITIAL_DELAY = Millis(2 * TIME_SYNC_STARTUP_BASE_DELAY);
 
 /** Topology attribute paths worth polling for this node, empty for a node that is not on Thread. */
 export function threadDetailPaths(attributes: AttributesData): string[] {
@@ -46,7 +46,7 @@ export class ThreadDetailsPoller extends NodeProcessor {
     readonly #attributeReader: NodeAttributeReader;
 
     constructor(attributeReader: NodeAttributeReader) {
-        super("thread-details-poller", INITIAL_DELAY_MS, POLL_INTERVAL);
+        super("thread-details-poller", INITIAL_DELAY, POLL_INTERVAL);
         this.#attributeReader = attributeReader;
     }
 

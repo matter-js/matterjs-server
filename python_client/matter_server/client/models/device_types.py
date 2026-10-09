@@ -795,6 +795,7 @@ class RootNode(DeviceType):
         all_clusters.GeneralCommissioning,
         all_clusters.GeneralDiagnostics,
         all_clusters.GroupKeyManagement,
+        all_clusters.Groupcast,
         all_clusters.IcdManagement,
         all_clusters.LocalizationConfiguration,
         all_clusters.NetworkCommissioning,

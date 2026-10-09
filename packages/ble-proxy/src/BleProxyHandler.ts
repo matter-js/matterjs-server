@@ -9,11 +9,23 @@ import { Logger, Observable } from "@matter/main";
 import type { createServer } from "node:http";
 import { WebSocket, WebSocketServer } from "ws";
 import { BleProxyConnection } from "./BleProxyConnection.js";
-import { BleProxyCommand, BleProxyEvent, type DeviceDiscoveredData, type StartScanArgs } from "./BleProxyProtocol.js";
+import {
+    BleProxyCommand,
+    BleProxyCommandError,
+    BleProxyErrorCode,
+    type BleProxyErrorCodeValue,
+    BleProxyEvent,
+    type DeviceDiscoveredData,
+    type StartScanArgs,
+} from "./BleProxyProtocol.js";
 
 type HttpServer = ReturnType<typeof createServer>;
 
 const logger = Logger.get("BleProxyHandler");
+
+function isErrorCode(err: unknown, code: BleProxyErrorCodeValue): boolean {
+    return err instanceof BleProxyCommandError && err.code === code;
+}
 
 /**
  * WebSocket server handler (hub) for the `/ble` BLE proxy endpoint.
@@ -141,8 +153,7 @@ export class BleProxyHandler implements WebServerHandler {
                 this.#scanning.add(connection);
                 sends.push(
                     connection.sendCommand(BleProxyCommand.StartScan, args).catch(err => {
-                        logger.warn(`[${connection.id}] Failed to start scan:`, err);
-                        this.#markNotScanning(connection, "start scan failed");
+                        this.#onStartScanRejected(connection, err);
                     }),
                 );
             }
@@ -156,9 +167,13 @@ export class BleProxyHandler implements WebServerHandler {
         for (const connection of this.#connections) {
             if (connection.connected) {
                 sends.push(
-                    connection
-                        .sendCommand(BleProxyCommand.StopScan)
-                        .catch(err => logger.warn(`[${connection.id}] Failed to stop scan:`, err)),
+                    connection.sendCommand(BleProxyCommand.StopScan).catch(err => {
+                        if (isErrorCode(err, BleProxyErrorCode.NotScanning)) {
+                            logger.debug(`[${connection.id}] was not scanning`);
+                            return;
+                        }
+                        logger.warn(`[${connection.id}] Failed to stop scan:`, err);
+                    }),
                 );
             }
         }
@@ -171,8 +186,7 @@ export class BleProxyHandler implements WebServerHandler {
         if (this.#scanActive && this.#scanArgs) {
             this.#scanning.add(connection);
             connection.sendCommand(BleProxyCommand.StartScan, this.#scanArgs).catch(err => {
-                logger.warn(`[${connection.id}] Failed to sync scan to joining client:`, err);
-                this.#markNotScanning(connection, "start scan failed");
+                this.#onStartScanRejected(connection, err);
             });
         }
     }
@@ -183,6 +197,17 @@ export class BleProxyHandler implements WebServerHandler {
         } else if (event === BleProxyEvent.ScanStopped) {
             this.#markNotScanning(connection, (data as { reason?: string }).reason ?? "unknown");
         }
+    }
+
+    #onStartScanRejected(connection: BleProxyConnection, err: unknown): void {
+        // `already_scanning` means the client is scanning. A client that cannot re-arm keeps the
+        // parameters of its running scan, so this is only equivalent while the args do not change.
+        if (isErrorCode(err, BleProxyErrorCode.AlreadyScanning)) {
+            logger.debug(`[${connection.id}] was already scanning`);
+            return;
+        }
+        logger.warn(`[${connection.id}] Failed to start scan:`, err);
+        this.#markNotScanning(connection, "start scan failed");
     }
 
     /** Drop a connection from the scanning set; emit aggregate scanStopped once none remain. */

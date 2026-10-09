@@ -1,0 +1,67 @@
+/**
+ * @license
+ * Copyright 2025-2026 Open Home Foundation
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+import { redactSensitiveCommandFields } from "../src/logging-redaction.js";
+
+/** The redacted message's `args.payload`, which is what every masking case asserts against. */
+function redactedPayload(message: unknown): Record<string, unknown> {
+    const { args } = redactSensitiveCommandFields(message) as { args: { payload: Record<string, unknown> } };
+    return args.payload;
+}
+
+describe("redactSensitiveCommandFields", () => {
+    it("redacts credentialData in a device_command SetCredential payload", () => {
+        const message = {
+            message_id: "1",
+            command: "device_command",
+            args: { payload: { credentialData: "MTIzNA==", credential: { credentialType: 1, credentialIndex: 3 } } },
+        };
+        const payload = redactedPayload(message);
+        expect(payload.credentialData).to.equal("[redacted]");
+        expect(payload.credential).to.deep.equal({ credentialType: 1, credentialIndex: 3 });
+    });
+
+    it("redacts pinCode in a LockDoor/UnlockDoor payload", () => {
+        const message = { message_id: "1", command: "device_command", args: { payload: { pinCode: "MTIzNA==" } } };
+        expect(redactedPayload(message).pinCode).to.equal("[redacted]");
+    });
+
+    it("leaves the original message untouched", () => {
+        const message = { message_id: "1", command: "device_command", args: { payload: { pinCode: "MTIzNA==" } } };
+        redactSensitiveCommandFields(message);
+        expect(message.args.payload.pinCode).to.equal("MTIzNA==");
+    });
+
+    it("redacts the PINCode spelling the Python Matter Server clients send", () => {
+        const message = { message_id: "1", command: "device_command", args: { payload: { PINCode: "MTIzNA==" } } };
+        expect(redactedPayload(message).PINCode).to.equal("[redacted]");
+    });
+
+    it("redacts CredentialData regardless of its casing", () => {
+        const message = {
+            message_id: "1",
+            command: "device_command",
+            args: { payload: { CredentialData: "MTIzNA==", userIndex: 3 } },
+        };
+        const payload = redactedPayload(message);
+        expect(payload.CredentialData).to.equal("[redacted]");
+        expect(payload.userIndex).to.equal(3);
+    });
+
+    it("returns the same message when there is nothing sensitive to redact", () => {
+        const message = { message_id: "1", command: "get_nodes", args: undefined };
+        expect(redactSensitiveCommandFields(message)).to.equal(message);
+
+        const withPayload = { message_id: "1", command: "device_command", args: { payload: { userIndex: 3 } } };
+        expect(redactSensitiveCommandFields(withPayload)).to.equal(withPayload);
+    });
+
+    it("passes through a message whose shape is not a command payload", () => {
+        for (const message of [null, undefined, "not an object", 42, { args: null }, { args: { payload: null } }]) {
+            expect(redactSensitiveCommandFields(message)).to.equal(message);
+        }
+    });
+});

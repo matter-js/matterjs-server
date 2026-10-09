@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { FabricIndex, NodeId } from "@matter/main";
+import { FabricIndex, Millis, Minutes, NodeId } from "@matter/main";
 import { PeerAddress } from "@matter/main/protocol";
 import { CustomClusterPoller } from "../src/controller/CustomClusterPoller.js";
 import { NodeAttributeReader } from "../src/controller/NodeProcessor.js";
@@ -123,6 +123,59 @@ describe("CustomClusterPoller", () => {
             await MockTime.yield3();
         }
         expect(reader.reads.length, "a failed read must not stop the cycle").to.be.greaterThan(1);
+    });
+
+    it("polls at the default one minute interval when none is configured", async () => {
+        poller.registerNode(PEER_1, eveAttributes());
+        await MockTime.advance(PAST_INITIAL_DELAY_MS);
+        await MockTime.yield3();
+        expect(reader.reads.length).to.equal(1);
+
+        await MockTime.advance(ONE_MINUTE_MS);
+        await MockTime.yield3();
+        expect(reader.reads.length).to.equal(2);
+    });
+
+    it("polls at a configured interval instead of the default", async () => {
+        const configuredInterval = Minutes(5);
+        const configured = new CustomClusterPoller(reader, configuredInterval);
+        try {
+            configured.registerNode(PEER_1, eveAttributes());
+            await MockTime.advance(PAST_INITIAL_DELAY_MS);
+            await MockTime.yield3();
+            expect(reader.reads.length).to.equal(1);
+
+            await MockTime.advance(ONE_MINUTE_MS);
+            await MockTime.yield3();
+            expect(reader.reads.length, "the default interval must not drive the cycle").to.equal(1);
+
+            await MockTime.advance(configuredInterval);
+            await MockTime.yield3();
+            expect(reader.reads.length).to.equal(2);
+        } finally {
+            await configured.stop();
+        }
+    });
+
+    it("holds a configured interval below the minimum at the minimum", async () => {
+        const configured = new CustomClusterPoller(reader, Millis(1));
+        try {
+            configured.registerNode(PEER_1, eveAttributes());
+            await MockTime.advance(PAST_INITIAL_DELAY_MS);
+            await MockTime.yield3();
+            expect(reader.reads.length).to.equal(1);
+
+            // An unclamped 1 ms interval polls again well inside this span.
+            await MockTime.advance(1_000);
+            await MockTime.yield3();
+            expect(reader.reads.length).to.equal(1);
+
+            await MockTime.advance(ONE_MINUTE_MS);
+            await MockTime.yield3();
+            expect(reader.reads.length).to.equal(2);
+        } finally {
+            await configured.stop();
+        }
     });
 
     it("stops polling a node that unregisters", async () => {

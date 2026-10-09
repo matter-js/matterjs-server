@@ -5,6 +5,7 @@
  */
 
 import { ClientNode, ClusterBehavior, Diagnostic, Logger, MatterError, Millis, NodeId, Time } from "@matter/main";
+import { EndpointNumber } from "@matter/main/types";
 import { ClusterMap } from "../model/ModelMapper.js";
 import { buildAttributePath, convertMatterToWebSocketTagBased } from "../server/Converters.js";
 import { AttributesData } from "../types/CommandHandler.js";
@@ -40,6 +41,19 @@ export class AttributeDataCache {
      * Add a node to the cache and populate its attributes.
      * No entry is created if the node is not yet initialized.
      */
+    /**
+     * Whether the node's model carries something to snapshot.
+     *
+     * This is the one place that decides it. A peer restored from storage carries its endpoints and
+     * their persisted state before matter.js marks it seeded, which only happens once the structure has
+     * been read from the device in this runtime, so a caller testing `isSeeded` instead answers reads
+     * with an empty node until the device reconnects.
+     */
+    static hasStructure(node: ClientNode): boolean {
+        const { isCommissioned, isReady } = node.lifecycle;
+        return isCommissioned && isReady && node.endpoints.size > 1;
+    }
+
     add(node: ClientNode): Promise<void> {
         return this.#populateFromNode(node, false);
     }
@@ -101,6 +115,46 @@ export class AttributeDataCache {
         inFlight?.pending.push([path, convertedValue]);
     }
 
+    /** Whether the cached snapshot of the node carries any attribute of the endpoint. */
+    hasEndpoint(nodeId: NodeId, endpointId: EndpointNumber): boolean {
+        const attributes = this.#cache.get(nodeId);
+        if (attributes === undefined) {
+            return false;
+        }
+        const prefix = `${endpointId}/`;
+        return Object.keys(attributes).some(path => path.startsWith(prefix));
+    }
+
+    /**
+     * Drop the attributes of one endpoint, for a node that no longer has it.
+     *
+     * The snapshot a populate is building reads live state, so it cannot contain the endpoint; a
+     * report that arrived for it before it went away still can, so the replay is filtered as well.
+     */
+    deleteEndpoint(nodeId: NodeId, endpointId: EndpointNumber): void {
+        const prefix = `${endpointId}/`;
+        const attributes = this.#cache.get(nodeId);
+        if (attributes !== undefined) {
+            for (const path of Object.keys(attributes)) {
+                if (path.startsWith(prefix)) {
+                    delete attributes[path];
+                }
+            }
+        }
+        const inFlight = this.#inFlight.get(nodeId);
+        if (inFlight !== undefined) {
+            inFlight.pending = inFlight.pending.filter(([path]) => !path.startsWith(prefix));
+        }
+    }
+
+    /**
+     * Await the populate currently running for a node, so a read serves the snapshot the node
+     * reports now instead of the one it reported before the change that started the rebuild.
+     */
+    async settled(nodeId: NodeId): Promise<void> {
+        await this.#inFlight.get(nodeId)?.promise;
+    }
+
     /**
      * Get cached attributes for a node.
      * Returns undefined if no cache exists for the node.
@@ -130,9 +184,8 @@ export class AttributeDataCache {
      */
     #populateFromNode(node: ClientNode, rebuild: boolean): Promise<void> {
         const nodeId = nodeIdOf(node);
-        const { isSeeded, isCommissioned, isReady } = node.lifecycle;
-        if (!isSeeded || !isCommissioned || !isReady) {
-            logger.debug(`Node ${formatNodeId(nodeId)} not initialized, skipping cache population`);
+        if (!AttributeDataCache.hasStructure(node)) {
+            logger.debug(`Node ${formatNodeId(nodeId)} has no structure yet, skipping cache population`);
             return Promise.resolve();
         }
 
@@ -205,7 +258,15 @@ export class AttributeDataCache {
                 }
                 const cluster = behavior.cluster;
                 const clusterData = ClusterMap[cluster.id];
-                const clusterState = endpoint.stateOf(behavior) as Record<string, unknown>;
+                let clusterState: Record<string, unknown>;
+                try {
+                    // One behavior that cannot be read must not cost the node its whole snapshot.
+                    clusterState = endpoint.stateOf(behavior);
+                } catch (error) {
+                    MatterError.accept(error);
+                    logger.debug(`Ignoring cluster ${cluster.id} because of`, Diagnostic.errorMessage(error));
+                    continue;
+                }
 
                 for (const attribute of cluster.schema.attributes) {
                     try {

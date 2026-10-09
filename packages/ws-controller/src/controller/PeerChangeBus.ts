@@ -16,6 +16,7 @@ import {
     Observable,
     ObserverGroup,
     ServerNode,
+    Timestamp,
 } from "@matter/main";
 import { AttributeId, ClusterId, EndpointNumber, EventId, EventNumber } from "@matter/main/types";
 import { ChangeNotificationService } from "@matter/node";
@@ -41,12 +42,30 @@ export type EventChange = {
     events: EventOccurrence[];
 };
 
+/** The timestamp fields to forward, empty for the delta variants a consumer cannot resolve. */
+export function absoluteTimestampOf(
+    timestamp: Timestamp,
+    kind: ChangeNotificationService.TimestampKind,
+): { epochTimestamp?: Timestamp; systemTimestamp?: Timestamp } {
+    switch (kind) {
+        case "epoch":
+            return { epochTimestamp: timestamp };
+        case "system":
+            return { systemTimestamp: timestamp };
+        default:
+            logger.debug(`Dropping ${kind} event timestamp: a delta cannot be reported as an absolute time`);
+            return {};
+    }
+}
+
 /**
  * Fans the controller's single node-wide {@link ChangeNotificationService} stream out into per-peer
  * attribute/event/endpoint-removal notifications.
  */
 export class PeerChangeBus {
     #observers = new ObserverGroup();
+    /** Per-peer observers, closed when the peer goes away so its node does not stay reachable. */
+    #peerObservers = new Map<ClientNode, ObserverGroup>();
     /** Endpoint to owning peer, so the owner chain is walked once per endpoint rather than per change. */
     #peerOfEndpoint = new WeakMap<Endpoint, ClientNode>();
     /** Endpoints already resolved to the controller itself, so its own changes don't re-walk either. */
@@ -80,9 +99,20 @@ export class PeerChangeBus {
         });
 
         for (const peer of controller.peers) {
-            this.#watch(peer);
+            this.#watchSafely(peer);
         }
-        this.#observers.on(controller.peers.added, node => this.#watch(node));
+        // Shared Observable with matter.js's own peer observation: a throw here aborts the emit, so a
+        // peer we cannot watch must not stop the library from tracking it.
+        this.#observers.on(controller.peers.added, node => this.#watchSafely(node));
+        this.#observers.on(controller.peers.deleted, node => this.#unwatch(node));
+    }
+
+    #watchSafely(peer: ClientNode) {
+        try {
+            this.#watch(peer);
+        } catch (error) {
+            logger.warn(`Failed to watch peer ${peer.id}:`, error);
+        }
     }
 
     /**
@@ -94,19 +124,35 @@ export class PeerChangeBus {
         if (peer.lifecycle.connectionState === NodeConnectionState.Connected) {
             this.#reporting.add(peer);
         }
-        this.#observers.on(peer.eventsOf(NetworkClient).subscriptionStatusChanged, isActive => {
+        // Per peer, because the group is what releases the peer again: a shared group holds every
+        // decommissioned node's events, and with them the node, for as long as the controller runs.
+        const observers = new ObserverGroup();
+        this.#peerObservers.set(peer, observers);
+        observers.on(peer.eventsOf(NetworkClient).subscriptionStatusChanged, isActive => {
             if (isActive) {
                 this.#reporting.add(peer);
             }
         });
-        this.#observers.on(peer.lifecycle.changed, type => {
-            if (type === EndpointLifecycle.Change.Destroying) {
+        // `changed` bubbles, so it also reports a child endpoint being destroyed. Only the peer's own
+        // root going down is a teardown; treating a child as one suppresses that endpoint's removal and
+        // every later one, because the latch is never cleared.
+        observers.on(peer.lifecycle.changed, (type, endpoint) => {
+            if (type === EndpointLifecycle.Change.Destroying && endpoint === peer) {
                 this.#tearingDown.add(peer);
             }
         });
     }
 
+    #unwatch(peer: ClientNode) {
+        this.#peerObservers.get(peer)?.close();
+        this.#peerObservers.delete(peer);
+    }
+
     close() {
+        for (const observers of this.#peerObservers.values()) {
+            observers.close();
+        }
+        this.#peerObservers.clear();
         this.#observers.close();
     }
 
@@ -221,11 +267,11 @@ export class PeerChangeBus {
                 {
                     eventNumber: number,
                     priority,
-                    // The wire format distinguishes the two clocks, so report the one the device used
-                    // rather than labelling everything as epoch.
-                    ...(timestampKind === "system" || timestampKind === "system-delta"
-                        ? { systemTimestamp: timestamp }
-                        : { epochTimestamp: timestamp }),
+                    // Matter Core 10.7 has four timestamp variants and neither the clock nor
+                    // absolute-vs-delta is recoverable from the value. A delta is left out rather than
+                    // published as an absolute time, which would read as a bogus uptime or a 1970 date;
+                    // the WebSocket layer then times the event at reception.
+                    ...absoluteTimestampOf(timestamp, timestampKind),
                     data: payload,
                 },
             ],

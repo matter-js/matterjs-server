@@ -7,10 +7,11 @@
 import { Seconds } from "@matter/general";
 import { ClientNode, NetworkClient, NodeId, ObserverGroup, ServerNode } from "@matter/main";
 import { BooleanState, OnOff } from "@matter/main/clusters";
+import { EndpointNumber } from "@matter/main/types";
 import { OnOffServer } from "@matter/node/behaviors/on-off";
 import { SustainedSubscription } from "@matter/protocol";
 import { AttributeChange, EventChange, PeerChangeBus } from "../src/controller/PeerChangeBus.js";
-import { repairRestoredPeers } from "../src/controller/restoredPeers.js";
+import { PeerSettingsRepairMarker, repairRestoredPeers } from "../src/controller/restoredPeers.js";
 import { TestSite } from "./support/ControllerSite.js";
 
 describe("PeerChangeBus", () => {
@@ -144,6 +145,20 @@ describe("PeerChangeBus", () => {
         expect(change.events[0].data).deep.equals({ stateValue: true });
     });
 
+    it("reports one endpoint going away without latching the whole peer as torn down", async () => {
+        await site.commission(controller, device);
+        await awaitSubscribed();
+        const endpointId = EndpointNumber(light.number);
+        expect(peer().endpoints.has(endpointId)).equals(true);
+        removedEndpoints.length = 0;
+
+        // `lifecycle.changed` bubbles, so a child endpoint going away reaches the peer's own observer.
+        // Treating that as the peer tearing down swallows this removal and every later one.
+        await MockTime.resolve(peer().endpoints.for(endpointId).close(), { macrotasks: true });
+
+        expect(removedEndpoints.map(([, removed]) => removed)).deep.equals([light.number]);
+    });
+
     it("does not report a removed node's endpoints as individual endpoint removals", async () => {
         await site.commission(controller, device);
         await awaitSubscribed();
@@ -159,20 +174,20 @@ describe("repairRestoredPeers", () => {
     let site: TestSite;
     let controller: ServerNode;
     let device: ServerNode;
-    let marker: {
-        peerSettingsRepairedFor: string | undefined;
-        markedFor: string[];
-        markPeerSettingsRepaired(scope: string): Promise<void>;
-    };
+    let marker: PeerSettingsRepairMarker & { repaired: string[]; markedFor: string[] };
 
     beforeEach(async () => {
         MockTime.reset();
         site = new TestSite();
         ({ controller, device } = await site.startPair());
         marker = {
-            peerSettingsRepairedFor: undefined,
+            repaired: new Array<string>(),
             markedFor: new Array<string>(),
+            hasRepairedPeerSettings(scope: string) {
+                return this.repaired.includes(scope);
+            },
             async markPeerSettingsRepaired(scope: string) {
+                this.repaired.push(scope);
                 this.markedFor.push(scope);
             },
         };
@@ -220,9 +235,22 @@ describe("repairRestoredPeers", () => {
         expect(marker.markedFor).deep.equals(["scope"]);
     });
 
+    it("remembers every scope it repaired, so switching back does not repeat one", async () => {
+        await peer().set({ network: { autoSubscribe: false, isDisabled: true } });
+
+        expect(await repairRestoredPeers(controller, "scope-a", marker)).equals(1);
+        await repairRestoredPeers(controller, "scope-b", marker);
+
+        // Back to the first scope: a single-slot marker would have forgotten it and repaired again,
+        // overwriting whatever the peer was set to since.
+        await peer().set({ network: { isDisabled: true } });
+        expect(await repairRestoredPeers(controller, "scope-a", marker)).equals(0);
+        expect(peer().stateOf(NetworkClient).isDisabled).equals(true);
+    });
+
     it("does not run again for a scope it already repaired", async () => {
         await peer().set({ network: { autoSubscribe: false, isDisabled: true } });
-        marker.peerSettingsRepairedFor = "scope";
+        marker.repaired.push("scope");
 
         expect(await repairRestoredPeers(controller, "scope", marker)).equals(0);
 
