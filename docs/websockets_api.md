@@ -1435,7 +1435,7 @@ The official WebRTC Provider commands, for a client that allocates its own strea
 
 No other provider command is reachable this way. `EndSession` is not: `camera_stop_stream` owns it, because one session gets one `EndSession` and this server's local records for the session go with that invoke. A client that opened its session with `camera_start_stream` does not need this command for signalling: `camera_provide_answer` and `camera_provide_ice_candidates` send the same two commands with the same checks.
 
-**Top-level arguments.** Only `node_id`, `endpoint_id`, `command_name` and `payload` are accepted. Any other key is refused with error 8, and so is an `args` that is not an object. A missing or `null` `args` is an empty argument set and fails with error 8 for the missing `command_name`. `node_id` and `endpoint_id` follow the [argument rules of the camera commands](#argument-rules): a fractional, negative or out-of-range `node_id` is error 8.
+**Top-level arguments.** Only `node_id`, `endpoint_id`, `command_name` and `payload` are accepted. Any other key is refused with error 8, and so is an `args` that is not an object. A missing or `null` `args` is an empty argument set and fails with error 8 for the missing `command_name`. `node_id` and `endpoint_id` follow the [argument rules of the camera commands](#argument-rules): a fractional, negative or out-of-range `node_id` is error 8. An `endpoint_id` the node does not have, or one without the WebRTC Provider cluster, is error 8 too.
 
 **Payload keys.** `payload` carries the command's own fields.
 
@@ -1922,6 +1922,7 @@ A caller that asks for audio and gets none can also see error 103 (capacity), er
 - `camera_get_capabilities`, `camera_snapshot` and `camera_release_stream` check only the AV Stream Management cluster. A camera missing just the WebRTC Provider cluster still answers those three normally.
 - `camera_provide_answer` and `camera_provide_ice_candidates` check neither and never raise this code. They invoke a provider command on a session the camera already holds, through the same invoke path as `send_webrtc_provider_command`, so an endpoint without the WebRTC Provider cluster fails exactly as it does there.
 - `missing_clusters` names the absent cluster ids, so one entry means the other cluster is there.
+- An endpoint the node does not have lacks both clusters, and `missing_clusters` names both.
 
 **106 CameraPrivacyMode.** Raised by `camera_start_stream` and `camera_snapshot`.
 

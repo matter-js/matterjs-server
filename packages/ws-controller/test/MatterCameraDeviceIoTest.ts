@@ -7,7 +7,7 @@
 import { EndpointNumber, NodeId } from "@matter/main";
 import { CameraAvStreamManagement } from "@matter/main/clusters/camera-av-stream-management";
 import { WebRtcTransportProvider } from "@matter/main/clusters/web-rtc-transport-provider";
-import { Status } from "@matter/main/types";
+import { Status, StatusResponse } from "@matter/main/types";
 import { CameraAvStreamManagementClient } from "@matter/node/behaviors/camera-av-stream-management";
 import { WebRtcTransportProviderClient } from "@matter/node/behaviors/web-rtc-transport-provider";
 import { deviceStatusOf } from "../src/camera/deviceStatus.js";
@@ -594,6 +594,37 @@ describe("MatterCameraDeviceIo.invoke (webrtcProvider routing)", () => {
     });
 });
 
+/** Mirrors matter.js `Endpoints`: `for()` throws NotFound for an endpoint the node does not have. */
+function endpointsOf<T>(endpoint: T | undefined) {
+    return {
+        has: () => endpoint !== undefined,
+        for: (id: number): T => {
+            if (endpoint === undefined) throw new StatusResponse.NotFoundError(`Endpoint ${id} does not exist`);
+            return endpoint;
+        },
+    };
+}
+
+describe("MatterCameraDeviceIo.readCameraState", () => {
+    const NODE_ID = NodeId(5n);
+    const ENDPOINT_ID = EndpointNumber(1);
+
+    function makeHandler(endpoint: { behaviors: { has: (behavior: unknown) => boolean } } | undefined) {
+        const stub = { getNode: () => ({ endpoints: endpointsOf(endpoint) }) };
+        return stub as unknown as ControllerCommandHandler;
+    }
+
+    it("reports nothing for an endpoint that does not exist", async () => {
+        const io = new MatterCameraDeviceIo(makeHandler(undefined));
+        expect(await io.readCameraState(NODE_ID, ENDPOINT_ID)).to.equal(undefined);
+    });
+
+    it("reports nothing for an endpoint without AV stream management", async () => {
+        const io = new MatterCameraDeviceIo(makeHandler({ behaviors: { has: () => false } }));
+        expect(await io.readCameraState(NODE_ID, ENDPOINT_ID)).to.equal(undefined);
+    });
+});
+
 describe("MatterCameraDeviceIo.readWebRtcSessions", () => {
     const NODE_ID = NodeId(5n);
     const ENDPOINT_ID = EndpointNumber(1);
@@ -606,7 +637,7 @@ describe("MatterCameraDeviceIo.readWebRtcSessions", () => {
 
     function makeHandler(endpoint: FakeEndpoint | undefined): ControllerCommandHandler {
         const stub = {
-            getNode: () => ({ endpoints: { for: () => endpoint } }),
+            getNode: () => ({ endpoints: endpointsOf(endpoint) }),
             localNodeId: LOCAL_NODE_ID,
         };
         return stub as unknown as ControllerCommandHandler;
@@ -717,7 +748,7 @@ describe("MatterCameraDeviceIo.missingCameraClusters", () => {
 
     function makeHandler(endpoint: FakeEndpoint | undefined): ControllerCommandHandler {
         const stub = {
-            getNode: () => ({ endpoints: { for: () => endpoint } }),
+            getNode: () => ({ endpoints: endpointsOf(endpoint) }),
         };
         return stub as unknown as ControllerCommandHandler;
     }

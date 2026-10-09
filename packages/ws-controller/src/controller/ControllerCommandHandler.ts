@@ -556,6 +556,7 @@ export class ControllerCommandHandler {
         const originatingEndpointId = EndpointNumber(requestorEndpoint.number);
         const fabricIndex = this.#fabric.fabricIndex;
         const node = this.#nodes.get(nodeId);
+        const providerEndpoint = this.#clusterEndpoint(nodeId, endpointId, WebRtcTransportProviderClient.id);
 
         const io: WebRtcProviderSessionIo = {
             invoke: (command, invokeFields) =>
@@ -580,7 +581,8 @@ export class ControllerCommandHandler {
             endpointId,
             originatingEndpointId,
             fabricIndex,
-            clusterRevision: this.#webRtcProviderClusterRevision(nodeId, endpointId),
+            // Globals, not the attribute cache: the cache stays empty after a restart until a report carries it.
+            clusterRevision: providerEndpoint.globalsOf(WebRtcTransportProviderClient).clusterRevision,
             formatNode: id => this.formatNode(id),
         });
         return response;
@@ -611,6 +613,7 @@ export class ControllerCommandHandler {
         commandName: SignallingCommandName;
         fields: Record<string, unknown>;
     }): Promise<void> {
+        this.#clusterEndpoint(args.nodeId, args.endpointId, WebRtcTransportProviderClient.id);
         await this.#invokeCommand(this.#nodes.get(args.nodeId), {
             endpoint: args.endpointId,
             cluster: WebRtcTransportProvider,
@@ -627,13 +630,6 @@ export class ControllerCommandHandler {
     /** @throws ServerError if node not found */
     getNode(nodeId: NodeId): ClientNode {
         return this.#nodes.get(nodeId);
-    }
-
-    /** Read from the globals, not the attribute cache, which stays empty after a restart until a report carries it. */
-    #webRtcProviderClusterRevision(nodeId: NodeId, endpointId: EndpointNumber): number | undefined {
-        const endpoint = this.#nodes.get(nodeId).endpoints.for(endpointId);
-        if (endpoint === undefined || !endpoint.behaviors.has(WebRtcTransportProviderClient)) return undefined;
-        return endpoint.globalsOf(WebRtcTransportProviderClient).clusterRevision;
     }
 
     async invokeCommand<const C extends Specifier.ClusterLike>(

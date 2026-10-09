@@ -8,6 +8,7 @@ import type { Behavior, EndpointNumber, Immutable, NodeId } from "@matter/main";
 import { CameraAvStreamManagement } from "@matter/main/clusters/camera-av-stream-management";
 import { WebRtcTransportProvider } from "@matter/main/clusters/web-rtc-transport-provider";
 import type { Specifier } from "@matter/main/protocol";
+import type { Endpoint } from "@matter/node";
 import { CameraAvStreamManagementClient } from "@matter/node/behaviors/camera-av-stream-management";
 import { WebRtcTransportProviderClient } from "@matter/node/behaviors/web-rtc-transport-provider";
 import type { ControllerCommandHandler } from "../controller/ControllerCommandHandler.js";
@@ -137,9 +138,13 @@ export class MatterCameraDeviceIo implements CameraDeviceIo {
         this.#handler = handler;
     }
 
+    #endpoint(nodeId: NodeId, endpointId: EndpointNumber): Endpoint | undefined {
+        const { endpoints } = this.#handler.getNode(nodeId);
+        return endpoints.has(endpointId) ? endpoints.for(endpointId) : undefined;
+    }
+
     async readCameraState(nodeId: NodeId, endpointId: EndpointNumber): Promise<CameraState | undefined> {
-        const node = this.#handler.getNode(nodeId);
-        const endpoint = node.endpoints.for(endpointId);
+        const endpoint = this.#endpoint(nodeId, endpointId);
         if (endpoint === undefined || !endpoint.behaviors.has(CameraAvStreamManagementClient)) {
             return undefined;
         }
@@ -152,7 +157,7 @@ export class MatterCameraDeviceIo implements CameraDeviceIo {
 
     /** Stream ids come from both the revision-2 lists and the deprecated revision-1 fields (§11.4.5.5). */
     async readWebRtcSessions(nodeId: NodeId, endpointId: EndpointNumber): Promise<DeviceWebRtcSession[] | undefined> {
-        const endpoint = this.#handler.getNode(nodeId).endpoints.for(endpointId);
+        const endpoint = this.#endpoint(nodeId, endpointId);
         if (endpoint === undefined || !endpoint.behaviors.has(WebRtcTransportProviderClient)) return undefined;
         const localNodeId = this.#handler.localNodeId;
         return endpoint.stateOf(WebRtcTransportProviderClient).currentSessions.map(session => ({
@@ -167,7 +172,7 @@ export class MatterCameraDeviceIo implements CameraDeviceIo {
     }
 
     async missingCameraClusters(nodeId: NodeId, endpointId: EndpointNumber): Promise<number[]> {
-        const endpoint = this.#handler.getNode(nodeId).endpoints.for(endpointId);
+        const endpoint = this.#endpoint(nodeId, endpointId);
         const missing = new Array<number>();
         if (endpoint === undefined || !endpoint.behaviors.has(CameraAvStreamManagementClient)) {
             missing.push(CameraAvStreamManagement.Cluster.id);

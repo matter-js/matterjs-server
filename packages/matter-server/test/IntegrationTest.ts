@@ -785,6 +785,40 @@ describe("Integration Test", function () {
             expect(error.error_code).to.equal(ServerErrorCode.InvalidArguments);
             expect(error.details).to.include("Endpoint 99");
         });
+
+        it("should return InvalidArguments for a WebRTC provider command to an endpoint the node does not have", async function () {
+            const error = await client.sendCommandExpectError("send_webrtc_provider_command", {
+                node_id: commissionedNodeId,
+                endpoint_id: 99,
+                command_name: "ProvideOffer",
+                payload: { webRtcSessionId: null, sdp: "v=0", streamUsage: 3 },
+            });
+
+            expect(error.error_code).to.equal(ServerErrorCode.InvalidArguments);
+            expect(error.details).to.include("Endpoint 99");
+        });
+
+        it("should return InvalidArguments for a WebRTC provider command to an endpoint without the provider cluster", async function () {
+            const error = await client.sendCommandExpectError("send_webrtc_provider_command", {
+                node_id: commissionedNodeId,
+                endpoint_id: 1,
+                command_name: "ProvideAnswer",
+                payload: { webRtcSessionId: 1, sdp: "v=0" },
+            });
+
+            expect(error.error_code).to.equal(ServerErrorCode.InvalidArguments);
+            expect(error.details).to.include("webRtcTransportProvider");
+        });
+
+        it("should return CameraNotSupported naming both clusters for a camera command to an endpoint the node does not have", async function () {
+            const error = await client.sendCommandExpectError("camera_get_capabilities", {
+                node_id: commissionedNodeId,
+                endpoint_id: 99,
+            });
+
+            expect(error.error_code).to.equal(ServerErrorCode.CameraNotSupported);
+            expect(JSON.parse(error.details).missing_clusters).to.deep.equal([0x0551, 0x0553]);
+        });
     });
 
     // =========================================================================
