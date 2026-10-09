@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Bytes } from "@matter/main";
+import { Bytes, NodeId } from "@matter/main";
 import {
     GeneralDiagnostics,
     OccupancySensing,
@@ -13,12 +13,15 @@ import {
     WindowCovering,
 } from "@matter/main/clusters";
 import { AttributeModel, ClusterModel, FieldModel } from "@matter/main/model";
-import { MATTER_EPOCH_OFFSET_US } from "@matter/main/types";
+import { ClusterId, EndpointNumber, EventId, EventNumber, MATTER_EPOCH_OFFSET_US, Status } from "@matter/main/types";
 import { ClusterMap } from "../src/model/ModelMapper.js";
 import {
+    convertEventToWebSocket,
     convertMatterToWebSocketTagBased,
     convertWebsocketDataToMatter,
     convertWebSocketTagBasedToMatter,
+    pathStatusOf,
+    statusPathOf,
 } from "../src/server/Converters.js";
 
 describe("convertWebSocketTagBasedToMatter", () => {
@@ -337,5 +340,59 @@ describe("convertMatterToWebSocketTagBased - bitmap packing", () => {
         const decoded = convertWebSocketTagBasedToMatter(22, operationalStatus, clusterEntry.model);
 
         expect(convertMatterToWebSocketTagBased(decoded, operationalStatus, clusterEntry.model)).to.equal(22);
+    });
+});
+
+describe("path status helpers", () => {
+    it("keeps a wildcard the device left in the status path", () => {
+        expect(statusPathOf(1, undefined, 3)).equals("1/*/3");
+        expect(statusPathOf(undefined, 6, undefined)).equals("*/6/*");
+    });
+
+    it("adds cluster_status only when the device sent one", () => {
+        expect(pathStatusOf({ status: Status.Failure })).deep.equals({ status: Status.Failure });
+        expect(pathStatusOf({ status: Status.Failure, clusterStatus: 0 })).deep.equals({
+            status: Status.Failure,
+            cluster_status: 0,
+        });
+    });
+});
+
+describe("convertEventToWebSocket", () => {
+    const path = { endpointId: EndpointNumber(1), clusterId: ClusterId(0x45), eventId: EventId(0) };
+    const occurrence = { eventNumber: EventNumber(7n), priority: 1, data: { stateValue: true } };
+
+    it("prefers the epoch timestamp", () => {
+        const event = convertEventToWebSocket(NodeId(5), path, {
+            ...occurrence,
+            epochTimestamp: 1_700_000_000_000,
+            systemTimestamp: 1234,
+        });
+
+        expect(event).deep.equals({
+            node_id: NodeId(5),
+            endpoint_id: 1,
+            cluster_id: 0x45,
+            event_id: 0,
+            event_number: 7n,
+            priority: 1,
+            timestamp: 1_700_000_000_000,
+            timestamp_type: 1,
+            data: { stateValue: true },
+        });
+    });
+
+    it("falls back to the system timestamp, then to the local clock", () => {
+        const system = convertEventToWebSocket(NodeId(5), path, { ...occurrence, systemTimestamp: 1234 });
+        expect([system.timestamp, system.timestamp_type]).deep.equals([1234, 0]);
+
+        const before = Date.now();
+        const local = convertEventToWebSocket(NodeId(5), path, occurrence);
+        expect(local.timestamp_type).equals(2);
+        expect(Number(local.timestamp)).within(before, Date.now());
+    });
+
+    it("sends null for an event without data", () => {
+        expect(convertEventToWebSocket(NodeId(5), path, { ...occurrence, data: undefined }).data).equals(null);
     });
 });

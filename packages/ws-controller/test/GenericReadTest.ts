@@ -9,9 +9,20 @@ import { Read } from "@matter/main/protocol";
 import { Status } from "@matter/main/types";
 import { BooleanStateServer } from "@matter/node/behaviors/boolean-state";
 import { OnOffServer } from "@matter/node/behaviors/on-off";
-import { ServerError, ServerErrorCode } from "../src/types/WebSocketMessageTypes.js";
+import { ServerError, ServerErrorCode, TEST_NODE_START } from "../src/types/WebSocketMessageTypes.js";
 import { HandlerSite, NODE_ID } from "./support/HandlerSite.js";
 import { InteractionWsHarness } from "./support/InteractionWsHarness.js";
+
+async function expectInvalidArguments(promise: Promise<unknown>) {
+    const error = await promise.then(
+        () => undefined,
+        (error: unknown) => error,
+    );
+    expect(error).instanceOf(ServerError);
+    if (error instanceof ServerError) {
+        expect(error.code).equals(ServerErrorCode.InvalidArguments);
+    }
+}
 
 function captureReads(peer: ClientNode) {
     const captured = new Array<Read & { includeKnownVersions?: boolean }>();
@@ -119,16 +130,53 @@ describe("generic read", () => {
         expect(stateChange?.data).deep.equals({ stateValue: true });
     });
 
-    it("rejects a request without paths", async () => {
-        const error = await site.handler.read({ nodeId: NODE_ID }).then(
-            () => undefined,
-            (error: unknown) => error,
-        );
+    it("reads events alone", async () => {
+        const captured = captureReads(site.peer);
 
-        expect(error).instanceOf(ServerError);
-        if (error instanceof ServerError) {
-            expect(error.code).equals(ServerErrorCode.InvalidArguments);
+        const report = await read({ nodeId: NODE_ID, eventPaths: [{ path: "1/69/*" }] });
+
+        expect(captured[0].attributeRequests).undefined;
+        expect(captured[0].eventRequests).deep.equals([
+            { endpointId: 1, clusterId: 69, eventId: undefined, isUrgent: undefined },
+        ]);
+        expect(report.attributes).deep.equals({});
+    });
+
+    it("rejects a request without paths", async () => {
+        await expectInvalidArguments(site.handler.read({ nodeId: NODE_ID }));
+    });
+
+    it("rejects a malformed path instead of reading it as a wildcard, without contacting the device", async () => {
+        const captured = captureReads(site.peer);
+
+        for (const attributePath of ["1/OnOff/0", "", "x", "1/6", "1/6/0/1", "1//0", "-1/6/0"]) {
+            await expectInvalidArguments(site.handler.read({ nodeId: NODE_ID, attributePaths: [attributePath] }));
         }
+        await expectInvalidArguments(site.handler.read({ nodeId: NODE_ID, eventPaths: [{ path: "1/Switch/*" }] }));
+        await expectInvalidArguments(
+            site.handler.read({ nodeId: NODE_ID, eventPaths: [{ path: "1/59/1" }, { path: "1/59" }] }),
+        );
+        for (const filterPath of ["1/6/0", "one/6", "1"]) {
+            await expectInvalidArguments(
+                site.handler.read({
+                    nodeId: NODE_ID,
+                    attributePaths: ["1/6/0"],
+                    dataVersionFilters: [{ path: filterPath, dataVersion: 1 }],
+                }),
+            );
+        }
+
+        expect(captured).deep.equals([]);
+    });
+
+    it("rejects a data version filter without a concrete endpoint", async () => {
+        await expectInvalidArguments(
+            site.handler.read({
+                nodeId: NODE_ID,
+                attributePaths: ["1/6/0"],
+                dataVersionFilters: [{ path: "*/6", dataVersion: 1 }],
+            }),
+        );
     });
 });
 
@@ -167,5 +215,22 @@ describe("read over WebSocket", () => {
                 dataVersionFilters: [{ path: "1/6", dataVersion: 9 }],
             },
         ]);
+    });
+
+    it("rejects test nodes", async () => {
+        const client = await harness.connect();
+
+        for (const command of ["read", "subscribe"]) {
+            const response = await client.command(command, {
+                node_id: TEST_NODE_START,
+                attribute_paths: ["1/6/0"],
+                min_interval: 0,
+                max_interval: 60,
+            });
+            expect(response.error_code, command).equals(ServerErrorCode.InvalidArguments);
+            expect(response.details, command).contains("test nodes");
+        }
+        expect(harness.readRequests).deep.equals([]);
+        expect(harness.subscribeRequests).deep.equals([]);
     });
 });

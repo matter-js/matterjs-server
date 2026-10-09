@@ -17,14 +17,23 @@ import {
     SupportedStorageTypes,
     Time,
 } from "@matter/general";
-import { Endpoint, NetworkClient, NodeConnectionState, NodeId, ServerNode, SessionsBehavior } from "@matter/main";
+import {
+    ClientNode,
+    Endpoint,
+    NetworkClient,
+    NodeConnectionState,
+    NodeId,
+    ServerNode,
+    SessionsBehavior,
+} from "@matter/main";
 import { BooleanStateServer } from "@matter/node/behaviors/boolean-state";
 import { IcdManagementServer } from "@matter/node/behaviors/icd-management";
 import { OnOffServer } from "@matter/node/behaviors/on-off";
 import { OnOffLightDevice } from "@matter/node/devices/on-off-light";
 import { ControllerCommandHandler } from "../src/controller/ControllerCommandHandler.js";
 import { ControllerNode, createControllerNode } from "../src/controller/ControllerNode.js";
-import { applyAutoSubscribe } from "../src/controller/restoredPeers.js";
+import { MatterController, MatterControllerOptions } from "../src/controller/MatterController.js";
+import { ConfigStorage } from "../src/server/ConfigStorage.js";
 
 const NODE_ID = NodeId(42n);
 
@@ -145,6 +154,12 @@ describe("auto subscription setting", () => {
             controllerCrypto.entropic = deviceCrypto.entropic = false;
         }
         await settle();
+    }
+
+    async function commissioned(disableAutoSubscription: boolean) {
+        const controller = await startController(disableAutoSubscription);
+        await commission(controller);
+        return controller;
     }
 
     function peerOf(controller: RunningController) {
@@ -273,26 +288,84 @@ describe("auto subscription setting", () => {
     });
 
     describe("a peer whose setting cannot be stored", () => {
-        function failWrites(controller: RunningController) {
-            peerOf(controller).set = async () => {
+        let restoreSet: (() => void) | undefined;
+
+        function failPeerWrites() {
+            const set = ClientNode.prototype.set;
+            ClientNode.prototype.set = async () => {
                 throw new Error("storage is gone");
+            };
+            restoreSet = () => {
+                ClientNode.prototype.set = set;
             };
         }
 
-        it("fails the start when the setting is on", async () => {
-            const controller = await startController(false);
-            await commission(controller);
-            failWrites(controller);
-
-            await expect(applyAutoSubscribe(controller.resources.node, false)).rejectedWith("storage is gone");
+        afterEach(() => {
+            restoreSet?.();
+            restoreSet = undefined;
         });
 
-        it("is skipped when the setting is off", async () => {
-            const controller = await startController(true);
-            await commission(controller);
-            failWrites(controller);
+        it("fails the start when auto subscription is disabled", async () => {
+            await stopController(await commissioned(false));
+            failPeerWrites();
 
-            expect(await applyAutoSubscribe(controller.resources.node, true)).equals(0);
+            await expect(startController(true)).rejectedWith("storage is gone");
+        });
+
+        it("is skipped when auto subscription is enabled", async () => {
+            await stopController(await commissioned(true));
+            failPeerWrites();
+
+            const controller = await startController(false);
+
+            expect(peerOf(controller).stateOf(NetworkClient).autoSubscribe).equals(false);
+        });
+    });
+
+    describe("MatterController", () => {
+        let matterController: MatterController | undefined;
+
+        afterEach(async () => {
+            await matterController?.stop();
+            matterController = undefined;
+        });
+
+        async function createMatterController(options: MatterControllerOptions) {
+            const { env } = environment("controller");
+            const config = await ConfigStorage.create(env);
+            matterController = await MatterController.create(env, config, {
+                serverId: "controller",
+                disableThreadDiagnostics: true,
+                ...options,
+            });
+            return matterController;
+        }
+
+        it("hands the setting to the command handler", async () => {
+            expect(
+                (await createMatterController({ disableAutoSubscription: true })).commandHandler
+                    .autoSubscriptionDisabled,
+            ).true;
+            await matterController?.stop();
+            matterController = undefined;
+            expect((await createMatterController({})).commandHandler.autoSubscriptionDisabled).false;
+        });
+
+        it("applies the setting to the stored peers", async () => {
+            await stopController(await commissioned(false));
+            const set = ClientNode.prototype.set;
+            const written = new Array<unknown>();
+            ClientNode.prototype.set = async function (this: ClientNode, ...args: Parameters<ClientNode["set"]>) {
+                written.push(args[0]);
+                return set.apply(this, args);
+            };
+            try {
+                await createMatterController({ disableAutoSubscription: true });
+            } finally {
+                ClientNode.prototype.set = set;
+            }
+
+            expect(written).deep.include({ network: { autoSubscribe: false } });
         });
     });
 });

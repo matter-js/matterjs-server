@@ -92,8 +92,11 @@ import {
     convertMatterToWebSocketTagBased,
     convertWebSocketTagBasedToMatter,
     getDateAsString,
+    isWellFormedPath,
+    pathStatusOf,
     splitAttributePath,
     splitEventPath,
+    statusPathOf,
     toBigIntAwareJson,
 } from "../server/Converters.js";
 import {
@@ -121,7 +124,6 @@ import {
     BindingTarget,
     IcdStateData,
     MatterNodeEvent,
-    PathStatus,
     MatterSoftwareVersion,
     NodePingResult,
     ServerError,
@@ -244,15 +246,6 @@ async function awaitSeeded(node: ClientNode, abort: Abort): Promise<void> {
     } finally {
         observers.close();
     }
-}
-
-/** Status paths use the request format; a wildcard the device left in the path stays "*". */
-function statusPathOf(...ids: (number | undefined)[]) {
-    return ids.map(id => id ?? "*").join("/");
-}
-
-function pathStatusOf({ status, clusterStatus }: { status: Status; clusterStatus?: number }): PathStatus {
-    return clusterStatus === undefined ? { status } : { status, cluster_status: clusterStatus };
 }
 
 function isIntervalSeconds(value: number) {
@@ -1203,6 +1196,16 @@ export class ControllerCommandHandler {
         const { attributePaths, eventPaths, eventMin, fabricFiltered = true, dataVersionFilters } = request;
         if (!attributePaths?.length && !eventPaths?.length) {
             throw ServerError.invalidArguments("At least one attribute or event path is required");
+        }
+        const malformed = [
+            ...(attributePaths ?? []).filter(path => !isWellFormedPath(path, 3)),
+            ...(eventPaths ?? []).map(({ path }) => path).filter(path => !isWellFormedPath(path, 3)),
+            ...(dataVersionFilters ?? []).map(({ path }) => path).filter(path => !isWellFormedPath(path, 2)),
+        ];
+        if (malformed.length > 0) {
+            throw ServerError.invalidArguments(
+                `Malformed path(s) ${malformed.map(path => JSON.stringify(path)).join(", ")}: expected three parts (two for a data version filter), each a number or "*"`,
+            );
         }
         return Read({
             fabricFilter: fabricFiltered,

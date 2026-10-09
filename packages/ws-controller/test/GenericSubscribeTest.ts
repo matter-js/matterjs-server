@@ -231,21 +231,58 @@ describe("generic subscribe", () => {
         });
 
         it("rejects intervals outside the Matter range or in the wrong order", async () => {
-            await expectInvalidArguments(
-                site.handler.subscribe({ ...LIGHT_ON_OFF, maxInterval: 0x10000 }, recorder().listener),
-            );
-            await expectInvalidArguments(
-                site.handler.subscribe({ ...LIGHT_ON_OFF, minInterval: 10, maxInterval: 5 }, recorder().listener),
-            );
+            const captured = captureSubscribes(site.peer);
+
+            for (const [minInterval, maxInterval] of [
+                [0, 0x10000],
+                [-1, 60],
+                [1.5, 60],
+                [0, 60.5],
+                [0, -1],
+                [10, 5],
+            ]) {
+                await expectInvalidArguments(
+                    site.handler.subscribe({ ...LIGHT_ON_OFF, minInterval, maxInterval }, recorder().listener),
+                );
+            }
+
+            expect(captured).deep.equals([]);
         });
 
-        it("rejects a data version filter without a concrete cluster", async () => {
+        it("accepts equal intervals and the Matter maximum", async () => {
+            const captured = captureSubscribes(site.peer);
+
+            await subscribe({ ...LIGHT_ON_OFF, minInterval: 30, maxInterval: 30 }, recorder().listener);
+            await subscribe({ ...LIGHT_ON_OFF, minInterval: 0, maxInterval: 0xffff }, recorder().listener);
+
+            expect(captured.map(({ maxIntervalCeiling }) => maxIntervalCeiling)).deep.equals([
+                Seconds(30),
+                Seconds(0xffff),
+            ]);
+        });
+
+        it("rejects a malformed path without contacting the device", async () => {
+            const captured = captureSubscribes(site.peer);
+
             await expectInvalidArguments(
-                site.handler.subscribe(
-                    { ...LIGHT_ON_OFF, dataVersionFilters: [{ path: "1/*", dataVersion: 1 }] },
-                    recorder().listener,
-                ),
+                site.handler.subscribe({ ...LIGHT_ON_OFF, attributePaths: ["1/OnOff/0"] }, recorder().listener),
             );
+            await expectInvalidArguments(
+                site.handler.subscribe({ ...LIGHT_ON_OFF, eventPaths: [{ path: "x" }] }, recorder().listener),
+            );
+
+            expect(captured).deep.equals([]);
+        });
+
+        it("rejects a data version filter without a concrete endpoint or cluster", async () => {
+            for (const path of ["1/*", "*/6"]) {
+                await expectInvalidArguments(
+                    site.handler.subscribe(
+                        { ...LIGHT_ON_OFF, dataVersionFilters: [{ path, dataVersion: 1 }] },
+                        recorder().listener,
+                    ),
+                );
+            }
         });
     });
 
@@ -453,6 +490,46 @@ describe("subscribe over WebSocket", () => {
         await new Promise(resolve => setImmediate(resolve));
 
         expect(harness.isOpen(15)).equals(false);
+    });
+
+    it("frees the id of a closed connection's subscription before matter.js reports the end", async () => {
+        harness.closeNotifies = false;
+        const owner = await harness.connect();
+        const other = await harness.connect();
+        harness.nextSubscriptionId = 40;
+        await owner.command("subscribe", SUBSCRIBE_ARGS);
+
+        await owner.close();
+        await harness.waitFor(() => !harness.isOpen(40));
+
+        const response = await other.command("subscribe", SUBSCRIBE_ARGS);
+        expect(response.error_code).undefined;
+        expect(response.result).deep.equals({ subscription_id: 40 });
+    });
+
+    it("never drops an end notice under backpressure, unlike reports", async () => {
+        const client = await harness.connect();
+        harness.nextSubscriptionId = 50;
+        await client.command("subscribe", SUBSCRIBE_ARGS);
+        harness.nextSubscriptionId = 51;
+        await client.command("subscribe", SUBSCRIBE_ARGS);
+        const bulky = { attributes: { "1/6/0": "x".repeat(4096) }, events: [] };
+        const sent = 3000;
+
+        client.pause();
+        for (let i = 0; i < sent / 2; i++) {
+            harness.report(51, bulky);
+        }
+        harness.endFromController(50);
+        for (let i = 0; i < sent / 2; i++) {
+            harness.report(51, bulky);
+        }
+        client.resume();
+
+        const ended = await client.nextEvent("subscription_ended");
+        expect(ended.data).deep.equals({ subscription_id: 50 });
+        await client.command("server_info", {});
+        expect(client.events("subscription_report").length).lessThan(sent);
     });
 
     it("ends the subscriptions on server shutdown", async () => {

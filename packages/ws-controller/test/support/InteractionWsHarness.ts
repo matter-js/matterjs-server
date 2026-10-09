@@ -10,6 +10,7 @@ import { createServer, Server } from "node:http";
 import { WebSocket } from "ws";
 import type { MatterController } from "../../src/controller/MatterController.js";
 import { ConfigStorage } from "../../src/server/ConfigStorage.js";
+import { toBigIntAwareJson } from "../../src/server/Converters.js";
 import { WebSocketControllerHandler } from "../../src/server/WebSocketControllerHandler.js";
 import {
     InteractionReadRequest,
@@ -65,7 +66,7 @@ export class WsTestClient {
 
     async command(command: string, args: unknown): Promise<WsMessage> {
         const message_id = String(this.#nextMessageId++);
-        this.#ws.send(JSON.stringify({ message_id, command, args }));
+        this.#ws.send(toBigIntAwareJson({ message_id, command, args }));
         return this.#waitFor(() => this.#received.find(message => message.message_id === message_id));
     }
 
@@ -90,6 +91,15 @@ export class WsTestClient {
         return this.#received.indexOf(message);
     }
 
+    /** Stop reading, so the server's sends back up as for a stalled client. */
+    pause() {
+        this.#ws.pause();
+    }
+
+    resume() {
+        this.#ws.resume();
+    }
+
     async close() {
         const closed = once(this.#ws, "close");
         this.#ws.close();
@@ -110,6 +120,8 @@ export class InteractionWsHarness {
     nextSubscriptionId = 1;
     /** While set, subscribe waits for it before answering. */
     subscribeGate?: Promise<void>;
+    /** When false, closing a subscription does not call its listener's `closed`, as matter.js may do it later. */
+    closeNotifies = true;
     #handler?: WebSocketControllerHandler;
     #httpServer?: Server;
 
@@ -193,7 +205,9 @@ export class InteractionWsHarness {
             close: () => {
                 if (subscription.open) {
                     subscription.open = false;
-                    listener.closed();
+                    if (this.closeNotifies) {
+                        listener.closed();
+                    }
                 }
             },
         };

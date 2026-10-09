@@ -137,7 +137,7 @@ interface OwnedSubscription {
     subscription: InteractionSubscription;
 }
 
-/** WebSocket Server compatible with Schema version 12, minimum supported 11 */
+/** WebSocket Server with the Python Matter Server compatible API, see {@link SCHEMA_VERSION}. */
 export class WebSocketControllerHandler implements WebServerHandler {
     #controller: MatterController;
     #commandHandler: ControllerCommandHandler;
@@ -1175,6 +1175,9 @@ export class WebSocketControllerHandler implements WebServerHandler {
 
     #interactionReadRequestOf(args: ArgsOf<"read">): InteractionReadRequest {
         const { node_id, attribute_paths, event_paths, event_min, fabric_filtered, data_version_filters } = args;
+        if (TestNodeCommandHandler.isTestNodeId(node_id)) {
+            throw ServerError.invalidArguments("read and subscribe are not supported for test nodes");
+        }
         return {
             nodeId: NodeId(node_id),
             attributePaths: attribute_paths,
@@ -1213,10 +1216,12 @@ export class WebSocketControllerHandler implements WebServerHandler {
             {
                 report: report =>
                     deliver(id =>
-                        this.#sendSubscriptionEvent(connection, "subscription_report", {
-                            subscription_id: id,
-                            ...report,
-                        }),
+                        this.#sendSubscriptionEvent(
+                            connection,
+                            "subscription_report",
+                            { subscription_id: id, ...report },
+                            "ordered",
+                        ),
                     ),
                 // An unsubscribe or the owner's connection close removes the entry first, so only an end the owner
                 // did not ask for is announced.
@@ -1226,8 +1231,14 @@ export class WebSocketControllerHandler implements WebServerHandler {
                         return;
                     }
                     this.#interactionSubscriptions.delete(entry.subscription.id);
+                    // Never dropped under backpressure: a lost end notice leaves the client trusting a dead subscription.
                     deliver(id =>
-                        this.#sendSubscriptionEvent(connection, "subscription_ended", { subscription_id: id }),
+                        this.#sendSubscriptionEvent(
+                            connection,
+                            "subscription_ended",
+                            { subscription_id: id },
+                            "reliable",
+                        ),
                     );
                 },
             },
@@ -1260,9 +1271,15 @@ export class WebSocketControllerHandler implements WebServerHandler {
         connection: WebSocketConnection,
         event: E,
         data: APIEvents[E]["data"],
+        delivery: "ordered" | "reliable",
     ) {
         try {
-            connection.sendOrdered(toBigIntAwareJson({ event, data }));
+            const frame = toBigIntAwareJson({ event, data });
+            if (delivery === "reliable") {
+                connection.sendReliable(frame);
+            } else {
+                connection.sendOrdered(frame);
+            }
         } catch (err) {
             logger.error(`[${connection.connId}] Failed to send ${event} for ${data.subscription_id}`, err);
         }

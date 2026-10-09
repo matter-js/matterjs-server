@@ -4,10 +4,10 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { matterNameToWireField, type MatterNodeEvent } from "@matter-server/ws-client";
+import { matterNameToWireField, type MatterNodeEvent, type PathStatus } from "@matter-server/ws-client";
 import { AttributeId, Bytes, camelize, ClusterId, isObject, Logger, NodeId } from "@matter/main";
 import { ClusterModel, FieldModel, FieldValue, ValueModel } from "@matter/main/model";
-import { EndpointNumber, EventId, MATTER_EPOCH_OFFSET_S, MATTER_EPOCH_OFFSET_US } from "@matter/main/types";
+import { EndpointNumber, EventId, MATTER_EPOCH_OFFSET_S, MATTER_EPOCH_OFFSET_US, Status } from "@matter/main/types";
 import type { EventChange, EventOccurrence } from "../controller/PeerChangeBus.js";
 import { ClusterMap } from "../model/ModelMapper.js";
 
@@ -680,6 +680,24 @@ export function splitAttributePath(path: string): {
         clusterId: clusterNum !== undefined ? ClusterId(clusterNum) : undefined,
         attributeId: attributeNum !== undefined ? AttributeId(attributeNum) : undefined,
     };
+}
+
+/**
+ * True when `path` has exactly `segments` parts, each a decimal number or `*`. {@link splitAttributePath} reads any
+ * other part as a wildcard, so a typo would widen the request.
+ */
+export function isWellFormedPath(path: string, segments: number) {
+    const parts = path.split("/");
+    return parts.length === segments && parts.every(part => /^(\d+|\*)$/.test(part));
+}
+
+/** A status path in the request format; a wildcard the device left in the path stays "*". */
+export function statusPathOf(...ids: (number | undefined)[]) {
+    return ids.map(id => id ?? "*").join("/");
+}
+
+export function pathStatusOf({ status, clusterStatus }: { status: Status; clusterStatus?: number }): PathStatus {
+    return clusterStatus === undefined ? { status } : { status, cluster_status: clusterStatus };
 }
 
 /**
