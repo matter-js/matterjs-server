@@ -278,11 +278,8 @@ export function computeVideoEnvelope(args: VideoEnvelopeArgs): VideoSelection {
     }
     // MaxNetworkBandwidth is a link capacity, not an encoder limit, so it may lower the default start but
     // never raise it; only a caller-stated ceiling or floor sets the start above the default.
-    const unstatedStart = Math.min(bitRateCeiling ?? DEFAULT_MAX_BIT_RATE, DEFAULT_MAX_BIT_RATE);
-    const maxBitRate = Math.max(
-        hints?.maxBitRate === undefined ? unstatedStart : (bitRateCeiling ?? hints.maxBitRate),
-        hints?.minBitRate ?? 0,
-    );
+    const defaultCap = hints?.maxBitRate === undefined ? DEFAULT_MAX_BIT_RATE : Number.POSITIVE_INFINITY;
+    const maxBitRate = Math.max(Math.min(bitRateCeiling ?? DEFAULT_MAX_BIT_RATE, defaultCap), hints?.minBitRate ?? 0);
     // A trade-off point's floor can exceed the camera's bandwidth; drop it rather than pin min to max.
     const derivedBitRateFloor = applicable?.minBitRate ?? 1;
     const minBitRate = hints?.minBitRate ?? (derivedBitRateFloor <= maxBitRate ? derivedBitRateFloor : 1);
