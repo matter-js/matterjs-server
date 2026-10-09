@@ -386,6 +386,11 @@ export class MatterController {
         });
     }
 
+    /** Storage scope this controller's data lives under. */
+    get serverId(): string {
+        return this.#serverId;
+    }
+
     get commandHandler() {
         const controller = this.#controller;
         if (controller === undefined) {
