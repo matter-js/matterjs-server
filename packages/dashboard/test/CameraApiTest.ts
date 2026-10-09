@@ -62,18 +62,69 @@ const CHOICES = { maxResolution: null, watermarkEnabled: true, osdEnabled: false
 
 describe("camera API helpers", () => {
     describe("resolution pickers", () => {
-        it("lists distinct rate/distortion resolutions, largest first", () => {
+        it("lists common sizes from the minimum viewport up to the sensor, largest first", () => {
             const caps = capabilities({
                 video: {
-                    codecs: ["H264", "H265"],
+                    sensor: { width: 1920, height: 1080 },
+                    min_viewport: { width: 640, height: 480 },
                     rate_distortion_points: [
-                        { codec: "H264", resolution: { width: 640, height: 480 }, min_bit_rate: 1 },
-                        { codec: "H264", resolution: { width: 1920, height: 1080 }, min_bit_rate: 1 },
-                        { codec: "H265", resolution: { width: 640, height: 480 }, min_bit_rate: 1 },
+                        { codec: "H264", resolution: { width: 640, height: 480 }, min_bit_rate: 10000 },
                     ],
+                    codecs: ["H264"],
                 },
             });
             expect(videoResolutionOptions(caps)).to.deep.equal([
+                { width: 1920, height: 1080 },
+                { width: 1280, height: 720 },
+                { width: 640, height: 480 },
+            ]);
+        });
+
+        it("starts at the smallest common size when the camera states no minimum viewport", () => {
+            const caps = capabilities({
+                video: { sensor: { width: 1280, height: 720 }, rate_distortion_points: [], codecs: ["H264"] },
+            });
+            expect(videoResolutionOptions(caps)).to.deep.equal([
+                { width: 1280, height: 720 },
+                { width: 640, height: 480 },
+                { width: 640, height: 360 },
+            ]);
+        });
+
+        it("offers only Auto for video when the camera states no sensor size", () => {
+            const caps = capabilities({
+                video: {
+                    min_viewport: { width: 640, height: 480 },
+                    rate_distortion_points: [
+                        { codec: "H264", resolution: { width: 1920, height: 1080 }, min_bit_rate: 1 },
+                    ],
+                    codecs: ["H264"],
+                },
+            });
+            expect(videoResolutionOptions(caps)).to.deep.equal([]);
+        });
+
+        it("lists every snapshot capability the Aqara G350 reports", () => {
+            const cap = {
+                max_frame_rate: 30,
+                image_codec: "JPEG",
+                requires_encoded_pixels: false,
+                requires_hardware_encoder: false,
+            };
+            const caps = capabilities({
+                snapshot: {
+                    capabilities: [
+                        { ...cap, resolution: { width: 640, height: 480 } },
+                        {
+                            ...cap,
+                            resolution: { width: 1920, height: 1080 },
+                            requires_encoded_pixels: true,
+                            requires_hardware_encoder: true,
+                        },
+                    ],
+                },
+            });
+            expect(snapshotResolutionOptions(caps)).to.deep.equal([
                 { width: 1920, height: 1080 },
                 { width: 640, height: 480 },
             ]);

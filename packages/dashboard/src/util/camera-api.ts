@@ -42,8 +42,29 @@ function distinctResolutions(resolutions: CameraResolution[]): CameraResolution[
     return [...seen.values()].sort((a, b) => b.width * b.height - a.width * a.height);
 }
 
+const COMMON_VIDEO_SIZES: CameraResolution[] = [
+    { width: 640, height: 360 },
+    { width: 640, height: 480 },
+    { width: 1280, height: 720 },
+    { width: 1920, height: 1080 },
+    { width: 2560, height: 1440 },
+    { width: 3840, height: 2160 },
+];
+
+/**
+ * Common sizes from the camera's minimum viewport up to its sensor, each sent as `max_resolution`.
+ * Nothing without a reported sensor size: the list would be a guess.
+ */
 export function videoResolutionOptions(caps: CameraCapabilitiesResult | null): CameraResolution[] {
-    return distinctResolutions(caps?.video.rate_distortion_points.map(point => point.resolution) ?? []);
+    const sensor = caps?.video.sensor;
+    if (sensor === undefined) return [];
+    const floor = caps?.video.min_viewport ?? { width: 0, height: 0 };
+    return distinctResolutions(
+        COMMON_VIDEO_SIZES.filter(
+            ({ width, height }) =>
+                width >= floor.width && height >= floor.height && width <= sensor.width && height <= sensor.height,
+        ),
+    );
 }
 
 export function snapshotResolutionOptions(caps: CameraCapabilitiesResult | null): CameraResolution[] {

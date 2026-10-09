@@ -193,22 +193,24 @@ export class CameraOverlay extends LitElement {
         this._selectedResolution = parseResolutionOption((ev.target as HTMLSelectElement).value);
     }
 
-    private _renderResolutionSelect(
-        label: string,
-        options: CameraResolution[],
-        selected: CameraResolution | null,
-        onChange: (ev: Event) => void,
-    ) {
-        if (options.length === 0) return nothing;
+    private _renderResolutionSelect(args: {
+        label: string;
+        autoLabel: string;
+        options: CameraResolution[];
+        optionLabel: (resolution: CameraResolution) => string;
+        selected: CameraResolution | null;
+        onChange: (ev: Event) => void;
+    }) {
+        if (args.options.length === 0) return nothing;
         return html`
-            <md-outlined-select label=${label} .value=${resolutionOption(selected)} @change=${onChange}>
+            <md-outlined-select label=${args.label} .value=${resolutionOption(args.selected)} @change=${args.onChange}>
                 <md-select-option value=${resolutionOption(null)}>
-                    <div slot="headline">Auto</div>
+                    <div slot="headline">${args.autoLabel}</div>
                 </md-select-option>
-                ${options.map(
+                ${args.options.map(
                     r => html`
                         <md-select-option value=${resolutionOption(r)}>
-                            <div slot="headline">up to ${r.width}×${r.height}</div>
+                            <div slot="headline">${args.optionLabel(r)}</div>
                         </md-select-option>
                     `,
                 )}
@@ -354,22 +356,26 @@ export class CameraOverlay extends LitElement {
                     }
                     ${
                         canStart
-                            ? this._renderResolutionSelect(
-                                  "Resolution",
-                                  videoResolutionOptions(this._capabilities),
-                                  this._selectedResolution,
-                                  this._onResolutionChange,
-                              )
+                            ? this._renderResolutionSelect({
+                                  label: "Resolution",
+                                  autoLabel: "Auto (best)",
+                                  options: videoResolutionOptions(this._capabilities),
+                                  optionLabel: r => `Up to ${r.width}×${r.height}`,
+                                  selected: this._selectedResolution,
+                                  onChange: this._onResolutionChange,
+                              })
                             : nothing
                     }
                     ${
                         idleOrError && this._snapshotSupported
-                            ? this._renderResolutionSelect(
-                                  "Snapshot",
-                                  snapshotResolutionOptions(this._capabilities),
-                                  this._selectedSnapshotResolution,
-                                  this._onSnapshotResolutionChange,
-                              )
+                            ? this._renderResolutionSelect({
+                                  label: "Snapshot",
+                                  autoLabel: "Auto",
+                                  options: snapshotResolutionOptions(this._capabilities),
+                                  optionLabel: r => `${r.width}×${r.height}`,
+                                  selected: this._selectedSnapshotResolution,
+                                  onChange: this._onSnapshotResolutionChange,
+                              })
                             : nothing
                     }
                     ${idleOrError ? this._renderOverlayToggles() : nothing}
