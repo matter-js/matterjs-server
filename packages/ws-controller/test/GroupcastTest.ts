@@ -4,15 +4,18 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { AttributeId, ClusterId, FabricIndex, NodeId } from "@matter/main";
+import { AttributeId, ClusterId, Endpoint, FabricIndex, GroupId, NodeId, ServerNode } from "@matter/main";
 import { EnergyEvse } from "@matter/main/clusters/energy-evse";
+import { GroupKeyManagement } from "@matter/main/clusters/group-key-management";
 import { OnOff } from "@matter/main/clusters/on-off";
-import { PeerAddress } from "@matter/main/protocol";
-import { ControllerCommandHandler } from "../src/controller/ControllerCommandHandler.js";
+import { FabricManager, PeerAddress } from "@matter/main/protocol";
+import { CameraControllerEndpoint, ControllerCommandHandler } from "../src/controller/ControllerCommandHandler.js";
 import { ServerError, ServerErrorCode } from "../src/types/WebSocketMessageTypes.js";
+import { TestSite } from "./support/ControllerSite.js";
 
 const FABRIC_INDEX = FabricIndex(7);
-const GROUP_NODE_ID = NodeId.fromGroupId(4);
+const GROUP_ID = GroupId(4);
+const GROUP_NODE_ID = NodeId.fromGroupId(GROUP_ID);
 
 /** A write request as it reaches matter.js, in the only shape a group write may take. */
 interface CapturedWrite {
@@ -184,5 +187,81 @@ describe("groupcast", () => {
             expect((error as ServerError).message).to.contain("timed request");
             expect(capture.addresses.length).to.equal(0);
         });
+    });
+});
+
+/**
+ * Characterization test: the node list and the time-sync node count read matter.js `peers.commissioned`,
+ * which leaves out the `ClientGroup` a groupcast adds to the peer set. It guards that library behaviour.
+ */
+describe("groupcast against a commissioned controller", () => {
+    let site: TestSite;
+    let controller: ServerNode;
+    let device: ServerNode;
+    let handler: ControllerCommandHandler;
+
+    beforeEach(async () => {
+        MockTime.reset();
+        site = new TestSite();
+        ({ controller, device } = await site.startPair());
+        await site.commission(controller, device);
+        const fabric = controller.env.get(FabricManager).fabrics[0];
+        await fabric.groups.setFromGroupKeySet({
+            groupKeySetId: 1,
+            groupKeySecurityPolicy: GroupKeyManagement.GroupKeySecurityPolicy.TrustFirst,
+            epochKey0: new Uint8Array(16).fill(1),
+            epochStartTime0: 1,
+            epochKey1: null,
+            epochStartTime1: null,
+            epochKey2: null,
+            epochStartTime2: null,
+        });
+        fabric.groups.groupKeyIdMap = new Map([[GROUP_ID, 1]]);
+        handler = new ControllerCommandHandler(
+            {
+                node: controller,
+                fabric,
+                otaProvider: undefined,
+                webRtcRequestor: await controller.add(
+                    new Endpoint(CameraControllerEndpoint, { id: "camera-controller" }),
+                ),
+            },
+            { bleEnabled: false, bleProxyEnabled: false, otaEnabled: false },
+        );
+    });
+
+    afterEach(async () => {
+        await MockTime.resolve(handler.close(), { macrotasks: true });
+        await site.close();
+    });
+
+    it("keeps the group out of the node list and the commissioned node count", async () => {
+        const deviceNodeIds = controller.peers.commissioned.map(peer => peer.peerAddress?.nodeId);
+        expect(deviceNodeIds.length).to.equal(1);
+
+        await MockTime.resolve(
+            handler.handleGroupInvoke({
+                nodeId: GROUP_NODE_ID,
+                clusterId: ClusterId(OnOff.Cluster.id),
+                commandName: "toggle",
+                data: {},
+            }),
+            { macrotasks: true },
+        );
+        await MockTime.resolve(
+            handler.handleGroupWriteAttribute({
+                nodeId: GROUP_NODE_ID,
+                clusterId: ClusterId(OnOff.Cluster.id),
+                attributeId: AttributeId(OnOff.Cluster.attributes.onTime.id),
+                value: 5,
+            }),
+            { macrotasks: true },
+        );
+        expect([...controller.peers].some(peer => peer.nodeType === "group")).to.equal(true);
+
+        await MockTime.resolve(handler.initializeNodes(), { macrotasks: true });
+
+        expect(controller.peers.commissioned.map(peer => peer.peerAddress?.nodeId)).to.deep.equal(deviceNodeIds);
+        expect(handler.getNodeIds()).to.deep.equal(deviceNodeIds);
     });
 });
