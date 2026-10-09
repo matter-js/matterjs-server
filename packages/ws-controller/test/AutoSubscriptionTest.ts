@@ -336,19 +336,20 @@ describe("auto subscription setting", () => {
             matterController = await MatterController.create(env, config, {
                 serverId: "controller",
                 disableThreadDiagnostics: true,
+                disableDclSeed: true,
                 ...options,
             });
             return matterController;
         }
 
         it("hands the setting to the command handler", async () => {
-            expect(
-                (await createMatterController({ disableAutoSubscription: true })).commandHandler
-                    .autoSubscriptionDisabled,
-            ).true;
-            await matterController?.stop();
-            matterController = undefined;
-            expect((await createMatterController({})).commandHandler.autoSubscriptionDisabled).false;
+            const controller = await createMatterController({ disableAutoSubscription: true });
+            expect(controller.commandHandler.autoSubscriptionDisabled).true;
+        });
+
+        it("leaves auto subscription on by default", async () => {
+            const controller = await createMatterController({});
+            expect(controller.commandHandler.autoSubscriptionDisabled).false;
         });
 
         it("applies the setting to the stored peers", async () => {
