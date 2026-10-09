@@ -257,6 +257,13 @@ export interface ControllerCommandHandlerOptions {
     customClusterPollInterval?: Duration;
 }
 
+/** A known-address attempt that left the device off the fabric, so discovery may still reach it. */
+class UnreachedAddressError extends Error {
+    constructor(override readonly cause: unknown) {
+        super("Commissioning at the supplied address failed");
+    }
+}
+
 export class ControllerCommandHandler {
     #node: ServerNode;
     #fabric: Fabric;
@@ -1412,20 +1419,6 @@ export class ControllerCommandHandler {
         };
     }
 
-    /**
-     * Whether a failed commissioning attempt can be repeated against this node id.
-     *
-     * The caller chooses the id before commissioning starts, so the fabric itself answers this — no
-     * bookkeeping around the attempt is needed, and none would be trustworthy: `CommissioningClient`
-     * commits the peer address before it brings the node online, so a failure late in the flow still
-     * leaves a device that is genuinely ours. An id held by an unrelated device is equally a reason not
-     * to repeat, because the next attempt fails on the same conflict. Without a caller-chosen id there is
-     * nothing to look up and the answer is the cautious one.
-     */
-    #nothingJoined(nodeId: NodeId | undefined): boolean {
-        return nodeId !== undefined && !this.isNodeIdInUse(nodeId);
-    }
-
     /** Commission a device whose address the caller supplied, skipping discovery. */
     async #commissionAtAddress(
         knownAddress: NonNullable<CommissioningRequest["knownAddress"]>,
@@ -1437,18 +1430,19 @@ export class ControllerCommandHandler {
         try {
             await peer.commission(options);
         } catch (error) {
-            // This peer, not the node id: an id already taken by an unrelated device fails the attempt
-            // before anything joins, and the record forDescriptor persisted is then still ours to remove.
+            // `CommissioningClient` commits the peer address before it brings the node online, so this
+            // peer — not the chosen node id — is what says whether the device joined. A device that did
+            // keeps its record and must not be commissioned a second time; otherwise the record
+            // forDescriptor persisted is ours to remove, and the caller may still try discovery.
+            if (peer.lifecycle.isCommissioned) {
+                throw error;
+            }
             // A delete that fails leaves an entry behind until the expired-node cull — an address-only
             // descriptor never matches an existing node, so a retry adds another rather than reusing it.
-            if (!peer.lifecycle.isCommissioned) {
-                await peer
-                    .delete()
-                    .catch(deleteError =>
-                        logger.warn("Could not remove the peer of a failed commissioning:", deleteError),
-                    );
-            }
-            throw error;
+            await peer
+                .delete()
+                .catch(deleteError => logger.warn("Could not remove the peer of a failed commissioning:", deleteError));
+            throw new UnreachedAddressError(error);
         }
         return peer;
     }
@@ -1464,22 +1458,14 @@ export class ControllerCommandHandler {
                 try {
                     peer = await this.#commissionAtAddress(knownAddress, options);
                 } catch (error) {
-                    if (!this.#nothingJoined(options.nodeId)) {
-                        // The device joined and only the rest of the flow failed. Commissioning it a
-                        // second time would fail against a device no longer in commissioning mode and
-                        // strand the entry it already has on the fabric.
-                        logger.notice(
-                            options.nodeId === undefined
-                                ? "Commissioning at the supplied address failed; without a chosen node id the attempt cannot be repeated safely"
-                                : `Node ${this.formatNode(options.nodeId)} is already on the fabric, so the attempt is not repeated by discovery`,
-                        );
+                    if (!(error instanceof UnreachedAddressError)) {
                         throw error;
                     }
                     // The address is a hint from the caller and can be stale — the device may have moved
                     // to a new one since it was seen.
                     logger.info(
                         `Commissioning at the supplied address ${knownAddress.ip}:${knownAddress.port} failed, discovering the device instead:`,
-                        error,
+                        error.cause,
                     );
                 }
             }

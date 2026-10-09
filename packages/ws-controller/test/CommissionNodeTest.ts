@@ -104,6 +104,21 @@ describe("commissionNode", () => {
         );
     });
 
+    it("falls back to discovery without a caller-chosen node id", async () => {
+        // The node id is the server's to allocate, but a library caller may omit it. Nothing about the
+        // fallback depends on it: whether the device joined is the peer's own answer.
+        const { passcode, discriminator } = device.state.commissioning;
+        const { nodeId } = await commissioning(() =>
+            handler.commissionNode({
+                passcode,
+                longDiscriminator: discriminator,
+                knownAddress: { ip: "10.10.10.99", port: 5540 },
+            }),
+        );
+
+        expect(handler.isNodeIdInUse(nodeId)).equals(true);
+    });
+
     it("falls back to discovery when the supplied address is stale", async () => {
         const { nodeId } = await commissioning(() =>
             handler.commissionNode(request({ ip: "10.10.10.99", port: 5540 })),
