@@ -29,7 +29,12 @@ import type { TopologyNodeSource } from "../controller/NetworkTopologyService.js
 import { TestNodeCommandHandler } from "../controller/TestNodeCommandHandler.js";
 import { VendorIds } from "../data/VendorIDs.js";
 import { ClusterMap, ClusterMapEntry } from "../model/ModelMapper.js";
-import { CommissioningRequest } from "../types/CommandHandler.js";
+import {
+    CommissioningRequest,
+    InteractionReadRequest,
+    InteractionReport,
+    InteractionSubscription,
+} from "../types/CommandHandler.js";
 import { HttpServer, WebServerHandler } from "../types/WebServer.js";
 import {
     ArgsOf,
@@ -49,6 +54,7 @@ import { formatNodeId } from "../util/formatNodeId.js";
 import { MATTER_VERSION } from "../util/matterVersion.js";
 import { ConfigStorage } from "./ConfigStorage.js";
 import {
+    convertEventToWebSocket,
     convertMatterToWebSocketNameBased,
     convertMatterToWebSocketTagBased,
     parseBigIntAwareJson,
@@ -130,6 +136,11 @@ function extractWebRtcSessionId(payload: unknown): number | undefined {
     return undefined;
 }
 
+interface OwnedSubscription {
+    connection: WebSocketConnection;
+    subscription: InteractionSubscription;
+}
+
 /** WebSocket Server compatible with Schema version 12, minimum supported 11 */
 export class WebSocketControllerHandler implements WebServerHandler {
     #controller: MatterController;
@@ -159,6 +170,8 @@ export class WebSocketControllerHandler implements WebServerHandler {
      * or release another connection's claim.
      */
     #fabricLabelOwner?: WebSocketConnection;
+    /** Subscriptions opened with `subscribe`, by subscription id, each owned by the connection that opened it. */
+    #interactionSubscriptions = new Map<number, OwnedSubscription>();
 
     constructor(controller: MatterController, config: ConfigStorage, serverVersion: string) {
         this.#controller = controller;
@@ -404,44 +417,12 @@ export class WebSocketControllerHandler implements WebServerHandler {
             observers.on(this.#commandHandler.events.eventChanged, (nodeId, data) => {
                 if (this.#closed || this.#shuttingDown || !listening) return;
                 const { path, events } = data;
-                const { endpointId, clusterId, eventId } = path;
-                const clusterData = ClusterMap[clusterId];
 
                 for (const event of events) {
                     // Shared Observable: an uncaught throw aborts the emit and starves other connections;
                     // per event so one bad payload doesn't drop the rest of the batch.
                     try {
-                        let timestamp: number | bigint;
-                        let timestampType: number;
-
-                        if (event.epochTimestamp !== undefined) {
-                            timestamp = event.epochTimestamp;
-                            timestampType = 1; // Epoch
-                        } else if (event.systemTimestamp !== undefined) {
-                            timestamp = event.systemTimestamp;
-                            timestampType = 0; // System
-                        } else {
-                            timestamp = Date.now();
-                            timestampType = 2; // POSIX (fallback)
-                        }
-
-                        const eventModel = clusterData?.events[eventId];
-                        const convertedData =
-                            event.data !== undefined
-                                ? convertMatterToWebSocketNameBased(event.data, eventModel, clusterData?.model)
-                                : null;
-
-                        const nodeEvent: MatterNodeEvent = {
-                            node_id: nodeId,
-                            endpoint_id: endpointId,
-                            cluster_id: clusterId,
-                            event_id: eventId,
-                            event_number: event.eventNumber,
-                            priority: event.priority,
-                            timestamp,
-                            timestamp_type: timestampType,
-                            data: convertedData,
-                        };
+                        const nodeEvent = convertEventToWebSocket(nodeId, path, event);
 
                         this.#addEventToHistory(nodeEvent);
 
@@ -584,6 +565,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 logger.info(`[${connId}] WebSocket connection closed`);
                 observers.close();
                 this.#connections.delete(connection);
+                this.#closeInteractionSubscriptionsOf(connection);
                 if (this.#fabricLabelOwner === connection) {
                     logger.info(`[${connId}] Releasing fabric label ownership (owning connection closed)`);
                     this.#fabricLabelOwner = undefined;
@@ -600,6 +582,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
                             wantsThreadDiagnostics: requested,
                             wantsNetworkTopology: reqTopology,
                             wantsWebRtc: reqWebRtc,
+                            afterResponse,
                         }) => {
                             if (this.#closed) return;
                             if (enableListeners) {
@@ -615,6 +598,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
                                 wantsWebRtc = true;
                             }
                             connection.sendReliable(toBigIntAwareJson(response));
+                            afterResponse?.();
                         },
                     )
                     .catch(err => logger.error(`[${connId}] WebSocket request error`, err));
@@ -665,6 +649,8 @@ export class WebSocketControllerHandler implements WebServerHandler {
         // but that races the socket close events.
         for (const connection of this.#connections) connection.dispose();
         this.#connections.clear();
+        for (const { subscription } of this.#interactionSubscriptions.values()) subscription.close();
+        this.#interactionSubscriptions.clear();
 
         const wss = this.#wss;
         // Wait for the WebSocket server to close properly
@@ -690,6 +676,8 @@ export class WebSocketControllerHandler implements WebServerHandler {
         wantsThreadDiagnostics?: boolean;
         wantsNetworkTopology?: boolean;
         wantsWebRtc?: boolean;
+        /** Runs once the response is sent. */
+        afterResponse?: () => void;
     }> {
         let messageId: string | undefined;
         let command: string | undefined;
@@ -703,6 +691,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
             command = request.command;
             let result: ResponseOf<any>;
             let enableListeners: boolean | undefined = undefined;
+            let afterResponse: (() => void) | undefined;
             switch (command) {
                 case "start_listening":
                     result = this.#handleStartListening(args);
@@ -743,6 +732,15 @@ export class WebSocketControllerHandler implements WebServerHandler {
                     break;
                 case "read_attribute":
                     result = await this.#handleReadAttribute(args);
+                    break;
+                case "read":
+                    result = await this.#commandHandler.read(this.#interactionReadRequestOf(args));
+                    break;
+                case "subscribe":
+                    ({ result, afterResponse } = await this.#handleSubscribe(args, connection));
+                    break;
+                case "unsubscribe":
+                    result = this.#handleUnsubscribe(args, connection);
                     break;
                 case "get_vendor_names":
                     result = await this.#handleGetVendorNames(args);
@@ -858,6 +856,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 wantsThreadDiagnostics: command !== undefined && THREAD_DIAGNOSTICS_OPT_IN_COMMANDS.has(command),
                 wantsNetworkTopology: command !== undefined && NETWORK_TOPOLOGY_OPT_IN_COMMANDS.has(command),
                 wantsWebRtc: command === "send_webrtc_provider_command",
+                afterResponse,
             };
         } catch (err) {
             logger.error(`[${connId}] WebSocket error response (${command})`, messageId, err);
@@ -1176,6 +1175,108 @@ export class WebSocketControllerHandler implements WebServerHandler {
         }
 
         return result;
+    }
+
+    #interactionReadRequestOf(args: ArgsOf<"read">): InteractionReadRequest {
+        const { node_id, attribute_paths, event_paths, event_min, fabric_filtered, data_version_filters } = args;
+        return {
+            nodeId: NodeId(node_id),
+            attributePaths: attribute_paths,
+            eventPaths: event_paths?.map(({ path, is_urgent }) => ({ path, isUrgent: is_urgent })),
+            eventMin: event_min,
+            fabricFiltered: fabric_filtered,
+            dataVersionFilters: data_version_filters?.map(({ path, data_version }) => ({
+                path,
+                dataVersion: data_version,
+            })),
+        };
+    }
+
+    /** The priming report arrives before the subscription id is known, so reports are held until the response is sent. */
+    async #handleSubscribe(
+        args: ArgsOf<"subscribe">,
+        connection: WebSocketConnection,
+    ): Promise<{ result: ResponseOf<"subscribe">; afterResponse: () => void }> {
+        const { min_interval, max_interval, keep_subscriptions } = args;
+        const pending = new Array<InteractionReport>();
+        let deliver = (report: InteractionReport) => {
+            pending.push(report);
+        };
+        const registered: { entry?: OwnedSubscription } = {};
+
+        const subscription = await this.#commandHandler.subscribe(
+            {
+                ...this.#interactionReadRequestOf(args),
+                minInterval: min_interval,
+                maxInterval: max_interval,
+                keepSubscriptions: keep_subscriptions,
+            },
+            {
+                report: report => deliver(report),
+                closed: () => {
+                    const { entry } = registered;
+                    if (entry !== undefined && this.#interactionSubscriptions.get(entry.subscription.id) === entry) {
+                        this.#interactionSubscriptions.delete(entry.subscription.id);
+                    }
+                },
+            },
+        );
+
+        const { id } = subscription;
+        if (!this.#connections.has(connection)) {
+            subscription.close();
+            throw ServerError.unknownError("The connection closed while subscribing");
+        }
+        if (this.#interactionSubscriptions.has(id)) {
+            subscription.close();
+            throw ServerError.sdkStackError(`Subscription id ${id} is already in use by another subscription`);
+        }
+        registered.entry = { connection, subscription };
+        this.#interactionSubscriptions.set(id, registered.entry);
+
+        const send = (report: InteractionReport) => this.#sendSubscriptionReport(connection, id, report);
+        return {
+            result: { subscription_id: id },
+            afterResponse: () => {
+                for (const report of pending) {
+                    send(report);
+                }
+                deliver = send;
+            },
+        };
+    }
+
+    #sendSubscriptionReport(connection: WebSocketConnection, subscriptionId: number, report: InteractionReport) {
+        try {
+            connection.sendOrdered(
+                toBigIntAwareJson({
+                    event: "subscription_report",
+                    data: { subscription_id: subscriptionId, ...report },
+                }),
+            );
+        } catch (err) {
+            logger.error(`[${connection.connId}] Failed to send subscription_report for ${subscriptionId}`, err);
+        }
+    }
+
+    #handleUnsubscribe(args: ArgsOf<"unsubscribe">, connection: WebSocketConnection): ResponseOf<"unsubscribe"> {
+        const { subscription_id } = args;
+        const entry = this.#interactionSubscriptions.get(subscription_id);
+        if (entry === undefined || entry.connection !== connection) {
+            throw ServerError.invalidArguments(`No subscription ${subscription_id} on this connection`);
+        }
+        this.#interactionSubscriptions.delete(subscription_id);
+        entry.subscription.close();
+        return null;
+    }
+
+    #closeInteractionSubscriptionsOf(connection: WebSocketConnection) {
+        for (const [id, entry] of this.#interactionSubscriptions) {
+            if (entry.connection === connection) {
+                this.#interactionSubscriptions.delete(id);
+                entry.subscription.close();
+            }
+        }
     }
 
     async #handleWriteAttribute(args: ArgsOf<"write_attribute">): Promise<ResponseOf<"write_attribute">> {

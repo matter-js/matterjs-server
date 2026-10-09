@@ -16,6 +16,14 @@ listed retroactively; entries start at the first version maintained here.
 
 - **`discriminator`, `vendor_id`, `product_id`, `commissioning_timeout` in the `open_commissioning_window` result**. `discriminator` is the long (12-bit) discriminator the device advertises while the window is open, `vendor_id`/`product_id` are the device's Vendor-ID and Product-ID from the BasicInformation cluster, `commissioning_timeout` is the window duration in seconds. They match the values encoded in the returned pairing codes; they are returned separately so clients (for example mobile apps sharing the device to another ecosystem) need no Matter QR decoder.
 
+### Subscriptions and generic read
+
+- **New command `read`** → `{ attributes, events }`. One Matter Read request with `attribute_paths`, `event_paths` (`[{ path }]`, `path` is `endpoint/cluster/event`), `event_min`, `fabric_filtered` (default `true`) and `data_version_filters` (`[{ path: "endpoint/cluster", data_version }]`). `attributes` uses the `read_attribute` shape, `events` the `node_event` shape.
+- **New command `subscribe`** → `{ subscription_id }`. The `read` arguments plus `min_interval` / `max_interval` (seconds), `is_urgent` per event path and `keep_subscriptions` (default `true`; `false` is rejected with `InvalidArguments` unless the server runs with `--disable-auto-subscription`). `subscription_id` is the SubscriptionId the device assigned. The subscription belongs to the connection that opened it and ends with `unsubscribe`, when that connection closes, when the node is removed or when the server shuts down.
+- **New command `unsubscribe`** (`{ subscription_id }`) → `null`. An unknown id or another connection's id gives `InvalidArguments`.
+- **New event `subscription_report`** → `{ subscription_id, attributes, events }`. Sent only to the connection that opened the subscription, whether or not it called `start_listening`; the priming report follows the `subscribe` response.
+- **`subscribe_attribute` removed from the client model.** The server never implemented it and answers `InvalidCommand`.
+
 ## Schema 13
 
 Minimum supported: 11 (older clients keep working with the pre-13 command shapes).

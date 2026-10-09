@@ -59,14 +59,19 @@ import {
     PeerAddress,
     PeerSet,
     Read,
+    ReadResult,
     Specifier,
+    Subscribe,
 } from "@matter/main/protocol";
 import {
     AttributeId,
     ClusterId,
     ClusterType,
+    DataVersionFilter,
     DeviceTypeId,
     EndpointNumber,
+    EventNumber,
+    EventPath,
     GroupId,
     ManualPairingCodeCodec,
     QrPairingCodeCodec,
@@ -83,10 +88,12 @@ import { ClusterMap, ClusterMapEntry, GlobalAttributes } from "../model/ModelMap
 import {
     buildAttributePath,
     convertCommandDataToMatter,
+    convertEventToWebSocket,
     convertMatterToWebSocketTagBased,
     convertWebSocketTagBasedToMatter,
     getDateAsString,
     splitAttributePath,
+    splitEventPath,
     toBigIntAwareJson,
 } from "../server/Converters.js";
 import {
@@ -96,6 +103,11 @@ import {
     CommissioningResponse,
     DiscoveryRequest,
     DiscoveryResponse,
+    InteractionReadRequest,
+    InteractionReport,
+    InteractionSubscribeRequest,
+    InteractionSubscription,
+    InteractionSubscriptionListener,
     InvokeRequest,
     MatterNodeData,
     OpenCommissioningWindowRequest,
@@ -108,6 +120,7 @@ import {
     AttributeWriteResult,
     BindingTarget,
     IcdStateData,
+    MatterNodeEvent,
     MatterSoftwareVersion,
     NodePingResult,
     ServerError,
@@ -230,6 +243,10 @@ async function awaitSeeded(node: ClientNode, abort: Abort): Promise<void> {
     } finally {
         observers.close();
     }
+}
+
+function isIntervalSeconds(value: number) {
+    return Number.isInteger(value) && value >= 0 && value <= 0xffff;
 }
 
 /**
@@ -1114,6 +1131,125 @@ export class ControllerCommandHandler {
         }
 
         return result;
+    }
+
+    /**
+     * Read with full control over the Matter request. Unlike {@link handleReadAttributes} the paths go out as one
+     * request, and only the data version filters the caller gives are sent.
+     */
+    async read(request: InteractionReadRequest): Promise<InteractionReport> {
+        const node = this.#nodes.get(request.nodeId);
+        const read = { ...this.#readRequestOf(request), includeKnownVersions: true };
+        return this.#collectReport(request.nodeId, node.interaction.read(read));
+    }
+
+    /**
+     * Open a subscription of the caller's own, next to the one the controller keeps for the node. Reports reach
+     * {@link InteractionSubscriptionListener.report}; the priming report arrives before this resolves. matter.js ends
+     * the subscription when the node is removed or the controller goes offline.
+     */
+    async subscribe(
+        request: InteractionSubscribeRequest,
+        listener: InteractionSubscriptionListener,
+    ): Promise<InteractionSubscription> {
+        const { nodeId, minInterval, maxInterval } = request;
+        // Matter's KeepSubscriptions=false makes the device drop every subscription from this controller, the
+        // controller's own one included.
+        if (request.keepSubscriptions === false && !this.#autoSubscriptionDisabled) {
+            throw ServerError.invalidArguments(
+                "keep_subscriptions=false would end the server's own subscription; only allowed with auto subscription disabled",
+            );
+        }
+        if (!isIntervalSeconds(minInterval) || !isIntervalSeconds(maxInterval)) {
+            throw ServerError.invalidArguments(
+                "min_interval and max_interval must be integers from 0 to 65535 seconds",
+            );
+        }
+        if (maxInterval < minInterval) {
+            throw ServerError.invalidArguments("max_interval must not be less than min_interval");
+        }
+        const node = this.#nodes.get(nodeId);
+
+        const subscribe: Subscribe = {
+            ...this.#readRequestOf(request),
+            keepSubscriptions: request.keepSubscriptions ?? true,
+            minIntervalFloor: Seconds(minInterval),
+            maxIntervalCeiling: Seconds(maxInterval),
+            // Draining the data is what applies it to the node state.
+            updated: async data => listener.report(await this.#collectReport(nodeId, data)),
+            closed: () => listener.closed(),
+        };
+        const active = await node.interaction.subscribe(subscribe);
+        return {
+            id: active.subscriptionId,
+            nodeId,
+            close: () => {
+                Promise.resolve(active.close()).catch(error =>
+                    logger.warn(`Failed to close subscription ${active.subscriptionId}:`, error),
+                );
+            },
+        };
+    }
+
+    #readRequestOf(request: InteractionReadRequest): Read {
+        const { attributePaths, eventPaths, eventMin, fabricFiltered = true, dataVersionFilters } = request;
+        if (!attributePaths?.length && !eventPaths?.length) {
+            throw ServerError.invalidArguments("At least one attribute or event path is required");
+        }
+        return Read({
+            fabricFilter: fabricFiltered,
+            attributes: attributePaths?.length ? attributePaths.map(path => splitAttributePath(path)) : undefined,
+            events: eventPaths?.length
+                ? eventPaths.map(({ path, isUrgent }): EventPath => ({ ...splitEventPath(path), isUrgent }))
+                : undefined,
+            versionFilters: dataVersionFilters?.length
+                ? dataVersionFilters.map(({ path, dataVersion }): DataVersionFilter => {
+                      const { endpointId, clusterId } = splitAttributePath(path);
+                      if (endpointId === undefined || clusterId === undefined) {
+                          throw ServerError.invalidArguments(
+                              `Data version filter path "${path}" must name an endpoint and a cluster`,
+                          );
+                      }
+                      return { path: { endpointId, clusterId }, dataVersion };
+                  })
+                : undefined,
+            eventFilters: eventMin !== undefined ? [{ eventMin: EventNumber(eventMin) }] : undefined,
+        });
+    }
+
+    async #collectReport(nodeId: NodeId, data: ReadResult): Promise<InteractionReport> {
+        const report: InteractionReport = { attributes: {}, events: new Array<MatterNodeEvent>() };
+        for await (const chunk of data) {
+            for await (const entry of chunk) {
+                switch (entry.kind) {
+                    case "attr-value": {
+                        const { pathStr, value } = this.#convertAttributeToWebSocket(entry.path, entry.value);
+                        report.attributes[pathStr] = value;
+                        break;
+                    }
+                    case "event-value":
+                        report.events.push(
+                            convertEventToWebSocket(nodeId, entry.path, {
+                                eventNumber: entry.number,
+                                priority: entry.priority,
+                                epochTimestamp: entry.epochTimestamp,
+                                systemTimestamp: entry.systemTimestamp,
+                                data: entry.value,
+                            }),
+                        );
+                        break;
+                    case "attr-status":
+                    case "event-status":
+                        logger.info(
+                            `Node ${this.formatNode(nodeId)} reported status ${entry.status} for`,
+                            entry.kind === "attr-status" ? "attribute" : "event",
+                            entry.path,
+                        );
+                        break;
+                }
+            }
+        }
+        return report;
     }
 
     /**

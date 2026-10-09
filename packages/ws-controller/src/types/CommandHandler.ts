@@ -95,9 +95,50 @@ export type OpenCommissioningWindowResponse = {
     commissioningTimeout: number;
 };
 
-import type { AttributesData, MatterNodeData } from "@matter-server/ws-client";
+import type { AttributesData, MatterNodeData, MatterNodeEvent } from "@matter-server/ws-client";
 
 export type { AttributesData, MatterNodeData };
+
+/** A Matter read with full request control. Paths use the `read_attribute` string format, wildcards included. */
+export type InteractionReadRequest = {
+    nodeId: NodeId;
+    /** "endpoint/cluster/attribute" */
+    attributePaths?: string[];
+    /** "endpoint/cluster/event" */
+    eventPaths?: { path: string; isUrgent?: boolean }[];
+    eventMin?: number | bigint;
+    /** Defaults to true. */
+    fabricFiltered?: boolean;
+    /** `path` is "endpoint/cluster", both concrete. */
+    dataVersionFilters?: { path: string; dataVersion: number }[];
+};
+
+export type InteractionSubscribeRequest = InteractionReadRequest & {
+    /** Seconds. */
+    minInterval: number;
+    /** Seconds. */
+    maxInterval: number;
+    keepSubscriptions?: boolean;
+};
+
+/** Read or subscription report data in the `read_attribute` / `node_event` wire shapes. */
+export type InteractionReport = {
+    attributes: AttributesData;
+    events: MatterNodeEvent[];
+};
+
+export interface InteractionSubscriptionListener {
+    report(report: InteractionReport): void;
+    /** The subscription ended, whoever ended it. */
+    closed(): void;
+}
+
+export interface InteractionSubscription {
+    /** The subscription id the device assigned. */
+    readonly id: number;
+    readonly nodeId: NodeId;
+    close(): void;
+}
 
 /**
  * Interface for node command handlers.

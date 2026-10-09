@@ -436,8 +436,9 @@ strength values, and `packages/ws-client/src/models/model.ts` for the exact wire
 
 > [!NOTE]
 > When the server runs with `--disable-auto-subscription`, it does not subscribe to nodes, so there are no
-> automatic `attribute_updated` or node events from device reports. You are responsible to subscribe as needed;
-> only recommended for very special use cases. See [CLI: Disabled auto subscription](cli.md#disabled-auto-subscription).
+> automatic `attribute_updated` or node events from device reports. You are responsible to subscribe as needed
+> (see [Subscriptions and generic read](#subscriptions-and-generic-read)); only recommended for very special use
+> cases. See [CLI: Disabled auto subscription](cli.md#disabled-auto-subscription).
 
 **read_attribute** - Read attribute(s) from a node
 
@@ -492,6 +493,126 @@ Wildcard (all attributes from OnOff cluster):
   }
 }
 ```
+
+### Subscriptions and generic read
+
+Schema 14. These commands give full control over the Matter Read and Subscribe requests. Most clients do not need
+them: the server subscribes to every node on its own.
+
+Paths:
+
+- Attribute paths use the [attribute path format](#attribute-path-format) of `read_attribute`, wildcards included.
+- Event paths use the same format with an event id: `endpoint/cluster/event`, for example `1/59/1`
+  (Switch `InitialPress` on endpoint 1) or `*/59/*`.
+- Data version filter paths are `endpoint/cluster` and must name both.
+
+Values in the results and reports have the same shape as in `read_attribute` (attributes) and `node_event`
+(events). Status responses the device returns for single paths (for example an unsupported attribute) are logged,
+not returned.
+
+**read** - Read attributes and events in one Matter Read request
+
+```json
+{
+  "message_id": "1",
+  "command": "read",
+  "args": {
+    "node_id": 1,
+    "attribute_paths": ["1/6/0", "0/40/*"],
+    "event_paths": [{ "path": "1/59/*" }],
+    "event_min": 120,
+    "fabric_filtered": true,
+    "data_version_filters": [{ "path": "0/40", "data_version": 3141592 }]
+  }
+}
+```
+
+At least one attribute or event path is required. `fabric_filtered` defaults to `true`, the Matter default (unlike
+`read_attribute`, which defaults to `false`). `event_min` becomes the EventFilter of the request. The request goes
+to the device as given: unlike `read_attribute`, it is not split into batches and the server adds no data version
+filters of its own. matter.js merges the read values into the node state, which sends the usual
+`attribute_updated` events, only when `fabric_filtered` matches the server's own subscription, which is
+fabric-filtered.
+
+Response:
+
+```json
+{
+  "message_id": "1",
+  "result": {
+    "attributes": { "1/6/0": true, "0/40/1": "Vendor" },
+    "events": [
+      {
+        "node_id": 1, "endpoint_id": 1, "cluster_id": 59, "event_id": 1, "event_number": 121,
+        "priority": 1, "timestamp": 1704067200000, "timestamp_type": 1, "data": { "newPosition": 1 }
+      }
+    ]
+  }
+}
+```
+
+**subscribe** - Open a Matter subscription for this connection
+
+```json
+{
+  "message_id": "1",
+  "command": "subscribe",
+  "args": {
+    "node_id": 1,
+    "attribute_paths": ["1/6/0"],
+    "event_paths": [{ "path": "1/59/*", "is_urgent": true }],
+    "min_interval": 0,
+    "max_interval": 60
+  }
+}
+```
+
+Arguments are those of `read` plus:
+
+- `min_interval`, `max_interval` (required): the MinIntervalFloor and MaxIntervalCeiling in seconds, integers from
+  0 to 65535, `max_interval` not below `min_interval`. matter.js raises the floor for intermittently connected
+  (ICD) devices.
+- `is_urgent` per event path (optional): the IsUrgent flag of that event path.
+- `keep_subscriptions` (optional, default `true`): the KeepSubscriptions flag. `false` tells the device to drop
+  all other subscriptions of this controller. With auto subscription on (the default) `false` is rejected with
+  `InvalidArguments`, because it would end the server's own subscription. With `--disable-auto-subscription` it is
+  sent as given; it then also ends the other subscriptions to that node, including those of other connections.
+
+The server adds the data versions it already knows for the requested clusters to the request's data version
+filters (matter.js does this for every subscription), so the priming report can leave out clusters that did not
+change.
+
+Response:
+
+```json
+{
+  "message_id": "1",
+  "result": { "subscription_id": 2864434397 }
+}
+```
+
+`subscription_id` is the SubscriptionId the device assigned. The reports follow as `subscription_report` events,
+the priming report first, after this response. The usual `attribute_updated` and `node_event` events are sent as
+well, to every listening client.
+
+A subscription belongs to the connection that opened it. It ends when the connection sends `unsubscribe`, when the
+connection closes, when the node is removed, and when the server shuts down. It also ends without notice when the
+device stops reporting or when another subscription to the node is made with `keep_subscriptions: false` (the
+server's own subscription does that when it is set up again); `unsubscribe` then answers with an error.
+
+**unsubscribe** - End a subscription of this connection
+
+```json
+{
+  "message_id": "1",
+  "command": "unsubscribe",
+  "args": { "subscription_id": 2864434397 }
+}
+```
+
+Returns `null`. An unknown id, or the id of another connection's subscription, gives an `InvalidArguments` error.
+Matter has no unsubscribe message: the server stops accepting reports, and the device ends the subscription at its
+next report.
 
 ### Commands
 
@@ -978,6 +1099,25 @@ Format: `[node_id, "endpoint/cluster/attribute", value]`
 }
 ```
 
+### Subscription Events
+
+**subscription_report** - A report of a subscription opened with `subscribe` (schema 14)
+
+Sent only to the connection that opened the subscription, also when it has not called `start_listening`.
+
+```json
+{
+  "event": "subscription_report",
+  "data": {
+    "subscription_id": 2864434397,
+    "attributes": { "1/6/0": true },
+    "events": []
+  }
+}
+```
+
+`attributes` and `events` have the shapes of the `read` result.
+
 ### Server Events
 
 **server_info_updated** - Server configuration changed (e.g., credentials set)
@@ -1103,7 +1243,7 @@ This API is designed to be compatible with the [Python Matter Server](https://gi
 
 | Command | Status | Notes |
 |---------|--------|-------|
-| `subscribe_attribute` | Stub | Not implemented (Matter.js handles subscriptions internally) |
+| `subscribe_attribute` | Not supported | Answers `InvalidCommand`. The server subscribes to all attributes on its own; use `subscribe` (schema 14) for a subscription of your own |
 
 ### Matter.js-Only Commands
 
@@ -1119,6 +1259,9 @@ These commands are available only in the Matter.js server and not in the Python 
 | `resync_icd` | Drop the local ICD registration and reconnect |
 | `get_network_topology` | Return the Thread/Wi-Fi network as a graph (schema 13+) |
 | `initiate_ota_upload` | Reserve an id for the `POST /ota-upload/<upload_id>` HTTP endpoint (schema 13+) |
+| `read` | Read attributes and events in one Matter Read request (schema 14+) |
+| `subscribe` | Open a Matter subscription owned by the connection (schema 14+) |
+| `unsubscribe` | End a subscription opened with `subscribe` (schema 14+) |
 
 ### Data Differences
 

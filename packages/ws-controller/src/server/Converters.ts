@@ -4,10 +4,12 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { matterNameToWireField } from "@matter-server/ws-client";
-import { AttributeId, Bytes, camelize, ClusterId, isObject, Logger } from "@matter/main";
+import { matterNameToWireField, type MatterNodeEvent } from "@matter-server/ws-client";
+import { AttributeId, Bytes, camelize, ClusterId, isObject, Logger, NodeId } from "@matter/main";
 import { ClusterModel, FieldModel, FieldValue, ValueModel } from "@matter/main/model";
-import { EndpointNumber, MATTER_EPOCH_OFFSET_S, MATTER_EPOCH_OFFSET_US } from "@matter/main/types";
+import { EndpointNumber, EventId, MATTER_EPOCH_OFFSET_S, MATTER_EPOCH_OFFSET_US } from "@matter/main/types";
+import type { EventChange, EventOccurrence } from "../controller/PeerChangeBus.js";
+import { ClusterMap } from "../model/ModelMapper.js";
 
 export { parseBigIntAwareJson, toBigIntAwareJson } from "@matter-server/ws-client";
 
@@ -677,5 +679,56 @@ export function splitAttributePath(path: string): {
         endpointId: endpointNum !== undefined ? EndpointNumber(endpointNum) : undefined,
         clusterId: clusterNum !== undefined ? ClusterId(clusterNum) : undefined,
         attributeId: attributeNum !== undefined ? AttributeId(attributeNum) : undefined,
+    };
+}
+
+/**
+ * Parse an event path string ("endpoint/cluster/event") into its components, with the same wildcard rules as
+ * {@link splitAttributePath}.
+ */
+export function splitEventPath(path: string): {
+    endpointId: EndpointNumber | undefined;
+    clusterId: ClusterId | undefined;
+    eventId: EventId | undefined;
+} {
+    const { endpointId, clusterId, attributeId } = splitAttributePath(path);
+    return { endpointId, clusterId, eventId: attributeId === undefined ? undefined : EventId(attributeId) };
+}
+
+/** Convert one event occurrence into the `node_event` wire shape. */
+export function convertEventToWebSocket(
+    nodeId: NodeId,
+    path: EventChange["path"],
+    event: EventOccurrence,
+): MatterNodeEvent {
+    const { endpointId, clusterId, eventId } = path;
+
+    let timestamp: number | bigint;
+    let timestampType: number;
+    if (event.epochTimestamp !== undefined) {
+        timestamp = event.epochTimestamp;
+        timestampType = 1; // Epoch
+    } else if (event.systemTimestamp !== undefined) {
+        timestamp = event.systemTimestamp;
+        timestampType = 0; // System
+    } else {
+        timestamp = Date.now();
+        timestampType = 2; // POSIX (fallback)
+    }
+
+    const clusterData = ClusterMap[clusterId];
+    return {
+        node_id: nodeId,
+        endpoint_id: endpointId,
+        cluster_id: clusterId,
+        event_id: eventId,
+        event_number: event.eventNumber,
+        priority: event.priority,
+        timestamp,
+        timestamp_type: timestampType,
+        data:
+            event.data !== undefined
+                ? convertMatterToWebSocketNameBased(event.data, clusterData?.events[eventId], clusterData?.model)
+                : null,
     };
 }

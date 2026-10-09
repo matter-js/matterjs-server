@@ -384,6 +384,26 @@ export type WebRtcCallbackData =
     | (WebRtcCallbackBase & { event_type: "ice_candidates"; data: WebRtcIceCandidatesData | null })
     | (WebRtcCallbackBase & { event_type: "end"; data: WebRtcEndData | null });
 
+/** Request fields shared by the `read` and `subscribe` commands. */
+export interface InteractionReadArgs {
+    node_id: number | bigint;
+    /** "endpoint/cluster/attribute", wildcards as in `read_attribute`. */
+    attribute_paths?: string[];
+    /** `path` is "endpoint/cluster/event", wildcards as in `read_attribute`. */
+    event_paths?: Array<{ path: string; is_urgent?: boolean }>;
+    event_min?: number | bigint;
+    /** Defaults to true. */
+    fabric_filtered?: boolean;
+    /** `path` is "endpoint/cluster", both concrete. */
+    data_version_filters?: Array<{ path: string; data_version: number }>;
+}
+
+/** Attribute values as in `read_attribute`, events as in `node_event`. */
+export interface InteractionReportData {
+    attributes: AttributesData;
+    events: Array<MatterNodeEvent>;
+}
+
 export interface APICommands {
     start_listening: {
         requestArgs: Record<string, never>;
@@ -545,9 +565,27 @@ export interface APICommands {
         requestArgs: { filter_vendors?: Array<number> };
         response: { [key: string]: string };
     };
-    subscribe_attribute: {
-        requestArgs: Record<string, never>;
-        response: Record<string, never>;
+    /** Schema 14. Paths use the `read_attribute` format; event paths are "endpoint/cluster/event". */
+    subscribe: {
+        requestArgs: InteractionReadArgs & {
+            /** Seconds. */
+            min_interval: number;
+            /** Seconds. */
+            max_interval: number;
+            /** Defaults to true. False is rejected unless the server runs with auto subscription disabled. */
+            keep_subscriptions?: boolean;
+        };
+        response: { subscription_id: number };
+    };
+    /** Schema 14. Only the connection that opened the subscription can end it. */
+    unsubscribe: {
+        requestArgs: { subscription_id: number };
+        response: null;
+    };
+    /** Schema 14. */
+    read: {
+        requestArgs: InteractionReadArgs;
+        response: InteractionReportData;
     };
     read_attribute: {
         requestArgs: {
@@ -764,6 +802,9 @@ export interface APIEvents {
     webrtc_callback: {
         data: WebRtcCallbackData;
     };
+    subscription_report: {
+        data: SubscriptionReportData;
+    };
 }
 
 /** All known event type names */
@@ -817,6 +858,14 @@ interface ServerEventWebRtcCallback {
     event: "webrtc_callback";
     data: WebRtcCallbackData;
 }
+/** Schema 14: sent only to the connection that opened the subscription. */
+export interface SubscriptionReportData extends InteractionReportData {
+    subscription_id: number;
+}
+interface ServerEventSubscriptionReport {
+    event: "subscription_report";
+    data: SubscriptionReportData;
+}
 
 export type EventMessage =
     | ServerEventNodeAdded
@@ -830,7 +879,8 @@ export type EventMessage =
     | ServerEventInfoUpdated
     | ServerEventThreadDiagnosticsUpdated
     | ServerEventNetworkTopologyUpdated
-    | ServerEventWebRtcCallback;
+    | ServerEventWebRtcCallback
+    | ServerEventSubscriptionReport;
 
 export interface ResultMessageBase {
     message_id: string;
