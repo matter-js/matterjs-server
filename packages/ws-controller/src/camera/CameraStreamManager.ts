@@ -55,6 +55,7 @@ import {
     findAdoptableSnapshotStream,
     isDegradedFrom,
     selectSnapshotCapabilities,
+    SNAPSHOT_QUALITY,
     usesHardwareEncoder,
 } from "./snapshotPolicy.js";
 import type { SnapshotCapability } from "./snapshotPolicy.js";
@@ -1521,6 +1522,7 @@ export class CameraStreamManager {
                 maxFrameRate: freed.frameRate,
                 minResolution: freed.minResolution,
                 maxResolution: freed.maxResolution,
+                quality: SNAPSHOT_QUALITY,
                 ...freed.overlays,
             },
         });
@@ -2121,6 +2123,7 @@ export class CameraStreamManager {
                                 maxFrameRate: capability.maxFrameRate,
                                 minResolution: capability.resolution,
                                 maxResolution: capability.resolution,
+                                quality: SNAPSHOT_QUALITY,
                                 ...overlays,
                             },
                         });

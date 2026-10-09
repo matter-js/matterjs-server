@@ -981,6 +981,8 @@ describe("CameraStreamManager", () => {
             expect(allocates).to.have.length(2);
             expect(allocates[1]?.fields.minResolution).to.deep.equal({ width: 1920, height: 1080 });
             expect(allocates[1]?.fields.maxFrameRate).to.equal(1);
+            // Quality is mandatory on SnapshotStreamAllocate (§11.2.8.8).
+            expect(allocates[1]?.fields.quality).to.equal(90);
         });
 
         it("puts a snapshot stream back when the degraded rung served the caller instead", async () => {
@@ -4116,8 +4118,12 @@ describe("CameraStreamManager", () => {
             expect(result.degraded).to.equal(true);
             expect(result.provenance).to.equal("allocated");
             const allocate = invokes.find(invoke => invoke.command === "snapshotStreamAllocate");
-            expect(allocate?.fields.minResolution).to.deep.equal({ width: 640, height: 480 });
-            expect(allocate?.fields.maxResolution).to.deep.equal({ width: 640, height: 480 });
+            expect(allocate?.fields).to.deep.include({
+                minResolution: { width: 640, height: 480 },
+                maxResolution: { width: 640, height: 480 },
+                maxFrameRate: 1,
+                quality: 90,
+            });
         });
 
         it("keeps the best capability while a viewer streams on a camera with encoders to spare", async () => {

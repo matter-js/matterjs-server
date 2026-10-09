@@ -8,6 +8,9 @@ import type { AllocatedSnapshotStream, AllocatedVideoStream, Resolution } from "
 import type { OverlayBounds } from "./overlayPolicy.js";
 import { overlaysMatch } from "./overlayPolicy.js";
 
+/** `Quality` is mandatory on `SnapshotStreamAllocate` (§11.2.8.8); 90 is what the reference SDK's tests and camera app use. */
+export const SNAPSHOT_QUALITY = 90;
+
 export interface SnapshotCapability {
     resolution: Resolution;
     maxFrameRate: number;
