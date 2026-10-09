@@ -370,7 +370,8 @@ export function satisfiesVideoCallerBounds(candidate: AllocatedVideoStream, boun
 /**
  * The stream must reach `frameRate`, the rate an allocate would ask first, and may go down to
  * `frameRateFloor`, so a slow stream never stands in for a better one the request can get. Without a
- * `frameRate` an allocate could only succeed by freeing room, so any rate within the plan does.
+ * `frameRate` an allocate could only succeed by freeing room or if the camera accepts a window the
+ * budget said would not fit, so any rate within the plan does.
  */
 function fitsPlan(candidate: AllocatedVideoStream, plan: VideoPlan, frameRate: number | undefined): boolean {
     const envelope = plan.envelope;

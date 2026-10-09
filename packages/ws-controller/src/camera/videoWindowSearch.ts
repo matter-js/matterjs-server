@@ -91,7 +91,7 @@ interface Fitted {
     readonly steps: VideoRetrySteps;
     readonly fits: boolean;
     readonly budgetLoweredRate: boolean;
-    /** The steps before the budget lowered the frame rate. */
+    /** The steps after the budget's size steps and before any frame rate step; equal to `steps` when it lowered no rate. */
     readonly beforeRate: VideoRetrySteps;
 }
 
@@ -131,8 +131,9 @@ function fitToBudget(
  * - `fits` is the encoder budget, and it only predicts: a window it rejects is replaced by the first
  *   one in the capacity order that fits ({@link fitToBudget}), which is then asked. Only the camera's
  *   answers count as refusals, so nothing is freed before the camera itself answers ResourceExhausted.
- * - A window the camera refused is never asked again, except the best one refused for capacity, which
- *   is asked again (through the budget, now with the freed room) once room has been made.
+ * - A step never proposes a window the camera already refused, compared as the budget would fit it.
+ *   Two other moves can ask one again: `roomMade` asks the best window refused for capacity (through
+ *   the budget, now with the freed room), and the restore below asks the window at the higher rate.
  * - Unservable: lower the first dimension in {@link RETRY_DIMENSIONS} order that can still step. A
  *   frame size step starts frame rate again at the highest rate the smaller size allows.
  * - Capacity: lower a dimension that charges the encoder and has a published floor, keeping the frame
@@ -141,8 +142,8 @@ function fitToBudget(
  * - Unservable right after a frame rate lowered for capacity: the rate before is restored. If the
  *   camera refused that window for capacity, it was servable and the step found the camera's floor,
  *   which becomes the frame rate limit, and the search goes on as after that capacity refusal. If only
- *   the budget lowered the rate, that window is asked as it is; the budget will not pick the refused
- *   rate again, since steps pass over every window the camera refused as the budget would fit it.
+ *   the budget lowered the rate, that window is asked as it is. The refusal is not kept as a limit, so
+ *   a later step can have the budget lower the frame rate to the same rate again.
  */
 export class VideoWindowSearch {
     readonly #plan: VideoPlan;
@@ -311,7 +312,8 @@ function sameSteps(a: VideoRetrySteps, b: VideoRetrySteps): boolean {
 
 /**
  * The first window an allocate would ask that the encoder budget `fits` carries, or undefined when no
- * window fits, so an allocate could only succeed by freeing room or by the camera disagreeing.
+ * window fits, so an allocate could only succeed by freeing room or if the camera accepts a window the
+ * budget said would not fit.
  */
 export function firstVideoWindow(plan: VideoPlan, fits: (window: VideoEnvelope) => boolean): VideoEnvelope | undefined {
     const fitted = fitToBudget(plan, NO_RETRY_STEPS, MAX_RETRY_STEPS, fits);
