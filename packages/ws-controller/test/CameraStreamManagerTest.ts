@@ -1606,8 +1606,7 @@ describe("CameraStreamManager", () => {
 
         it("counts what the camera's other streams reserve, not just its ceiling", async () => {
             // One 1920x1080 at 30 fps stream in use reserves 62.2 Mpx/s of the 110.6 Mpx/s budget, leaving
-            // 48.4: the pinned sensor frame fits at 7 fps. The camera is asked each lower rate the budget
-            // alone rejects, since its stream list may be ahead of the reported one.
+            // 48.4: the pinned sensor frame fits at 7 fps, which is the first window asked.
             const { manager, invokes } = managerWith(
                 { ...withStreams([CONTAINED_STREAM]), maxEncodedPixelRate: 110592000 },
                 encoderBudgetedCamera(110592000 - 1920 * 1080 * 30),
@@ -1624,7 +1623,7 @@ describe("CameraStreamManager", () => {
                 invokes
                     .filter(invoke => invoke.command === "videoStreamAllocate")
                     .map(invoke => invoke.fields.maxFrameRate),
-            ).to.deep.equal([30, 15, 7]);
+            ).to.deep.equal([7]);
         });
 
         it("sends a floor the caller stated to the device although the budget cannot carry it", async () => {

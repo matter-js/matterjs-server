@@ -368,13 +368,14 @@ export function satisfiesVideoCallerBounds(candidate: AllocatedVideoStream, boun
 }
 
 /**
- * The stream must reach `frameRate`, the rate an allocate would end at instead, and may go down to
- * `frameRateFloor`, so a slow stream never stands in for a better one the request can get.
+ * The stream must reach `frameRate`, the rate an allocate would ask first, and may go down to
+ * `frameRateFloor`, so a slow stream never stands in for a better one the request can get. Without a
+ * `frameRate` an allocate could only succeed by freeing room, so any rate within the plan does.
  */
-function fitsPlan(candidate: AllocatedVideoStream, plan: VideoPlan, frameRate: number): boolean {
+function fitsPlan(candidate: AllocatedVideoStream, plan: VideoPlan, frameRate: number | undefined): boolean {
     const envelope = plan.envelope;
     return (
-        candidate.maxFrameRate >= frameRate &&
+        (frameRate === undefined || candidate.maxFrameRate >= frameRate) &&
         overlaysMatch(candidate.overlays, envelope.overlays) &&
         resolutionContains(
             { min: envelope.minResolution, max: envelope.maxResolution },
@@ -393,14 +394,15 @@ function fitsPlan(candidate: AllocatedVideoStream, plan: VideoPlan, frameRate: n
 
 /**
  * The candidate's range must lie inside the plan's, not merely overlap it. `firstFrameRate` is the
- * frame rate an allocate would end at if `candidate` did not exist: reusing it is free, so its own
- * reservation must not count against the alternative.
+ * frame rate of the first window within the encoder budget an allocate would ask if `candidate` did not
+ * exist (undefined when none fits): reusing it is free, so its own reservation must not count against
+ * the alternative.
  */
 export function findReusableVideoStream(
     streams: AllocatedVideoStream[],
     plan: VideoPlan,
     bounds: VideoCallerBounds,
-    firstFrameRate: (candidate: AllocatedVideoStream) => number,
+    firstFrameRate: (candidate: AllocatedVideoStream) => number | undefined,
 ): AllocatedVideoStream | undefined {
     const candidates = streams.filter(
         candidate =>

@@ -235,30 +235,66 @@ describe("VideoWindowSearch", () => {
     describe("the encoder budget", () => {
         const UP_TO_720P_30 = (window: VideoEnvelope): boolean => encodedPixelRate(window) <= 1280 * 720 * 30;
 
-        it("sends no window the budget rejects, and gives up frame size before frame rate for it", () => {
+        it("asks the largest frame size the budget carries, at the same frame rate", () => {
             const { asked, search } = walk(PLAN, () => "accepted", { fits: UP_TO_720P_30 });
             expect(asked).to.deep.equal(["1280x720@30-30 8000000"]);
-            expect(
-                search.budgetNarrowing(videoRetryWindow(PLAN, { bitRate: 0, frameRate: 0, resolution: 1 })),
-            ).to.deep.equal({ maxResolution: { width: 2560, height: 1440 } });
+            const accepted = videoRetryWindow(PLAN, { bitRate: 0, frameRate: 0, resolution: 1 });
+            expect(search.budgetNarrowing(accepted)).to.deep.equal({ maxResolution: { width: 2560, height: 1440 } });
         });
 
-        it("makes room before it lowers the frame rate for the budget", () => {
-            let freed = false;
+        it("lowers the frame rate for the budget only once no frame size fits", () => {
             const { asked } = walk(PLAN, () => "accepted", {
-                fits: window => freed || encodedPixelRate(window) < 640 * 360 * 30,
+                fits: window => encodedPixelRate(window) <= 640 * 360 * 15,
+            });
+            expect(asked).to.deep.equal(["640x360@15-15 8000000"]);
+        });
+
+        it("asks the camera before it makes room, and returns to the best window after", () => {
+            let freed = false;
+            const { asked } = walk(PLAN, () => (freed ? "accepted" : "capacity"), {
+                fits: () => freed,
                 room: () => {
                     freed = true;
                     return true;
                 },
             });
-            expect(asked).to.deep.equal(["makeRoom", "2560x1440@30-30 8000000"]);
+            expect(asked).to.deep.equal(["640x360@30-30 8000000", "makeRoom", "2560x1440@30-30 8000000"]);
         });
 
-        it("lets the camera decide on a window the budget rejects when no room can be made", () => {
-            // The camera's stream list may be ahead of the reported one.
-            const { asked } = walk(PLAN, () => "accepted", { fits: () => false });
-            expect(asked).to.deep.equal(["makeRoom", "640x360@30-30 8000000"]);
+        it("makes no room while the camera accepts what the budget predicted it would not", () => {
+            const { asked, outcome } = walk(PLAN, () => "accepted", { fits: () => false, room: () => true });
+            expect(outcome).to.equal("accepted");
+            expect(asked).to.deep.equal(["640x360@30-30 8000000"]);
+        });
+
+        it("after making room, asks a smaller size the budget now carries instead of making room again", () => {
+            // Not even 640x360 at 7 fps fits at first, so the budget cannot pick a window.
+            let free = 1000000;
+            let rooms = 0;
+            const fits = (window: VideoEnvelope): boolean => encodedPixelRate(window) <= free;
+            const { asked } = walk(PLAN, window => (fits(window) ? "accepted" : "capacity"), {
+                fits,
+                room: () => {
+                    rooms += 1;
+                    free += 30000000;
+                    return true;
+                },
+            });
+            expect(rooms).to.equal(1);
+            expect(asked).to.deep.equal(["640x360@30-30 8000000", "makeRoom", "1280x720@30-30 8000000"]);
+        });
+
+        it("restores a frame rate the budget lowered once the camera refuses it, and keeps the floor", () => {
+            // The size is pinned, the camera serves nothing under 30 fps, and nothing can be freed.
+            const pinned: VideoPlan = { ...PLAN, envelope: { ...WINDOW, minResolution: WINDOW.maxResolution } };
+            const { asked, outcome, search } = walk(
+                pinned,
+                window => (window.maxFrameRate < 30 ? "unservable" : "capacity"),
+                { fits: window => encodedPixelRate(window) <= 2560 * 1440 * 7 },
+            );
+            expect(outcome).to.equal("giveUp");
+            expect(asked).to.deep.equal(["2560x1440@7-7 8000000", "2560x1440@30-30 8000000", "makeRoom"]);
+            expect(search.outcome).to.equal("capacity");
         });
 
         it("reports nothing narrowed when the camera, not the budget, made the request give up size", () => {
@@ -277,11 +313,6 @@ describe("VideoWindowSearch", () => {
                 const accepted = videoRetryWindow(sizeOnly, { bitRate: 0, frameRate: 0, resolution: 1 });
                 expect(search.budgetNarrowing(accepted)).to.equal(undefined);
             }
-        });
-
-        it("reports nothing narrowed when the budget rejected no window", () => {
-            const { search } = walk(PLAN, () => "accepted");
-            expect(search.budgetNarrowing(WINDOW)).to.equal(undefined);
         });
     });
 
@@ -347,7 +378,11 @@ describe("VideoWindowSearch", () => {
 
         it("is the first window the budget lets through", () => {
             const first = firstVideoWindow(PLAN, window => encodedPixelRate(window) <= 1280 * 720 * 30);
-            expect(summary(first)).to.equal("1280x720@30-30 8000000");
+            expect(first === undefined ? undefined : summary(first)).to.equal("1280x720@30-30 8000000");
+        });
+
+        it("is nothing when no window fits the budget", () => {
+            expect(firstVideoWindow(PLAN, () => false)).to.equal(undefined);
         });
     });
 });

@@ -344,20 +344,49 @@ describe("VideoStreamAllocate against a camera with fixed stream profiles", () =
         expect(allocates(invokes).at(-1)?.fields).to.deep.include({ minFrameRate: 7, maxFrameRate: 7 });
     });
 
-    it("evicts an idle stream that holds the encoder budget without asking the camera first, and keeps 30 fps", async () => {
+    it("evicts an idle stream that holds the encoder budget once the camera answers ResourceExhausted, and keeps 30 fps", async () => {
         const state = { ...AQARA_STATE, allocatedVideoStreams: [recordingStream(0, true)] };
         const { invokes, result } = await resolveOn(state, aqara([3]));
         expect(result).to.deep.include({ streamId: 1, evicted: [3] });
         const commands = invokes.map(invoke =>
             invoke.command === "videoStreamAllocate" ? summary(invoke) : invoke.command,
         );
+        // Nothing fits the budget, so the smallest size is asked; the room made goes to 1280x720.
         expect(commands).to.deep.equal([
+            "640x480@30-30 14000000",
+            "640x480@30-30 7000000",
+            "640x480@30-30 3500000",
+            "640x480@30-30 1750000",
             "videoStreamDeallocate",
-            "1280x720@30-30 14000000",
-            "1280x720@30-30 7000000",
-            "1280x720@30-30 3500000",
             "1280x720@30-30 1750000",
         ]);
+    });
+
+    it("takes no stream while the camera accepts a window the budget predicted it could not carry", async () => {
+        const state = { ...AQARA_STATE, allocatedVideoStreams: [recordingStream(0, true)] };
+        const { invokes, result } = await resolveOn(state, async invoke =>
+            invoke.command === "videoStreamAllocate" ? { videoStreamId: 9 } : undefined,
+        );
+        expect(result).to.deep.include({ streamId: 9 });
+        expect(invokes.map(invoke => invoke.command)).to.deep.equal(["videoStreamAllocate"]);
+    });
+
+    it("reuses a slower stream of its usage when no window fits the encoder budget", async () => {
+        const slow: AllocatedVideoStream = {
+            ...recordingStream(1),
+            videoStreamId: 4,
+            streamUsage: LIVE_VIEW,
+            minFrameRate: 15,
+            maxFrameRate: 15,
+            minResolution: { width: 640, height: 480 },
+            maxResolution: { width: 640, height: 480 },
+            minBitRate: 10000,
+            maxBitRate: 1000000,
+        };
+        const state = { ...AQARA_STATE, allocatedVideoStreams: [recordingStream(1, true), slow] };
+        const { invokes, result } = await resolveOn(state, aqara([3, 1]));
+        expect(result).to.deep.include({ streamId: 4 });
+        expect(invokes.map(invoke => invoke.command)).to.deep.equal([]);
     });
 
     it("does not offer a stream the camera refused to deallocate for eviction again", async () => {

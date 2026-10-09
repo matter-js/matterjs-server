@@ -341,7 +341,7 @@ describe("snapshotPolicy", () => {
         });
 
         it("takes nothing for the pixel rate on a camera that states no budget", () => {
-            // Without MaxEncodedPixelRate, budgetVideoEnvelope ignores the pixel rate, so freeing gains nothing.
+            // Without MaxEncodedPixelRate the pixel rate is not accounted, so freeing gains nothing.
             const pixelRateOnly = held(1, { hardwareEncoder: false });
             expect(chooseSnapshotStreamToFree([pixelRateOnly], { maxEncodedPixelRate: undefined })).to.equal(undefined);
             expect(chooseSnapshotStreamToFree([pixelRateOnly], BUDGETED)?.snapshotStreamId).to.equal(1);

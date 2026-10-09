@@ -669,6 +669,15 @@ describe("streamPolicy", () => {
             expect(findReusableVideoStream([slower], planOf(target, 1), LIVE_VIEW_H265, () => 30)).to.equal(undefined);
         });
 
+        it("reuses a slower stream when no window fits the encoder budget", () => {
+            // An allocate could only succeed by freeing room; the stream costs nothing.
+            const target = { ...REQUEST, minFrameRate: 30 };
+            const slower = stream({ minFrameRate: 15, maxFrameRate: 15 });
+            expect(
+                findReusableVideoStream([slower], planOf(target, 1), LIVE_VIEW_H265, () => undefined)?.videoStreamId,
+            ).to.equal(1);
+        });
+
         it("refuses a stream that does not reach the plan's frame rate", () => {
             expect(reusable([stream({ minFrameRate: 1, maxFrameRate: 5 })], REQUEST, LIVE_VIEW_H265)).to.equal(
                 undefined,

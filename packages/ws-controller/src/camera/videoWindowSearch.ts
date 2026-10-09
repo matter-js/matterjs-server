@@ -71,12 +71,9 @@ function retryResolution(plan: VideoPlan, steps: number): Resolution {
 /**
  * The camera's answer to a window: `unservable` (DynamicConstraintError: outside every profile) or
  * `capacity` (ResourceExhausted). The reference camera app checks profiles first, so a window refused
- * for capacity is servable.
+ * for capacity is servable. Only the camera refuses: the encoder budget predicts, it never refuses.
  */
 export type VideoRefusal = "unservable" | "capacity";
-
-/** `overBudget`: not sent, because it costs more than the camera's free encoded pixel rate. */
-type Refusal = VideoRefusal | "overBudget";
 
 interface Step {
     readonly from: VideoRetrySteps;
@@ -89,43 +86,83 @@ export type VideoSearchMove =
     | { readonly kind: "makeRoom" }
     | { readonly kind: "giveUp" };
 
+/** `budgetLoweredRate`: the budget, not the camera, lowered the frame rate on the way to `steps`. */
+interface Fitted {
+    readonly steps: VideoRetrySteps;
+    readonly fits: boolean;
+    readonly budgetLoweredRate: boolean;
+    /** The steps before the budget lowered the frame rate. */
+    readonly beforeRate: VideoRetrySteps;
+}
+
+/**
+ * The window to ask instead of `wanted` when `wanted` costs more than the free encoder budget: the
+ * capacity order, frame size first at the same rate, then frame rate. When nothing fits, the smallest
+ * size at the wanted rate, which the camera then decides on.
+ */
+function fitToBudget(
+    plan: VideoPlan,
+    wanted: VideoRetrySteps,
+    limits: VideoRetrySteps,
+    fits: (window: VideoEnvelope) => boolean,
+): Fitted {
+    let steps = wanted;
+    if (fits(videoRetryWindow(plan, steps))) return { steps, fits: true, budgetLoweredRate: false, beforeRate: steps };
+    for (let count = steps.resolution + 1; count <= limits.resolution; count++) {
+        steps = { ...steps, resolution: count };
+        if (fits(videoRetryWindow(plan, steps)))
+            return { steps, fits: true, budgetLoweredRate: false, beforeRate: steps };
+    }
+    const beforeRate = steps;
+    for (let count = steps.frameRate + 1; count <= limits.frameRate; count++) {
+        const slower = { ...beforeRate, frameRate: count };
+        if (fits(videoRetryWindow(plan, slower))) {
+            return { steps: slower, fits: true, budgetLoweredRate: true, beforeRate };
+        }
+    }
+    return { steps: beforeRate, fits: false, budgetLoweredRate: false, beforeRate };
+}
+
 /**
  * The only thing that changes a request window. It walks the windows of a {@link VideoPlan}, best
  * first; every window lies inside the plan, so inside the caller's bounds and the offer's decode
  * ceiling.
  *
- * - `fits` is the encoder budget. A window it rejects is not sent and counts as refused for capacity.
- * - A refused window is never asked again, except the best one refused for capacity, which is asked
- *   again once room has been made.
+ * - `fits` is the encoder budget, and it only predicts: a window it rejects is replaced by the first
+ *   one in the capacity order that fits ({@link fitToBudget}), which is then asked. Only the camera's
+ *   answers count as refusals, so nothing is freed before the camera itself answers ResourceExhausted.
+ * - A window the camera refused is never asked again, except the best one refused for capacity, which
+ *   is asked again (through the budget, now with the freed room) once room has been made.
  * - Unservable: lower the first dimension in {@link RETRY_DIMENSIONS} order that can still step. A
  *   frame size step starts frame rate again at the highest rate the smaller size allows.
  * - Capacity: lower a dimension that charges the encoder and has a published floor, keeping the frame
  *   rate so the window charges less; without one, ask for room. Only when no room can be made, lower
- *   one with an unpublished floor, and only on the camera's own refusal: a window the budget alone rejected is then sent anyway, since the camera
- *   arbitrates (§11.2.1.2.2) and its stream list may be ahead of ours.
- * - Unservable right after a frame rate step from a window the camera refused for capacity: that
- *   window was servable, so the step found the camera's frame rate floor. Frame rate goes back, stays
- *   there, and the window before is handled as refused for capacity.
+ *   one with an unpublished floor.
+ * - Unservable right after a frame rate lowered for capacity: the rate before is restored. If the
+ *   camera refused that window for capacity, it was servable and the step found the camera's floor,
+ *   which becomes the frame rate limit, and the search goes on as after that capacity refusal. If only
+ *   the budget lowered the rate, that window is asked as it is; the budget will not pick the refused
+ *   rate again, since steps pass over every window the camera refused as the budget would fit it.
  */
 export class VideoWindowSearch {
     readonly #plan: VideoPlan;
     readonly #fits: (window: VideoEnvelope) => boolean;
-    #steps = NO_RETRY_STEPS;
+    /** The steps asked last, and the steps the search wanted before the budget moved them. */
+    #asked = NO_RETRY_STEPS;
+    #wanted = NO_RETRY_STEPS;
+    #budgetBefore: VideoRetrySteps | undefined;
     #limits = MAX_RETRY_STEPS;
     #lastStep: Step | undefined;
-    readonly #refused = new Array<{ readonly window: VideoEnvelope; readonly refusal: Refusal }>();
+    readonly #refused = new Array<{ readonly window: VideoEnvelope; readonly refusal: VideoRefusal }>();
     #bestServable: VideoRetrySteps | undefined;
     #capacitySeen = false;
-    #overBudgetSeen = false;
+    #budgetMoved = false;
     #move: VideoSearchMove;
-    readonly #budgetIsFinal: boolean;
 
-    /** `budgetIsFinal`: never send a window the budget rejects, for a prediction no camera answers. */
-    constructor(plan: VideoPlan, fits: (window: VideoEnvelope) => boolean, budgetIsFinal = false) {
+    constructor(plan: VideoPlan, fits: (window: VideoEnvelope) => boolean) {
         this.#plan = plan;
         this.#fits = fits;
-        this.#budgetIsFinal = budgetIsFinal;
-        this.#move = this.#ask(NO_RETRY_STEPS);
+        this.#move = this.#propose(NO_RETRY_STEPS, undefined);
     }
 
     get move(): VideoSearchMove {
@@ -142,7 +179,7 @@ export class VideoWindowSearch {
 
     /** The first window's ceilings the budget made the request give up; undefined when it cost nothing. */
     budgetNarrowing(accepted: VideoEnvelope): VideoBudgetNarrowing | undefined {
-        if (!this.#overBudgetSeen) return undefined;
+        if (!this.#budgetMoved) return undefined;
         const first = this.#plan.envelope;
         const rateLowered = accepted.maxFrameRate < first.maxFrameRate;
         const sizeLowered =
@@ -158,7 +195,11 @@ export class VideoWindowSearch {
     /** The camera's answer to the window of the last `ask`. */
     refused(refusal: VideoRefusal): void {
         if (refusal === "capacity") this.#capacitySeen = true;
-        this.#record(refusal);
+        this.#refused.push({ window: videoRetryWindow(this.#plan, this.#asked), refusal });
+        if (refusal === "unservable" && this.#budgetBefore !== undefined) {
+            this.#move = this.#askAsIs(this.#budgetBefore);
+            return;
+        }
         const lastStep = this.#lastStep;
         if (
             refusal === "unservable" &&
@@ -167,7 +208,8 @@ export class VideoWindowSearch {
         ) {
             const name = lastStep.dimension.name;
             this.#limits = { ...this.#limits, [name]: lastStep.from[name] };
-            this.#moveTo(lastStep.from);
+            this.#asked = lastStep.from;
+            this.#wanted = lastStep.from;
             this.#move = this.#after("capacity");
             return;
         }
@@ -175,36 +217,34 @@ export class VideoWindowSearch {
     }
 
     roomMade(): void {
-        const best = this.#bestServable ?? this.#steps;
+        const best = this.#bestServable ?? this.#wanted;
         this.#bestServable = undefined;
-        this.#move = this.#ask(best);
+        this.#move = this.#propose(best, undefined);
     }
 
     noRoom(): void {
-        if (!this.#budgetIsFinal && this.#refusalOf(this.#steps) === "overBudget") {
-            this.#move = { kind: "ask", window: videoRetryWindow(this.#plan, this.#steps) };
-            return;
-        }
         this.#move = this.#step(
             RETRY_DIMENSIONS.filter(dimension => dimension.unpublishedFloor && dimension.chargesEncoder),
             "capacity",
         );
     }
 
-    #after(refusal: Refusal): VideoSearchMove {
+    #after(refusal: VideoRefusal): VideoSearchMove {
         if (refusal === "unservable") return this.#step(RETRY_DIMENSIONS, refusal);
-        this.#bestServable ??= this.#steps;
+        this.#bestServable ??= this.#wanted;
         const safe = RETRY_DIMENSIONS.filter(dimension => dimension.chargesEncoder && !dimension.unpublishedFloor);
         const move = this.#step(safe, "capacity");
         return move.kind === "giveUp" ? { kind: "makeRoom" } : move;
     }
 
     /**
-     * Passes over windows already refused, so a later step starts from the furthest one. A step for
-     * capacity must charge the encoder less, so a size step then keeps the frame rate.
+     * Steps over windows the camera already refused, so a later step starts from the furthest one. An
+     * unservable window steps from what the search wanted, which the budget then fits again; a window
+     * refused for capacity steps from what was asked, since it must charge the encoder less, so a size
+     * step then keeps the frame rate.
      */
     #step(dimensions: readonly RetryDimension[], refusal: VideoRefusal): VideoSearchMove {
-        let position = this.#steps;
+        let position = refusal === "unservable" ? this.#wanted : this.#asked;
         for (const dimension of dimensions) {
             for (let count = position[dimension.name] + 1; count <= this.#limits[dimension.name]; count++) {
                 const next =
@@ -220,54 +260,60 @@ export class VideoWindowSearch {
                     position = next;
                     continue;
                 }
-                return this.#ask(next, { from: position, dimension });
+                return this.#propose(next, { from: position, dimension });
             }
         }
-        this.#moveTo(position);
+        this.#asked = position;
         return { kind: "giveUp" };
     }
 
-    /** Asks for `steps`, unless the budget rejects the window, which is then handled as a capacity refusal. */
-    #ask(steps: VideoRetrySteps, lastStep?: Step): VideoSearchMove {
-        this.#moveTo(steps);
+    /** Asks for `wanted`, or for the window the budget points to instead. */
+    #propose(wanted: VideoRetrySteps, lastStep: Step | undefined): VideoSearchMove {
+        const fitted = fitToBudget(this.#plan, wanted, this.#limits, this.#fits);
+        if (!sameSteps(fitted.steps, wanted)) this.#budgetMoved = true;
+        this.#wanted = wanted;
+        this.#asked = fitted.steps;
         this.#lastStep = lastStep;
-        const window = videoRetryWindow(this.#plan, steps);
-        if (this.#fits(window)) return { kind: "ask", window };
-        this.#overBudgetSeen = true;
-        this.#record("overBudget");
-        return this.#after("overBudget");
+        this.#budgetBefore = fitted.budgetLoweredRate ? fitted.beforeRate : undefined;
+        return { kind: "ask", window: videoRetryWindow(this.#plan, fitted.steps) };
     }
 
-    #record(refusal: Refusal): void {
-        this.#refused.push({ window: videoRetryWindow(this.#plan, this.#steps), refusal });
+    /** Asks for `steps` whatever the budget predicts: the camera decides. */
+    #askAsIs(steps: VideoRetrySteps): VideoSearchMove {
+        this.#wanted = steps;
+        this.#asked = steps;
+        this.#lastStep = undefined;
+        this.#budgetBefore = undefined;
+        return { kind: "ask", window: videoRetryWindow(this.#plan, steps) };
     }
 
+    /** Whether the camera refused the window `steps` would be asked as. */
     #isRefused(steps: VideoRetrySteps): boolean {
-        const window = videoRetryWindow(this.#plan, steps);
+        const window = videoRetryWindow(this.#plan, fitToBudget(this.#plan, steps, this.#limits, this.#fits).steps);
         return this.#refused.some(entry => sameVideoEnvelope(entry.window, window));
     }
 
-    /** The latest answer for the window these steps make, the camera's or the budget's. */
-    #refusalOf(steps: VideoRetrySteps): Refusal | undefined {
+    /** The camera's latest answer for the window these steps make. */
+    #refusalOf(steps: VideoRetrySteps): VideoRefusal | undefined {
         const window = videoRetryWindow(this.#plan, steps);
         return this.#refused.filter(entry => sameVideoEnvelope(entry.window, window)).at(-1)?.refusal;
     }
+}
 
-    #moveTo(steps: VideoRetrySteps): void {
-        this.#steps = steps;
-        this.#lastStep = undefined;
-    }
+function sameSteps(a: VideoRetrySteps, b: VideoRetrySteps): boolean {
+    return (
+        a.bitRate === b.bitRate &&
+        a.frameRate === b.frameRate &&
+        a.resolution === b.resolution &&
+        a.frameRateTarget === b.frameRateTarget
+    );
 }
 
 /**
- * The window an allocate would end at if the camera's answers matched the encoder budget `fits`
- * describes and no room could be made.
+ * The first window an allocate would ask that the encoder budget `fits` carries, or undefined when no
+ * window fits, so an allocate could only succeed by freeing room or by the camera disagreeing.
  */
-export function firstVideoWindow(plan: VideoPlan, fits: (window: VideoEnvelope) => boolean): VideoEnvelope {
-    const search = new VideoWindowSearch(plan, fits, true);
-    for (let move = search.move; ; move = search.move) {
-        if (move.kind === "ask") return move.window;
-        if (move.kind === "giveUp") return plan.envelope;
-        search.noRoom();
-    }
+export function firstVideoWindow(plan: VideoPlan, fits: (window: VideoEnvelope) => boolean): VideoEnvelope | undefined {
+    const fitted = fitToBudget(plan, NO_RETRY_STEPS, MAX_RETRY_STEPS, fits);
+    return fitted.fits ? videoRetryWindow(plan, fitted.steps) : undefined;
 }

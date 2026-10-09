@@ -1028,7 +1028,7 @@ export class CameraStreamManager {
             [...liveStreams, ...unreported],
             selection.plan,
             bounds,
-            candidate => firstVideoWindow(selection.plan, fitsBudget(candidate)).maxFrameRate,
+            candidate => firstVideoWindow(selection.plan, fitsBudget(candidate))?.maxFrameRate,
         );
         if (reused !== undefined) {
             return {
