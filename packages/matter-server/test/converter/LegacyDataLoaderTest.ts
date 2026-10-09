@@ -6,10 +6,17 @@
 
 import { computeCompressedNodeId, Crypto, Environment, LegacyServerFile } from "@matter-server/ws-controller";
 import { NodeJsCrypto } from "@matter/nodejs";
-import { copyFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { access, copyFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ChipConfigData, hasLegacyData, loadLegacyData, saveLegacyServerFile } from "../../src/converter/index.js";
+import {
+    ChipConfigData,
+    hasLegacyData,
+    loadLegacyData,
+    missingLegacyNodes,
+    retireLegacyFiles,
+    saveLegacyServerFile,
+} from "../../src/converter/index.js";
 
 // Path to test fixtures (relative to package root since tests run from build dir)
 const FIXTURE_DIR = join(process.cwd(), "test/converter/fixtures");
@@ -331,5 +338,100 @@ describe("LegacyDataLoader", () => {
             expect(result.serverFile!.vendor_info["4939"].vendor_id).to.equal(4939);
             expect(result.serverFile!.vendor_info["4939"].vendor_name).to.equal("Test Vendor");
         });
+    });
+
+    describe("retireLegacyFiles", () => {
+        async function seedLegacyDir(name: string, withBackup: boolean) {
+            const legacyDir = join(testDir, name);
+            await mkdir(legacyDir, { recursive: true });
+            await copyFile(FIXTURE_CHIP_JSON, join(legacyDir, "chip.json"));
+
+            const { fabricConfig } = await loadLegacyData(env, legacyDir, {
+                vendorId: FIXTURE_VENDOR_ID,
+                fabricId: FIXTURE_FABRIC_ID,
+            });
+            expect(fabricConfig).to.exist;
+
+            const compressed = await computeCompressedNodeId(
+                env.get(Crypto),
+                fabricConfig!.fabricId,
+                fabricConfig!.rootPublicKey,
+            );
+            const serverFileName = `${compressed}.json`;
+            await copyFile(FIXTURE_SERVER_JSON, join(legacyDir, serverFileName));
+            if (withBackup) {
+                await copyFile(FIXTURE_SERVER_JSON, join(legacyDir, `${serverFileName}.backup`));
+            }
+            return { legacyDir, fabricConfig: fabricConfig!, serverFileName };
+        }
+
+        async function exists(path: string) {
+            try {
+                await access(path);
+                return true;
+            } catch {
+                return false;
+            }
+        }
+
+        it("renames every legacy file, backup included", async () => {
+            const { legacyDir, fabricConfig, serverFileName } = await seedLegacyDir("retire-all", true);
+
+            const retired = await retireLegacyFiles(env, legacyDir, fabricConfig);
+
+            expect(retired).to.have.members(["chip.json", serverFileName, `${serverFileName}.backup`]);
+            for (const name of retired) {
+                expect(await exists(join(legacyDir, name))).to.be.false;
+                expect(await exists(join(legacyDir, `${name}.migrated`))).to.be.true;
+            }
+        });
+
+        // Renaming is what makes the import one-shot, so the loader must no longer see anything.
+        it("leaves nothing for a subsequent load to import", async () => {
+            const { legacyDir, fabricConfig } = await seedLegacyDir("retire-then-load", false);
+
+            await retireLegacyFiles(env, legacyDir, fabricConfig);
+
+            expect(await hasLegacyData(legacyDir)).to.be.false;
+            const reloaded = await loadLegacyData(env, legacyDir, {
+                vendorId: FIXTURE_VENDOR_ID,
+                fabricId: FIXTURE_FABRIC_ID,
+            });
+            expect(reloaded.hasData).to.be.false;
+        });
+
+        it("is a no-op when the files were already retired", async () => {
+            const { legacyDir, fabricConfig } = await seedLegacyDir("retire-twice", false);
+
+            await retireLegacyFiles(env, legacyDir, fabricConfig);
+            expect(await retireLegacyFiles(env, legacyDir, fabricConfig)).to.deep.equal([]);
+        });
+    });
+});
+
+describe("missingLegacyNodes", () => {
+    function serverFile(...nodeIds: string[]): LegacyServerFile {
+        return { nodes: Object.fromEntries(nodeIds.map(nodeId => [nodeId, {}])) } as unknown as LegacyServerFile;
+    }
+
+    it("reports nothing when every legacy node is known", () => {
+        expect(missingLegacyNodes(serverFile("1", "2"), [1n, 2n])).to.deep.equal([]);
+    });
+
+    it("reports a legacy node the controller does not know", () => {
+        expect(missingLegacyNodes(serverFile("1", "2", "3"), [1n, 2n])).to.deep.equal(["3"]);
+    });
+
+    it("does not let an unrelated node stand in for a missing one", () => {
+        // Same count, different devices: node 3 never migrated and node 9 was commissioned since.
+        expect(missingLegacyNodes(serverFile("1", "2", "3"), [1n, 2n, 9n])).to.deep.equal(["3"]);
+    });
+
+    it("accepts more known nodes than the file lists", () => {
+        expect(missingLegacyNodes(serverFile("1"), [1n, 2n, 3n])).to.deep.equal([]);
+    });
+
+    it("reports nothing when there is no legacy file", () => {
+        expect(missingLegacyNodes(undefined, [])).to.deep.equal([]);
     });
 });

@@ -9,6 +9,7 @@ import {
     Endpoint,
     Environment,
     FabricId,
+    Logger,
     MatterAggregateError,
     NodeId,
     ServerNode,
@@ -17,7 +18,10 @@ import {
 import { Ble, Fabric, FabricAuthority, FabricManager } from "@matter/main/protocol";
 import { OtaProviderEndpoint } from "@matter/node/endpoints/ota-provider";
 import { CameraControllerEndpoint } from "./ControllerCommandHandler.js";
+import { migrateLegacyCommissionedNodes, migrateLegacyControllerCredentials } from "./legacyStorageMigration.js";
 import { PeerSettingsRepairMarker, repairRestoredPeers } from "./restoredPeers.js";
+
+const logger = Logger.get("ControllerNode");
 
 // A controller joins fabrics, it does not serve groupcast, and the Groupcast listener would pull in the
 // Auxiliary ACL feature with it.
@@ -77,6 +81,8 @@ export async function createControllerNode(options: ControllerNodeOptions): Prom
     const { environment, id, adminVendorId, adminFabricId, adminFabricLabel, serverVersion } = options;
     const adminNodeId = NodeId(112233); // TODO Remove when we switch to random IDs
 
+    await migrateLegacyControllerCredentials(environment, id);
+
     const node = await ServerNode.create(ControllerRootEndpoint, {
         environment,
         id,
@@ -123,6 +129,14 @@ export async function createControllerNode(options: ControllerNodeOptions): Prom
             adminNodeId,
             adminFabricId,
         });
+
+        const { nodes: migrated, endpoints, failed } = await migrateLegacyCommissionedNodes(node);
+        if (migrated > 0) {
+            logger.info(`Legacy storage migration: ${migrated} node(s), ${endpoints} endpoint(s) migrated`);
+        }
+        if (failed > 0) {
+            logger.warn(`${failed} peer(s) failed to migrate; the legacy data stays in place to retry on next start`);
+        }
 
         if (options.peerSettingsRepair !== undefined) {
             await repairRestoredPeers(node, id, options.peerSettingsRepair);
