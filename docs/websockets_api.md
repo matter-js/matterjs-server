@@ -497,7 +497,8 @@ Wildcard (all attributes from OnOff cluster):
 ### Subscriptions and generic read
 
 Schema 14. These commands give full control over the Matter Read and Subscribe requests. Most clients do not need
-them: the server subscribes to every node on its own.
+them: the server subscribes to every node on its own. The server does not advertise schema 14 yet: `server_info`
+still reports `schema_version` 13 until the version is raised, so a client that gates on 14 cannot use them yet.
 
 Paths:
 
@@ -505,6 +506,8 @@ Paths:
 - Event paths use the same format with an event id: `endpoint/cluster/event`, for example `1/59/1`
   (Switch `InitialPress` on endpoint 1) or `*/59/*`.
 - Data version filter paths are `endpoint/cluster` and must name both.
+- Every part must be a decimal number or `*`. Unlike `read_attribute`, which reads any other part as a wildcard, a
+  malformed path is rejected with `InvalidArguments`. Test nodes are not supported (`InvalidArguments`).
 
 Values in the results and reports have the same shape as in `read_attribute` (attributes) and `node_event`
 (events). When the device answers a path with a status instead of data (for example an unsupported attribute),
@@ -541,9 +544,14 @@ numeric Matter status code in `status` (as in the `write_attribute` result) and 
 At least one attribute or event path is required. `fabric_filtered` defaults to `true`, the Matter default (unlike
 `read_attribute`, which defaults to `false`). `event_min` becomes the EventFilter of the request. The request goes
 to the device as given: unlike `read_attribute`, it is not split into batches and the server adds no data version
-filters of its own. matter.js merges the read values into the node state, which sends the usual
-`attribute_updated` events, only when `fabric_filtered` matches the server's own subscription, which is
-fabric-filtered.
+filters of its own.
+
+Side effects on all clients: matter.js merges the read attribute values into the node state, which sends the usual
+`attribute_updated` events to every listening client, but only when `fabric_filtered` matches the server's own
+subscription, which is fabric-filtered. Every event the read returns is also sent to every listening client as
+`node_event` and added to the event history, whatever `fabric_filtered` is and without a check against events
+already seen. A read with event paths and a low `event_min` therefore replays old events (for example button
+presses) to all clients, Home Assistant included, as if they were new.
 
 Response:
 
@@ -581,8 +589,8 @@ Response:
 Arguments are those of `read` plus:
 
 - `min_interval`, `max_interval` (required): the MinIntervalFloor and MaxIntervalCeiling in seconds, integers from
-  0 to 65535, `max_interval` not below `min_interval`. matter.js raises the floor for intermittently connected
-  (ICD) devices.
+  0 to 65535, `max_interval` not below `min_interval`. For intermittently connected (ICD) devices matter.js sends
+  a floor of 0 instead of `min_interval`.
 - `is_urgent` per event path (optional): the IsUrgent flag of that event path.
 - `keep_subscriptions` (optional, default `true`): the KeepSubscriptions flag. `false` tells the device to drop
   all other subscriptions of this controller. With auto subscription on (the default) `false` is rejected with
@@ -603,8 +611,11 @@ Response:
 ```
 
 `subscription_id` is the SubscriptionId the device assigned. The reports follow as `subscription_report` events,
-the priming report first, after this response. The usual `attribute_updated` and `node_event` events are sent as
-well, to every listening client.
+the priming report first, after this response. The reports have the same side effects on all clients as `read`:
+`attribute_updated` to every listening client only when `fabric_filtered` matches the server's own subscription,
+and every reported event as `node_event` to every listening client and into the event history, without a check
+against events already seen. With auto subscription on, an event that both the server's own subscription and this
+one report can reach clients twice.
 
 A subscription belongs to the connection that opened it. It ends when the connection sends `unsubscribe`, when the
 connection closes, when the node is removed, and when the server shuts down. It also ends when the device stops
@@ -933,7 +944,9 @@ This should be the last resort to try to get an ICD device in LIT mode connected
 }
 ```
 
-A LIT peer re-registers automatically once subscribed.
+A LIT peer re-registers automatically once subscribed. With `--disable-auto-subscription` the server only drops the
+local registration and does not reconnect; the device registers again only through `register_icd`, which needs the
+server's own subscription and so fails with this setting. A subscription opened with `subscribe` does not count.
 
 ### Vendor Information
 
@@ -1135,9 +1148,11 @@ Sent only to the connection that opened the subscription, also when it has not c
 
 `attributes`, `events`, `attribute_status` and `event_status` have the shapes of the `read` result.
 
-Like `node_event`, `subscription_report` and `subscription_ended` are queued under backpressure: when a connection
-does not read fast enough and its outgoing queue passes the limit, the oldest queued events are dropped, reports
-included.
+Like `node_event`, `subscription_report` is queued under backpressure: when a connection does not read fast enough
+and its outgoing queue passes the limit, the oldest queued events are dropped, reports included.
+`subscription_ended` is never dropped; it is sent ahead of reports still queued. A report for a subscription can
+therefore arrive after its `unsubscribe` response or after its `subscription_ended`. Ignore reports for
+subscription ids you no longer track.
 
 **subscription_ended** - A subscription opened with `subscribe` ended without `unsubscribe` (schema 14)
 
@@ -1234,7 +1249,7 @@ Attribute paths use the format: `endpoint/cluster/attribute`
 
 ## Schema Version
 
-The current schema version is **13** (minimum supported **11**). Commands and events added in the current schema are marked **(schema 13+)** below; see [the schema changelog](websocket-api-schema-changelog.md) for what each version added. The server reports `schema_version` and `min_supported_schema_version` in the initial connection message and via `server_info`. Clients should verify that the server's `schema_version` is within their supported range.
+The current schema version is **13** (minimum supported **11**). Commands and events marked **(schema 13+)** were added in schema 13. Those marked schema 14 are implemented but not advertised yet: `server_info` reports 13 until the version is raised. See [the schema changelog](websocket-api-schema-changelog.md) for what each version added. The server reports `schema_version` and `min_supported_schema_version` in the initial connection message and via `server_info`. Clients should verify that the server's `schema_version` is within their supported range.
 
 ## BigInt Handling
 
@@ -1288,7 +1303,7 @@ These commands are available only in the Matter.js server and not in the Python 
 | `get_icd_state` | Get ICD Check-In state for a node |
 | `register_icd` | Register this controller as an ICD Check-In client |
 | `unregister_icd` | Drop this controller's ICD Check-In registration |
-| `resync_icd` | Drop the local ICD registration and reconnect |
+| `resync_icd` | Drop the local ICD registration and reconnect (with `--disable-auto-subscription`: only drop it) |
 | `get_network_topology` | Return the Thread/Wi-Fi network as a graph (schema 13+) |
 | `initiate_ota_upload` | Reserve an id for the `POST /ota-upload/<upload_id>` HTTP endpoint (schema 13+) |
 | `read` | Read attributes and events in one Matter Read request (schema 14+) |

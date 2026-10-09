@@ -69,14 +69,17 @@ reads the full node once, so `commission_with_code` / `commission_on_network` re
 a fabric-filtered read such as `interview_node` returns is applied to the node, so `get_node` and
 `attribute_updated` events reflect it, including endpoints the read discovered.
 
-Without a subscription matter.js never reports a node as connected. The node stays `available` unless the server
-finds it unreachable. `remove_node` always tries to tell the device to remove the fabric and removes the node only
-locally when that fails. Background features that require a connected node are skipped:
+Without the server's own subscription matter.js never reports a node as connected; a subscription a client opens
+with `subscribe` does not change that, and does not start the features below either. The node stays `available`
+unless the server finds it unreachable. `remove_node` always tries to tell the device to remove the fabric and
+removes the node only locally when that fails, so removing an unreachable node takes the full discovery and retry
+time before it returns. Background features that require a connected node are skipped:
 
 - fabric label changes are not pushed to the device
 - time synchronization, custom cluster polling and the Thread neighbor/route refresh do not run
-- `register_icd` fails, because matter.js only registers with an active subscription
-- `resync_icd` only drops the local ICD registration; a LIT device re-registers only after a subscription
+- `register_icd` fails, because matter.js only registers while the server's own subscription is active
+- `resync_icd` only drops the local ICD registration; a LIT device re-registers only once the server's own
+  subscription is active again, which needs the setting turned off
 
 The setting is applied to every stored node on each start. Starting again without it restores the automatic
 subscriptions.

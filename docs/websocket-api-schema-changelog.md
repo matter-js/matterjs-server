@@ -12,6 +12,9 @@ listed retroactively; entries start at the first version maintained here.
 
 ## Schema 14
 
+Not advertised yet: `server_info` still reports `schema_version` 13 until the version is raised, so clients that
+gate on 14 cannot use these additions yet.
+
 ### Commissioning window
 
 - **`discriminator`, `vendor_id`, `product_id`, `commissioning_timeout` in the `open_commissioning_window` result**. `discriminator` is the long (12-bit) discriminator the device advertises while the window is open, `vendor_id`/`product_id` are the device's Vendor-ID and Product-ID from the BasicInformation cluster, `commissioning_timeout` is the window duration in seconds. They match the values encoded in the returned pairing codes; they are returned separately so clients (for example mobile apps sharing the device to another ecosystem) need no Matter QR decoder.
@@ -22,7 +25,7 @@ listed retroactively; entries start at the first version maintained here.
 - **New command `subscribe`** → `{ subscription_id }`. The `read` arguments plus `min_interval` / `max_interval` (seconds), `is_urgent` per event path and `keep_subscriptions` (default `true`; `false` is rejected with `InvalidArguments` unless the server runs with `--disable-auto-subscription`). `subscription_id` is the SubscriptionId the device assigned. The subscription belongs to the connection that opened it and ends with `unsubscribe`, when that connection closes, when the node is removed or when the server shuts down.
 - **New command `unsubscribe`** (`{ subscription_id }`) → `null`. An unknown id or another connection's id gives `InvalidArguments`.
 - **New event `subscription_report`** → `{ subscription_id, attributes, events, attribute_status?, event_status? }`. Sent only to the connection that opened the subscription, whether or not it called `start_listening`; the priming report follows the `subscribe` response.
-- **New event `subscription_ended`** → `{ subscription_id }`. Sent to the owning connection when its subscription ends without `unsubscribe` (node removed, device stopped reporting, another subscription with `keep_subscriptions: false`); not sent for `unsubscribe` or when the connection closes.
+- **New event `subscription_ended`** → `{ subscription_id }`. Sent to the owning connection when its subscription ends without `unsubscribe` (node removed, device stopped reporting, another subscription with `keep_subscriptions: false`); not sent for `unsubscribe` or when the connection closes. Never dropped under backpressure; reports for the id can still arrive after it.
 - **`subscribe_attribute` removed from the client model.** The server never implemented it and answers `InvalidCommand`.
 
 ## Schema 13

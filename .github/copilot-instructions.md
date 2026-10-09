@@ -101,9 +101,11 @@ npm workspaces with six packages:
 
 Custom clusters are registered at import time via `import "@matter-server/custom-clusters"` in `MatterServer.ts`. The registration in `custom-clusters/src/register.ts` pushes each cluster definition into `Matter` and `ClusterRegistry`.
 
-### WebSocket Protocol (Schema version 11)
+### WebSocket Protocol
 
-Messages follow the Python Matter Server protocol. Key commands: `start_listening`, `commission_with_code`, `commission_on_network`, `device_command`, `read_attribute`, `write_attribute`, `read`, `subscribe`, `unsubscribe`, `get_nodes`, `get_node`, `server_info`, `diagnostics`.
+Messages follow the Python Matter Server protocol (schema version: `SCHEMA_VERSION` in `WebSocketControllerHandler.ts`). Key commands: `start_listening`, `commission_with_code`, `commission_on_network`, `device_command`, `read_attribute`, `write_attribute`, `get_nodes`, `get_node`, `server_info`, `diagnostics`.
+
+matter.js-only commands (not in the Python Matter Server) include `read`, `subscribe` and `unsubscribe`; see "Matter.js-Only Commands" in `docs/websockets_api.md`.
 
 Events emitted to all clients: `node_added`, `node_updated`, `node_removed`, `attribute_updated`.
 
