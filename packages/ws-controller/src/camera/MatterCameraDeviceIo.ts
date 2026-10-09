@@ -93,6 +93,7 @@ export function toCameraState(state: RawCameraAvStreamManagementState, features:
             maxFrameRate: stream.maxFrameRate,
             minBitRate: stream.minBitRate,
             maxBitRate: stream.maxBitRate,
+            keyFrameInterval: stream.keyFrameInterval,
             referenceCount: stream.referenceCount,
             // Not defaulted: see AllocatedVideoStream.
             overlays: { watermarkEnabled: stream.watermarkEnabled, osdEnabled: stream.osdEnabled },
@@ -112,6 +113,7 @@ export function toCameraState(state: RawCameraAvStreamManagementState, features:
             imageCodec: stream.imageCodec,
             minResolution: toResolution(stream.minResolution),
             maxResolution: toResolution(stream.maxResolution),
+            quality: stream.quality,
             referenceCount: stream.referenceCount,
             frameRate: stream.frameRate,
             encodedPixels: stream.encodedPixels,

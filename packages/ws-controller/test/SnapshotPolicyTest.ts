@@ -70,6 +70,7 @@ describe("snapshotPolicy", () => {
             maxFrameRate: 30,
             minBitRate: 800000,
             maxBitRate: 4000000,
+            keyFrameInterval: 4000,
             referenceCount: 1,
         };
 
@@ -80,6 +81,7 @@ describe("snapshotPolicy", () => {
             imageCodec: 0,
             minResolution: { width: 1920, height: 1080 },
             maxResolution: { width: 1920, height: 1080 },
+            quality: 90,
             referenceCount: 0,
             frameRate: 1,
             encodedPixels: true,
@@ -319,6 +321,7 @@ describe("snapshotPolicy", () => {
             imageCodec: 0,
             minResolution: { width: 640, height: 480 },
             maxResolution: { width: 640, height: 480 },
+            quality: 90,
             referenceCount: 0,
             frameRate: 1,
             encodedPixels: true,
@@ -388,6 +391,7 @@ describe("snapshotPolicy", () => {
             imageCodec,
             minResolution: { width, height },
             maxResolution: { width, height },
+            quality: 90,
             referenceCount: 0,
             frameRate: 1,
             encodedPixels: false,

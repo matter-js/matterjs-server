@@ -66,18 +66,11 @@ import {
     computeVideoEnvelope,
     findDegradedVideoStream,
     findReusableVideoStream,
-    CAPACITY_RETRY_ORDER,
-    KEY_FRAME_INTERVAL_MS,
-    nextVideoRetry,
-    NO_RETRY_STEPS,
-    sameVideoEnvelope,
     satisfiesAudioCallerBounds,
     satisfiesVideoCallerBounds,
     statedHints,
     trackRequest,
-    UNSERVABLE_RETRY_ORDER,
     videoCallerBounds,
-    videoRetryWindow,
 } from "./streamPolicy.js";
 import type {
     AudioCallerBounds,
@@ -86,8 +79,9 @@ import type {
     RateDistortionPoint,
     TrackRequest,
     VideoHints,
-    VideoRetrySteps,
 } from "./streamPolicy.js";
+import { VideoWindowSearch } from "./videoWindowSearch.js";
+import type { VideoRefusal } from "./videoWindowSearch.js";
 import {
     audioCodecName,
     featureName,
@@ -103,10 +97,8 @@ const logger = Logger.get("CameraStreamManager");
 export const MAX_ALLOCATE_ATTEMPTS = 12;
 
 type LadderReaction =
-    /** The device cannot serve this range. A smaller request may succeed. */
-    | "narrow"
-    /** The device has no capacity. Freeing or sharing a stream may make room. */
-    | "make-room"
+    /** `unservable`: the device cannot serve this range; `capacity`: it has no room for it. */
+    | VideoRefusal
     /** Malformed request (`min > max`, a field out of range, an unknown codec). No retry can fix it. */
     | "fail-incompatible"
     | "rethrow";
@@ -115,9 +107,9 @@ type LadderReaction =
 function ladderReaction(status: number | undefined): LadderReaction {
     switch (status) {
         case Status.DynamicConstraintError:
-            return "narrow";
+            return "unservable";
         case Status.ResourceExhausted:
-            return "make-room";
+            return "capacity";
         case Status.ConstraintError:
             return "fail-incompatible";
         default:
@@ -139,7 +131,7 @@ function envelopeOfVideoStream(stream: AllocatedVideoStream): VideoEnvelope {
         maxFrameRate: stream.maxFrameRate,
         minBitRate: stream.minBitRate,
         maxBitRate: stream.maxBitRate,
-        keyFrameInterval: KEY_FRAME_INTERVAL_MS,
+        keyFrameInterval: stream.keyFrameInterval,
     };
 }
 
@@ -155,6 +147,7 @@ function allocatedVideoStream(streamId: number, streamUsage: number, envelope: V
         maxFrameRate: envelope.maxFrameRate,
         minBitRate: envelope.minBitRate,
         maxBitRate: envelope.maxBitRate,
+        keyFrameInterval: envelope.keyFrameInterval,
         referenceCount: 0,
         overlays: envelope.overlays,
     };
@@ -268,6 +261,7 @@ function allocatedSnapshotStream(
         imageCodec: capability.imageCodec,
         minResolution: capability.resolution,
         maxResolution: capability.resolution,
+        quality: SNAPSHOT_QUALITY,
         referenceCount: 0,
         frameRate: capability.maxFrameRate,
         encodedPixels: capability.requiresEncodedPixels,
@@ -1036,9 +1030,9 @@ export class CameraStreamManager {
         }
 
         // Unreported allocations count, so the free budget is not overstated.
-        const budgeted = (steps: VideoRetrySteps): BudgetedVideoEnvelope =>
+        const budgeted = (window: VideoEnvelope): BudgetedVideoEnvelope =>
             budgetVideoEnvelope(
-                videoRetryWindow(selection.plan, steps),
+                window,
                 {
                     maxEncodedPixelRate: state.maxEncodedPixelRate,
                     videoStreams: [...liveStreams, ...unreported],
@@ -1046,24 +1040,7 @@ export class CameraStreamManager {
                 },
                 selection.plan.frameRateFloor,
             );
-        const nextRetry = (refused: VideoEnvelope, reaction: LadderReaction): VideoRetrySteps | undefined =>
-            nextVideoRetry(
-                retrySteps,
-                reaction === "narrow" ? UNSERVABLE_RETRY_ORDER : CAPACITY_RETRY_ORDER,
-                steps => !sameVideoEnvelope(budgeted(steps).envelope, refused),
-            );
-        let retrySteps = NO_RETRY_STEPS;
-        /** Where the last unservable refusal left the steps; freeing capacity cannot make those windows servable. */
-        let servableSteps = NO_RETRY_STEPS;
-        let roomMade = false;
-        let budget = budgeted(retrySteps);
-        let envelope = budget.envelope;
-        const restartAfterFreeing = (): void => {
-            roomMade = true;
-            retrySteps = servableSteps;
-            budget = budgeted(retrySteps);
-            envelope = budget.envelope;
-        };
+        const search = new VideoWindowSearch(selection.plan, window => budgeted(window).envelope);
 
         // A stream the degraded rung could hand out is never evicted for the same request.
         const evictable = liveStreams.filter(stream => !satisfiesVideoCallerBounds(stream, bounds));
@@ -1073,7 +1050,43 @@ export class CameraStreamManager {
         const evicted = new Array<number>();
         const reporting = (resolved: ResolvedStream): ResolvedStream =>
             evicted.length === 0 ? resolved : { ...resolved, evicted };
+        /** Frees one stream this request may take; false when there is none, or the camera refused. */
+        const makeRoom = async (): Promise<boolean> => {
+            // Our own snapshot stream goes first: StreamUsagePriorities ranks video usages only.
+            const snapshotRoom = await this.freeOwnSnapshotStream(
+                nodeId,
+                endpointId,
+                liveSnapshotStreams,
+                state.maxEncodedPixelRate,
+                scope,
+            );
+            if (snapshotRoom !== undefined) {
+                // Removed whether freed or refused, so the candidate set strictly shrinks.
+                liveSnapshotStreams = liveSnapshotStreams.filter(
+                    stream => stream.snapshotStreamId !== snapshotRoom.streamId,
+                );
+                if (snapshotRoom.freed) {
+                    freed.push(snapshotRoom.spend);
+                    return true;
+                }
+            }
+            const madeRoom = await this.freeAnUnreferencedVideoStream(
+                nodeId,
+                endpointId,
+                evictable.filter(stream => liveStreams.includes(stream)),
+                state.streamUsagePriorities,
+                scope,
+            );
+            if (madeRoom === undefined) return false;
+            // Strictly shrinking, so eviction cannot keep finding the same victim.
+            liveStreams = liveStreams.filter(stream => stream.videoStreamId !== madeRoom.streamId);
+            freed.push(madeRoom.spend);
+            evicted.push(madeRoom.streamId);
+            return true;
+        };
         for (let attempt = 1; attempt <= MAX_ALLOCATE_ATTEMPTS; attempt++) {
+            const budget = budgeted(search.requested);
+            const envelope = budget.envelope;
             try {
                 const response = await this.io.invoke({
                     nodeId,
@@ -1129,50 +1142,16 @@ export class CameraStreamManager {
                         deviceStatus: lastStatus,
                     });
                 }
-                // Capacity refusals narrow only until the first eviction, which restarts at `servableSteps` (AGENTS.md).
-                const next = reaction === "narrow" || !roomMade ? nextRetry(envelope, reaction) : undefined;
-                if (next !== undefined) {
-                    if (reaction === "narrow") servableSteps = next;
-                    retrySteps = next;
-                    budget = budgeted(retrySteps);
-                    envelope = budget.envelope;
-                    continue;
-                }
-                if (reaction !== "make-room" || !allowEviction) break;
-                // No allocate follows the last attempt, so an eviction there would be for nothing.
-                if (attempt === MAX_ALLOCATE_ATTEMPTS) break;
-                // Our own snapshot stream goes first: StreamUsagePriorities ranks video usages only.
-                const snapshotRoom = await this.freeOwnSnapshotStream(
-                    nodeId,
-                    endpointId,
-                    liveSnapshotStreams,
-                    state.maxEncodedPixelRate,
-                    scope,
-                );
-                if (snapshotRoom !== undefined) {
-                    // Removed whether freed or refused, so the candidate set strictly shrinks.
-                    liveSnapshotStreams = liveSnapshotStreams.filter(
-                        stream => stream.snapshotStreamId !== snapshotRoom.streamId,
-                    );
-                    if (snapshotRoom.freed) {
-                        freed.push(snapshotRoom.spend);
-                        restartAfterFreeing();
+                let move = search.refused(reaction);
+                if (move === "makeRoom") {
+                    // No allocate follows the last attempt, so making room there would be for nothing.
+                    if (allowEviction && attempt < MAX_ALLOCATE_ATTEMPTS && (await makeRoom())) {
+                        search.roomMade();
                         continue;
                     }
+                    move = search.noRoom();
                 }
-                const madeRoom = await this.freeAnUnreferencedVideoStream(
-                    nodeId,
-                    endpointId,
-                    evictable.filter(stream => liveStreams.includes(stream)),
-                    state.streamUsagePriorities,
-                    scope,
-                );
-                if (madeRoom === undefined) break;
-                // Strictly shrinking, so eviction cannot keep finding the same victim.
-                liveStreams = liveStreams.filter(stream => stream.videoStreamId !== madeRoom.streamId);
-                freed.push(madeRoom.spend);
-                evicted.push(madeRoom.streamId);
-                restartAfterFreeing();
+                if (move === "giveUp") break;
             }
         }
 
@@ -1187,7 +1166,7 @@ export class CameraStreamManager {
             });
         }
 
-        if (ladderReaction(lastStatus) === "narrow") {
+        if (search.outcome === "unservable") {
             throw ServerError.cameraStreamIncompatible({
                 reason: "bounds",
                 track: "video",
@@ -1372,7 +1351,7 @@ export class CameraStreamManager {
             if (error instanceof ServerError) throw error;
             const status = deviceStatusOf(error);
             if (ladderReaction(status) === "rethrow") return { unavailable: error };
-            if (ladderReaction(status) === "make-room") {
+            if (ladderReaction(status) === "capacity") {
                 return {
                     unavailable: ServerError.cameraResourceExhausted({
                         allocated: state.allocatedAudioStreams.map(stream =>
@@ -1538,7 +1517,7 @@ export class CameraStreamManager {
                 maxFrameRate: freed.frameRate,
                 minResolution: freed.minResolution,
                 maxResolution: freed.maxResolution,
-                quality: SNAPSHOT_QUALITY,
+                quality: freed.quality,
                 ...freed.overlays,
             },
         });
@@ -1990,7 +1969,7 @@ export class CameraStreamManager {
         deviceCodecs: string[],
         requestedCodecs: string[],
     ): ServerError {
-        if (ladderReaction(deviceStatus) === "make-room") {
+        if (ladderReaction(deviceStatus) === "capacity") {
             return ServerError.cameraResourceExhausted({
                 allocated: [
                     ...state.allocatedVideoStreams.map(stream =>

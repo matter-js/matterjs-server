@@ -55,6 +55,7 @@ export interface AllocatedVideoStream {
     maxFrameRate: number;
     minBitRate: number;
     maxBitRate: number;
+    keyFrameInterval: number;
     referenceCount: number;
 }
 
@@ -79,6 +80,7 @@ export interface AllocatedSnapshotStream {
     imageCodec: number;
     minResolution: Resolution;
     maxResolution: Resolution;
+    quality: number;
     referenceCount: number;
     /** The rate this stream reserves in the encoded-pixel budget (§11.2.6.13.3). */
     frameRate: number;

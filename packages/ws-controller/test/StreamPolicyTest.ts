@@ -20,23 +20,15 @@ import {
     computeVideoEnvelope,
     findDegradedVideoStream,
     findReusableVideoStream,
-    KEY_FRAME_INTERVAL_MS,
     satisfiesAudioCallerBounds,
-    CAPACITY_RETRY_ORDER,
-    nextVideoRetry,
-    NO_RETRY_STEPS,
-    sameVideoEnvelope,
     satisfiesVideoCallerBounds,
-    UNSERVABLE_RETRY_ORDER,
     videoCallerBounds,
-    videoRetryWindow,
 } from "../src/camera/streamPolicy.js";
 import type {
     AudioSelection,
     VideoEnvelopeArgs,
     VideoPixelRateBudget,
     VideoPlan,
-    VideoRetryDimension,
     VideoSelection,
 } from "../src/camera/streamPolicy.js";
 import { NO_OVERLAYS } from "./cameraFixtures.js";
@@ -85,6 +77,15 @@ const CAPABILITIES = {
     maxNetworkBandwidth: 8000000,
 };
 
+/** What the Aqara G350 reports, the reference camera app's values. */
+const AQARA = {
+    sensor: { width: 1920, height: 1080 },
+    maxFrameRate: 120,
+    minViewport: { width: 640, height: 480 },
+    rateDistortionPoints: [{ codec: H264, resolution: { width: 640, height: 480 }, minBitRate: 10000 }],
+    maxNetworkBandwidth: 128000000,
+};
+
 /**
  * A browser-shaped offer: both codecs in one m-line, each with its own frame-size cap, written in
  * the parameter and the unit its own payload format defines.
@@ -120,6 +121,8 @@ const OFFER_H264_LEVEL_3_1_ONLY = [
     "a=fmtp:102 level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42e01f",
     "",
 ].join("\r\n");
+
+const FIREFOX_LIMITS = videoCodecLimits(parseSdpVideoConstraints(OFFER_H264_LEVEL_3_1_ONLY), H264);
 
 /** A receiving video section offering one codec, with `params` as its only `a=fmtp` line. */
 function offerWithFmtp(codec: string, params: string): string {
@@ -200,13 +203,13 @@ describe("streamPolicy", () => {
             expect(plan.frameRateFloor).to.equal(1);
         });
 
-        it("keeps a caller's minimum frame rate as the window's floor", () => {
+        it("keeps a caller's minimum frame rate as the floor, not as the window's minimum", () => {
             const plan = videoPlan({
                 capabilities: CAPABILITIES,
                 limits: { codec: H265 },
                 hints: { minFrameRate: 10 },
             });
-            expect(plan.envelope.minFrameRate).to.equal(10);
+            expect(plan.envelope.minFrameRate).to.equal(30);
             expect(plan.envelope.maxFrameRate).to.equal(30);
             expect(plan.frameRateFloor).to.equal(10);
         });
@@ -357,7 +360,7 @@ describe("streamPolicy", () => {
                 limits: { codec: H265 },
                 hints: { minFrameRate: 15, minBitRate: 1000000, minResolution: { width: 1280, height: 720 } },
             });
-            expect(envelope.minFrameRate).to.equal(15);
+            expect(envelope.minFrameRate).to.equal(30);
             expect(envelope.minBitRate).to.equal(1000000);
             expect(envelope.minResolution).to.deep.equal({ width: 1280, height: 720 });
         });
@@ -514,6 +517,30 @@ describe("streamPolicy", () => {
             expect(envelope.maxResolution).to.deep.equal({ width: 2560, height: 1440 });
             expect(envelope.maxFrameRate).to.equal(30);
         });
+
+        it("asks first for one frame rate, the best the offer decodes, with a 4000 ms key frame interval", () => {
+            const envelope = videoEnvelope({ capabilities: AQARA, limits: FIREFOX_LIMITS, hints: undefined });
+            expect(envelope).to.deep.include({
+                minResolution: { width: 640, height: 480 },
+                maxResolution: { width: 1280, height: 720 },
+                minFrameRate: 30,
+                maxFrameRate: 30,
+                minBitRate: 10000,
+                maxBitRate: 14000000,
+                keyFrameInterval: 4000,
+            });
+        });
+
+        it("asks for one frame rate inside a caller's range, the highest it allows", () => {
+            const plan = videoPlan({
+                capabilities: AQARA,
+                limits: FIREFOX_LIMITS,
+                hints: { minFrameRate: 15, maxFrameRate: 60 },
+            });
+            expect(plan.envelope.minFrameRate).to.equal(30);
+            expect(plan.envelope.maxFrameRate).to.equal(30);
+            expect(plan.frameRateFloor).to.equal(15);
+        });
     });
 
     describe("findReusableVideoStream", () => {
@@ -551,6 +578,7 @@ describe("streamPolicy", () => {
                 maxFrameRate: number;
                 minBitRate: number;
                 maxBitRate: number;
+                keyFrameInterval: 4000;
                 referenceCount: number;
                 overlays: Required<OverlayBounds>;
             }> = {},
@@ -566,6 +594,7 @@ describe("streamPolicy", () => {
                 maxFrameRate: 30,
                 minBitRate: 800000,
                 maxBitRate: 4000000,
+                keyFrameInterval: 4000,
                 referenceCount: 0,
                 ...overrides,
             };
@@ -631,6 +660,12 @@ describe("streamPolicy", () => {
             ).to.equal(1);
         });
 
+        it("refuses a stream that does not reach the plan's frame rate", () => {
+            expect(reusable([stream({ minFrameRate: 1, maxFrameRate: 5 })], REQUEST, LIVE_VIEW_H265)).to.equal(
+                undefined,
+            );
+        });
+
         it("refuses a stream whose overlays are not the ones the envelope asked for", () => {
             // An unstated overlay resolves to false, not to "either will do".
             const watermarked = stream({ overlays: { watermarkEnabled: true, osdEnabled: false } });
@@ -666,6 +701,7 @@ describe("streamPolicy", () => {
             maxFrameRate: 30,
             minBitRate: 800000,
             maxBitRate: 4000000,
+            keyFrameInterval: 4000,
             referenceCount: 1,
         };
 
@@ -738,6 +774,7 @@ describe("streamPolicy", () => {
             maxFrameRate: 30,
             minBitRate: 800000,
             maxBitRate: 4000000,
+            keyFrameInterval: 4000,
             referenceCount: 1,
         };
 
@@ -883,19 +920,14 @@ describe("streamPolicy", () => {
             codec: H265,
             minResolution: { width: 640, height: 360 },
             maxResolution: { width: 2560, height: 1440 },
-            minFrameRate: 1,
+            minFrameRate: 30,
             maxFrameRate: 30,
             minBitRate: 800000,
             maxBitRate: 4000000,
-            keyFrameInterval: 2000,
+            keyFrameInterval: 4000,
             overlays: {},
         };
-        /** `budgetVideoEnvelope` with the envelope's own minimum frame rate as the floor, unless stated. */
-        function budget(
-            envelope: VideoEnvelope,
-            pixelBudget: VideoPixelRateBudget,
-            frameRateFloor = envelope.minFrameRate,
-        ) {
+        function budget(envelope: VideoEnvelope, pixelBudget: VideoPixelRateBudget, frameRateFloor = 1) {
             return budgetVideoEnvelope(envelope, pixelBudget, frameRateFloor);
         }
 
@@ -919,6 +951,7 @@ describe("streamPolicy", () => {
                 maxFrameRate,
                 minBitRate: 800000,
                 maxBitRate: 4000000,
+                keyFrameInterval: 4000,
                 referenceCount: 0,
             };
         }
@@ -935,6 +968,7 @@ describe("streamPolicy", () => {
                 imageCodec: 0,
                 minResolution: { width, height },
                 maxResolution: { width, height },
+                quality: 90,
                 referenceCount: 0,
                 frameRate,
                 encodedPixels,
@@ -954,30 +988,34 @@ describe("streamPolicy", () => {
             });
         });
 
-        it("narrows the frame rate to what the budget carries at full frame size", () => {
+        it("narrows the frame size first and keeps the frame rate", () => {
             const budgeted = budget(SENSOR, { maxEncodedPixelRate: SENSOR_RATE / 2, ...NO_STREAMS });
-            expect(budgeted.envelope.maxResolution).to.deep.equal({ width: 2560, height: 1440 });
-            expect(budgeted.envelope.maxFrameRate).to.equal(15);
+            expect(budgeted.envelope.maxResolution).to.deep.equal({ width: 1810, height: 1018 });
+            expect(budgeted.envelope.maxFrameRate).to.equal(30);
         });
 
-        it("narrows the frame size once not even one frame per second fits", () => {
-            // Half a sensor frame, so the frame size is what has to give before any rate does.
-            const budgeted = budget(SENSOR, {
-                maxEncodedPixelRate: (2560 * 1440) / 2,
-                ...NO_STREAMS,
-            });
-            expect(budgeted.envelope.maxResolution).to.deep.equal({ width: 1810, height: 1018 });
-            expect(budgeted.envelope.maxFrameRate).to.equal(1);
+        it("lowers the frame rate, as one value, once the frame size is at its floor", () => {
+            const budgeted = budget(SENSOR, { maxEncodedPixelRate: 640 * 360 * 10, ...NO_STREAMS });
+            expect(budgeted.envelope.maxResolution).to.deep.equal({ width: 640, height: 360 });
+            expect(budgeted.envelope.minFrameRate).to.equal(10);
+            expect(budgeted.envelope.maxFrameRate).to.equal(10);
+        });
+
+        it("never lowers the frame rate below the floor it is given", () => {
+            const budgeted = budget(SENSOR, { maxEncodedPixelRate: 640 * 360 * 10, ...NO_STREAMS }, 20);
+            expect(budgeted.envelope.minFrameRate).to.equal(20);
+            expect(budgeted.envelope.maxFrameRate).to.equal(20);
         });
 
         it("subtracts what the camera's other video streams reserve", () => {
-            // One 1280x720 at 30 fps stream reserves a quarter of the sensor's rate, leaving three.
+            // One 1280x720 at 30 fps stream reserves a quarter of this 110592000 budget.
             const budgeted = budget(SENSOR, {
                 maxEncodedPixelRate: SENSOR_RATE,
                 videoStreams: [videoStream(7, 1280, 720, 30)],
                 snapshotStreams: new Array<AllocatedSnapshotStream>(),
             });
-            expect(budgeted.envelope.maxFrameRate).to.equal(22);
+            expect(budgeted.envelope.maxResolution).to.deep.equal({ width: 2216, height: 1246 });
+            expect(budgeted.envelope.maxFrameRate).to.equal(30);
         });
 
         it("subtracts a snapshot stream the camera counts in its encoded pixel rate", () => {
@@ -986,7 +1024,7 @@ describe("streamPolicy", () => {
                 videoStreams: new Array<AllocatedVideoStream>(),
                 snapshotStreams: [snapshotStream(2560, 1440, 15, true)],
             });
-            expect(budgeted.envelope.maxFrameRate).to.equal(15);
+            expect(budgeted.envelope.maxResolution).to.deep.equal({ width: 1810, height: 1018 });
         });
 
         it("ignores a snapshot stream the camera does not count in it", () => {
@@ -996,7 +1034,7 @@ describe("streamPolicy", () => {
                 videoStreams: new Array<AllocatedVideoStream>(),
                 snapshotStreams: [snapshotStream(2560, 1440, 15, false)],
             });
-            expect(budgeted.envelope.maxFrameRate).to.equal(30);
+            expect(budgeted.envelope).to.deep.equal(SENSOR);
         });
 
         it("narrows nothing once the budget is spent, leaving the refusal to the camera", () => {
@@ -1012,28 +1050,25 @@ describe("streamPolicy", () => {
             expect(budget(SENSOR, { maxEncodedPixelRate: SENSOR_RATE, ...NO_STREAMS }).narrowed).to.equal(undefined);
         });
 
-        it("reports the frame rate it lowered, and what it would have asked for", () => {
+        it("reports the frame size it lowered, and what it would have asked for", () => {
             // With both values the caller can tell another stream's reservation from a camera limit.
             expect(budget(SENSOR, { maxEncodedPixelRate: SENSOR_RATE / 2, ...NO_STREAMS }).narrowed).to.deep.equal({
-                maxFrameRate: 30,
+                maxResolution: { width: 2560, height: 1440 },
             });
         });
 
-        it("reports both ceilings when even one frame per second does not fit", () => {
-            expect(budget(SENSOR, { maxEncodedPixelRate: (2560 * 1440) / 2, ...NO_STREAMS }).narrowed).to.deep.equal({
+        it("reports both ceilings when the frame size reached its floor", () => {
+            expect(budget(SENSOR, { maxEncodedPixelRate: 640 * 360 * 10, ...NO_STREAMS }).narrowed).to.deep.equal({
                 maxFrameRate: 30,
                 maxResolution: { width: 2560, height: 1440 },
             });
         });
 
-        it("reports nothing narrowed when a caller floor clamped the ceiling back up", () => {
-            // The floors undid the budget's narrowing, so the envelope is the one the caller asked for.
-            const pinned = {
-                ...SENSOR,
-                minResolution: { width: 2560, height: 1440 },
-                minFrameRate: 30,
-            };
-            expect(budget(pinned, { maxEncodedPixelRate: 1000, ...NO_STREAMS }).narrowed).to.equal(undefined);
+        it("reports nothing narrowed when the floors clamped both ceilings back up", () => {
+            const pinned = { ...SENSOR, minResolution: { width: 2560, height: 1440 } };
+            const budgeted = budget(pinned, { maxEncodedPixelRate: 1000, ...NO_STREAMS }, 30);
+            expect(budgeted.envelope).to.deep.equal(pinned);
+            expect(budgeted.narrowed).to.equal(undefined);
         });
 
         it("reports nothing narrowed once the budget is spent", () => {
@@ -1044,175 +1079,6 @@ describe("streamPolicy", () => {
                     snapshotStreams: new Array<AllocatedSnapshotStream>(),
                 }).narrowed,
             ).to.equal(undefined);
-        });
-
-        it("never narrows a ceiling below the envelope's own floor", () => {
-            const pinned = {
-                ...SENSOR,
-                minResolution: { width: 2560, height: 1440 },
-                minFrameRate: 30,
-            };
-            const budgeted = budget(pinned, { maxEncodedPixelRate: 1000, ...NO_STREAMS });
-            expect(budgeted.envelope.maxResolution).to.deep.equal({ width: 2560, height: 1440 });
-            expect(budgeted.envelope.maxFrameRate).to.equal(30);
-        });
-
-        it("lowers a target frame rate as one value when the caller stated no minimum", () => {
-            const target = { ...SENSOR, minFrameRate: 30 };
-            const budgeted = budget(target, { maxEncodedPixelRate: SENSOR_RATE / 2, ...NO_STREAMS }, 1);
-            expect(budgeted.envelope.minFrameRate).to.equal(15);
-            expect(budgeted.envelope.maxFrameRate).to.equal(15);
-        });
-
-        it("keeps a caller's minimum frame rate while it lowers the ceiling", () => {
-            const range = { ...SENSOR, minFrameRate: 10 };
-            const budgeted = budget(range, { maxEncodedPixelRate: SENSOR_RATE / 2, ...NO_STREAMS }, 10);
-            expect(budgeted.envelope.minFrameRate).to.equal(10);
-            expect(budgeted.envelope.maxFrameRate).to.equal(15);
-        });
-    });
-
-    describe("video retry windows", () => {
-        /** The reference camera's numbers as the Aqara G350 reports them, offered H.264 level 3.1. */
-        const AQARA = {
-            sensor: { width: 1920, height: 1080 },
-            maxFrameRate: 120,
-            minViewport: { width: 640, height: 480 },
-            rateDistortionPoints: [{ codec: H264, resolution: { width: 640, height: 480 }, minBitRate: 10000 }],
-            maxNetworkBandwidth: 128000000,
-        };
-        const FIREFOX_LIMITS = videoCodecLimits(parseSdpVideoConstraints(OFFER_H264_LEVEL_3_1_ONLY), H264);
-
-        const WINDOW = {
-            codec: H265,
-            minResolution: { width: 640, height: 360 },
-            maxResolution: { width: 2560, height: 1440 },
-            minFrameRate: 30,
-            maxFrameRate: 30,
-            minBitRate: 800000,
-            maxBitRate: 8000000,
-            keyFrameInterval: KEY_FRAME_INTERVAL_MS,
-            overlays: {},
-        };
-
-        /** Every window a camera refusing each one in turn is asked for, in order. */
-        function retries(plan: VideoPlan, order: readonly VideoRetryDimension[] = UNSERVABLE_RETRY_ORDER) {
-            const windows = [plan.envelope];
-            let steps = nextVideoRetry(NO_RETRY_STEPS, order, next => differs(next, plan, windows));
-            while (steps !== undefined) {
-                windows.push(videoRetryWindow(plan, steps));
-                const current = steps;
-                steps = nextVideoRetry(current, order, next => differs(next, plan, windows));
-            }
-            return windows;
-        }
-
-        function differs(steps: Parameters<typeof videoRetryWindow>[1], plan: VideoPlan, windows: VideoEnvelope[]) {
-            return !sameVideoEnvelope(videoRetryWindow(plan, steps), windows[windows.length - 1]);
-        }
-
-        function summary(envelope: VideoEnvelope): string {
-            const { maxResolution, minFrameRate, maxFrameRate, maxBitRate } = envelope;
-            return `${maxResolution.width}x${maxResolution.height}@${minFrameRate}-${maxFrameRate} ${maxBitRate}`;
-        }
-
-        it("asks first for one frame rate, the best the offer decodes, with the recommended key frame interval", () => {
-            const envelope = videoEnvelope({ capabilities: AQARA, limits: FIREFOX_LIMITS, hints: undefined });
-            expect(envelope).to.deep.include({
-                minResolution: { width: 640, height: 480 },
-                maxResolution: { width: 1280, height: 720 },
-                minFrameRate: 30,
-                maxFrameRate: 30,
-                minBitRate: 10000,
-                maxBitRate: 14000000,
-                keyFrameInterval: 4000,
-            });
-        });
-
-        it("halves the bit rate first, then the frame rate, then the resolution", () => {
-            expect(retries({ envelope: WINDOW, frameRateFloor: 1 }).map(summary)).to.deep.equal([
-                "2560x1440@30-30 8000000",
-                "2560x1440@30-30 4000000",
-                "2560x1440@30-30 2000000",
-                "2560x1440@30-30 1000000",
-                "2560x1440@30-30 800000",
-                "2560x1440@15-15 800000",
-                "2560x1440@7-7 800000",
-                "1280x720@7-7 800000",
-                "640x360@7-7 800000",
-            ]);
-        });
-
-        it("reaches a bit rate the Aqara accepts within its first four windows", () => {
-            const plan = videoPlan({ capabilities: AQARA, limits: FIREFOX_LIMITS, hints: undefined });
-            expect(
-                retries(plan)
-                    .slice(0, 4)
-                    .map(window => window.maxBitRate),
-            ).to.deep.equal([14000000, 7000000, 3500000, 1750000]);
-        });
-
-        it("never steps below a floor the caller stated", () => {
-            const plan = videoPlan({
-                capabilities: CAPABILITIES,
-                limits: { codec: H265 },
-                hints: {
-                    minFrameRate: 20,
-                    minBitRate: 3000000,
-                    minResolution: { width: 1920, height: 1080 },
-                    maxResolution: { width: 2560, height: 1440 },
-                },
-            });
-            for (const candidate of retries(plan)) {
-                expect(candidate.minFrameRate).to.equal(20);
-                expect(candidate.maxFrameRate).to.be.at.least(20);
-                expect(candidate.minBitRate).to.equal(3000000);
-                expect(candidate.maxBitRate).to.be.at.least(3000000);
-                expect(candidate.maxResolution.width).to.be.at.least(1920);
-                expect(candidate.maxResolution.height).to.be.at.least(1080);
-            }
-        });
-
-        it("never steps above a ceiling the caller or the offer stated", () => {
-            const plan = videoPlan({
-                capabilities: AQARA,
-                limits: FIREFOX_LIMITS,
-                hints: { maxFrameRate: 24, maxBitRate: 5000000, maxResolution: { width: 960, height: 540 } },
-            });
-            for (const candidate of retries(plan)) {
-                expect(candidate.maxFrameRate).to.be.at.most(24);
-                expect(candidate.maxBitRate).to.be.at.most(5000000);
-                expect(candidate.maxResolution.width).to.be.at.most(960);
-                expect(candidate.maxResolution.height).to.be.at.most(540);
-            }
-        });
-
-        it("skips a step that would leave the window unchanged", () => {
-            const pinned = {
-                ...WINDOW,
-                minResolution: WINDOW.maxResolution,
-                minBitRate: WINDOW.maxBitRate,
-            };
-            expect(retries({ envelope: pinned, frameRateFloor: 30 })).to.deep.equal([pinned]);
-        });
-
-        it("keeps the bit rate after a capacity refusal and lowers what the encoder is charged", () => {
-            expect(retries({ envelope: WINDOW, frameRateFloor: 1 }, CAPACITY_RETRY_ORDER).map(summary)).to.deep.equal([
-                "2560x1440@30-30 8000000",
-                "2560x1440@15-15 8000000",
-                "2560x1440@7-7 8000000",
-                "1280x720@7-7 8000000",
-                "640x360@7-7 8000000",
-            ]);
-        });
-
-        it("advances one dimension and keeps the steps already taken in the others", () => {
-            const steps = { bitRate: 2, frameRate: 0, resolution: 0 };
-            expect(nextVideoRetry(steps, CAPACITY_RETRY_ORDER, () => true)).to.deep.equal({
-                bitRate: 2,
-                frameRate: 1,
-                resolution: 0,
-            });
         });
     });
 
@@ -1256,6 +1122,7 @@ describe("streamPolicy", () => {
                 maxFrameRate: 30,
                 minBitRate: 400000,
                 maxBitRate: 4000000,
+                keyFrameInterval: 4000,
                 referenceCount: 0,
             };
         }

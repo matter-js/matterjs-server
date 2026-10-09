@@ -385,6 +385,7 @@ describe("CameraStreamManager", () => {
                         maxFrameRate: 30,
                         minBitRate: 800000,
                         maxBitRate: 4000000,
+                        keyFrameInterval: 4000,
                         referenceCount: 2,
                     },
                 ],
@@ -421,6 +422,7 @@ describe("CameraStreamManager", () => {
                         maxFrameRate: 30,
                         minBitRate: 800000,
                         maxBitRate: 4000000,
+                        keyFrameInterval: 4000,
                         referenceCount: 0,
                     },
                 ],
@@ -452,6 +454,7 @@ describe("CameraStreamManager", () => {
             maxFrameRate: 30,
             minBitRate: 800000,
             maxBitRate: 4000000,
+            keyFrameInterval: 3000,
             referenceCount: 1,
         };
 
@@ -487,6 +490,7 @@ describe("CameraStreamManager", () => {
             const envelope = requireVideoEnvelope(resolved.envelope);
             expect(envelope.minResolution).to.deep.equal(CONTAINED_STREAM.minResolution);
             expect(envelope.maxResolution).to.deep.equal(CONTAINED_STREAM.maxResolution);
+            expect(envelope.keyFrameInterval).to.equal(CONTAINED_STREAM.keyFrameInterval);
         });
 
         it("does not reuse a stream whose floor is below the requested floor", async () => {
@@ -729,6 +733,7 @@ describe("CameraStreamManager", () => {
                 imageCodec: 0,
                 minResolution: { width: 1920, height: 1080 },
                 maxResolution: { width: 1920, height: 1080 },
+                quality: 90,
                 referenceCount: 0,
                 frameRate: 1,
                 encodedPixels: true,
@@ -792,6 +797,7 @@ describe("CameraStreamManager", () => {
                 imageCodec: 0,
                 minResolution: { width: 1920, height: 1080 },
                 maxResolution: { width: 1920, height: 1080 },
+                quality: 90,
                 referenceCount: 0,
                 frameRate: 30,
                 encodedPixels: true,
@@ -848,6 +854,7 @@ describe("CameraStreamManager", () => {
             imageCodec: 0,
             minResolution: { width: 1920, height: 1080 },
             maxResolution: { width: 1920, height: 1080 },
+            quality: 75,
             referenceCount: 0,
             frameRate: 1,
             encodedPixels: true,
@@ -975,8 +982,8 @@ describe("CameraStreamManager", () => {
             expect(allocates).to.have.length(2);
             expect(allocates[1]?.fields.minResolution).to.deep.equal({ width: 1920, height: 1080 });
             expect(allocates[1]?.fields.maxFrameRate).to.equal(1);
-            // Quality is mandatory on SnapshotStreamAllocate (§11.2.8.8).
-            expect(allocates[1]?.fields.quality).to.equal(90);
+            // The stream's own quality: the reference server reuses a snapshot stream only on an exact match.
+            expect(allocates[1]?.fields.quality).to.equal(SNAPSHOT_HOLDER.quality);
         });
 
         it("puts a snapshot stream back when the degraded rung served the caller instead", async () => {
@@ -1044,6 +1051,7 @@ describe("CameraStreamManager", () => {
                 imageCodec: 0,
                 minResolution: { width: 1920, height: 1080 },
                 maxResolution: { width: 1920, height: 1080 },
+                quality: 90,
                 referenceCount: 0,
                 frameRate: 1,
                 encodedPixels: true,
@@ -1090,6 +1098,7 @@ describe("CameraStreamManager", () => {
                         imageCodec: 0,
                         minResolution: { width: 1920, height: 1080 },
                         maxResolution: { width: 1920, height: 1080 },
+                        quality: 90,
                         referenceCount: 0,
                         frameRate: 1,
                         encodedPixels: true,
@@ -1491,14 +1500,14 @@ describe("CameraStreamManager", () => {
             });
             expect(resolved.streamId).to.equal(40);
             const envelope = requireVideoEnvelope(resolved.envelope);
-            expect(envelope.maxResolution).to.deep.equal({ width: 2560, height: 1440 });
-            expect(envelope.maxFrameRate).to.equal(15);
+            expect(envelope.maxResolution).to.deep.equal({ width: 1810, height: 1018 });
+            expect(envelope.maxFrameRate).to.equal(30);
             // One attempt: the request the camera can serve was the first one it saw.
             expect(invokes.filter(invoke => invoke.command === "videoStreamAllocate")).to.have.length(1);
         });
 
         it("reports the ceiling the budget lowered, so the caller is not left guessing", async () => {
-            // The budget spends the frame rate first, so the request keeps full sensor size at a low rate.
+            // The budget spends frame size first, so the request keeps the frame rate.
             const { manager } = managerWith(
                 { ...STATE, maxEncodedPixelRate: HALF_SENSOR_BUDGET },
                 encoderBudgetedCamera(HALF_SENSOR_BUDGET),
@@ -1509,8 +1518,8 @@ describe("CameraStreamManager", () => {
                 streamUsage: LIVE_VIEW,
                 limits: { codec: H265 },
             });
-            expect(requireVideoEnvelope(resolved.envelope).maxFrameRate).to.equal(15);
-            expect(resolved.budgetNarrowed).to.deep.equal({ maxFrameRate: 30 });
+            expect(requireVideoEnvelope(resolved.envelope).maxFrameRate).to.equal(30);
+            expect(resolved.budgetNarrowed).to.deep.equal({ maxResolution: { width: 2560, height: 1440 } });
             expect(resolved.degraded).to.equal(undefined);
         });
 
@@ -1662,6 +1671,7 @@ describe("CameraStreamManager", () => {
                 imageCodec: 0,
                 minResolution: { width: 2560, height: 1440 },
                 maxResolution: { width: 2560, height: 1440 },
+                quality: 90,
                 referenceCount: 0,
                 frameRate: 15,
                 encodedPixels: true,
@@ -1678,7 +1688,7 @@ describe("CameraStreamManager", () => {
                 streamUsage: LIVE_VIEW,
                 limits: { codec: H265 },
             });
-            expect(requireVideoEnvelope(resolved.envelope).maxFrameRate).to.equal(15);
+            expect(requireVideoEnvelope(resolved.envelope).maxResolution).to.deep.equal({ width: 1810, height: 1018 });
             expect(invokes.filter(invoke => invoke.command === "videoStreamAllocate")).to.have.length(1);
         });
 
@@ -1821,7 +1831,7 @@ describe("CameraStreamManager", () => {
                 referenceCount: 0,
             });
             const { manager, invokes } = managerWith(
-                withStreams([20, 21, 22, 23, 24, 25, 26, 27, 28, 29].map(idle)),
+                withStreams([20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31].map(idle)),
                 async invoke => {
                     if (invoke.command === "videoStreamAllocate") throw statusError(Status.ResourceExhausted);
                     return undefined;
@@ -1845,9 +1855,9 @@ describe("CameraStreamManager", () => {
                 invoke => invoke.command === "videoStreamAllocate" && invoke.fields.streamUsage === LIVE_VIEW,
             );
             const deallocates = invokes.filter(invoke => invoke.command === "videoStreamDeallocate");
-            // 1280x720 at 30, 15 and 7 fps, then 640x360: the windows tried before the first eviction.
-            const windowsBeforeEviction = 4;
-            // Ten candidates, but only the attempts before the last can spend what they buy.
+            // 1280x720, then 640x360: the windows tried before the first eviction.
+            const windowsBeforeEviction = 2;
+            // More candidates than attempts, and only the attempts before the last can spend what they buy.
             expect(attempts.length).to.equal(MAX_ALLOCATE_ATTEMPTS);
             expect(deallocates.length).to.equal(MAX_ALLOCATE_ATTEMPTS - windowsBeforeEviction);
         });
@@ -2242,6 +2252,7 @@ describe("CameraStreamManager", () => {
                         maxFrameRate: 30,
                         minBitRate: 800000,
                         maxBitRate: 4000000,
+                        keyFrameInterval: 4000,
                         referenceCount: 1,
                     },
                 ],
@@ -2406,6 +2417,7 @@ describe("CameraStreamManager", () => {
             maxFrameRate: 30,
             minBitRate: 800000,
             maxBitRate: 4000000,
+            keyFrameInterval: 4000,
             referenceCount: 1,
         };
 
@@ -4098,6 +4110,7 @@ describe("CameraStreamManager", () => {
                         maxFrameRate: 30,
                         minBitRate: 800000,
                         maxBitRate: 4000000,
+                        keyFrameInterval: 4000,
                         referenceCount: 1,
                     },
                 ],
@@ -4143,6 +4156,7 @@ describe("CameraStreamManager", () => {
                         maxFrameRate: 30,
                         minBitRate: 800000,
                         maxBitRate: 4000000,
+                        keyFrameInterval: 4000,
                         referenceCount: 1,
                     },
                 ],
@@ -4197,6 +4211,7 @@ describe("CameraStreamManager", () => {
                         imageCodec: 0,
                         minResolution: { width: 640, height: 480 },
                         maxResolution: { width: 1920, height: 1080 },
+                        quality: 90,
                         referenceCount: 0,
                         frameRate: 1,
                         encodedPixels: false,
@@ -4419,6 +4434,7 @@ describe("CameraStreamManager", () => {
                         maxFrameRate: 30,
                         minBitRate: 800000,
                         maxBitRate: 4000000,
+                        keyFrameInterval: 4000,
                         referenceCount: 1,
                     },
                 ],
@@ -4463,6 +4479,7 @@ describe("CameraStreamManager", () => {
                         maxFrameRate: 30,
                         minBitRate: 800000,
                         maxBitRate: 4000000,
+                        keyFrameInterval: 4000,
                         referenceCount: 1,
                     },
                 ],
@@ -4565,6 +4582,7 @@ describe("CameraStreamManager", () => {
                         imageCodec: 0,
                         minResolution: { width: 1920, height: 1080 },
                         maxResolution: { width: 1920, height: 1080 },
+                        quality: 90,
                         referenceCount: 0,
                         frameRate: 1,
                         encodedPixels: false,
@@ -4590,6 +4608,7 @@ describe("CameraStreamManager", () => {
                         imageCodec: 0,
                         minResolution: { width: 640, height: 480 },
                         maxResolution: { width: 1920, height: 1080 },
+                        quality: 90,
                         referenceCount: 0,
                         frameRate: 1,
                         encodedPixels: false,
@@ -4622,6 +4641,7 @@ describe("CameraStreamManager", () => {
                         imageCodec: 0,
                         minResolution: { width: 1920, height: 1080 },
                         maxResolution: { width: 1920, height: 1080 },
+                        quality: 90,
                         referenceCount: 0,
                         frameRate: 1,
                         encodedPixels: false,
@@ -4689,6 +4709,7 @@ describe("CameraStreamManager", () => {
             imageCodec: 0,
             minResolution: { width: 1920, height: 1080 },
             maxResolution: { width: 1920, height: 1080 },
+            quality: 90,
             referenceCount: 0,
             frameRate: 1,
             encodedPixels: false,
@@ -4949,6 +4970,7 @@ describe("CameraStreamManager", () => {
                         maxFrameRate: 30,
                         minBitRate: 800000,
                         maxBitRate: 4000000,
+                        keyFrameInterval: 4000,
                         referenceCount: 1,
                     },
                 ],
@@ -4987,6 +5009,7 @@ describe("CameraStreamManager", () => {
                         maxFrameRate: 30,
                         minBitRate: 800000,
                         maxBitRate: 4000000,
+                        keyFrameInterval: 4000,
                         referenceCount: 2,
                     },
                 ],
@@ -5011,6 +5034,7 @@ describe("CameraStreamManager", () => {
                         maxFrameRate: 30,
                         minBitRate: 800000,
                         maxBitRate: 4000000,
+                        keyFrameInterval: 4000,
                         referenceCount: 0,
                     },
                 ],
@@ -5038,6 +5062,7 @@ describe("CameraStreamManager", () => {
                         maxFrameRate: 30,
                         minBitRate: 800000,
                         maxBitRate: 4000000,
+                        keyFrameInterval: 4000,
                         referenceCount: 0,
                     },
                 ],
@@ -5077,6 +5102,7 @@ describe("CameraStreamManager", () => {
                         maxFrameRate: 30,
                         minBitRate: 800000,
                         maxBitRate: 4000000,
+                        keyFrameInterval: 4000,
                         referenceCount: 0,
                     },
                 ],
@@ -5106,6 +5132,7 @@ describe("CameraStreamManager", () => {
             maxFrameRate: 5,
             minBitRate: 100000,
             maxBitRate: 200000,
+            keyFrameInterval: 2000,
             referenceCount: 0,
         };
 
@@ -5361,6 +5388,7 @@ describe("CameraStreamManager", () => {
                         maxFrameRate: envelope.maxFrameRate,
                         minBitRate: envelope.minBitRate,
                         maxBitRate: envelope.maxBitRate,
+                        keyFrameInterval: 4000,
                         referenceCount: 0,
                     },
                 ],
@@ -5486,6 +5514,7 @@ describe("CameraStreamManager", () => {
                     invoke.fields.streamUsage === FOREIGN_STREAM.streamUsage,
             );
             expect(restore?.fields.maxResolution).to.deep.equal(FOREIGN_STREAM.maxResolution);
+            expect(restore?.fields.keyFrameInterval).to.equal(FOREIGN_STREAM.keyFrameInterval);
         });
 
         it("puts back a stream it freed to make room when the request fails after the allocate", async () => {
@@ -5532,6 +5561,7 @@ describe("CameraStreamManager", () => {
                     invoke.fields.streamUsage === FOREIGN_STREAM.streamUsage,
             );
             expect(restore?.fields.maxResolution).to.deep.equal(FOREIGN_STREAM.maxResolution);
+            expect(restore?.fields.keyFrameInterval).to.equal(FOREIGN_STREAM.keyFrameInterval);
         });
 
         it("puts back a stream it freed to make room when the request fails anyway", async () => {
@@ -5565,6 +5595,7 @@ describe("CameraStreamManager", () => {
                     invoke.fields.streamUsage === FOREIGN_STREAM.streamUsage,
             );
             expect(restore?.fields.maxResolution).to.deep.equal(FOREIGN_STREAM.maxResolution);
+            expect(restore?.fields.keyFrameInterval).to.equal(FOREIGN_STREAM.keyFrameInterval);
             expect(restore?.fields.videoCodec).to.equal(FOREIGN_STREAM.videoCodec);
             // This server allocated the replacement, so it must be releasable.
             await manager.releaseStream({ nodeId: NODE, endpointId: ENDPOINT, kind: "video", streamId: 20 });
@@ -5768,6 +5799,7 @@ describe("CameraStreamManager reuse before the device has reported", () => {
                     maxFrameRate: envelope.maxFrameRate,
                     minBitRate: envelope.minBitRate,
                     maxBitRate: envelope.maxBitRate,
+                    keyFrameInterval: 4000,
                     referenceCount: 1,
                 },
             ],
@@ -6020,6 +6052,7 @@ describe("CameraStreamManager reuse before the device has reported", () => {
                         maxFrameRate: envelope.maxFrameRate,
                         minBitRate: envelope.minBitRate,
                         maxBitRate: envelope.maxBitRate,
+                        keyFrameInterval: 4000,
                         referenceCount: 0,
                     },
                 ],
@@ -6377,6 +6410,7 @@ describe("CameraStreamManager device cleanup budget", () => {
                         maxFrameRate: 30,
                         minBitRate: 800000,
                         maxBitRate: 4000000,
+                        keyFrameInterval: 4000,
                         referenceCount: 0,
                     },
                 ],
@@ -6434,6 +6468,7 @@ describe("CameraStreamManager device cleanup budget", () => {
                         maxFrameRate: 30,
                         minBitRate: 800000,
                         maxBitRate: 4000000,
+                        keyFrameInterval: 4000,
                         referenceCount: 0,
                     },
                 ],
@@ -7061,6 +7096,7 @@ describe("CameraStreamManager overlays", () => {
             maxFrameRate: 30,
             minBitRate: 800000,
             maxBitRate: 8000000,
+            keyFrameInterval: 4000,
             referenceCount: 0,
         };
     }
@@ -7072,6 +7108,7 @@ describe("CameraStreamManager overlays", () => {
             imageCodec: 0,
             minResolution: { width: 1920, height: 1080 },
             maxResolution: { width: 1920, height: 1080 },
+            quality: 90,
             referenceCount: 0,
             frameRate: 1,
             encodedPixels: false,
