@@ -6,6 +6,7 @@
 
 import { ClientNode, NodeId } from "@matter/main";
 import { Read } from "@matter/main/protocol";
+import { Status } from "@matter/main/types";
 import { BooleanStateServer } from "@matter/node/behaviors/boolean-state";
 import { OnOffServer } from "@matter/node/behaviors/on-off";
 import { ServerError, ServerErrorCode } from "../src/types/WebSocketMessageTypes.js";
@@ -75,6 +76,29 @@ describe("generic read", () => {
         await read({ nodeId: NODE_ID, attributePaths: ["1/6/0"] });
 
         expect(captured[0].isFabricFiltered).equals(true);
+    });
+
+    it("returns the status of an unsupported attribute, cluster, endpoint and event path", async () => {
+        const report = await read({
+            nodeId: NODE_ID,
+            attributePaths: ["1/6/0", "1/6/9999", "1/1234/0", "9/6/0"],
+            eventPaths: [{ path: "1/69/5" }],
+        });
+
+        expect(report.attributes).deep.equals({ "1/6/0": false });
+        expect(report.attribute_status).deep.equals({
+            "1/6/9999": { status: Status.UnsupportedAttribute },
+            "1/1234/0": { status: Status.UnsupportedCluster },
+            "9/6/0": { status: Status.UnsupportedEndpoint },
+        });
+        expect(report.event_status).deep.equals({ "1/69/5": { status: Status.UnsupportedEvent } });
+    });
+
+    it("has no status fields when every path succeeds", async () => {
+        const report = await read({ nodeId: NODE_ID, attributePaths: ["1/6/0"], eventPaths: [{ path: "1/69/0" }] });
+
+        expect(report).not.have.property("attribute_status");
+        expect(report).not.have.property("event_status");
     });
 
     it("returns attributes and events in the read_attribute and node_event shapes", async () => {

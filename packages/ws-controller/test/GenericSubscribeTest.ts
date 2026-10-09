@@ -6,6 +6,7 @@
 
 import { ClientNode, NodeId, Seconds, SessionsBehavior } from "@matter/main";
 import { Subscribe } from "@matter/main/protocol";
+import { Status } from "@matter/main/types";
 import { BooleanStateServer } from "@matter/node/behaviors/boolean-state";
 import { OnOffServer } from "@matter/node/behaviors/on-off";
 import { AttributeChange, EventChange } from "../src/controller/PeerChangeBus.js";
@@ -174,6 +175,16 @@ describe("generic subscribe", () => {
                 attributeChanges.some(({ path, value }) => path.attributeId === 0 && path.clusterId === 6 && value),
             ).equals(true);
             expect(eventChanges.some(({ path }) => path.clusterId === 69 && path.eventId === 0)).equals(true);
+        });
+
+        it("reports the status of an unsupported path in the priming report", async () => {
+            const record = recorder();
+
+            await subscribe({ ...LIGHT_ON_OFF, attributePaths: ["1/6/0", "1/6/9999"] }, record.listener);
+
+            expect(record.reports[0].attribute_status).deep.equals({
+                "1/6/9999": { status: Status.UnsupportedAttribute },
+            });
         });
 
         it("stops reporting once closed", async () => {
@@ -369,6 +380,32 @@ describe("subscribe over WebSocket", () => {
 
         const response = await client.command("unsubscribe", { subscription_id: 9 });
         expect(response.error_code).equals(ServerErrorCode.InvalidArguments);
+    });
+
+    it("tells only the owner when a subscription ends without unsubscribe", async () => {
+        const owner = await harness.connect();
+        const other = await harness.connect();
+        harness.nextSubscriptionId = 10;
+        await owner.command("subscribe", SUBSCRIBE_ARGS);
+
+        harness.endFromController(10);
+
+        const ended = await owner.nextEvent("subscription_ended");
+        expect(ended.data).deep.equals({ subscription_id: 10 });
+        await other.command("server_info", {});
+        expect(other.events("subscription_ended")).deep.equals([]);
+    });
+
+    it("does not announce the end of an unsubscribed subscription", async () => {
+        const client = await harness.connect();
+        harness.nextSubscriptionId = 6;
+        await client.command("subscribe", SUBSCRIBE_ARGS);
+
+        await client.command("unsubscribe", { subscription_id: 6 });
+        harness.repeatClosedNotice(6);
+        await client.command("server_info", {});
+
+        expect(client.events("subscription_ended")).deep.equals([]);
     });
 
     it("keeps a newer subscription when an ended one with the same id reports its end late", async () => {

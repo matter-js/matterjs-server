@@ -398,10 +398,21 @@ export interface InteractionReadArgs {
     data_version_filters?: Array<{ path: string; data_version: number }>;
 }
 
-/** Attribute values as in `read_attribute`, events as in `node_event`. */
+/** A Matter status for one path: `status` is the Matter status code, `cluster_status` the cluster-specific one. */
+export interface PathStatus {
+    status: number;
+    cluster_status?: number;
+}
+
+/**
+ * Attribute values as in `read_attribute`, events as in `node_event`. The status maps are keyed by the path in the
+ * request format and are present only when the device returned a status for a path.
+ */
 export interface InteractionReportData {
     attributes: AttributesData;
     events: Array<MatterNodeEvent>;
+    attribute_status?: { [path: string]: PathStatus };
+    event_status?: { [path: string]: PathStatus };
 }
 
 export interface APICommands {
@@ -805,6 +816,9 @@ export interface APIEvents {
     subscription_report: {
         data: SubscriptionReportData;
     };
+    subscription_ended: {
+        data: { subscription_id: number };
+    };
 }
 
 /** All known event type names */
@@ -866,6 +880,11 @@ interface ServerEventSubscriptionReport {
     event: "subscription_report";
     data: SubscriptionReportData;
 }
+/** Schema 14: a subscription ended without `unsubscribe`; sent only to the connection that opened it. */
+interface ServerEventSubscriptionEnded {
+    event: "subscription_ended";
+    data: { subscription_id: number };
+}
 
 export type EventMessage =
     | ServerEventNodeAdded
@@ -880,7 +899,8 @@ export type EventMessage =
     | ServerEventThreadDiagnosticsUpdated
     | ServerEventNetworkTopologyUpdated
     | ServerEventWebRtcCallback
-    | ServerEventSubscriptionReport;
+    | ServerEventSubscriptionReport
+    | ServerEventSubscriptionEnded;
 
 export interface ResultMessageBase {
     message_id: string;

@@ -18,10 +18,11 @@ listed retroactively; entries start at the first version maintained here.
 
 ### Subscriptions and generic read
 
-- **New command `read`** → `{ attributes, events }`. One Matter Read request with `attribute_paths`, `event_paths` (`[{ path }]`, `path` is `endpoint/cluster/event`), `event_min`, `fabric_filtered` (default `true`) and `data_version_filters` (`[{ path: "endpoint/cluster", data_version }]`). `attributes` uses the `read_attribute` shape, `events` the `node_event` shape.
+- **New command `read`** → `{ attributes, events, attribute_status?, event_status? }`. One Matter Read request with `attribute_paths`, `event_paths` (`[{ path }]`, `path` is `endpoint/cluster/event`), `event_min`, `fabric_filtered` (default `true`) and `data_version_filters` (`[{ path: "endpoint/cluster", data_version }]`). `attributes` uses the `read_attribute` shape, `events` the `node_event` shape. `attribute_status` / `event_status` map each path the device answered with a status to `{ status, cluster_status? }` (numeric Matter status codes) and are left out when there is none.
 - **New command `subscribe`** → `{ subscription_id }`. The `read` arguments plus `min_interval` / `max_interval` (seconds), `is_urgent` per event path and `keep_subscriptions` (default `true`; `false` is rejected with `InvalidArguments` unless the server runs with `--disable-auto-subscription`). `subscription_id` is the SubscriptionId the device assigned. The subscription belongs to the connection that opened it and ends with `unsubscribe`, when that connection closes, when the node is removed or when the server shuts down.
 - **New command `unsubscribe`** (`{ subscription_id }`) → `null`. An unknown id or another connection's id gives `InvalidArguments`.
-- **New event `subscription_report`** → `{ subscription_id, attributes, events }`. Sent only to the connection that opened the subscription, whether or not it called `start_listening`; the priming report follows the `subscribe` response.
+- **New event `subscription_report`** → `{ subscription_id, attributes, events, attribute_status?, event_status? }`. Sent only to the connection that opened the subscription, whether or not it called `start_listening`; the priming report follows the `subscribe` response.
+- **New event `subscription_ended`** → `{ subscription_id }`. Sent to the owning connection when its subscription ends without `unsubscribe` (node removed, device stopped reporting, another subscription with `keep_subscriptions: false`); not sent for `unsubscribe` or when the connection closes.
 - **`subscribe_attribute` removed from the client model.** The server never implemented it and answers `InvalidCommand`.
 
 ## Schema 13

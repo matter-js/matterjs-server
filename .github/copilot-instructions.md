@@ -103,7 +103,7 @@ Custom clusters are registered at import time via `import "@matter-server/custom
 
 ### WebSocket Protocol (Schema version 11)
 
-Messages follow the Python Matter Server protocol. Key commands: `start_listening`, `commission_with_code`, `commission_on_network`, `device_command`, `read_attribute`, `write_attribute`, `subscribe_attribute`, `get_nodes`, `get_node`, `server_info`, `diagnostics`.
+Messages follow the Python Matter Server protocol. Key commands: `start_listening`, `commission_with_code`, `commission_on_network`, `device_command`, `read_attribute`, `write_attribute`, `read`, `subscribe`, `unsubscribe`, `get_nodes`, `get_node`, `server_info`, `diagnostics`.
 
 Events emitted to all clients: `node_added`, `node_updated`, `node_removed`, `attribute_updated`.
 

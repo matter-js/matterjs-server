@@ -507,8 +507,19 @@ Paths:
 - Data version filter paths are `endpoint/cluster` and must name both.
 
 Values in the results and reports have the same shape as in `read_attribute` (attributes) and `node_event`
-(events). Status responses the device returns for single paths (for example an unsupported attribute) are logged,
-not returned.
+(events). When the device answers a path with a status instead of data (for example an unsupported attribute),
+the path is listed in `attribute_status` or `event_status`, keyed by the path in the request format, with the
+numeric Matter status code in `status` (as in the `write_attribute` result) and the cluster-specific code in
+`cluster_status` when the device sent one. Both fields are left out when there is no status:
+
+```json
+{
+  "attributes": { "1/6/0": true },
+  "events": [],
+  "attribute_status": { "1/6/9999": { "status": 134 }, "1/1234/0": { "status": 195 } },
+  "event_status": { "1/69/5": { "status": 199 } }
+}
+```
 
 **read** - Read attributes and events in one Matter Read request
 
@@ -596,9 +607,15 @@ the priming report first, after this response. The usual `attribute_updated` and
 well, to every listening client.
 
 A subscription belongs to the connection that opened it. It ends when the connection sends `unsubscribe`, when the
-connection closes, when the node is removed, and when the server shuts down. It also ends without notice when the
-device stops reporting or when another subscription to the node is made with `keep_subscriptions: false` (the
-server's own subscription does that when it is set up again); `unsubscribe` then answers with an error.
+connection closes, when the node is removed, and when the server shuts down. It also ends when the device stops
+reporting (no report within the max interval plus a response margin) or when another subscription to the node is
+made with `keep_subscriptions: false` (the server's own subscription does that when it is set up again). Every end
+the connection did not ask for, including node removal, is announced with `subscription_ended`; `unsubscribe` and
+closing the connection are not.
+
+The server only learns that a subscription ended on the device when the local subscription times out or matter.js
+closes it. A device that dropped the subscription (for example after a reboot) is noticed at the latest after the
+max interval plus a response margin; until then the subscription still looks active.
 
 **unsubscribe** - End a subscription of this connection
 
@@ -1116,7 +1133,22 @@ Sent only to the connection that opened the subscription, also when it has not c
 }
 ```
 
-`attributes` and `events` have the shapes of the `read` result.
+`attributes`, `events`, `attribute_status` and `event_status` have the shapes of the `read` result.
+
+Like `node_event`, `subscription_report` and `subscription_ended` are queued under backpressure: when a connection
+does not read fast enough and its outgoing queue passes the limit, the oldest queued events are dropped, reports
+included.
+
+**subscription_ended** - A subscription opened with `subscribe` ended without `unsubscribe` (schema 14)
+
+Sent only to the owning connection, for example when the node was removed or the device stopped reporting.
+
+```json
+{
+  "event": "subscription_ended",
+  "data": { "subscription_id": 2864434397 }
+}
+```
 
 ### Server Events
 

@@ -34,6 +34,7 @@ export {
     type SettableLogLevelString,
     type MatterFabricData,
     type MatterNodeEvent,
+    type PathStatus,
     type NodePingResult,
     type NotificationType,
     type OtaUploadTicket,

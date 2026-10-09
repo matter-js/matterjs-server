@@ -95,7 +95,7 @@ export type OpenCommissioningWindowResponse = {
     commissioningTimeout: number;
 };
 
-import type { AttributesData, MatterNodeData, MatterNodeEvent } from "@matter-server/ws-client";
+import type { AttributesData, InteractionReportData, MatterNodeData } from "@matter-server/ws-client";
 
 export type { AttributesData, MatterNodeData };
 
@@ -121,11 +121,7 @@ export type InteractionSubscribeRequest = InteractionReadRequest & {
     keepSubscriptions?: boolean;
 };
 
-/** Read or subscription report data in the `read_attribute` / `node_event` wire shapes. */
-export type InteractionReport = {
-    attributes: AttributesData;
-    events: MatterNodeEvent[];
-};
+export type InteractionReport = InteractionReportData;
 
 export interface InteractionSubscriptionListener {
     report(report: InteractionReport): void;

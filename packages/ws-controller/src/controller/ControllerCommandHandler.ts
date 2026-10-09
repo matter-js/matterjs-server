@@ -121,6 +121,7 @@ import {
     BindingTarget,
     IcdStateData,
     MatterNodeEvent,
+    PathStatus,
     MatterSoftwareVersion,
     NodePingResult,
     ServerError,
@@ -243,6 +244,15 @@ async function awaitSeeded(node: ClientNode, abort: Abort): Promise<void> {
     } finally {
         observers.close();
     }
+}
+
+/** Status paths use the request format; a wildcard the device left in the path stays "*". */
+function statusPathOf(...ids: (number | undefined)[]) {
+    return ids.map(id => id ?? "*").join("/");
+}
+
+function pathStatusOf({ status, clusterStatus }: { status: Status; clusterStatus?: number }): PathStatus {
+    return clusterStatus === undefined ? { status } : { status, cluster_status: clusterStatus };
 }
 
 function isIntervalSeconds(value: number) {
@@ -1153,8 +1163,6 @@ export class ControllerCommandHandler {
         listener: InteractionSubscriptionListener,
     ): Promise<InteractionSubscription> {
         const { nodeId, minInterval, maxInterval } = request;
-        // Matter's KeepSubscriptions=false makes the device drop every subscription from this controller, the
-        // controller's own one included.
         if (request.keepSubscriptions === false && !this.#autoSubscriptionDisabled) {
             throw ServerError.invalidArguments(
                 "keep_subscriptions=false would end the server's own subscription; only allowed with auto subscription disabled",
@@ -1238,14 +1246,18 @@ export class ControllerCommandHandler {
                             }),
                         );
                         break;
-                    case "attr-status":
-                    case "event-status":
-                        logger.info(
-                            `Node ${this.formatNode(nodeId)} reported status ${entry.status} for`,
-                            entry.kind === "attr-status" ? "attribute" : "event",
-                            entry.path,
-                        );
+                    case "attr-status": {
+                        const { endpointId, clusterId, attributeId } = entry.path;
+                        report.attribute_status ??= {};
+                        report.attribute_status[statusPathOf(endpointId, clusterId, attributeId)] = pathStatusOf(entry);
                         break;
+                    }
+                    case "event-status": {
+                        const { endpointId, clusterId, eventId } = entry.path;
+                        report.event_status ??= {};
+                        report.event_status[statusPathOf(endpointId, clusterId, eventId)] = pathStatusOf(entry);
+                        break;
+                    }
                 }
             }
         }

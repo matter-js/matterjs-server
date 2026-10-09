@@ -29,14 +29,10 @@ import type { TopologyNodeSource } from "../controller/NetworkTopologyService.js
 import { TestNodeCommandHandler } from "../controller/TestNodeCommandHandler.js";
 import { VendorIds } from "../data/VendorIDs.js";
 import { ClusterMap, ClusterMapEntry } from "../model/ModelMapper.js";
-import {
-    CommissioningRequest,
-    InteractionReadRequest,
-    InteractionReport,
-    InteractionSubscription,
-} from "../types/CommandHandler.js";
+import { CommissioningRequest, InteractionReadRequest, InteractionSubscription } from "../types/CommandHandler.js";
 import { HttpServer, WebServerHandler } from "../types/WebServer.js";
 import {
+    APIEvents,
     ArgsOf,
     ErrorResultMessage,
     EventTypes,
@@ -1192,15 +1188,18 @@ export class WebSocketControllerHandler implements WebServerHandler {
         };
     }
 
-    /** The priming report arrives before the subscription id is known, so reports are held until the response is sent. */
+    /**
+     * The priming report arrives before the subscription id is known, so the subscription's events are held until the
+     * response is sent.
+     */
     async #handleSubscribe(
         args: ArgsOf<"subscribe">,
         connection: WebSocketConnection,
     ): Promise<{ result: ResponseOf<"subscribe">; afterResponse: () => void }> {
         const { min_interval, max_interval, keep_subscriptions } = args;
-        const pending = new Array<InteractionReport>();
-        let deliver = (report: InteractionReport) => {
-            pending.push(report);
+        const pending = new Array<(id: number) => void>();
+        let deliver = (send: (id: number) => void) => {
+            pending.push(send);
         };
         const registered: { entry?: OwnedSubscription } = {};
 
@@ -1212,12 +1211,24 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 keepSubscriptions: keep_subscriptions,
             },
             {
-                report: report => deliver(report),
+                report: report =>
+                    deliver(id =>
+                        this.#sendSubscriptionEvent(connection, "subscription_report", {
+                            subscription_id: id,
+                            ...report,
+                        }),
+                    ),
+                // An unsubscribe or the owner's connection close removes the entry first, so only an end the owner
+                // did not ask for is announced.
                 closed: () => {
                     const { entry } = registered;
-                    if (entry !== undefined && this.#interactionSubscriptions.get(entry.subscription.id) === entry) {
-                        this.#interactionSubscriptions.delete(entry.subscription.id);
+                    if (entry === undefined || this.#interactionSubscriptions.get(entry.subscription.id) !== entry) {
+                        return;
                     }
+                    this.#interactionSubscriptions.delete(entry.subscription.id);
+                    deliver(id =>
+                        this.#sendSubscriptionEvent(connection, "subscription_ended", { subscription_id: id }),
+                    );
                 },
             },
         );
@@ -1234,28 +1245,26 @@ export class WebSocketControllerHandler implements WebServerHandler {
         registered.entry = { connection, subscription };
         this.#interactionSubscriptions.set(id, registered.entry);
 
-        const send = (report: InteractionReport) => this.#sendSubscriptionReport(connection, id, report);
         return {
             result: { subscription_id: id },
             afterResponse: () => {
-                for (const report of pending) {
-                    send(report);
+                for (const send of pending.splice(0)) {
+                    send(id);
                 }
-                deliver = send;
+                deliver = send => send(id);
             },
         };
     }
 
-    #sendSubscriptionReport(connection: WebSocketConnection, subscriptionId: number, report: InteractionReport) {
+    #sendSubscriptionEvent<E extends "subscription_report" | "subscription_ended">(
+        connection: WebSocketConnection,
+        event: E,
+        data: APIEvents[E]["data"],
+    ) {
         try {
-            connection.sendOrdered(
-                toBigIntAwareJson({
-                    event: "subscription_report",
-                    data: { subscription_id: subscriptionId, ...report },
-                }),
-            );
+            connection.sendOrdered(toBigIntAwareJson({ event, data }));
         } catch (err) {
-            logger.error(`[${connection.connId}] Failed to send subscription_report for ${subscriptionId}`, err);
+            logger.error(`[${connection.connId}] Failed to send ${event} for ${data.subscription_id}`, err);
         }
     }
 
