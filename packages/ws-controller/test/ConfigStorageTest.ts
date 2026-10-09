@@ -4,13 +4,23 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Environment, MockStorageService } from "@matter/general";
+import { Environment, MemoryStorageDriver, MockStorageService, SupportedStorageTypes } from "@matter/general";
 import { ConfigStorage } from "../src/server/ConfigStorage.js";
 
 async function createConfig(): Promise<ConfigStorage> {
     const env = new Environment("test");
     new MockStorageService(env);
     return ConfigStorage.create(env);
+}
+
+/** Config storage that outlives one instance, so a reopen sees what the last one wrote. */
+function persistentConfig() {
+    const storage: Record<string, Record<string, SupportedStorageTypes>> = {};
+    return async () => {
+        const env = new Environment("test");
+        new MockStorageService(env, () => new MemoryStorageDriver(storage));
+        return { config: await ConfigStorage.create(env), storage };
+    };
 }
 
 describe("ConfigStorage", () => {
@@ -85,6 +95,55 @@ describe("ConfigStorage", () => {
             await config.lockFabricLabel("Pinned");
             expect(config.fabricLabel).to.equal("Pinned");
             expect(config.fabricLabelLocked).to.be.true;
+        });
+    });
+
+    describe("peer settings repair marker", () => {
+        it("remembers each storage scope it was told about", async () => {
+            const config = await createConfig();
+            try {
+                expect(config.hasRepairedPeerSettings("server")).to.be.false;
+
+                await config.markPeerSettingsRepaired("server");
+                await config.markPeerSettingsRepaired("server-2-fff1");
+
+                // Both, not just the most recent: a server started against the other fabric must not
+                // repeat a repair that already ran for it.
+                expect(config.hasRepairedPeerSettings("server")).to.be.true;
+                expect(config.hasRepairedPeerSettings("server-2-fff1")).to.be.true;
+                expect(config.hasRepairedPeerSettings("server-3-fff1")).to.be.false;
+            } finally {
+                await config.close();
+            }
+        });
+
+        it("keeps the scopes across a restart", async () => {
+            const open = persistentConfig();
+            const first = await open();
+            await first.config.markPeerSettingsRepaired("server");
+            await first.config.close();
+
+            const second = await open();
+            try {
+                expect(second.config.hasRepairedPeerSettings("server")).to.be.true;
+            } finally {
+                await second.config.close();
+            }
+        });
+
+        it("reads a scope stored by a version that recorded only one", async () => {
+            const open = persistentConfig();
+            const first = await open();
+            await first.config.close();
+            // The shape written before this server could run against more than one fabric.
+            first.storage["values"] = { ...first.storage["values"], peerSettingsRepairedFor: "server" };
+
+            const second = await open();
+            try {
+                expect(second.config.hasRepairedPeerSettings("server")).to.be.true;
+            } finally {
+                await second.config.close();
+            }
         });
     });
 });

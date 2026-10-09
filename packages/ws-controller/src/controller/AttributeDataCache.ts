@@ -5,13 +5,13 @@
  */
 
 import { ClientNode, ClusterBehavior, Diagnostic, Logger, MatterError, Millis, NodeId, Time } from "@matter/main";
-import { DecodedAttributeReportValue } from "@matter/main/protocol";
 import { EndpointNumber } from "@matter/main/types";
-import { PairedNode } from "@project-chip/matter.js/device";
 import { ClusterMap } from "../model/ModelMapper.js";
 import { buildAttributePath, convertMatterToWebSocketTagBased } from "../server/Converters.js";
 import { AttributesData } from "../types/CommandHandler.js";
 import { formatNodeId } from "../util/formatNodeId.js";
+import { nodeIdOf } from "../util/nodeIdOf.js";
+import { AttributeChange } from "./PeerChangeBus.js";
 
 const logger = Logger.get("AttributeDataCache");
 
@@ -38,10 +38,20 @@ export class AttributeDataCache {
     #inFlight = new Map<NodeId, PopulateContext>();
 
     /**
-     * Add a node to the cache and populate its attributes.
-     * No entry is created if the node is not yet initialized.
+     * Whether the node's model carries something to snapshot.
+     *
+     * This is the one place that decides it. A peer restored from storage carries its endpoints and
+     * their persisted state before matter.js marks it seeded, which only happens once the structure has
+     * been read from the device in this runtime, so a caller testing `isSeeded` instead answers reads
+     * with an empty node until the device reconnects.
      */
-    add(node: PairedNode): Promise<void> {
+    static hasStructure(node: ClientNode): boolean {
+        const { isCommissioned, isReady } = node.lifecycle;
+        return isCommissioned && isReady && node.endpoints.size > 1;
+    }
+
+    /** Populates the node's attributes, and does nothing for a node with no structure to read. */
+    add(node: ClientNode): Promise<void> {
         return this.#populateFromNode(node, false);
     }
 
@@ -64,7 +74,7 @@ export class AttributeDataCache {
      * Creates a fresh cache from the node's current state.
      * Use this when the node structure may have changed (endpoints added/removed).
      */
-    update(node: PairedNode): Promise<void> {
+    update(node: ClientNode): Promise<void> {
         return this.#populateFromNode(node, true);
     }
 
@@ -72,7 +82,7 @@ export class AttributeDataCache {
      * Update a single attribute in the cache.
      * Use this for incremental updates when an attribute value changes.
      */
-    updateAttribute(nodeId: NodeId, data: DecodedAttributeReportValue<any>): void {
+    updateAttribute(nodeId: NodeId, data: AttributeChange): void {
         const { endpointId, clusterId, attributeId } = data.path;
 
         const clusterData = ClusterMap[clusterId];
@@ -169,10 +179,10 @@ export class AttributeDataCache {
      * pass redone from a caller that merely awaits completion (a read). Only the former schedules a
      * re-run; reads just await the in-flight promise, so frequent reads can never thrash the populate.
      */
-    #populateFromNode(node: PairedNode, rebuild: boolean): Promise<void> {
-        const nodeId = node.nodeId;
-        if (!node.initialized || !node.node.lifecycle.isCommissioned || !node.node.lifecycle.isReady) {
-            logger.debug(`Node ${formatNodeId(nodeId)} not initialized, skipping cache population`);
+    #populateFromNode(node: ClientNode, rebuild: boolean): Promise<void> {
+        const nodeId = nodeIdOf(node);
+        if (!AttributeDataCache.hasStructure(node)) {
+            logger.debug(`Node ${formatNodeId(nodeId)} has no structure yet, skipping cache population`);
             return Promise.resolve();
         }
 
@@ -186,13 +196,12 @@ export class AttributeDataCache {
         }
 
         const context: PopulateContext = { rerun: false, cancelled: false, pending: [], promise: Promise.resolve() };
-        context.promise = this.#runPopulate(node, context);
+        context.promise = this.#runPopulate(nodeId, node, context);
         this.#inFlight.set(nodeId, context);
         return context.promise;
     }
 
-    async #runPopulate(node: PairedNode, context: PopulateContext): Promise<void> {
-        const nodeId = node.nodeId;
+    async #runPopulate(nodeId: NodeId, node: ClientNode, context: PopulateContext): Promise<void> {
         try {
             let attributeCount = 0;
             const startedAt = Time.nowMs;
@@ -201,7 +210,7 @@ export class AttributeDataCache {
                 context.pending = [];
 
                 const attributes: AttributesData = {};
-                await this.#collectAttributes(node.node, attributes, context);
+                await this.#collectAttributes(node, attributes, context);
 
                 // The node may have been deleted (or this run superseded) while suspended at a yield;
                 // dropping the snapshot avoids resurrecting a removed node's cache entry.
@@ -246,7 +255,15 @@ export class AttributeDataCache {
                 }
                 const cluster = behavior.cluster;
                 const clusterData = ClusterMap[cluster.id];
-                const clusterState = endpoint.stateOf(behavior) as Record<string, unknown>;
+                let clusterState: Record<string, unknown>;
+                try {
+                    // One behavior that cannot be read must not cost the node its whole snapshot.
+                    clusterState = endpoint.stateOf(behavior);
+                } catch (error) {
+                    MatterError.accept(error);
+                    logger.debug(`Ignoring cluster ${cluster.id} because of`, Diagnostic.errorMessage(error));
+                    continue;
+                }
 
                 for (const attribute of cluster.schema.attributes) {
                     try {

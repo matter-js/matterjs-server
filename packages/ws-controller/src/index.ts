@@ -11,6 +11,7 @@
 // Export controller components
 export { WebRtcTransportRequestorServer } from "@matter/node/behaviors/web-rtc-transport-requestor";
 export * from "./controller/ControllerCommandHandler.js";
+export * from "./controller/ControllerNode.js";
 export * from "./controller/LegacyDataInjector.js";
 export * from "./controller/MatterController.js";
 export * from "./controller/OtaUploadRegistry.js";

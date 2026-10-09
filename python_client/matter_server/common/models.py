@@ -258,6 +258,10 @@ class CommissioningParameters:
     setup_pin_code: int
     setup_manual_code: str
     setup_qr_code: str
+    discriminator: int | None = None
+    vendor_id: int | None = None
+    product_id: int | None = None
+    commissioning_timeout: int | None = None
 
 
 @dataclass

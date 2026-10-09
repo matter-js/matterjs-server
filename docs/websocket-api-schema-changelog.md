@@ -10,6 +10,12 @@ The server-side constants live in `packages/ws-controller/src/server/WebSocketCo
 (`SCHEMA_VERSION`, `MIN_SUPPORTED_SCHEMA_VERSION`). Versions predating this document are not
 listed retroactively; entries start at the first version maintained here.
 
+## Schema 14
+
+### Commissioning window
+
+- **`discriminator`, `vendor_id`, `product_id`, `commissioning_timeout` in the `open_commissioning_window` result**. `discriminator` is the long (12-bit) discriminator the device advertises while the window is open, `vendor_id`/`product_id` are the device's Vendor-ID and Product-ID from the BasicInformation cluster, `commissioning_timeout` is the window duration in seconds. They match the values encoded in the returned pairing codes; they are returned separately so clients (for example mobile apps sharing the device to another ecosystem) need no Matter QR decoder.
+
 ## Schema 13
 
 Minimum supported: 11 (older clients keep working with the pre-13 command shapes).

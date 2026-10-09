@@ -7,7 +7,13 @@ import pytest
 from chip.clusters import Objects as clusters
 from chip.clusters.Types import NullValue
 from chip.tlv import uint
-from matter_server.common.helpers.util import dataclass_to_dict, dataclass_to_tag_dict, parse_value
+from matter_server.common.helpers.util import (
+    dataclass_from_dict,
+    dataclass_to_dict,
+    dataclass_to_tag_dict,
+    parse_value,
+)
+from matter_server.common.models import CommissioningParameters
 
 
 def test_dataclass_to_tag_dict_uses_tlv_tags() -> None:
@@ -134,6 +140,18 @@ def test_dataclass_to_dict_still_uses_field_names() -> None:
     assert result["presetScenario"] == clusters.Thermostat.Enums.PresetScenarioEnum.kOccupied
 
 
+def test_commissioning_parameters_from_server_without_structured_fields() -> None:
+    """Servers before the structured fields send only the pairing codes."""
+    params = dataclass_from_dict(
+        CommissioningParameters,
+        {"setup_pin_code": 20202021, "setup_manual_code": "34970112332", "setup_qr_code": "MT:-24J0AFN00KA0648G00"},
+    )
+
+    assert params.setup_pin_code == 20202021
+    assert params.discriminator is None
+    assert params.vendor_id is None
+    assert params.product_id is None
+    assert params.commissioning_timeout is None
 @pytest.mark.parametrize(
     "cluster_name",
     [

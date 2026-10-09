@@ -55,7 +55,7 @@ npm run format-verify
 
 This is an npm workspaces monorepo with six packages:
 
-- **packages/ws-controller** (`@matter-server/ws-controller`): Core Matter controller library wrapping `@project-chip/matter.js`. Exports `MatterController`, `ControllerCommandHandler`, `WebSocketControllerHandler`, `ConfigStorage`, `ThreadDiagnosticsService`. Consumes `@matter/thread-br-client` for Thread Border Router discovery/diagnostics.
+- **packages/ws-controller** (`@matter-server/ws-controller`): Core Matter controller library built on the `@matter/main` `ServerNode`/`ClientNode` API. Exports `MatterController`, `ControllerCommandHandler`, `WebSocketControllerHandler`, `ConfigStorage`, `ThreadDiagnosticsService`. Consumes `@matter/thread-br-client` for Thread Border Router discovery/diagnostics.
 - **packages/ws-client** (`@matter-server/ws-client`): WebSocket client library + wire models for the Matter server (used by the dashboard and external clients)
 - **packages/dashboard** (`@matter-server/dashboard`): Web UI built with Lit, Rollup, and Material Web Components. Connects to server via WebSocket
 - **packages/matter-server** (`matter-server`): Main entry point. HTTP/WebSocket server using Express, combines controller + dashboard
@@ -81,8 +81,7 @@ The server implements a protocol compatible with Home Assistant's Python Matter 
 
 ### Key Dependencies
 
-- `@project-chip/matter.js`: Core Matter protocol implementation
-- `@matter/main`, `@matter/main/general`: Matter.js utilities
+- `@matter/main`, `@matter/main/protocol`, `@matter/node`: Matter.js protocol implementation and node API
 - `@matter/nodejs-ble`: Optional BLE support (enable with `--ble` flag)
 
 ## Build System
