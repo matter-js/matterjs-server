@@ -21,8 +21,19 @@ export interface VideoRetrySteps extends Readonly<Record<VideoRetryDimension, nu
 
 export const NO_RETRY_STEPS: VideoRetrySteps = { bitRate: 0, frameRate: 0, resolution: 0 };
 
-/** Bounded, so a camera refusing everything fails after a known number of attempts. */
-export const MAX_RETRY_STEPS: VideoRetrySteps = { bitRate: 4, frameRate: 2, resolution: 2 };
+/**
+ * Bit rate steps down to the plan's floor, the rate-distortion trade-off point: profiles hide their bit
+ * rate ceilings (the Aqara G350 caps at 2 Mbit/s), so no fixed count reaches them. Frame rate and frame
+ * size are bounded, so a camera refusing everything fails after a known number of attempts.
+ */
+export function retryLimits(plan: VideoPlan): VideoRetrySteps {
+    const { minBitRate } = plan.envelope;
+    let bitRate = 0;
+    for (let rate = plan.envelope.maxBitRate; rate > minBitRate; rate = Math.max(minBitRate, Math.floor(rate / 2))) {
+        bitRate += 1;
+    }
+    return { bitRate, frameRate: 2, resolution: 2 };
+}
 
 interface RetryDimension {
     readonly name: VideoRetryDimension;
@@ -152,7 +163,7 @@ export class VideoWindowSearch {
     #asked = NO_RETRY_STEPS;
     #wanted = NO_RETRY_STEPS;
     #budgetBefore: VideoRetrySteps | undefined;
-    #limits = MAX_RETRY_STEPS;
+    #limits: VideoRetrySteps;
     #lastStep: Step | undefined;
     readonly #refused = new Array<{ readonly window: VideoEnvelope; readonly refusal: VideoRefusal }>();
     #bestServable: VideoRetrySteps | undefined;
@@ -163,6 +174,7 @@ export class VideoWindowSearch {
     constructor(plan: VideoPlan, fits: (window: VideoEnvelope) => boolean) {
         this.#plan = plan;
         this.#fits = fits;
+        this.#limits = retryLimits(plan);
         this.#move = this.#propose(NO_RETRY_STEPS, undefined);
     }
 
@@ -316,6 +328,6 @@ function sameSteps(a: VideoRetrySteps, b: VideoRetrySteps): boolean {
  * budget said would not fit.
  */
 export function firstVideoWindow(plan: VideoPlan, fits: (window: VideoEnvelope) => boolean): VideoEnvelope | undefined {
-    const fitted = fitToBudget(plan, NO_RETRY_STEPS, MAX_RETRY_STEPS, fits);
+    const fitted = fitToBudget(plan, NO_RETRY_STEPS, retryLimits(plan), fits);
     return fitted.fits ? videoRetryWindow(plan, fitted.steps) : undefined;
 }

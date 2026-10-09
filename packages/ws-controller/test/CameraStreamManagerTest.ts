@@ -1888,7 +1888,7 @@ describe("CameraStreamManager", () => {
                 referenceCount: 0,
             });
             const { manager, invokes } = managerWith(
-                withStreams(Array.from({ length: 20 }, (_, index) => idle(20 + index))),
+                withStreams(Array.from({ length: 40 }, (_, index) => idle(20 + index))),
                 async invoke => {
                     if (invoke.command === "videoStreamAllocate") throw statusError(Status.ResourceExhausted);
                     return undefined;

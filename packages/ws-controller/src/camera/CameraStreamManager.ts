@@ -88,7 +88,7 @@ import {
 const logger = Logger.get("CameraStreamManager");
 
 /** Allocate attempts per request, shared by the retry windows and eviction. Bounds how long the endpoint lock is held. */
-export const MAX_ALLOCATE_ATTEMPTS = 16;
+export const MAX_ALLOCATE_ATTEMPTS = 32;
 
 type LadderReaction =
     /** `unservable`: the device cannot serve this range; `capacity`: it has no room for it. */

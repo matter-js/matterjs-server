@@ -379,13 +379,38 @@ describe("streamPolicy", () => {
             expect(envelope.maxBitRate).to.equal(8000000);
         });
 
-        it("does not cap a camera whose network bandwidth exceeds the default", () => {
+        it("starts at the default when the camera's network bandwidth is higher", () => {
+            // MaxNetworkBandwidth is a link capacity, not what the encoder serves.
             const envelope = videoEnvelope({
-                capabilities: { ...CAPABILITIES, maxNetworkBandwidth: 20000000 },
+                capabilities: { ...CAPABILITIES, maxNetworkBandwidth: 128000000 },
                 limits: { codec: H265 },
                 hints: undefined,
             });
+            expect(envelope.maxBitRate).to.equal(8000000);
+        });
+
+        it("starts at the default when the offer's bit-rate ceiling is higher", () => {
+            const envelope = videoEnvelope({ capabilities: AQARA, limits: FIREFOX_LIMITS, hints: undefined });
+            expect(envelope.maxBitRate).to.equal(8000000);
+        });
+
+        it("starts at a caller's ceiling above the default, within the camera's network bandwidth", () => {
+            const envelope = videoEnvelope({
+                capabilities: { ...CAPABILITIES, maxNetworkBandwidth: 20000000 },
+                limits: { codec: H265 },
+                hints: { maxBitRate: 30000000 },
+            });
             expect(envelope.maxBitRate).to.equal(20000000);
+        });
+
+        it("starts at a caller's floor above the default", () => {
+            const envelope = videoEnvelope({
+                capabilities: { ...CAPABILITIES, maxNetworkBandwidth: 128000000 },
+                limits: { codec: H265 },
+                hints: { minBitRate: 10000000 },
+            });
+            expect(envelope.minBitRate).to.equal(10000000);
+            expect(envelope.maxBitRate).to.equal(10000000);
         });
 
         it("uses the smallest advertised point as the floor when no viewport minimum is reported", () => {
@@ -521,7 +546,7 @@ describe("streamPolicy", () => {
                 minFrameRate: 30,
                 maxFrameRate: 30,
                 minBitRate: 10000,
-                maxBitRate: 14000000,
+                maxBitRate: 8000000,
                 keyFrameInterval: 4000,
             });
         });

@@ -8,6 +8,7 @@ import { Status, StatusResponseError } from "@matter/main/types";
 import type { CameraState } from "../src/camera/CameraStreamManager.js";
 import type { AllocatedVideoStream, Resolution } from "../src/camera/cameraTypes.js";
 import { parseSdpVideoConstraints, videoCodecLimits } from "../src/camera/sdpConstraints.js";
+import type { SelectedVideoCodecLimits } from "../src/camera/sdpConstraints.js";
 import type { VideoHints } from "../src/camera/streamPolicy.js";
 import { ServerError, ServerErrorCode } from "../src/types/WebSocketMessageTypes.js";
 import { NO_OVERLAYS } from "./cameraFixtures.js";
@@ -146,7 +147,7 @@ function recordingStream(referenceCount: number, spendsBudget = false): Allocate
     };
 }
 
-/** Firefox's H.264 offer: profile-level-id 42e01f is level 3.1, so 1280x720 at 30 fps and 14 Mbit/s. */
+/** Firefox's H.264 offer: profile-level-id 42e01f is level 3.1, so 1280x720 at 30 fps and up to 14 Mbit/s. */
 const FIREFOX_OFFER = [
     "v=0",
     "o=- 0 0 IN IP4 127.0.0.1",
@@ -174,6 +175,7 @@ async function resolveOn(
     state: CameraState,
     respond: (invoke: RecordedInvoke) => Promise<unknown>,
     hints?: VideoHints,
+    limits: SelectedVideoCodecLimits = FIREFOX_LIMITS,
 ): Promise<{ invokes: RecordedInvoke[]; result: unknown }> {
     const { manager, invokes } = managerWith(state, respond);
     try {
@@ -181,7 +183,7 @@ async function resolveOn(
             nodeId: NODE,
             endpointId: ENDPOINT,
             streamUsage: LIVE_VIEW,
-            limits: FIREFOX_LIMITS,
+            limits,
             hints,
         });
         return { invokes, result };
@@ -270,14 +272,38 @@ describe("VideoStreamAllocate against a camera with fixed stream profiles", () =
             minResolution: { width: 640, height: 480 },
             maxResolution: { width: 1280, height: 720 },
             minBitRate: 10000,
-            maxBitRate: 14000000,
+            maxBitRate: 8000000,
             keyFrameInterval: 4000,
         });
         expect(sent.map(summary)).to.deep.equal([
-            "1280x720@30-30 14000000",
-            "1280x720@30-30 7000000",
-            "1280x720@30-30 3500000",
-            "1280x720@30-30 1750000",
+            "1280x720@30-30 8000000",
+            "1280x720@30-30 4000000",
+            "1280x720@30-30 2000000",
+        ]);
+    });
+
+    it("finds a window without an offer, starting at the default bit rate, not the network bandwidth", async () => {
+        // No offer: the sensor size at max_fps. MaxNetworkBandwidth (128 Mbit/s) does not raise the start.
+        const { invokes, result } = await resolveOn(AQARA_STATE, aqara(), undefined, { codec: H264 });
+        expect(result).to.deep.include({ streamId: 3 });
+        expect(allocates(invokes).map(summary)).to.deep.equal([
+            "1920x1080@120-120 8000000",
+            "1920x1080@120-120 4000000",
+            "1920x1080@120-120 2000000",
+        ]);
+        expect(allocates(invokes).at(-1)?.fields).to.deep.include({ minResolution: { width: 640, height: 480 } });
+    });
+
+    it("reaches a hidden bit rate ceiling far below the default", async () => {
+        const { invokes, result } = await resolveOn(AQARA_STATE, async invoke => {
+            if (invoke.command !== "videoStreamAllocate") return undefined;
+            if (numberField(invoke, "maxBitRate") > 500000)
+                throw StatusResponseError.create(Status.DynamicConstraintError);
+            return { videoStreamId: 6 };
+        });
+        expect(result).to.deep.include({ streamId: 6 });
+        expect(allocates(invokes).map(invoke => invoke.fields.maxBitRate)).to.deep.equal([
+            8000000, 4000000, 2000000, 1000000, 500000,
         ]);
     });
 
@@ -319,17 +345,24 @@ describe("VideoStreamAllocate against a camera with fixed stream profiles", () =
             throw StatusResponseError.create(Status.DynamicConstraintError);
         });
         // Level 3.1 decodes 640x480 at up to 90 fps, so the smaller size starts there.
+        // Bit rate halves down to the trade-off point's 10000 bit/s before frame rate is touched.
         expect(allocates(invokes).map(summary)).to.deep.equal([
-            "1280x720@30-30 14000000",
-            "1280x720@30-30 7000000",
-            "1280x720@30-30 3500000",
-            "1280x720@30-30 1750000",
-            "1280x720@30-30 875000",
-            "1280x720@15-15 875000",
-            "1280x720@7-7 875000",
-            "640x480@90-90 875000",
-            "640x480@45-45 875000",
-            "640x480@22-22 875000",
+            "1280x720@30-30 8000000",
+            "1280x720@30-30 4000000",
+            "1280x720@30-30 2000000",
+            "1280x720@30-30 1000000",
+            "1280x720@30-30 500000",
+            "1280x720@30-30 250000",
+            "1280x720@30-30 125000",
+            "1280x720@30-30 62500",
+            "1280x720@30-30 31250",
+            "1280x720@30-30 15625",
+            "1280x720@30-30 10000",
+            "1280x720@15-15 10000",
+            "1280x720@7-7 10000",
+            "640x480@90-90 10000",
+            "640x480@45-45 10000",
+            "640x480@22-22 10000",
         ]);
     });
 
@@ -353,12 +386,11 @@ describe("VideoStreamAllocate against a camera with fixed stream profiles", () =
         );
         // Nothing fits the budget, so the smallest size is asked; the room made goes to 1280x720.
         expect(commands).to.deep.equal([
-            "640x480@30-30 14000000",
-            "640x480@30-30 7000000",
-            "640x480@30-30 3500000",
-            "640x480@30-30 1750000",
+            "640x480@30-30 8000000",
+            "640x480@30-30 4000000",
+            "640x480@30-30 2000000",
             "videoStreamDeallocate",
-            "1280x720@30-30 1750000",
+            "1280x720@30-30 2000000",
         ]);
     });
 
@@ -408,15 +440,14 @@ describe("VideoStreamAllocate against a camera with fixed stream profiles", () =
             invoke.command === "videoStreamAllocate" ? summary(invoke) : invoke.command,
         );
         expect(commands).to.deep.equal([
-            "1280x720@30-30 14000000",
-            "1280x720@30-30 7000000",
-            "1280x720@30-30 3500000",
+            "1280x720@30-30 8000000",
+            "1280x720@30-30 4000000",
             // Servable, but the only encoder is taken.
-            "1280x720@30-30 1750000",
-            "640x480@30-30 1750000",
+            "1280x720@30-30 2000000",
+            "640x480@30-30 2000000",
             "videoStreamDeallocate",
             // Back to the best window refused only for capacity.
-            "1280x720@30-30 1750000",
+            "1280x720@30-30 2000000",
         ]);
     });
 
@@ -435,11 +466,27 @@ describe("VideoStreamAllocate against a camera with fixed stream profiles", () =
             return undefined;
         });
         expect(allocates(invokes).map(summary)).to.deep.equal([
-            "1280x720@30-30 14000000",
-            "640x480@30-30 14000000",
-            "640x480@15-15 14000000",
-            "640x480@7-7 14000000",
+            "1280x720@30-30 8000000",
+            "640x480@30-30 8000000",
+            "640x480@15-15 8000000",
+            "640x480@7-7 8000000",
         ]);
+    });
+
+    it("still reaches the smallest size when the bit rate walks down to 1 bit/s first", async () => {
+        // No trade-off point, so the bit rate floor is 1: 22 halvings from 8 Mbit/s, then frame rate and size.
+        const state: CameraState = { ...STATE, rateDistortionTradeOffPoints: [] };
+        const { manager, invokes } = managerWith(state, async invoke => {
+            if (invoke.command === "videoStreamAllocate")
+                throw StatusResponseError.create(Status.DynamicConstraintError);
+            return undefined;
+        });
+        await manager
+            .resolveVideoStream({ nodeId: NODE, endpointId: ENDPOINT, streamUsage: LIVE_VIEW, limits: { codec: 1 } })
+            .catch(() => undefined);
+        const sent = allocates(invokes);
+        expect(sent).to.have.length(31);
+        expect(sent.at(-1)?.fields).to.deep.include({ maxResolution: { width: 640, height: 360 }, maxBitRate: 1 });
     });
 
     it("gives up within a bounded number of attempts on a camera that refuses every window", async () => {
