@@ -4,6 +4,7 @@
  *
  * Usage: npm run cert -- [--tc TC-IDM-2.1] [--matterjs-ref <ref>] [--dry-run]
  * See DEVELOPMENT.md ("Certification tests") for flags, environment and prerequisites.
+ * CERT_DIR, CERT_MATTERJS_URL, CERT_PLATFORM and CERT_SOURCE_ONLY exist for testing the runner only.
  */
 
 import { spawnSync } from "node:child_process";
@@ -12,12 +13,14 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const CERT_DIR = resolve(ROOT, ".cert");
+const CERT_DIR = process.env.CERT_DIR ?? resolve(ROOT, ".cert");
 const MATTERJS_DIR = resolve(CERT_DIR, "matter.js");
 const CHIP_TESTING_DIR = resolve(MATTERJS_DIR, "support/chip-testing");
 const SERVER_ENTRY = resolve(ROOT, "packages/matter-server/dist/esm/MatterServer.js");
-const MATTERJS_URL = "https://github.com/matter-js/matter.js";
+const MATTERJS_URL = process.env.CERT_MATTERJS_URL ?? "https://github.com/matter-js/matter.js";
 
+const COMMIT_PATTERN = /^[0-9a-f]{7,40}$/;
+const FULL_SHA_PATTERN = /^[0-9a-f]{40}$/;
 const TC_PATTERN = /^TC-[A-Za-z0-9.\-_]+$/;
 const REF_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._/-]*$/;
 // Dev builds are versioned <semver>-<yyyymmdd>-<commit>
@@ -82,18 +85,36 @@ function platformEnv() {
     return fail(`unsupported platform ${platform}`);
 }
 
+// The checkout must end detached at the current remote state of the ref. GitHub serves a fetch by sha only for a
+// full 40-hex sha, so a short sha has to be reachable from a branch or tag.
+function checkoutSteps(ref) {
+    const git = (step, args, extra = {}) => ({ step, cwd: MATTERJS_DIR, command: "git", args, ...extra });
+    if (!COMMIT_PATTERN.test(ref)) {
+        return [
+            git("fetch-ref", ["fetch", "origin", ref]),
+            git("checkout", ["checkout", "--detach", "FETCH_HEAD", "--"]),
+        ];
+    }
+    const steps = [git("fetch-all", ["fetch", "origin"])];
+    if (FULL_SHA_PATTERN.test(ref)) {
+        steps.push(git("fetch-ref", ["fetch", "origin", ref], { optional: true }));
+    }
+    steps.push(git("checkout", ["checkout", "--detach", `${ref}^{commit}`, "--"]));
+    return steps;
+}
+
 function buildSteps(options, ref, extraEnv) {
     const steps = [{ step: "build-server", cwd: ROOT, command: "npm", args: ["run", "build"] }];
+    if (!existsSync(resolve(MATTERJS_DIR, ".git"))) {
+        steps.push({
+            step: "clone",
+            cwd: ROOT,
+            command: "git",
+            args: ["clone", "--filter=blob:none", MATTERJS_URL, MATTERJS_DIR],
+        });
+    }
     steps.push(
-        existsSync(resolve(MATTERJS_DIR, ".git"))
-            ? { step: "fetch", cwd: MATTERJS_DIR, command: "git", args: ["fetch", "origin"] }
-            : {
-                  step: "clone",
-                  cwd: ROOT,
-                  command: "git",
-                  args: ["clone", "--filter=blob:none", MATTERJS_URL, MATTERJS_DIR],
-              },
-        { step: "checkout", cwd: MATTERJS_DIR, command: "git", args: ["checkout", "--detach", ref] },
+        ...checkoutSteps(ref),
         { step: "install", cwd: MATTERJS_DIR, command: "npm", args: ["ci"] },
         { step: "build-matterjs", cwd: MATTERJS_DIR, command: "npm", args: ["run", "build"] },
     );
@@ -125,19 +146,30 @@ if (options.tc !== undefined && !TC_PATTERN.test(options.tc)) {
     fail(`invalid --tc "${options.tc}", expected e.g. TC-IDM-2.1`);
 }
 const ref = resolveRef(options);
-const steps = buildSteps(options, ref, platformEnv());
+let steps = buildSteps(options, ref, platformEnv());
+if (process.env.CERT_SOURCE_ONLY) {
+    steps = steps.filter(({ step }) => step === "clone" || step.startsWith("fetch") || step === "checkout");
+}
 
 if (options.dryRun) {
     for (const step of steps) console.log(JSON.stringify(step));
     process.exit(0);
 }
 
-for (const { step, cwd, command, args, env } of steps) {
+const baseEnv = Object.fromEntries(
+    Object.entries(process.env).filter(([key]) => !key.startsWith("npm_") && key !== "INIT_CWD"),
+);
+
+for (const { step, cwd, command, args, env, optional } of steps) {
     console.error(`cert: [${step}] ${command} ${args.join(" ")} (in ${cwd})`);
-    const result = spawnSync(command, args, { cwd, stdio: "inherit", env: { ...process.env, ...env } });
+    const result = spawnSync(command, args, { cwd, stdio: "inherit", env: { ...baseEnv, ...env } });
     if (result.status !== 0) {
         const code = result.status ?? 1;
         const reason = result.error ? result.error.message : `exit code ${code}`;
+        if (optional) {
+            console.error(`cert: optional step "${step}" failed (${reason}), continuing`);
+            continue;
+        }
         console.error(`cert: step "${step}" failed (${reason})`);
         process.exit(code);
     }

@@ -110,7 +110,8 @@ Steps: build this repo, clone (or fetch) matter.js into `.cert/matter.js` (git-i
 - `--dry-run`: print the planned steps as one JSON object per line and run nothing.
 - `MATTER_CERT_APP_DIR` (macOS only, required): directory with the locally built CHIP example apps.
 - Evidence is written to `.cert/evidence`.
-- `CERT_PLATFORM=linux|darwin` overrides the detected platform; for testing the runner only.
+- The checkout always ends detached at the current remote state of the ref (branch, tag or commit). A short commit sha must be reachable from a remote branch or tag; only a full 40-character sha can be fetched on its own.
+- `CERT_PLATFORM=linux|darwin`, `CERT_DIR`, `CERT_MATTERJS_URL` and `CERT_SOURCE_ONLY=1` are for testing the runner only.
 
 Prerequisites: on Linux, Docker (the CHIP binaries come from the `cert-bins` image); on macOS, locally built CHIP apps referenced by `MATTER_CERT_APP_DIR`.
 

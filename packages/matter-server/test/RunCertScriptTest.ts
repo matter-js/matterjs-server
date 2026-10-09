@@ -5,8 +5,9 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 
 const ROOT = resolve(import.meta.dirname, "../../../../..");
 const SCRIPT = resolve(ROOT, "utils/run-cert.mjs");
@@ -17,6 +18,7 @@ interface PlannedStep {
     command: string;
     args: string[];
     env?: Record<string, string>;
+    optional?: boolean;
 }
 
 const pinnedRef = (() => {
@@ -52,27 +54,41 @@ describe("utils/run-cert.mjs", function () {
     it("pins the default ref from the @matter/main commit suffix", () => {
         expect(pinnedRef).to.be.a("string");
         const checkout = find(plan([]), "checkout");
-        expect(checkout.args).to.deep.equal(["checkout", "--detach", pinnedRef]);
+        expect(checkout.args).to.deep.equal(["checkout", "--detach", `${pinnedRef}^{commit}`, "--"]);
+        expect(find(plan([]), "fetch-all").args).to.deep.equal(["fetch", "origin"]);
+    });
+
+    it("fetches a branch ref by name and checks out FETCH_HEAD", () => {
+        const steps = plan([], { MATTERJS_REF: "feat/xyz" });
+        expect(find(steps, "fetch-ref").args).to.deep.equal(["fetch", "origin", "feat/xyz"]);
+        expect(find(steps, "checkout").args).to.deep.equal(["checkout", "--detach", "FETCH_HEAD", "--"]);
+    });
+
+    it("also fetches a full sha directly, optionally", () => {
+        const sha = "0123456789abcdef0123456789abcdef01234567";
+        const fetchRef = find(plan(["--matterjs-ref", sha]), "fetch-ref");
+        expect(fetchRef.args).to.deep.equal(["fetch", "origin", sha]);
+        expect(fetchRef.optional).to.equal(true);
     });
 
     it("lets MATTERJS_REF override the default and the flag override MATTERJS_REF", () => {
-        expect(find(plan([], { MATTERJS_REF: "feature/x" }), "checkout").args.at(-1)).to.equal("feature/x");
+        expect(find(plan([], { MATTERJS_REF: "feature/x" }), "fetch-ref").args.at(-1)).to.equal("feature/x");
         expect(
-            find(plan(["--matterjs-ref", "abc1234"], { MATTERJS_REF: "feature/x" }), "checkout").args.at(-1),
-        ).to.equal("abc1234");
+            find(plan(["--matterjs-ref", "abc1234"], { MATTERJS_REF: "feature/x" }), "checkout").args.at(-2),
+        ).to.equal("abc1234^{commit}");
     });
 
     it("runs the steps in order", () => {
         const names = plan([]).map(s => s.step);
-        expect(names.filter(n => n !== "clone" && n !== "fetch")).to.deep.equal([
+        expect(names.filter(n => n !== "clone")).to.deep.equal([
             "build-server",
+            "fetch-all",
             "checkout",
             "install",
             "build-matterjs",
             "test",
         ]);
         expect(names.indexOf("build-server")).to.equal(0);
-        expect(["clone", "fetch"]).to.include(names[1]);
         expect(names.at(-1)).to.equal("test");
     });
 
@@ -129,5 +145,100 @@ describe("utils/run-cert.mjs", function () {
     it("rejects an invalid MATTERJS_REF from the environment", () => {
         const result = runCert(["--dry-run"], { CERT_PLATFORM: "linux", MATTERJS_REF: "--bad" });
         expect(result.status).to.not.equal(0);
+    });
+
+    describe("source checkout against a local upstream", () => {
+        let dir: string;
+        let upstream: string;
+        let work: string;
+        let certDir: string;
+
+        function git(cwd: string, ...args: string[]) {
+            const result = spawnSync(
+                "git",
+                ["-c", "user.name=t", "-c", "user.email=t@example.com", "-c", "protocol.file.allow=always", ...args],
+                { cwd, encoding: "utf8" },
+            );
+            expect(result.status, `git ${args.join(" ")}: ${result.stderr}`).to.equal(0);
+            return result.stdout.trim();
+        }
+
+        function commit(message: string) {
+            git(work, "commit", "--allow-empty", "-m", message);
+            return git(work, "rev-parse", "HEAD");
+        }
+
+        function checkoutRef(ref: string) {
+            return spawnSync("node", [SCRIPT, "--matterjs-ref", ref], {
+                env: {
+                    PATH: process.env.PATH ?? "",
+                    HOME: dir,
+                    CERT_PLATFORM: "linux",
+                    CERT_SOURCE_ONLY: "1",
+                    CERT_DIR: certDir,
+                    CERT_MATTERJS_URL: `file://${upstream}`,
+                    GIT_CONFIG_COUNT: "1",
+                    GIT_CONFIG_KEY_0: "protocol.file.allow",
+                    GIT_CONFIG_VALUE_0: "always",
+                },
+                encoding: "utf8",
+                cwd: ROOT,
+            });
+        }
+
+        function checkedOut() {
+            const cwd = join(certDir, "matter.js");
+            const detached = spawnSync("git", ["symbolic-ref", "-q", "HEAD"], { cwd }).status !== 0;
+            return { head: git(cwd, "rev-parse", "HEAD"), detached };
+        }
+
+        beforeEach(() => {
+            dir = mkdtempSync(join(tmpdir(), "cert-"));
+            upstream = join(dir, "upstream.git");
+            work = join(dir, "work");
+            certDir = join(dir, "cert");
+            git(dir, "init", "--bare", "-b", "main", upstream);
+            git(dir, "clone", upstream, work);
+            commit("first");
+            git(work, "branch", "-M", "main");
+            git(work, "push", "origin", "main");
+            git(work, "checkout", "-b", "feat/xyz");
+            commit("on branch");
+            git(work, "push", "origin", "feat/xyz");
+        });
+
+        afterEach(() => {
+            rmSync(dir, { recursive: true, force: true });
+        });
+
+        it("detaches at a branch ref on a fresh clone", () => {
+            const tip = git(work, "rev-parse", "feat/xyz");
+            const result = checkoutRef("feat/xyz");
+            expect(result.status, result.stderr).to.equal(0);
+            expect(checkedOut()).to.deep.equal({ head: tip, detached: true });
+        });
+
+        it("lands on the new tip of a reused clone after the upstream branch advanced", () => {
+            expect(checkoutRef("main").status).to.equal(0);
+            git(work, "checkout", "main");
+            const tip = commit("advanced");
+            git(work, "push", "origin", "main");
+            const result = checkoutRef("main");
+            expect(result.status, result.stderr).to.equal(0);
+            expect(checkedOut()).to.deep.equal({ head: tip, detached: true });
+        });
+
+        it("resolves a short sha reachable from a branch", () => {
+            const tip = git(work, "rev-parse", "feat/xyz");
+            const result = checkoutRef(tip.slice(0, 9));
+            expect(result.status, result.stderr).to.equal(0);
+            expect(checkedOut()).to.deep.equal({ head: tip, detached: true });
+        });
+
+        it("fails loudly with the step name for an unknown ref", () => {
+            const result = checkoutRef("no/such-branch");
+            expect(result.status).to.not.equal(0);
+            expect(result.stderr).to.contain('step "fetch-ref" failed');
+        });
     });
 });
