@@ -22,6 +22,13 @@ export interface VideoRetrySteps extends Readonly<Record<VideoRetryDimension, nu
 export const NO_RETRY_STEPS: VideoRetrySteps = { bitRate: 0, frameRate: 0, resolution: 0 };
 
 /**
+ * Windows asked per request, eviction retries included; bounds how long the endpoint lock is held. A
+ * camera refusing everything with no trade-off point (bit rate floor 1) takes 31: 1 + 22 bit rate
+ * halvings from 8 Mbit/s + 2 frame rate steps + 2 size steps with 2 frame rate steps each.
+ */
+export const MAX_VIDEO_ASKS = 32;
+
+/**
  * Bit rate steps down to the plan's floor, the rate-distortion trade-off point: profiles hide their bit
  * rate ceilings (the Aqara G350 caps at 2 Mbit/s), so no fixed count reaches them. Frame rate and frame
  * size are bounded, so a camera refusing everything fails after a known number of attempts.
@@ -155,6 +162,10 @@ function fitToBudget(
  *   which becomes the frame rate limit, and the search goes on as after that capacity refusal. If only
  *   the budget lowered the rate, that window is asked as it is. The refusal is not kept as a limit, so
  *   a later step can have the budget lower the frame rate to the same rate again.
+ * - Last rung: while the camera has refused every window as unservable, the plan's certification
+ *   window is asked once, when the steps run out or on the last ask `askLimit` leaves. Refused for
+ *   capacity, it is asked again after room is made.
+ * - At most `askLimit` windows are asked.
  */
 export class VideoWindowSearch {
     readonly #plan: VideoPlan;
@@ -169,17 +180,28 @@ export class VideoWindowSearch {
     #bestServable: VideoRetrySteps | undefined;
     #capacitySeen = false;
     #budgetMoved = false;
+    readonly #askLimit: number;
+    #asks = 0;
+    #askedWindow: VideoEnvelope;
+    #lastRungAsked = false;
     #move: VideoSearchMove;
 
-    constructor(plan: VideoPlan, fits: (window: VideoEnvelope) => boolean) {
+    constructor(plan: VideoPlan, fits: (window: VideoEnvelope) => boolean, askLimit = MAX_VIDEO_ASKS) {
         this.#plan = plan;
         this.#fits = fits;
+        this.#askLimit = askLimit;
         this.#limits = retryLimits(plan);
-        this.#move = this.#propose(NO_RETRY_STEPS, undefined);
+        this.#askedWindow = plan.envelope;
+        this.#move = this.#settle(this.#propose(NO_RETRY_STEPS, undefined));
     }
 
     get move(): VideoSearchMove {
         return this.#move;
+    }
+
+    /** Asks the camera can still be given, which is what makes freeing room worth it. */
+    get asksLeft(): number {
+        return this.#askLimit - this.#asks;
     }
 
     /**
@@ -207,11 +229,65 @@ export class VideoWindowSearch {
 
     /** The camera's answer to the window of the last `ask`. */
     refused(refusal: VideoRefusal): void {
+        this.#move = this.#settle(this.#answered(refusal));
+    }
+
+    roomMade(): void {
+        this.#move = this.#settle(this.#afterRoom());
+    }
+
+    noRoom(): void {
+        this.#move = this.#settle(
+            this.#lastRungAsked
+                ? { kind: "giveUp" }
+                : this.#step(
+                      RETRY_DIMENSIONS.filter(dimension => dimension.unpublishedFloor && dimension.chargesEncoder),
+                      "capacity",
+                  ),
+        );
+    }
+
+    /**
+     * Every move passes here: the ask limit, and the certification window as the last rung while
+     * every refusal was unservable.
+     */
+    #settle(move: VideoSearchMove): VideoSearchMove {
+        const certification = this.#plan.certificationWindow;
+        const lastRungOpen =
+            certification !== undefined &&
+            !this.#lastRungAsked &&
+            !this.#capacitySeen &&
+            !this.#refused.some(entry => sameVideoEnvelope(entry.window, certification));
+        if (lastRungOpen && (move.kind === "giveUp" || (move.kind === "ask" && this.asksLeft === 1))) {
+            this.#lastRungAsked = true;
+            return this.#count({ kind: "ask", window: certification });
+        }
+        if (move.kind === "ask") {
+            if (this.asksLeft === 0) return { kind: "giveUp" };
+            return this.#count(move);
+        }
+        return move;
+    }
+
+    #count(move: { readonly kind: "ask"; readonly window: VideoEnvelope }): VideoSearchMove {
+        this.#asks += 1;
+        this.#askedWindow = move.window;
+        return move;
+    }
+
+    #afterRoom(): VideoSearchMove {
+        if (this.#lastRungAsked) return { kind: "ask", window: this.#askedWindow };
+        const best = this.#bestServable ?? this.#wanted;
+        this.#bestServable = undefined;
+        return this.#propose(best, undefined);
+    }
+
+    #answered(refusal: VideoRefusal): VideoSearchMove {
         if (refusal === "capacity") this.#capacitySeen = true;
-        this.#refused.push({ window: videoRetryWindow(this.#plan, this.#asked), refusal });
+        this.#refused.push({ window: this.#askedWindow, refusal });
+        if (this.#lastRungAsked) return refusal === "capacity" ? { kind: "makeRoom" } : { kind: "giveUp" };
         if (refusal === "unservable" && this.#budgetBefore !== undefined) {
-            this.#move = this.#askAsIs(this.#budgetBefore);
-            return;
+            return this.#askAsIs(this.#budgetBefore);
         }
         const lastStep = this.#lastStep;
         if (
@@ -223,23 +299,9 @@ export class VideoWindowSearch {
             this.#limits = { ...this.#limits, [name]: lastStep.from[name] };
             this.#asked = lastStep.from;
             this.#wanted = lastStep.from;
-            this.#move = this.#after("capacity");
-            return;
+            return this.#after("capacity");
         }
-        this.#move = this.#after(refusal);
-    }
-
-    roomMade(): void {
-        const best = this.#bestServable ?? this.#wanted;
-        this.#bestServable = undefined;
-        this.#move = this.#propose(best, undefined);
-    }
-
-    noRoom(): void {
-        this.#move = this.#step(
-            RETRY_DIMENSIONS.filter(dimension => dimension.unpublishedFloor && dimension.chargesEncoder),
-            "capacity",
-        );
+        return this.#after(refusal);
     }
 
     #after(refusal: VideoRefusal): VideoSearchMove {

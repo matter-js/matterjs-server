@@ -294,6 +294,57 @@ describe("VideoStreamAllocate against a camera with fixed stream profiles", () =
         expect(allocates(invokes).at(-1)?.fields).to.deep.include({ minResolution: { width: 640, height: 480 } });
     });
 
+    it("asks the certification window last, and a camera accepting only that window succeeds", async () => {
+        // The window the CSA test scripts allocate: the trade-off point's bit rate as minimum and maximum,
+        // 30 fps up to max_fps, and the full resolution range.
+        const certification = {
+            minFrameRate: 30,
+            maxFrameRate: 120,
+            minResolution: { width: 640, height: 480 },
+            maxResolution: { width: 1920, height: 1080 },
+            minBitRate: 10000,
+            maxBitRate: 10000,
+            keyFrameInterval: 4000,
+        };
+        const { invokes, result } = await resolveOn(
+            AQARA_STATE,
+            async invoke => {
+                if (invoke.command !== "videoStreamAllocate") return undefined;
+                const { streamUsage, videoCodec, ...window } = invoke.fields;
+                expect([streamUsage, videoCodec]).to.deep.equal([LIVE_VIEW, H264]);
+                if (JSON.stringify(window) !== JSON.stringify(certification)) {
+                    throw StatusResponseError.create(Status.DynamicConstraintError);
+                }
+                return { videoStreamId: 7 };
+            },
+            undefined,
+            { codec: H264 },
+        );
+        expect(result).to.deep.include({ streamId: 7, provenance: "allocated" });
+        const sent = allocates(invokes);
+        expect(sent.length).to.be.lessThan(32);
+        expect(sent.at(-1)?.fields).to.deep.include(certification);
+        expect(sent.slice(0, -1).some(invoke => invoke.fields.minFrameRate !== invoke.fields.maxFrameRate)).to.equal(
+            false,
+        );
+    });
+
+    it("skips the certification window when the caller's bounds exclude it", async () => {
+        const { invokes } = await resolveOn(
+            AQARA_STATE,
+            async invoke => {
+                if (invoke.command === "videoStreamAllocate")
+                    throw StatusResponseError.create(Status.DynamicConstraintError);
+                return undefined;
+            },
+            { maxFrameRate: 25 },
+            { codec: H264 },
+        );
+        expect(allocates(invokes).every(invoke => invoke.fields.minFrameRate === invoke.fields.maxFrameRate)).to.equal(
+            true,
+        );
+    });
+
     it("reaches a hidden bit rate ceiling far below the default", async () => {
         const { invokes, result } = await resolveOn(AQARA_STATE, async invoke => {
             if (invoke.command !== "videoStreamAllocate") return undefined;

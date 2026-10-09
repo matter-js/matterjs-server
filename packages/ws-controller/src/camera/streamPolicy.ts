@@ -155,6 +155,29 @@ export interface VideoPlan {
     readonly frameRateCeiling: number;
     /** The offer's decode ceiling, which sets a further frame rate ceiling per frame size. */
     readonly limits: VideoCodecLimits;
+    /** See {@link certificationWindow}; undefined when the caller's bounds or the offer exclude it. */
+    readonly certificationWindow: VideoEnvelope | undefined;
+}
+
+/** The lowest frame rate the CSA camera certification scripts request. */
+const CERTIFICATION_MIN_FRAME_RATE = 30;
+
+/**
+ * The window the CSA certification test scripts allocate (TC_AVSM, reference camera-controller): the
+ * codec's first trade-off point's bit rate as both minimum and maximum, frame rate 30 up to the
+ * maximum, and the full resolution range. A certified camera accepts it, so it is the search's last
+ * try. Clamped into `envelope`, which carries the caller's bounds and the offer's decode ceiling.
+ */
+function certificationWindow(
+    envelope: VideoEnvelope,
+    frameRateFloor: number,
+    point: RateDistortionPoint | undefined,
+): VideoEnvelope | undefined {
+    if (point === undefined) return undefined;
+    if (point.minBitRate < envelope.minBitRate || point.minBitRate > envelope.maxBitRate) return undefined;
+    const minFrameRate = Math.max(CERTIFICATION_MIN_FRAME_RATE, frameRateFloor);
+    if (minFrameRate > envelope.maxFrameRate) return undefined;
+    return { ...envelope, minFrameRate, minBitRate: point.minBitRate, maxBitRate: point.minBitRate };
 }
 
 /** The highest frame rate the plan allows at `resolution`: a smaller frame lets the offer decode more of them. */
@@ -264,22 +287,25 @@ export function computeVideoEnvelope(args: VideoEnvelopeArgs): VideoSelection {
     const derivedBitRateFloor = applicable?.minBitRate ?? 1;
     const minBitRate = hints?.minBitRate ?? (derivedBitRateFloor <= maxBitRate ? derivedBitRateFloor : 1);
 
+    const envelope: VideoEnvelope = {
+        overlays,
+        codec,
+        minResolution,
+        maxResolution,
+        minFrameRate: maxFrameRate,
+        maxFrameRate,
+        minBitRate,
+        maxBitRate,
+        keyFrameInterval: KEY_FRAME_INTERVAL_MS,
+    };
+    const frameRateFloor = hints?.minFrameRate ?? Math.min(1, maxFrameRate);
     return {
         plan: {
-            envelope: {
-                overlays,
-                codec,
-                minResolution,
-                maxResolution,
-                minFrameRate: maxFrameRate,
-                maxFrameRate,
-                minBitRate,
-                maxBitRate,
-                keyFrameInterval: KEY_FRAME_INTERVAL_MS,
-            },
-            frameRateFloor: hints?.minFrameRate ?? Math.min(1, maxFrameRate),
+            envelope,
+            frameRateFloor,
             frameRateCeiling,
             limits,
+            certificationWindow: certificationWindow(envelope, frameRateFloor, codecPoints[0]),
         },
     };
 }
@@ -297,10 +323,12 @@ export function halveResolution(resolution: Resolution, floor: Resolution): Reso
     return clampUp(scaleToPixels(resolution, pixels(resolution) / 4), floor);
 }
 
-/** Equal in every field a retry step can lower. */
+/** Equal in every field a search window can differ in, the certification window's ranges included. */
 export function sameVideoEnvelope(a: VideoEnvelope, b: VideoEnvelope): boolean {
     return (
+        a.minBitRate === b.minBitRate &&
         a.maxBitRate === b.maxBitRate &&
+        a.minFrameRate === b.minFrameRate &&
         a.maxFrameRate === b.maxFrameRate &&
         a.maxResolution.width === b.maxResolution.width &&
         a.maxResolution.height === b.maxResolution.height

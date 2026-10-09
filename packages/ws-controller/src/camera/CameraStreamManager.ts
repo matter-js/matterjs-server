@@ -74,7 +74,7 @@ import {
     videoCallerBounds,
 } from "./streamPolicy.js";
 import type { AudioCallerBounds, AudioHints, RateDistortionPoint, TrackRequest, VideoHints } from "./streamPolicy.js";
-import { firstVideoWindow, VideoWindowSearch } from "./videoWindowSearch.js";
+import { firstVideoWindow, MAX_VIDEO_ASKS, VideoWindowSearch } from "./videoWindowSearch.js";
 import type { VideoRefusal } from "./videoWindowSearch.js";
 import {
     audioCodecName,
@@ -87,8 +87,7 @@ import {
 
 const logger = Logger.get("CameraStreamManager");
 
-/** Allocate attempts per request, shared by the retry windows and eviction. Bounds how long the endpoint lock is held. */
-export const MAX_ALLOCATE_ATTEMPTS = 32;
+export const MAX_ALLOCATE_ATTEMPTS = MAX_VIDEO_ASKS;
 
 type LadderReaction =
     /** `unservable`: the device cannot serve this range; `capacity`: it has no room for it. */
@@ -1089,20 +1088,18 @@ export class CameraStreamManager {
                 }
             }
         };
-        for (let attempts = 0; ;) {
+        for (;;) {
             const move = search.move;
             if (move.kind === "giveUp") break;
             if (move.kind === "makeRoom") {
-                // No allocate follows the last attempt, so making room there would be for nothing.
-                if (allowEviction && attempts < MAX_ALLOCATE_ATTEMPTS && (await makeRoom())) {
+                // No allocate follows the last ask, so making room there would be for nothing.
+                if (allowEviction && search.asksLeft > 0 && (await makeRoom())) {
                     search.roomMade();
                 } else {
                     search.noRoom();
                 }
                 continue;
             }
-            if (attempts === MAX_ALLOCATE_ATTEMPTS) break;
-            attempts += 1;
             const envelope = move.window;
             try {
                 const response = await this.io.invoke({

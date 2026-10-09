@@ -24,7 +24,13 @@ const WINDOW: VideoEnvelope = {
     keyFrameInterval: 4000,
 };
 
-const PLAN: VideoPlan = { envelope: WINDOW, frameRateFloor: 1, frameRateCeiling: 30, limits: {} };
+const PLAN: VideoPlan = {
+    envelope: WINDOW,
+    frameRateFloor: 1,
+    frameRateCeiling: 30,
+    limits: {},
+    certificationWindow: undefined,
+};
 
 const ANY_BUDGET = (): boolean => true;
 
@@ -313,6 +319,78 @@ describe("VideoWindowSearch", () => {
                 const accepted = videoRetryWindow(sizeOnly, { bitRate: 0, frameRate: 0, resolution: 1 });
                 expect(search.budgetNarrowing(accepted)).to.equal(undefined);
             }
+        });
+    });
+
+    describe("the certification window", () => {
+        const CERTIFICATION: VideoEnvelope = { ...WINDOW, minFrameRate: 30, minBitRate: 800000, maxBitRate: 800000 };
+        const CERTIFIED: VideoPlan = {
+            ...PLAN,
+            envelope: { ...WINDOW, minFrameRate: 60, maxFrameRate: 60 },
+            frameRateCeiling: 60,
+            certificationWindow: { ...CERTIFICATION, maxFrameRate: 60 },
+        };
+
+        it("is asked once the steps run out and every refusal was unservable", () => {
+            const { asked, outcome } = walk(CERTIFIED, window =>
+                window.minFrameRate === 30 && window.maxFrameRate === 60 ? "accepted" : "unservable",
+            );
+            expect(outcome).to.equal("accepted");
+            expect(asked.at(-1)).to.equal("2560x1440@30-60 800000");
+            expect(asked.filter(window => window === "2560x1440@30-60 800000")).to.have.length(1);
+        });
+
+        it("is told apart from a refused step window with the same ceilings", () => {
+            // The step at 800000 bit/s has the same ceilings, but its bit rate range starts at 100000.
+            const envelope = { ...WINDOW, minBitRate: 100000, maxBitRate: 6400000 };
+            const sameCeilings: VideoPlan = {
+                ...PLAN,
+                envelope,
+                certificationWindow: { ...envelope, minBitRate: 800000, maxBitRate: 800000 },
+            };
+            const { asked, outcome } = walk(sameCeilings, window =>
+                window.minBitRate === 800000 ? "accepted" : "unservable",
+            );
+            expect(asked).to.include("2560x1440@30-30 800000");
+            expect(outcome).to.equal("accepted");
+        });
+
+        it("takes the last ask the limit leaves", () => {
+            const search = new VideoWindowSearch(CERTIFIED, ANY_BUDGET, 3);
+            const asked = new Array<string>();
+            for (let move = search.move; move.kind === "ask"; move = search.move) {
+                asked.push(summary(move.window));
+                search.refused("unservable");
+            }
+            expect(asked).to.deep.equal([
+                "2560x1440@60-60 8000000",
+                "2560x1440@60-60 4000000",
+                "2560x1440@30-60 800000",
+            ]);
+        });
+
+        it("is not asked once the camera refused a window for capacity", () => {
+            const { asked } = walk(CERTIFIED, window => (window.maxBitRate === 8000000 ? "capacity" : "unservable"));
+            expect(asked).to.not.include("2560x1440@30-60 800000");
+        });
+
+        it("is asked again after room was made when the camera refused it for capacity", () => {
+            let freed = false;
+            const { asked, outcome } = walk(
+                CERTIFIED,
+                window => {
+                    if (window.minFrameRate !== 30 || window.maxFrameRate !== 60) return "unservable";
+                    return freed ? "accepted" : "capacity";
+                },
+                {
+                    room: () => {
+                        freed = true;
+                        return true;
+                    },
+                },
+            );
+            expect(outcome).to.equal("accepted");
+            expect(asked.slice(-3)).to.deep.equal(["2560x1440@30-60 800000", "makeRoom", "2560x1440@30-60 800000"]);
         });
     });
 

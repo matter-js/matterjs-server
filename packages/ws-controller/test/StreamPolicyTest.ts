@@ -567,7 +567,13 @@ describe("streamPolicy", () => {
         const LIVE_VIEW_H265 = videoCallerBounds({ codec: H265 }, LIVE_VIEW, undefined);
 
         function planOf(envelope: VideoEnvelope, frameRateFloor = envelope.minFrameRate): VideoPlan {
-            return { envelope, frameRateFloor, frameRateCeiling: envelope.maxFrameRate, limits: {} };
+            return {
+                envelope,
+                frameRateFloor,
+                frameRateCeiling: envelope.maxFrameRate,
+                limits: {},
+                certificationWindow: undefined,
+            };
         }
 
         /** A plan whose frame rate floor is the envelope's own minimum, and a free encoder budget. */
