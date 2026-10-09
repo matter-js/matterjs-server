@@ -125,17 +125,20 @@ function aqara(allocatedProfiles: number[] = []): (invoke: RecordedInvoke) => Pr
     };
 }
 
-/** A stream another controller allocated on profile 3, which takes the camera's only encoder. */
-function recordingStream(referenceCount: number): AllocatedVideoStream {
+/**
+ * A stream another controller allocated on profile 3, which takes the camera's only encoder. At 640x480
+ * and 30 fps it leaves most of the encoder budget free; at 1920x1080 and 120 fps it spends all of it.
+ */
+function recordingStream(referenceCount: number, spendsBudget = false): AllocatedVideoStream {
     return {
         videoStreamId: 3,
         overlays: NO_OVERLAYS,
         streamUsage: RECORDING,
         videoCodec: H264,
         minResolution: { width: 640, height: 480 },
-        maxResolution: { width: 1920, height: 1080 },
+        maxResolution: spendsBudget ? { width: 1920, height: 1080 } : { width: 640, height: 480 },
         minFrameRate: 30,
-        maxFrameRate: 120,
+        maxFrameRate: spendsBudget ? 120 : 30,
         minBitRate: 10000,
         maxBitRate: 2000000,
         keyFrameInterval: 4000,
@@ -311,19 +314,61 @@ describe("VideoStreamAllocate against a camera with fixed stream profiles", () =
         }
     });
 
-    it("steps the bit rate, then the resolution, and stops at the first frame rate step the camera refuses", async () => {
+    it("gives up bit rate, then frame rate, then frame size, at the size's own highest rate", async () => {
         const { invokes } = await resolveOn(AQARA_STATE, async () => {
             throw StatusResponseError.create(Status.DynamicConstraintError);
         });
+        // Level 3.1 decodes 640x480 at up to 90 fps, so the smaller size starts there.
         expect(allocates(invokes).map(summary)).to.deep.equal([
             "1280x720@30-30 14000000",
             "1280x720@30-30 7000000",
             "1280x720@30-30 3500000",
             "1280x720@30-30 1750000",
             "1280x720@30-30 875000",
-            "640x480@30-30 875000",
-            "640x480@15-15 875000",
+            "1280x720@15-15 875000",
+            "1280x720@7-7 875000",
+            "640x480@90-90 875000",
+            "640x480@45-45 875000",
+            "640x480@22-22 875000",
         ]);
+    });
+
+    it("reaches a camera that serves only 7 fps", async () => {
+        const { invokes, result } = await resolveOn(AQARA_STATE, async invoke => {
+            if (invoke.command !== "videoStreamAllocate") return undefined;
+            if (numberField(invoke, "maxFrameRate") > 7)
+                throw StatusResponseError.create(Status.DynamicConstraintError);
+            return { videoStreamId: 5 };
+        });
+        expect(result).to.deep.include({ streamId: 5 });
+        expect(allocates(invokes).at(-1)?.fields).to.deep.include({ minFrameRate: 7, maxFrameRate: 7 });
+    });
+
+    it("evicts an idle stream that holds the encoder budget without asking the camera first, and keeps 30 fps", async () => {
+        const state = { ...AQARA_STATE, allocatedVideoStreams: [recordingStream(0, true)] };
+        const { invokes, result } = await resolveOn(state, aqara([3]));
+        expect(result).to.deep.include({ streamId: 1, evicted: [3] });
+        const commands = invokes.map(invoke =>
+            invoke.command === "videoStreamAllocate" ? summary(invoke) : invoke.command,
+        );
+        expect(commands).to.deep.equal([
+            "videoStreamDeallocate",
+            "1280x720@30-30 14000000",
+            "1280x720@30-30 7000000",
+            "1280x720@30-30 3500000",
+            "1280x720@30-30 1750000",
+        ]);
+    });
+
+    it("does not offer a stream the camera refused to deallocate for eviction again", async () => {
+        const state = { ...AQARA_STATE, allocatedVideoStreams: [recordingStream(0)] };
+        const camera = aqara([3]);
+        const { invokes, result } = await resolveOn(state, async invoke => {
+            if (invoke.command === "videoStreamDeallocate") throw StatusResponseError.create(Status.Failure);
+            return camera(invoke);
+        });
+        expect(result).to.have.property("code", ServerErrorCode.CameraResourceExhausted);
+        expect(invokes.filter(invoke => invoke.command === "videoStreamDeallocate")).to.have.length(1);
     });
 
     it("evicts an idle stream after a capacity refusal and keeps the frame rate", async () => {
@@ -378,7 +423,7 @@ describe("VideoStreamAllocate against a camera with fixed stream profiles", () =
             .resolveVideoStream({ nodeId: NODE, endpointId: ENDPOINT, streamUsage: LIVE_VIEW, limits: { codec: 1 } })
             .catch(error => error);
         expect(refused).to.have.property("code", ServerErrorCode.CameraStreamIncompatible);
-        // Four bit rate and two resolution steps after the first window, then one frame rate step.
-        expect(allocates(invokes)).to.have.length(8);
+        // Four bit rate steps and two frame rate steps at each of the three sizes.
+        expect(allocates(invokes)).to.have.length(13);
     });
 });

@@ -11,7 +11,6 @@ import type {
     AllocatedVideoStream,
     AudioEnvelope,
     Resolution,
-    VideoBudgetNarrowing,
     VideoEnvelope,
 } from "./cameraTypes.js";
 import type { OverlayBounds } from "./overlayPolicy.js";
@@ -145,12 +144,23 @@ function offerFrameRateCeiling(limits: VideoCodecLimits, resolution: Resolution)
 }
 
 /**
- * The first window to request, and the lowest frame rate a later window may go down to: the caller's
- * `min_frame_rate`, or 1. Every window asks for a single frame rate (minimum equals maximum).
+ * The best window to request, and what later windows are derived from. Every window asks for a single
+ * frame rate (minimum equals maximum); {@link planFrameRate} gives it for each frame size.
  */
 export interface VideoPlan {
     readonly envelope: VideoEnvelope;
+    /** The caller's `min_frame_rate`, or 1: the lowest rate a later window may ask for. */
     readonly frameRateFloor: number;
+    /** `maxFps`, capped by the caller's `max_frame_rate`. */
+    readonly frameRateCeiling: number;
+    /** The offer's decode ceiling, which sets a further frame rate ceiling per frame size. */
+    readonly limits: VideoCodecLimits;
+}
+
+/** The highest frame rate the plan allows at `resolution`: a smaller frame lets the offer decode more of them. */
+export function planFrameRate(plan: VideoPlan, resolution: Resolution): number {
+    const offerCeiling = offerFrameRateCeiling(plan.limits, resolution);
+    return offerCeiling === undefined ? plan.frameRateCeiling : Math.min(plan.frameRateCeiling, offerCeiling);
 }
 
 /** `limit` is the ceiling in force after every narrowing (sensor, offer or caller). */
@@ -179,7 +189,10 @@ export function computeVideoEnvelope(args: VideoEnvelopeArgs): VideoSelection {
     const codec = limits.codec;
 
     let maxResolution = capabilities.sensor;
-    let maxFrameRate = capabilities.maxFrameRate;
+    const frameRateCeiling =
+        hints?.maxFrameRate === undefined
+            ? capabilities.maxFrameRate
+            : Math.min(capabilities.maxFrameRate, hints.maxFrameRate);
 
     // Apply the caller's ceiling before the offer's pixel budget, or the budget is spent on dimensions
     // the ceiling then cuts again.
@@ -194,12 +207,7 @@ export function computeVideoEnvelope(args: VideoEnvelopeArgs): VideoSelection {
         maxResolution = scaleToPixels(maxResolution, limits.maxPixelsPerSecond);
     }
     const offerCeiling = offerFrameRateCeiling(limits, maxResolution);
-    if (offerCeiling !== undefined) {
-        maxFrameRate = Math.min(maxFrameRate, offerCeiling);
-    }
-    if (hints?.maxFrameRate !== undefined) {
-        maxFrameRate = Math.min(maxFrameRate, hints.maxFrameRate);
-    }
+    const maxFrameRate = offerCeiling === undefined ? frameRateCeiling : Math.min(frameRateCeiling, offerCeiling);
 
     if (hints?.minResolution !== undefined && !fitsUnder(hints.minResolution, maxResolution)) {
         return {
@@ -263,6 +271,8 @@ export function computeVideoEnvelope(args: VideoEnvelopeArgs): VideoSelection {
                 keyFrameInterval: KEY_FRAME_INTERVAL_MS,
             },
             frameRateFloor: hints?.minFrameRate ?? Math.min(1, maxFrameRate),
+            frameRateCeiling,
+            limits,
         },
     };
 }
@@ -300,53 +310,25 @@ export interface VideoPixelRateBudget {
     snapshotStreams: AllocatedSnapshotStream[];
 }
 
-export interface BudgetedVideoEnvelope {
-    envelope: VideoEnvelope;
-    /** Absent when the budget lowered no ceiling, which includes a camera that states no budget. */
-    narrowed?: VideoBudgetNarrowing;
+/** What `MaxEncodedPixelRate` (§11.2.7.2) charges for a stream allocated with this window. */
+export function encodedPixelRate(window: VideoEnvelope): number {
+    return pixelRate(window.maxResolution, window.maxFrameRate);
 }
 
 /**
- * Narrows into what is left of `MaxEncodedPixelRate` (§11.2.7.2): frame size first, down to the
- * resolution floor, and frame rate only after that, since its floor is the one cameras do not publish.
- * Never below `frameRateFloor`; a conflict goes to the device (§11.2.1.2.2). A budget already fully
- * spent narrows nothing.
+ * What is left of `MaxEncodedPixelRate` after the camera's streams; undefined for a camera that states
+ * no budget. The spec states no per-stream formula; this is the reference server's accounting
+ * (CameraAVStreamManagementCluster.cpp, IsResourceAvailableForStreamAllocation).
  */
-export function budgetVideoEnvelope(
-    envelope: VideoEnvelope,
-    budget: VideoPixelRateBudget,
-    frameRateFloor: number,
-): BudgetedVideoEnvelope {
+export function freeEncodedPixelRate(budget: VideoPixelRateBudget): number | undefined {
     const { maxEncodedPixelRate } = budget;
-    if (maxEncodedPixelRate === undefined) return { envelope };
-    // The spec states no per-stream formula; this is the reference server's accounting
-    // (CameraAVStreamManagementCluster.cpp, IsResourceAvailableForStreamAllocation).
+    if (maxEncodedPixelRate === undefined) return undefined;
     const committed =
         budget.videoStreams.reduce((total, stream) => total + pixelRate(stream.maxResolution, stream.maxFrameRate), 0) +
         budget.snapshotStreams
             .filter(stream => stream.encodedPixels)
             .reduce((total, stream) => total + pixelRate(stream.maxResolution, stream.frameRate), 0);
-    const free = maxEncodedPixelRate - committed;
-    if (free <= 0) return { envelope };
-
-    const maxResolution = clampUp(
-        scaleToPixels(envelope.maxResolution, free / envelope.maxFrameRate),
-        envelope.minResolution,
-    );
-    const affordable = Math.max(1, Math.floor(free / pixels(maxResolution)));
-    const maxFrameRate = Math.max(frameRateFloor, Math.min(envelope.maxFrameRate, affordable));
-    const budgeted = { ...withFrameRate(envelope, maxFrameRate), maxResolution };
-
-    const rateLowered = maxFrameRate < envelope.maxFrameRate;
-    const sizeLowered = !fitsUnder(envelope.maxResolution, maxResolution);
-    if (!rateLowered && !sizeLowered) return { envelope: budgeted };
-    return {
-        envelope: budgeted,
-        narrowed: {
-            ...(rateLowered ? { maxFrameRate: envelope.maxFrameRate } : {}),
-            ...(sizeLowered ? { maxResolution: envelope.maxResolution } : {}),
-        },
-    };
+    return maxEncodedPixelRate - committed;
 }
 
 function contains(outer: { min: number; max: number }, inner: { min: number; max: number }): boolean {
@@ -386,13 +368,13 @@ export function satisfiesVideoCallerBounds(candidate: AllocatedVideoStream, boun
 }
 
 /**
- * The stream must reach the plan's frame rate and may go down to `frameRateFloor`, so a slow stream
- * never stands in for the best one the request asked for.
+ * The stream must reach `frameRate`, the rate an allocate would end at instead, and may go down to
+ * `frameRateFloor`, so a slow stream never stands in for a better one the request can get.
  */
-function fitsPlan(candidate: AllocatedVideoStream, plan: VideoPlan): boolean {
+function fitsPlan(candidate: AllocatedVideoStream, plan: VideoPlan, frameRate: number): boolean {
     const envelope = plan.envelope;
     return (
-        candidate.maxFrameRate === envelope.maxFrameRate &&
+        candidate.maxFrameRate >= frameRate &&
         overlaysMatch(candidate.overlays, envelope.overlays) &&
         resolutionContains(
             { min: envelope.minResolution, max: envelope.maxResolution },
@@ -409,14 +391,20 @@ function fitsPlan(candidate: AllocatedVideoStream, plan: VideoPlan): boolean {
     );
 }
 
-/** The candidate's range must lie inside the plan's, not merely overlap it. */
+/**
+ * The candidate's range must lie inside the plan's, not merely overlap it. `firstFrameRate` is the
+ * frame rate an allocate would end at if `candidate` did not exist: reusing it is free, so its own
+ * reservation must not count against the alternative.
+ */
 export function findReusableVideoStream(
     streams: AllocatedVideoStream[],
     plan: VideoPlan,
     bounds: VideoCallerBounds,
+    firstFrameRate: (candidate: AllocatedVideoStream) => number,
 ): AllocatedVideoStream | undefined {
     const candidates = streams.filter(
-        candidate => satisfiesVideoCallerBounds(candidate, bounds) && fitsPlan(candidate, plan),
+        candidate =>
+            satisfiesVideoCallerBounds(candidate, bounds) && fitsPlan(candidate, plan, firstFrameRate(candidate)),
     );
 
     // Starting an encoder is the expensive part, so a stream already running wins.

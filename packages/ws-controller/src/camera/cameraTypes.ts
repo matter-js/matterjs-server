@@ -29,7 +29,7 @@ export interface VideoEnvelope {
     keyFrameInterval: number;
 }
 
-/** Each field holds that ceiling's value from before {@link budgetVideoEnvelope} lowered it. */
+/** Each field holds a ceiling of the request's first window that the encoder budget made the request give up. */
 export interface VideoBudgetNarrowing {
     maxFrameRate?: number;
     maxResolution?: Resolution;

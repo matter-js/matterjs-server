@@ -60,27 +60,21 @@ import {
 } from "./snapshotPolicy.js";
 import type { SnapshotCapability } from "./snapshotPolicy.js";
 import {
-    budgetVideoEnvelope,
     chooseEvictionVictim,
     computeAudioEnvelope,
     computeVideoEnvelope,
     findDegradedVideoStream,
+    encodedPixelRate,
     findReusableVideoStream,
+    freeEncodedPixelRate,
     satisfiesAudioCallerBounds,
     satisfiesVideoCallerBounds,
     statedHints,
     trackRequest,
     videoCallerBounds,
 } from "./streamPolicy.js";
-import type {
-    AudioCallerBounds,
-    AudioHints,
-    BudgetedVideoEnvelope,
-    RateDistortionPoint,
-    TrackRequest,
-    VideoHints,
-} from "./streamPolicy.js";
-import { VideoWindowSearch } from "./videoWindowSearch.js";
+import type { AudioCallerBounds, AudioHints, RateDistortionPoint, TrackRequest, VideoHints } from "./streamPolicy.js";
+import { firstVideoWindow, VideoWindowSearch } from "./videoWindowSearch.js";
 import type { VideoRefusal } from "./videoWindowSearch.js";
 import {
     audioCodecName,
@@ -94,7 +88,7 @@ import {
 const logger = Logger.get("CameraStreamManager");
 
 /** Allocate attempts per request, shared by the retry windows and eviction. Bounds how long the endpoint lock is held. */
-export const MAX_ALLOCATE_ATTEMPTS = 12;
+export const MAX_ALLOCATE_ATTEMPTS = 16;
 
 type LadderReaction =
     /** `unservable`: the device cannot serve this range; `capacity`: it has no room for it. */
@@ -1019,8 +1013,23 @@ export class CameraStreamManager {
         const unreported = this.unreportedVideoStreams(nodeId, endpointId, liveStreams);
 
         const bounds = videoCallerBounds(args.limits, streamUsage, args.hints);
-        // No encoder budget on reuse: an existing stream already spends it.
-        const reused = findReusableVideoStream([...liveStreams, ...unreported], selection.plan, bounds);
+        // Unreported allocations count, so the free budget is not overstated.
+        const fitsBudget =
+            (without?: AllocatedVideoStream) =>
+            (window: VideoEnvelope): boolean => {
+                const free = freeEncodedPixelRate({
+                    maxEncodedPixelRate: state.maxEncodedPixelRate,
+                    videoStreams: [...liveStreams, ...unreported].filter(stream => stream !== without),
+                    snapshotStreams: liveSnapshotStreams,
+                });
+                return free === undefined || encodedPixelRate(window) <= free;
+            };
+        const reused = findReusableVideoStream(
+            [...liveStreams, ...unreported],
+            selection.plan,
+            bounds,
+            candidate => firstVideoWindow(selection.plan, fitsBudget(candidate)).maxFrameRate,
+        );
         if (reused !== undefined) {
             return {
                 streamId: reused.videoStreamId,
@@ -1029,64 +1038,72 @@ export class CameraStreamManager {
             };
         }
 
-        // Unreported allocations count, so the free budget is not overstated.
-        const budgeted = (window: VideoEnvelope): BudgetedVideoEnvelope =>
-            budgetVideoEnvelope(
-                window,
-                {
-                    maxEncodedPixelRate: state.maxEncodedPixelRate,
-                    videoStreams: [...liveStreams, ...unreported],
-                    snapshotStreams: liveSnapshotStreams,
-                },
-                selection.plan.frameRateFloor,
-            );
-        const search = new VideoWindowSearch(selection.plan, window => budgeted(window).envelope);
+        const search = new VideoWindowSearch(selection.plan, fitsBudget());
 
-        // A stream the degraded rung could hand out is never evicted for the same request.
-        const evictable = liveStreams.filter(stream => !satisfiesVideoCallerBounds(stream, bounds));
+        // A stream the degraded rung could hand out is never evicted for the same request. Each candidate
+        // is tried once, freed or not, so the candidate lists strictly shrink.
+        let videoCandidates = liveStreams.filter(stream => !satisfiesVideoCallerBounds(stream, bounds));
+        let snapshotCandidates = liveSnapshotStreams;
 
         let lastStatus: number | undefined;
         const freed = new Array<() => void>();
         const evicted = new Array<number>();
         const reporting = (resolved: ResolvedStream): ResolvedStream =>
             evicted.length === 0 ? resolved : { ...resolved, evicted };
-        /** Frees one stream this request may take; false when there is none, or the camera refused. */
+        /** Frees one stream this request may take; false when no candidate is left. */
         const makeRoom = async (): Promise<boolean> => {
-            // Our own snapshot stream goes first: StreamUsagePriorities ranks video usages only.
-            const snapshotRoom = await this.freeOwnSnapshotStream(
-                nodeId,
-                endpointId,
-                liveSnapshotStreams,
-                state.maxEncodedPixelRate,
-                scope,
-            );
-            if (snapshotRoom !== undefined) {
-                // Removed whether freed or refused, so the candidate set strictly shrinks.
-                liveSnapshotStreams = liveSnapshotStreams.filter(
-                    stream => stream.snapshotStreamId !== snapshotRoom.streamId,
+            // Our own snapshot streams go first: StreamUsagePriorities ranks video usages only.
+            for (;;) {
+                const room = await this.freeOwnSnapshotStream(
+                    nodeId,
+                    endpointId,
+                    snapshotCandidates,
+                    state.maxEncodedPixelRate,
+                    scope,
                 );
-                if (snapshotRoom.freed) {
-                    freed.push(snapshotRoom.spend);
+                if (room === undefined) break;
+                snapshotCandidates = snapshotCandidates.filter(stream => stream.snapshotStreamId !== room.streamId);
+                if (room.freed) {
+                    liveSnapshotStreams = liveSnapshotStreams.filter(
+                        stream => stream.snapshotStreamId !== room.streamId,
+                    );
+                    freed.push(room.spend);
                     return true;
                 }
             }
-            const madeRoom = await this.freeAnUnreferencedVideoStream(
-                nodeId,
-                endpointId,
-                evictable.filter(stream => liveStreams.includes(stream)),
-                state.streamUsagePriorities,
-                scope,
-            );
-            if (madeRoom === undefined) return false;
-            // Strictly shrinking, so eviction cannot keep finding the same victim.
-            liveStreams = liveStreams.filter(stream => stream.videoStreamId !== madeRoom.streamId);
-            freed.push(madeRoom.spend);
-            evicted.push(madeRoom.streamId);
-            return true;
+            for (;;) {
+                const room = await this.freeAnUnreferencedVideoStream(
+                    nodeId,
+                    endpointId,
+                    videoCandidates,
+                    state.streamUsagePriorities,
+                    scope,
+                );
+                if (room === undefined) return false;
+                videoCandidates = videoCandidates.filter(stream => stream.videoStreamId !== room.streamId);
+                if (room.freed) {
+                    liveStreams = liveStreams.filter(stream => stream.videoStreamId !== room.streamId);
+                    freed.push(room.spend);
+                    evicted.push(room.streamId);
+                    return true;
+                }
+            }
         };
-        for (let attempt = 1; attempt <= MAX_ALLOCATE_ATTEMPTS; attempt++) {
-            const budget = budgeted(search.requested);
-            const envelope = budget.envelope;
+        for (let attempts = 0; ;) {
+            const move = search.move;
+            if (move.kind === "giveUp") break;
+            if (move.kind === "makeRoom") {
+                // No allocate follows the last attempt, so making room there would be for nothing.
+                if (allowEviction && attempts < MAX_ALLOCATE_ATTEMPTS && (await makeRoom())) {
+                    search.roomMade();
+                } else {
+                    search.noRoom();
+                }
+                continue;
+            }
+            if (attempts === MAX_ALLOCATE_ATTEMPTS) break;
+            attempts += 1;
+            const envelope = move.window;
             try {
                 const response = await this.io.invoke({
                     nodeId,
@@ -1122,11 +1139,12 @@ export class CameraStreamManager {
                 });
                 scope.returnOnFailure(() => this.#deallocate(nodeId, endpointId, lease));
                 for (const spend of freed) spend();
+                const budgetNarrowed = search.budgetNarrowing(envelope);
                 return reporting({
                     streamId,
                     envelope,
                     provenance: "allocated",
-                    ...(budget.narrowed === undefined ? {} : { budgetNarrowed: budget.narrowed }),
+                    ...(budgetNarrowed === undefined ? {} : { budgetNarrowed }),
                 });
             } catch (error) {
                 if (error instanceof ServerError) throw error;
@@ -1142,16 +1160,7 @@ export class CameraStreamManager {
                         deviceStatus: lastStatus,
                     });
                 }
-                let move = search.refused(reaction);
-                if (move === "makeRoom") {
-                    // No allocate follows the last attempt, so making room there would be for nothing.
-                    if (allowEviction && attempt < MAX_ALLOCATE_ATTEMPTS && (await makeRoom())) {
-                        search.roomMade();
-                        continue;
-                    }
-                    move = search.noRoom();
-                }
-                if (move === "giveUp") break;
+                search.refused(reaction);
             }
         }
 
@@ -1387,7 +1396,7 @@ export class CameraStreamManager {
         streams: AllocatedVideoStream[],
         priorities: number[],
         scope: AllocationScope,
-    ): Promise<{ streamId: number; spend: () => void } | undefined> {
+    ): Promise<{ streamId: number; freed: boolean; spend: () => void } | undefined> {
         const ours = (stream: AllocatedVideoStream): boolean =>
             this.ownsStream(nodeId, endpointId, "video", stream.videoStreamId);
         const victim = chooseEvictionVictim(streams, priorities, ours);
@@ -1408,7 +1417,7 @@ export class CameraStreamManager {
             });
         } catch (error) {
             logger.info(`Could not deallocate video stream ${victim.videoStreamId}:`, error);
-            return undefined;
+            return { streamId: victim.videoStreamId, freed: false, spend: () => {} };
         }
         this.dropLease(nodeId, endpointId, "video", victim.videoStreamId);
         this.#announce(this.events.streamEvicted, {
@@ -1425,7 +1434,7 @@ export class CameraStreamManager {
                 );
             }),
         );
-        return { streamId: victim.videoStreamId, spend };
+        return { streamId: victim.videoStreamId, freed: true, spend };
     }
 
     /**

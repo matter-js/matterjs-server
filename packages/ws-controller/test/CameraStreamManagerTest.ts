@@ -787,9 +787,9 @@ describe("CameraStreamManager", () => {
             expect(resolved.evicted).to.equal(undefined);
         });
 
-        it("puts the pixel rate a freed snapshot stream held back into the envelope", async () => {
-            // Sensor frame at 30 fps is 110.6 Mpx/s; the snapshot stream reserves 62.2, leaving 13 fps.
-            // The request that freed it must get the whole budget back.
+        it("frees its own snapshot stream before it gives up frame rate for the encoder budget", async () => {
+            // Sensor frame at 30 fps is 110.6 Mpx/s; the snapshot stream reserves 62.2. The frame size is
+            // pinned, so freeing the snapshot stream is the step that keeps the frame rate.
             const BUDGET = 110592000;
             const snapshotHolder = {
                 snapshotStreamId: 5,
@@ -842,9 +842,11 @@ describe("CameraStreamManager", () => {
 
             expect(resolved.streamId).to.equal(11);
             expect(requireVideoEnvelope(resolved.envelope).maxFrameRate).to.equal(30);
-            const allocates = invokes.filter(invoke => invoke.command === "videoStreamAllocate");
-            expect(allocates[0]?.fields.maxFrameRate).to.equal(13);
-            expect(allocates[allocates.length - 1]?.fields.maxFrameRate).to.equal(30);
+            // The window over budget was never sent; the first allocate followed the deallocate.
+            expect(invokes.map(invoke => invoke.command).slice(-2)).to.deep.equal([
+                "snapshotStreamDeallocate",
+                "videoStreamAllocate",
+            ]);
         });
 
         /** A snapshot stream of our own, as the camera reports one it allocated at 1920x1080. */
@@ -1500,7 +1502,7 @@ describe("CameraStreamManager", () => {
             });
             expect(resolved.streamId).to.equal(40);
             const envelope = requireVideoEnvelope(resolved.envelope);
-            expect(envelope.maxResolution).to.deep.equal({ width: 1810, height: 1018 });
+            expect(envelope.maxResolution).to.deep.equal({ width: 1280, height: 720 });
             expect(envelope.maxFrameRate).to.equal(30);
             // One attempt: the request the camera can serve was the first one it saw.
             expect(invokes.filter(invoke => invoke.command === "videoStreamAllocate")).to.have.length(1);
@@ -1539,6 +1541,53 @@ describe("CameraStreamManager", () => {
             expect(resolved.budgetNarrowed).to.equal(undefined);
         });
 
+        it("reuses a stream it allocated at a frame rate the encoder budget lowered", async () => {
+            const pinned = {
+                minResolution: { width: 2560, height: 1440 },
+                maxResolution: { width: 2560, height: 1440 },
+            };
+            const { manager, invokes, holder } = managerWith(
+                { ...STATE, maxEncodedPixelRate: HALF_SENSOR_BUDGET },
+                encoderBudgetedCamera(HALF_SENSOR_BUDGET),
+            );
+            const request = {
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                streamUsage: LIVE_VIEW,
+                limits: { codec: H265 },
+                hints: pinned,
+            };
+            const first = requireVideoEnvelope((await manager.resolveVideoStream(request)).envelope);
+            expect(first.maxFrameRate).to.equal(15);
+            holder.state = {
+                ...STATE,
+                maxEncodedPixelRate: HALF_SENSOR_BUDGET,
+                allocatedVideoStreams: [
+                    {
+                        videoStreamId: 40,
+                        overlays: NO_OVERLAYS,
+                        streamUsage: LIVE_VIEW,
+                        videoCodec: H265,
+                        minResolution: first.minResolution,
+                        maxResolution: first.maxResolution,
+                        minFrameRate: first.minFrameRate,
+                        maxFrameRate: first.maxFrameRate,
+                        minBitRate: first.minBitRate,
+                        maxBitRate: first.maxBitRate,
+                        keyFrameInterval: first.keyFrameInterval,
+                        referenceCount: 1,
+                    },
+                ],
+            };
+            const allocatesBefore = invokes.filter(invoke => invoke.command === "videoStreamAllocate").length;
+
+            const second = await manager.resolveVideoStream(request);
+
+            expect(second.streamId).to.equal(40);
+            expect(second.provenance).to.not.equal("allocated");
+            expect(invokes.filter(invoke => invoke.command === "videoStreamAllocate")).to.have.length(allocatesBefore);
+        });
+
         it("would have been refused by the same camera without the budget", async () => {
             const { manager, invokes } = managerWith(
                 { ...STATE, maxEncodedPixelRate: undefined },
@@ -1556,8 +1605,9 @@ describe("CameraStreamManager", () => {
         });
 
         it("counts what the camera's other streams reserve, not just its ceiling", async () => {
-            // One 1920x1080 at 30 fps stream reserves 62.2 Mpx/s of the 110.6 Mpx/s budget, leaving 48.4,
-            // which carries the sensor's frame size at 13 fps.
+            // One 1920x1080 at 30 fps stream in use reserves 62.2 Mpx/s of the 110.6 Mpx/s budget, leaving
+            // 48.4: the pinned sensor frame fits at 7 fps. The camera is asked each lower rate the budget
+            // alone rejects, since its stream list may be ahead of the reported one.
             const { manager, invokes } = managerWith(
                 { ...withStreams([CONTAINED_STREAM]), maxEncodedPixelRate: 110592000 },
                 encoderBudgetedCamera(110592000 - 1920 * 1080 * 30),
@@ -1569,8 +1619,12 @@ describe("CameraStreamManager", () => {
                 limits: { codec: H265 },
                 hints: { maxFrameRate: 30, minResolution: { width: 2560, height: 1440 } },
             });
-            expect(requireVideoEnvelope(resolved.envelope).maxFrameRate).to.equal(13);
-            expect(invokes.filter(invoke => invoke.command === "videoStreamAllocate")).to.have.length(1);
+            expect(requireVideoEnvelope(resolved.envelope).maxFrameRate).to.equal(7);
+            expect(
+                invokes
+                    .filter(invoke => invoke.command === "videoStreamAllocate")
+                    .map(invoke => invoke.fields.maxFrameRate),
+            ).to.deep.equal([30, 15, 7]);
         });
 
         it("sends a floor the caller stated to the device although the budget cannot carry it", async () => {
@@ -1688,7 +1742,7 @@ describe("CameraStreamManager", () => {
                 streamUsage: LIVE_VIEW,
                 limits: { codec: H265 },
             });
-            expect(requireVideoEnvelope(resolved.envelope).maxResolution).to.deep.equal({ width: 1810, height: 1018 });
+            expect(requireVideoEnvelope(resolved.envelope).maxResolution).to.deep.equal({ width: 1280, height: 720 });
             expect(invokes.filter(invoke => invoke.command === "videoStreamAllocate")).to.have.length(1);
         });
 
@@ -1823,15 +1877,19 @@ describe("CameraStreamManager", () => {
         it("stops taking streams when no allocate attempt is left to use the capacity", async () => {
             // The last iteration has no allocate behind it, so a stream taken there is destroyed for nothing.
             const H264 = 2;
+            // Small enough that the encoder budget never rejects a window on their account.
             const idle = (id: number) => ({
                 ...CONTAINED_STREAM,
                 videoStreamId: id,
                 videoCodec: H264,
                 streamUsage: 1,
+                minResolution: { width: 320, height: 240 },
+                maxResolution: { width: 320, height: 240 },
+                maxFrameRate: 5,
                 referenceCount: 0,
             });
             const { manager, invokes } = managerWith(
-                withStreams([20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31].map(idle)),
+                withStreams(Array.from({ length: 20 }, (_, index) => idle(20 + index))),
                 async invoke => {
                     if (invoke.command === "videoStreamAllocate") throw statusError(Status.ResourceExhausted);
                     return undefined;

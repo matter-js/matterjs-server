@@ -987,7 +987,7 @@ What the client gets: the best video stream the camera can serve, within what th
 
 - **Video.** The codec is the first one the camera states that the offer can decode. The resolution goes up to the sensor size, cut to the decode ceiling in the offer's `a=fmtp` lines. A browser's offer (H.264 level 3.1) therefore gets at most 1280x720. The frame rate is one value, not a range: the highest the offer can decode at that size, up to `max_fps`. The bit rate is capped at the offer's bit-rate ceiling (`max-br`, or the level's) and at the camera's `max_network_bandwidth`, and at 8000000 bit/s when neither states one. The key frame interval is 4000 ms. No overlay is asked for.
 - **Retries.** A camera can refuse a request that is inside every limit it publishes. The server then retries with smaller requests (see **Retries** below).
-- **Capacity.** A stream already on the camera that fits is reused. A new stream is sized to the camera's free encoder capacity, and frame size is given up before frame rate. When the camera is full, the server may deallocate a stream nothing references, possibly another controller's (`allow_eviction`, below).
+- **Capacity.** A stream already on the camera that fits is reused. A new stream must fit the camera's free encoder capacity: the server gives up frame size first, then frees an unused stream, and lowers the frame rate last. When the camera is full, the server may deallocate a stream nothing references, possibly another controller's (`allow_eviction`, below).
 - **Audio.** The first microphone codec the offer can receive, with the camera's largest channel count, its highest sample rate and bit depth, and 64000 bit/s. If no audio stream can be served, `audio` is `null` and the session still opens.
 - **Without `sdp`.** The server sends `SolicitOffer`. No offer bounds the stream, so only the camera and its encoder capacity do. The camera's offer arrives as a `webrtc_callback` `offer` event; answer it with `camera_provide_answer`.
 
@@ -1121,10 +1121,10 @@ A track the caller *asked for* that the offer refuses is `reason: "offer"` inste
 - If that leaves no codec the camera and the peer share, the call fails with error 102 and `reason: "level"`, instead of serving a stream with no bound held against it.
 - A codec that states no level and no explicit parameter is unbounded by the offer. The RFC defaults for an absent level are not applied: H.264's is Baseline level 1, and inferring it would refuse offers no peer meant to restrict.
 
-**The encoder budget.** The server asks for a stream that fits inside `max_encoded_pixel_rate` (spec §11.2.7.2) minus what the camera's allocated streams reserve: `max_resolution` times `max_frame_rate` per video stream, plus the same for a snapshot stream whose `encoded_pixels` is set. A camera short of encoder capacity refuses a request at the sensor's maximum, and that refusal would make the server take another controller's stream.
+**The encoder budget.** `max_encoded_pixel_rate` (spec §11.2.7.2) minus what the camera's allocated streams reserve is the camera's free encoder capacity: `max_resolution` times `max_frame_rate` per video stream, plus the same for a snapshot stream whose `encoded_pixels` is set. The server does not send a request that costs more. It handles that request as if the camera had answered `ResourceExhausted` (see **Retries** below), so it tries a smaller size, then frees an unused stream, before it gives up frame rate.
 
-- The budget narrows only the server's own defaults. A floor the caller stated reaches the camera unshrunk, and the camera answers, since it is the arbiter of a parameter conflict (spec §11.2.1.2.2).
-- A stream already on the camera is never measured against the budget, because it already draws on it. Reuse costs nothing, however wide the stream is.
+- No request goes below a floor the caller stated. If nothing can be freed, the server sends the request anyway and lets the camera decide (spec §11.2.1.2.2), since the camera's own list of streams may be newer than the one the server has. The server lowers the frame rate only after the camera itself has answered `ResourceExhausted`.
+- A stream already on the camera is never measured against the budget, because it already draws on it. It is reused when it is at least as fast as what a new stream could get.
 
 **The rung order.** The server tries, in this order:
 
@@ -1140,10 +1140,10 @@ A track the caller *asked for* that the offer refuses is `reason: "offer"` inste
 
 **Retries.** Cameras accept a `VideoStreamAllocate` only when the whole requested range fits one of their internal stream profiles, and they do not publish all of a profile's limits. The Aqara G350, for example, refuses any frame rate range reaching below 30, any bit rate over 2 Mbit/s and any key frame interval other than 4000 ms, and its attributes state none of these. This is why the server always asks for one frame rate, never a range, and uses a key frame interval of 4000 ms. The spec recommends 4000 ms only for push transports; the value is used here because it is the only one this camera accepted.
 
-- When the camera answers `DynamicConstraintError` (it cannot serve that range), the server halves the bit-rate ceiling first, up to four times, then the width and height, up to two times, and the frame rate last, up to two times. Each step keeps the earlier ones. Frame rate goes last because it is the only one of the three whose lower limit cameras do not publish. If the camera refuses a lower frame rate, the server does not go lower.
-- When the camera answers `ResourceExhausted` (it has no capacity), the server first tries a smaller size, then takes a stream (see **Making room** below), and lowers the frame rate only when nothing can be taken. A lower bit rate does not free encoder capacity, so it is not tried for this.
+- When the camera answers `DynamicConstraintError` (it cannot serve that range), the server gives up quality in this order: bit rate first (halved up to four times), then frame rate (halved up to two times), and frame size last (each side halved up to two times). A stream keeps its frame size longest, so a camera that serves its full size only at a lower frame rate gets the full size. After a smaller size, the frame rate starts again at the highest the offer can decode at that size.
+- When the camera answers `ResourceExhausted` (it has no capacity), the server first tries a smaller size at the same frame rate, then takes a stream (see **Making room** below), and lowers the frame rate only when nothing can be taken. A lower bit rate does not free encoder capacity, so it is not tried for this. If the camera answers `DynamicConstraintError` to that lower frame rate, the server has found the camera's lowest frame rate and does not go lower.
 - No step goes below a floor or above a ceiling the caller stated, or past the offer's decode ceiling.
-- A request makes at most 12 allocate attempts.
+- A request makes at most 16 allocate attempts. A stream the server tried to take, and the camera refused to free, is not tried again.
 
 **Making room (eviction).** With `allow_eviction` absent or `true`, the server may deallocate a stream nothing references:
 
@@ -1192,11 +1192,11 @@ Reporting:
 
 `narrowed_by_encoder_budget`:
 
-- Absent when the budget lowered nothing. Reported for a freshly allocated stream only: a reused or degraded stream carries the camera's own range, which the budget had no part in.
-- `max_encoded_pixel_rate` is what the camera's encoders can produce in total, and every stream the camera holds spends it. The budget gives up frame size before frame rate, and lowers the frame rate only once the size is at its floor. `{"max_resolution": {"width": 2560, "height": 1440}}` beside a smaller `resolution.max` says another stream's reservation is the reason, not the camera's own limit.
+- Absent when the budget made the request give up nothing. Reported for a freshly allocated stream only: a reused or degraded stream carries the camera's own range, which the budget had no part in.
+- `max_encoded_pixel_rate` is what the camera's encoders can produce in total, and every stream the camera holds spends it. Each field holds the ceiling of the first request that the stream ended up below, for example `{"max_resolution": {"width": 2560, "height": 1440}}` beside a smaller `resolution.max`. It is reported only when the budget turned down at least one request, so another stream's reservation is part of the reason, not only the camera's own limit.
 - It is not `degraded`: the stream fits the range the server computed, and it is that range which was narrowed.
 - A caller that needs a frame rate states `min_frame_rate`, which the budget may not narrow past. Freeing one of its own streams with `camera_release_stream` or `camera_stop_stream` gives the budget back.
-- The ladder may narrow the range again after a device refusal, so `frame_rate.max` can be lower still. These values are the unbudgeted ceilings, not a measure of the whole gap.
+- Refusals by the camera may have lowered the range too. These values are the first request's ceilings, not a measure of what the budget alone cost.
 
 **Re-offers.** An ICE restart, or a change to the tracks a live session carries, is a second `ProvideOffer` naming the existing session id (§11.5.6.3, with `WebRTCSessionID` stated instead of null). `camera_start_stream` always opens a new session, so a re-offer goes through `send_webrtc_provider_command` with `command_name: "ProvideOffer"` and the existing `webRtcSessionId` in the payload. For teardown the session stays the server's: `camera_stop_stream` still ends it, and `camera_session_ended` still reports another connection ending it.
 
