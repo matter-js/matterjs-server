@@ -9,7 +9,7 @@ import { ClientNode, Logger, NetworkClient, ServerNode } from "@matter/main";
 const logger = Logger.get("RestoredPeers");
 
 /**
- * One-shot record of the peer network settings repair, scoped to the storage the peers live in.
+ * One-shot record of the peer auto-connect settings repair, scoped to the storage the peers live in.
  */
 export interface PeerSettingsRepairMarker {
     /** Whether the repair has already run for this storage scope. */
@@ -19,7 +19,7 @@ export interface PeerSettingsRepairMarker {
 }
 
 /**
- * Repair the stored network settings of peers commissioned before the controller handed peer startup to
+ * Repair the stored auto-connect settings of peers commissioned before the controller handed peer startup to
  * matter.js. Those versions connected each peer by hand and persisted `isDisabled: true` and
  * `autoSubscribe: false` to keep matter.js out of it, so a peer left as stored is skipped by the
  * controller's own start-up connect, or started without a subscription: no reports, no connection state,
@@ -50,12 +50,12 @@ export async function repairRestoredPeers(
             }
         } catch (error) {
             failed++;
-            logger.warn(`Could not repair the stored network settings of ${peer}:`, error);
+            logger.warn(`Could not repair the stored auto-connect settings of ${peer}:`, error);
         }
     }
 
     if (repaired > 0) {
-        logger.info(`Repaired the stored network settings of ${repaired} peer(s) from an earlier version`);
+        logger.info(`Repaired the stored auto-connect settings of ${repaired} peer(s) from an earlier version`);
     }
     if (failed > 0) {
         // Recording the scope as done would strand those peers disabled forever, so the next start
