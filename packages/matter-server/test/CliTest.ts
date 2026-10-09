@@ -26,8 +26,11 @@ describe("cli", () => {
     let savedEnv: string | undefined;
     let savedProbePortEnv: string | undefined;
     let savedListenAddressEnv: string | undefined;
+    let savedAutoSubscriptionEnv: string | undefined;
 
     before(() => {
+        savedAutoSubscriptionEnv = process.env.DISABLE_AUTO_SUBSCRIPTION;
+        delete process.env.DISABLE_AUTO_SUBSCRIPTION;
         savedListenAddressEnv = process.env.LISTEN_ADDRESS;
         delete process.env.LISTEN_ADDRESS;
         savedEnv = process.env.CUSTOM_CLUSTER_POLL_INTERVAL;
@@ -37,6 +40,11 @@ describe("cli", () => {
     });
 
     after(() => {
+        if (savedAutoSubscriptionEnv === undefined) {
+            delete process.env.DISABLE_AUTO_SUBSCRIPTION;
+        } else {
+            process.env.DISABLE_AUTO_SUBSCRIPTION = savedAutoSubscriptionEnv;
+        }
         if (savedListenAddressEnv === undefined) {
             delete process.env.LISTEN_ADDRESS;
         } else {
@@ -139,6 +147,31 @@ describe("cli", () => {
         it("rejects a value that only starts with digits", () => {
             expect(() => parseTcpPortOption("8080abc")).to.throw(InvalidArgumentError);
             expect(() => parseTcpPortOption("1e4")).to.throw(InvalidArgumentError);
+        });
+    });
+
+    describe("--disable-auto-subscription", () => {
+        it("defaults to false", () => {
+            expect(parseCliArgs(argv()).disableAutoSubscription).to.equal(false);
+        });
+
+        it("is set by the flag", () => {
+            expect(parseCliArgs(argv("--disable-auto-subscription")).disableAutoSubscription).to.equal(true);
+            expect(parseCliArgs(argv("--disable-auto-subscription", "false")).disableAutoSubscription).to.equal(false);
+        });
+
+        it("is set by the environment", () => {
+            process.env.DISABLE_AUTO_SUBSCRIPTION = "true";
+            try {
+                expect(parseCliArgs(argv()).disableAutoSubscription).to.equal(true);
+            } finally {
+                delete process.env.DISABLE_AUTO_SUBSCRIPTION;
+            }
+        });
+
+        it("reaches the controller options", () => {
+            const cliOptions = parseCliArgs(argv("--disable-auto-subscription"));
+            expect(controllerOptionsFrom(cliOptions, "server", "1.2.3").disableAutoSubscription).to.equal(true);
         });
     });
 

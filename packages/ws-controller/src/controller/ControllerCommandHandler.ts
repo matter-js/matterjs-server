@@ -257,6 +257,11 @@ export interface ControllerCommandHandlerOptions {
     threadDiagnosticsEnabled?: boolean;
     /** Interval between custom cluster polling cycles. Defaults to, and is floored at, 60 seconds. */
     customClusterPollInterval?: Duration;
+    /**
+     * Never subscribe to peers on our own: not after commissioning and not when the server starts. Peers are only
+     * read on request. Defaults to false.
+     */
+    disableAutoSubscription?: boolean;
 }
 
 /** A known-address attempt that left the device off the fabric, so discovery may still reach it. */
@@ -276,6 +281,7 @@ export class ControllerCommandHandler {
     readonly #bleEnabled: boolean;
     readonly #bleProxyEnabled: boolean;
     readonly #otaEnabled: boolean;
+    readonly #autoSubscriptionDisabled: boolean;
     /** Node management and attribute cache */
     #nodes = new Nodes();
     /** Cache of available updates keyed by nodeId */
@@ -328,6 +334,7 @@ export class ControllerCommandHandler {
             timeSyncEnabled = false,
             threadDiagnosticsEnabled = false,
             customClusterPollInterval,
+            disableAutoSubscription = false,
         } = options;
 
         this.#node = controller.node;
@@ -339,6 +346,10 @@ export class ControllerCommandHandler {
         this.#bleProxyEnabled = bleProxyEnabled;
         logger.info(`BLE is ${bleEnabled ? "enabled" : "disabled"}${bleProxyEnabled ? " (proxy mode)" : ""}`);
         this.#otaEnabled = otaEnabled;
+        this.#autoSubscriptionDisabled = disableAutoSubscription;
+        if (disableAutoSubscription) {
+            logger.notice("Auto subscription is disabled; peers are only read on request");
+        }
 
         const attributeReader: NodeAttributeReader = {
             nodeConnected: peer => this.#isConnected(peer.nodeId),
@@ -391,13 +402,17 @@ export class ControllerCommandHandler {
         return this.#bleProxyEnabled;
     }
 
+    get autoSubscriptionDisabled() {
+        return this.#autoSubscriptionDisabled;
+    }
+
     async start() {
         if (this.#started) {
             return;
         }
         this.#started = true;
 
-        // Before the node comes online: bringing it up starts and subscribes every commissioned peer, and
+        // Before the node comes online: bringing it up starts every commissioned peer, and
         // a report arriving before the bus exists is not forwarded to anyone.
         this.#peers = this.#node.env.get(PeerSet);
         this.#startChangeBus();
@@ -419,7 +434,7 @@ export class ControllerCommandHandler {
      * rather than per node in {@link ControllerCommandHandler.#registerNode}.
      */
     #startChangeBus() {
-        const bus = new PeerChangeBus(this.#node);
+        const bus = new PeerChangeBus(this.#node, { reportWithoutSubscription: this.#autoSubscriptionDisabled });
         this.#changeBus = bus;
 
         // These run on one Observable shared by every peer; an uncaught throw would abort the emit and
@@ -899,7 +914,8 @@ export class ControllerCommandHandler {
         this.#nodeUpdateTimers.get(nodeId)?.stop();
         this.#nodeUpdateTimers.delete(nodeId);
 
-        if (this.#isConnected(nodeId)) {
+        // Without auto subscription the node is never connected, and reads are the only source of its state.
+        if (this.#autoSubscriptionDisabled || this.#isConnected(nodeId)) {
             await this.#nodes.attributeCache.update(node);
         }
         this.events.nodeStructureChanged.emit(nodeId);
@@ -1394,6 +1410,7 @@ export class ControllerCommandHandler {
                 onIpNetwork: true,
             },
             nodeId: data.nodeId,
+            autoSubscribe: !this.#autoSubscriptionDisabled,
             regulatoryLocation: GeneralCommissioning.RegulatoryLocationType.IndoorOutdoor,
             regulatoryCountryCode: "XX",
             wifiNetwork,
@@ -1690,9 +1707,10 @@ export class ControllerCommandHandler {
         // A reachable device must be told to drop our fabric, or it keeps holding it and never becomes
         // commissionable again without a manual factory reset. An unreachable one cannot be told
         // anything, and attempting it costs the caller the full discovery and retry budget, so go
-        // straight to the local removal for those.
+        // straight to the local removal for those. Without auto subscription a node is never connected, so
+        // reachability is unknown and the device is always tried.
         let removed = false;
-        if (this.#isConnected(nodeId)) {
+        if (this.#autoSubscriptionDisabled || this.#isConnected(nodeId)) {
             try {
                 await node.decommission();
                 removed = true;
@@ -1828,10 +1846,14 @@ export class ControllerCommandHandler {
 
     /**
      * Drop the local ICD registration and reconnect; a LIT peer re-registers automatically once subscribed.
+     * With auto subscription disabled only the local registration is dropped.
      */
     async resyncIcd(nodeId: NodeId): Promise<void> {
         const node = this.#nodes.get(nodeId);
         await node.act(agent => agent.get(IcdClient).forget());
+        if (this.#autoSubscriptionDisabled) {
+            return;
+        }
         // Tearing the sustained subscription down and back up is what forces the re-registration.
         await node.set({ network: { autoSubscribe: false } });
         await node.set({ network: { autoSubscribe: true } });

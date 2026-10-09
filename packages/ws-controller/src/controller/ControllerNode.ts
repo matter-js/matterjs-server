@@ -17,7 +17,7 @@ import {
 import { Ble, Fabric, FabricAuthority, FabricManager } from "@matter/main/protocol";
 import { OtaProviderEndpoint } from "@matter/node/endpoints/ota-provider";
 import { CameraControllerEndpoint } from "./ControllerCommandHandler.js";
-import { PeerSettingsRepairMarker, repairRestoredPeers } from "./restoredPeers.js";
+import { applyAutoSubscribe, PeerSettingsRepairMarker, repairRestoredPeers } from "./restoredPeers.js";
 
 // A controller joins fabrics, it does not serve groupcast, and the Groupcast listener would pull in the
 // Auxiliary ACL feature with it.
@@ -52,6 +52,9 @@ export interface ControllerNodeOptions {
      * Omit to skip the repair.
      */
     peerSettingsRepair?: PeerSettingsRepairMarker;
+
+    /** Applied to every stored peer on each build, in both directions. Defaults to false. */
+    disableAutoSubscription?: boolean;
 }
 
 export interface ControllerResources {
@@ -127,6 +130,7 @@ export async function createControllerNode(options: ControllerNodeOptions): Prom
         if (options.peerSettingsRepair !== undefined) {
             await repairRestoredPeers(node, id, options.peerSettingsRepair);
         }
+        await applyAutoSubscribe(node, !options.disableAutoSubscription);
 
         return { node, fabric, otaProvider, webRtcRequestor, close: () => node.close() };
     } catch (error) {

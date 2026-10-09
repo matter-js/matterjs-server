@@ -39,7 +39,7 @@ export async function repairRestoredPeers(
 
     let repaired = 0;
     let failed = 0;
-    for (const peer of node.peers) {
+    for (const peer of node.peers.commissioned) {
         try {
             if (await repairRestoredPeer(peer)) {
                 repaired++;
@@ -86,4 +86,37 @@ export async function repairRestoredPeer(peer: ClientNode): Promise<boolean> {
     }
     await peer.set({ network: patch });
     return true;
+}
+
+/**
+ * Bring every stored peer's `autoSubscribe` in line with the controller setting. Runs on every start, after
+ * {@link repairRestoredPeers}, so the setting is what matter.js acts on when the controller goes online.
+ *
+ * A peer that cannot be switched off fails the call, because it would subscribe against the setting. One that
+ * cannot be switched back on only stays unsubscribed, so it is logged and skipped.
+ *
+ * @returns the number of peers whose setting was rewritten
+ */
+export async function applyAutoSubscribe(node: ServerNode, autoSubscribe: boolean): Promise<number> {
+    let changed = 0;
+    for (const peer of node.peers.commissioned) {
+        const network = peer.maybeStateOf(NetworkClient);
+        if (network === undefined || network.autoSubscribe === autoSubscribe) {
+            continue;
+        }
+        try {
+            await peer.set({ network: { autoSubscribe } });
+        } catch (error) {
+            if (!autoSubscribe) {
+                throw error;
+            }
+            logger.warn(`Could not enable auto subscription for ${peer}; the next start tries again:`, error);
+            continue;
+        }
+        changed++;
+    }
+    if (changed > 0) {
+        logger.info(`${autoSubscribe ? "Enabled" : "Disabled"} auto subscription for ${changed} stored peer(s)`);
+    }
+    return changed;
 }

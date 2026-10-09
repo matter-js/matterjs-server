@@ -89,6 +89,9 @@ export interface CliOptions {
 
     // Custom cluster polling configuration
     customClusterPollInterval: number;
+
+    // Subscription configuration
+    disableAutoSubscription: boolean;
 }
 
 function parseIntOption(value: string): number {
@@ -309,6 +312,16 @@ export function parseCliArgs(argv?: string[]): CliOptions {
         )
         .addOption(
             new Option(
+                "--disable-auto-subscription [value]",
+                "Do not subscribe to nodes automatically, neither after commissioning nor on start. You are responsible to subscribe as needed; only recommended for very special use cases.",
+            )
+                .argParser(parseBooleanEnv)
+                .preset(true)
+                .default(false)
+                .env("DISABLE_AUTO_SUBSCRIPTION"),
+        )
+        .addOption(
+            new Option(
                 "--production-mode [value]",
                 "Force dashboard production mode (auto-connect to server). Use when running behind a reverse proxy.",
             )
@@ -394,6 +407,7 @@ export function parseCliArgs(argv?: string[]): CliOptions {
         disableThreadDiagnostics: opts.disableThreadDiagnostics,
         threadRestProbePort: opts.threadRestProbePort ?? null,
         customClusterPollInterval: opts.customClusterPollInterval,
+        disableAutoSubscription: opts.disableAutoSubscription,
     };
 }
 

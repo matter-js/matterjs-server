@@ -434,6 +434,11 @@ strength values, and `packages/ws-client/src/models/model.ts` for the exact wire
 
 ### Attribute Operations
 
+> [!NOTE]
+> When the server runs with `--disable-auto-subscription`, it does not subscribe to nodes, so there are no
+> automatic `attribute_updated` or node events from device reports. You are responsible to subscribe as needed;
+> only recommended for very special use cases. See [CLI: Disabled auto subscription](cli.md#disabled-auto-subscription).
+
 **read_attribute** - Read attribute(s) from a node
 
 Read one or more attributes using path format `endpoint/cluster/attribute`. Supports wildcards using `*`.
@@ -1125,5 +1130,5 @@ These commands are available only in the Matter.js server and not in the Python 
 ### Behavioral Differences
 
 - **Fabric Label**: `set_default_fabric_label` with null/empty resets to "Home" instead of clearing
-- **Attribute Subscriptions**: All attributes are subscribed automatically; the `attribute_subscriptions` field is not used
+- **Attribute Subscriptions**: All attributes are subscribed automatically (unless the server runs with `--disable-auto-subscription`); the `attribute_subscriptions` field is not used
 - **Test Nodes**: Use high bigint range to prevent collision with real Matter node IDs

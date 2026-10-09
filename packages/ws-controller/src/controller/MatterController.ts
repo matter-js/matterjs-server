@@ -112,6 +112,11 @@ export interface MatterControllerOptions {
      * (legacy Eve Energy devices). Defaults to, and is floored at, 60 seconds.
      */
     customClusterPollInterval?: Duration;
+    /**
+     * Never subscribe to peers on our own: not after commissioning and not when the server starts. Peers are only
+     * read on request. Defaults to false.
+     */
+    disableAutoSubscription?: boolean;
 }
 
 /**
@@ -205,6 +210,7 @@ export class MatterController {
     #enableTimeSync = false;
     #threadDiagnosticsDisabled = false;
     #customClusterPollInterval?: Duration;
+    #disableAutoSubscription = false;
     #otaUploadOptions: OtaUploadOptions = {};
     #otaUploads?: OtaUploadRegistry;
     readonly #borderRouterRegistry: BorderRouterRegistry;
@@ -297,6 +303,7 @@ export class MatterController {
         this.#enableTimeSync = options.enableTimeSync ?? this.#enableTimeSync;
         this.#threadDiagnosticsDisabled = options.disableThreadDiagnostics ?? this.#threadDiagnosticsDisabled;
         this.#customClusterPollInterval = options.customClusterPollInterval;
+        this.#disableAutoSubscription = options.disableAutoSubscription ?? this.#disableAutoSubscription;
         this.#otaUploadOptions = options.otaUpload ?? this.#otaUploadOptions;
         this.#services = this.#env.asDependent();
         this.#threadDiagnostics = new ThreadDiagnosticsService({
@@ -383,6 +390,7 @@ export class MatterController {
             serverVersion: this.#serverVersion,
             enableOtaProvider: !this.#disableOtaProvider,
             peerSettingsRepair: this.#config,
+            disableAutoSubscription: this.#disableAutoSubscription,
         });
     }
 
@@ -399,6 +407,7 @@ export class MatterController {
                 timeSyncEnabled: this.#enableTimeSync,
                 threadDiagnosticsEnabled: !this.#threadDiagnosticsDisabled,
                 customClusterPollInterval: this.#customClusterPollInterval,
+                disableAutoSubscription: this.#disableAutoSubscription,
             });
 
             this.#commandHandler.events.started.once(async () => {
