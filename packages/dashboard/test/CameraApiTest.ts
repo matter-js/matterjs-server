@@ -266,15 +266,21 @@ describe("camera API helpers", () => {
     });
 
     describe("streamQualityBadges", () => {
-        it("shows nothing for a stream in range or no video", () => {
-            expect(streamQualityBadges(video())).to.deep.equal([]);
+        it("shows only what the stream delivers for a stream in range, and nothing without video", () => {
+            expect(streamQualityBadges(video()).map(b => b.label)).to.deep.equal(["1280×720 · 15–30 fps"]);
             expect(streamQualityBadges(null)).to.deep.equal([]);
+        });
+
+        it("names a single frame rate once", () => {
+            const [badge] = streamQualityBadges(video({ frame_rate: { min: 30, max: 30 } }));
+            expect(badge.label).to.equal("1280×720 · 30 fps");
+            expect(badge.detail).to.equal("Stream 1: up to 1280×720 at 30 fps, up to 2000000 bit/s");
         });
 
         it("flags a degraded stream", () => {
             const badges = streamQualityBadges(video({ degraded: true }));
-            expect(badges.map(b => b.label)).to.deep.equal(["Degraded"]);
-            expect(badges[0].detail).to.contain("1280×720");
+            expect(badges.map(b => b.label).slice(1)).to.deep.equal(["Degraded"]);
+            expect(badges[1].detail).to.contain("1280×720");
         });
 
         it("names each ceiling the encoder budget lowered", () => {
@@ -283,13 +289,13 @@ describe("camera API helpers", () => {
                     narrowed_by_encoder_budget: { max_resolution: { width: 1920, height: 1080 }, max_frame_rate: 60 },
                 }),
             );
-            expect(badges.map(b => b.label)).to.deep.equal(["Narrowed"]);
-            expect(badges[0].detail).to.contain("resolution 1920×1080 → 1280×720");
-            expect(badges[0].detail).to.contain("frame rate 60 → 30 fps");
+            expect(badges.map(b => b.label).slice(1)).to.deep.equal(["Narrowed"]);
+            expect(badges[1].detail).to.contain("resolution 1920×1080 → 1280×720");
+            expect(badges[1].detail).to.contain("frame rate 60 → 30 fps");
         });
 
         it("names only the frame rate when only it was lowered", () => {
-            const [badge] = streamQualityBadges(video({ narrowed_by_encoder_budget: { max_frame_rate: 60 } }));
+            const [, badge] = streamQualityBadges(video({ narrowed_by_encoder_budget: { max_frame_rate: 60 } }));
             expect(badge.detail).to.not.contain("resolution");
         });
     });

@@ -56,9 +56,9 @@ const COMMON_VIDEO_SIZES: CameraResolution[] = [
  * Nothing without a reported sensor size: the list would be a guess.
  */
 export function videoResolutionOptions(caps: CameraCapabilitiesResult | null): CameraResolution[] {
-    const sensor = caps?.video.sensor;
-    if (sensor === undefined) return [];
-    const floor = caps?.video.min_viewport ?? { width: 0, height: 0 };
+    if (caps === null || caps.video.sensor === undefined) return [];
+    const sensor = caps.video.sensor;
+    const floor = caps.video.min_viewport ?? { width: 0, height: 0 };
     return distinctResolutions(
         COMMON_VIDEO_SIZES.filter(
             ({ width, height }) =>
@@ -142,9 +142,16 @@ function formatResolution({ width, height }: CameraResolution): string {
     return `${width}×${height}`;
 }
 
+/** The first badge names what the camera delivers, which the "Up to" picker choice may not reach. */
 export function streamQualityBadges(video: CameraStartStreamVideoResult | null): CameraQualityBadge[] {
     const badges = new Array<CameraQualityBadge>();
     if (!video) return badges;
+    const { min, max } = video.frame_rate;
+    const frameRate = min === max ? `${max} fps` : `${min}–${max} fps`;
+    badges.push({
+        label: `${formatResolution(video.resolution.max)} · ${frameRate}`,
+        detail: `Stream ${video.stream_id}: up to ${formatResolution(video.resolution.max)} at ${frameRate}, up to ${video.bit_rate.max} bit/s`,
+    });
     if (video.degraded) {
         badges.push({
             label: "Degraded",

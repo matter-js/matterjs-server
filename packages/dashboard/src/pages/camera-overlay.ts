@@ -201,7 +201,6 @@ export class CameraOverlay extends LitElement {
         selected: CameraResolution | null;
         onChange: (ev: Event) => void;
     }) {
-        if (args.options.length === 0) return nothing;
         return html`
             <md-outlined-select label=${args.label} .value=${resolutionOption(args.selected)} @change=${args.onChange}>
                 <md-select-option value=${resolutionOption(null)}>
