@@ -103,15 +103,15 @@ The script connects to the server, sends the command, and keeps the connection o
 npm run cert -- [--tc TC-IDM-2.1] [--matterjs-ref <ref>] [--dry-run]
 ```
 
-Steps: build this repo, clone (or fetch) matter.js into `.cert/matter.js` (git-ignored), check out the ref, `npm ci && npm run build` there, then run the tests. The exit code is the test exit code; a failing step prints its name and exits nonzero.
+Steps: build this repo, clone (or fetch) matter.js into `.cert/matter.js` (git-ignored), check out the ref, `npm ci && npm run build` there, then run the tests. The exit code is the test exit code; a failing step prints its name and exits with that step's exit code. Nested steps get your environment, including your npm configuration (`npm_config_*`), but not the variables `npm run` sets about its own invocation.
 
 - `--tc <id>`: run only `test/cert/<id>.test.ts` (default: the whole suite). The id must look like `TC-IDM-2.1`.
 - `--matterjs-ref <ref>`: matter.js branch, tag or commit to test. Overrides the `MATTERJS_REF` environment variable. Default: the commit of the pinned `@matter/main` dev version, or the tag `v<version>` for a release version.
 - `--dry-run`: print the planned steps as one JSON object per line and run nothing.
 - `MATTER_CERT_APP_DIR` (macOS only, required): directory with the locally built CHIP example apps.
 - Evidence is written to `.cert/evidence`.
-- The checkout always ends detached at the current remote state of the ref (branch, tag or commit). A short commit sha must be reachable from a remote branch or tag; only a full 40-character sha can be fetched on its own.
-- `CERT_PLATFORM=linux|darwin`, `CERT_DIR`, `CERT_MATTERJS_URL` and `CERT_SOURCE_ONLY=1` are for testing the runner only.
+- The checkout always ends detached at the current remote state of the ref (branch, tag or commit), discarding local changes in `.cert/matter.js`. For a ref that looks like a commit sha, all branches and tags are fetched, and tags moved upstream are updated. A short commit sha must be reachable from a remote branch or tag; only a full 40-character sha can be fetched on its own.
+- `RUN_CERT_TEST_PLATFORM=linux|darwin`, `RUN_CERT_TEST_DIR`, `RUN_CERT_TEST_MATTERJS_URL`, `RUN_CERT_TEST_PACKAGE_JSON` and `RUN_CERT_TEST_SOURCE_ONLY=1` are for testing the runner only.
 
 Prerequisites: on Linux, Docker (the CHIP binaries come from the `cert-bins` image); on macOS, locally built CHIP apps referenced by `MATTER_CERT_APP_DIR`.
 

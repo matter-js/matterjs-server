@@ -5,7 +5,7 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -21,10 +21,8 @@ interface PlannedStep {
     optional?: boolean;
 }
 
-const pinnedRef = (() => {
-    const pkg = JSON.parse(readFileSync(resolve(ROOT, "packages/matter-server/package.json"), "utf8"));
-    return /-([0-9a-f]{7,40})$/.exec(pkg.dependencies["@matter/main"])?.[1];
-})();
+const pinnedVersion: unknown = JSON.parse(readFileSync(resolve(ROOT, "packages/matter-server/package.json"), "utf8"))
+    .dependencies["@matter/main"];
 
 function runCert(args: string[], env: Record<string, string> = {}) {
     const cleanEnv: Record<string, string> = { PATH: process.env.PATH ?? "" };
@@ -32,7 +30,7 @@ function runCert(args: string[], env: Record<string, string> = {}) {
 }
 
 function plan(args: string[], env: Record<string, string> = {}): PlannedStep[] {
-    const result = runCert(["--dry-run", ...args], { CERT_PLATFORM: "linux", ...env });
+    const result = runCert(["--dry-run", ...args], { RUN_CERT_TEST_PLATFORM: "linux", ...env });
     expect(result.status, result.stderr).to.equal(0);
     return result.stdout
         .split("\n")
@@ -51,17 +49,66 @@ function find(steps: PlannedStep[], name: string): PlannedStep {
 describe("utils/run-cert.mjs", function () {
     this.timeout(20_000);
 
-    it("pins the default ref from the @matter/main commit suffix", () => {
-        expect(pinnedRef).to.be.a("string");
-        const checkout = find(plan([]), "checkout");
-        expect(checkout.args).to.deep.equal(["checkout", "--detach", `${pinnedRef}^{commit}`, "--"]);
-        expect(find(plan([]), "fetch-all").args).to.deep.equal(["fetch", "origin"]);
+    describe("default ref from the @matter/main pin", () => {
+        let dir: string;
+
+        beforeEach(() => {
+            dir = mkdtempSync(join(tmpdir(), "cert-pin-"));
+        });
+
+        afterEach(() => {
+            rmSync(dir, { recursive: true, force: true });
+        });
+
+        function packageJson(dependencies: Record<string, string>) {
+            const path = join(dir, "package.json");
+            writeFileSync(path, JSON.stringify({ dependencies }));
+            return path;
+        }
+
+        function planFor(version: string) {
+            return plan([], { RUN_CERT_TEST_PACKAGE_JSON: packageJson({ "@matter/main": version }) });
+        }
+
+        it("checks out the commit of a dev build", () => {
+            const steps = planFor("0.18.0-alpha.0-20261008-6066b7499");
+            expect(find(steps, "fetch-all").args).to.deep.equal(["fetch", "--tags", "--force", "origin"]);
+            expect(find(steps, "checkout").args).to.deep.equal([
+                "checkout",
+                "--force",
+                "--detach",
+                "6066b7499^{commit}",
+                "--",
+            ]);
+        });
+
+        it("checks out the release tag of a release version", () => {
+            const steps = planFor("0.17.9");
+            expect(find(steps, "fetch-ref").args).to.deep.equal(["fetch", "origin", "v0.17.9"]);
+            expect(find(steps, "checkout").args).to.deep.equal(["checkout", "--force", "--detach", "FETCH_HEAD", "--"]);
+        });
+
+        it("follows the pin of this repository", () => {
+            expect(pinnedVersion).to.be.a("string");
+            const commit = /-\d{8}-([0-9a-f]{7,40})$/.exec(String(pinnedVersion))?.[1];
+            const checkout = find(plan([]), "checkout");
+            expect(checkout.args.at(-2)).to.equal(commit === undefined ? "FETCH_HEAD" : `${commit}^{commit}`);
+        });
+
+        it("fails when @matter/main is not a dependency", () => {
+            const result = runCert(["--dry-run"], {
+                RUN_CERT_TEST_PLATFORM: "linux",
+                RUN_CERT_TEST_PACKAGE_JSON: packageJson({}),
+            });
+            expect(result.status).to.equal(2);
+            expect(result.stderr).to.contain("@matter/main is not a dependency");
+        });
     });
 
     it("fetches a branch ref by name and checks out FETCH_HEAD", () => {
         const steps = plan([], { MATTERJS_REF: "feat/xyz" });
         expect(find(steps, "fetch-ref").args).to.deep.equal(["fetch", "origin", "feat/xyz"]);
-        expect(find(steps, "checkout").args).to.deep.equal(["checkout", "--detach", "FETCH_HEAD", "--"]);
+        expect(find(steps, "checkout").args).to.deep.equal(["checkout", "--force", "--detach", "FETCH_HEAD", "--"]);
     });
 
     it("also fetches a full sha directly, optionally", () => {
@@ -79,7 +126,7 @@ describe("utils/run-cert.mjs", function () {
     });
 
     it("runs the steps in order", () => {
-        const names = plan([]).map(s => s.step);
+        const names = plan(["--matterjs-ref", "abc1234"]).map(s => s.step);
         expect(names.filter(n => n !== "clone")).to.deep.equal([
             "build-server",
             "fetch-all",
@@ -106,14 +153,14 @@ describe("utils/run-cert.mjs", function () {
     });
 
     it("uses MATTER_CERT_APP_DIR on macOS", () => {
-        const test = find(plan([], { CERT_PLATFORM: "darwin", MATTER_CERT_APP_DIR: "/opt/chip" }), "test");
+        const test = find(plan([], { RUN_CERT_TEST_PLATFORM: "darwin", MATTER_CERT_APP_DIR: "/opt/chip" }), "test");
         expect(test.env?.MATTER_CERT_APP_DIR).to.equal("/opt/chip");
         expect(test.env).to.not.have.property("MATTER_CHIP_BINS_SOURCE");
     });
 
     it("fails on macOS without MATTER_CERT_APP_DIR, before any step", () => {
-        const result = runCert(["--dry-run"], { CERT_PLATFORM: "darwin" });
-        expect(result.status).to.not.equal(0);
+        const result = runCert(["--dry-run"], { RUN_CERT_TEST_PLATFORM: "darwin" });
+        expect(result.status).to.equal(2);
         expect(result.stderr).to.contain("MATTER_CERT_APP_DIR");
         expect(result.stdout).to.equal("");
     });
@@ -123,6 +170,25 @@ describe("utils/run-cert.mjs", function () {
         expect(test.command).to.equal("npx");
         expect(test.args).to.deep.equal(["matter-test", "--spec=test/cert/TC-IDM-2.1.test.ts", "--report"]);
         expect(test.env?.MATTER_TEST_SHUTDOWN_TIMEOUT_MS).to.equal("15000");
+    });
+
+    it("takes flag values inline", () => {
+        const steps = plan(["--tc=TC-IDM-2.1", "--matterjs-ref=feat/xyz"]);
+        expect(find(steps, "test").args[1]).to.equal("--spec=test/cert/TC-IDM-2.1.test.ts");
+        expect(find(steps, "fetch-ref").args.at(-1)).to.equal("feat/xyz");
+    });
+
+    it("rejects a flag without value, an unknown argument and an unsupported platform", () => {
+        for (const [args, env, message] of [
+            [["--tc"], {}, "--tc needs a value"],
+            [["--frobnicate"], {}, "unknown argument --frobnicate"],
+            [[], { RUN_CERT_TEST_PLATFORM: "win32" }, "unsupported platform win32"],
+        ] satisfies [string[], Record<string, string>, string][]) {
+            const result = runCert(["--dry-run", ...args], { RUN_CERT_TEST_PLATFORM: "linux", ...env });
+            expect(result.status, message).to.equal(2);
+            expect(result.stderr, message).to.contain(message);
+            expect(result.stdout, message).to.equal("");
+        }
     });
 
     it("rejects an invalid --tc or ref", () => {
@@ -135,16 +201,16 @@ describe("utils/run-cert.mjs", function () {
             ["--matterjs-ref", "a..b"],
             ["--matterjs-ref", "$(x)"],
         ]) {
-            const result = runCert(["--dry-run", ...args], { CERT_PLATFORM: "linux" });
-            expect(result.status, args.join(" ")).to.not.equal(0);
+            const result = runCert(["--dry-run", ...args], { RUN_CERT_TEST_PLATFORM: "linux" });
+            expect(result.status, args.join(" ")).to.equal(2);
             expect(result.stdout, args.join(" ")).to.equal("");
             expect(result.stderr, args.join(" ")).to.not.equal("");
         }
     });
 
     it("rejects an invalid MATTERJS_REF from the environment", () => {
-        const result = runCert(["--dry-run"], { CERT_PLATFORM: "linux", MATTERJS_REF: "--bad" });
-        expect(result.status).to.not.equal(0);
+        const result = runCert(["--dry-run"], { RUN_CERT_TEST_PLATFORM: "linux", MATTERJS_REF: "--bad" });
+        expect(result.status).to.equal(2);
     });
 
     describe("source checkout against a local upstream", () => {
@@ -152,6 +218,7 @@ describe("utils/run-cert.mjs", function () {
         let upstream: string;
         let work: string;
         let certDir: string;
+        let hooks: string;
 
         function git(cwd: string, ...args: string[]) {
             const result = spawnSync(
@@ -163,23 +230,32 @@ describe("utils/run-cert.mjs", function () {
             return result.stdout.trim();
         }
 
-        function commit(message: string) {
-            git(work, "commit", "--allow-empty", "-m", message);
+        function commit(message: string, content?: string) {
+            if (content === undefined) {
+                git(work, "commit", "--allow-empty", "-m", message);
+            } else {
+                writeFileSync(join(work, "file.txt"), content);
+                git(work, "add", "file.txt");
+                git(work, "commit", "-m", message);
+            }
             return git(work, "rev-parse", "HEAD");
         }
 
-        function checkoutRef(ref: string) {
+        function checkoutRef(ref: string, env: Record<string, string> = {}) {
             return spawnSync("node", [SCRIPT, "--matterjs-ref", ref], {
                 env: {
                     PATH: process.env.PATH ?? "",
                     HOME: dir,
-                    CERT_PLATFORM: "linux",
-                    CERT_SOURCE_ONLY: "1",
-                    CERT_DIR: certDir,
-                    CERT_MATTERJS_URL: `file://${upstream}`,
-                    GIT_CONFIG_COUNT: "1",
+                    RUN_CERT_TEST_PLATFORM: "linux",
+                    RUN_CERT_TEST_SOURCE_ONLY: "1",
+                    RUN_CERT_TEST_DIR: certDir,
+                    RUN_CERT_TEST_MATTERJS_URL: `file://${upstream}`,
+                    GIT_CONFIG_COUNT: "2",
                     GIT_CONFIG_KEY_0: "protocol.file.allow",
                     GIT_CONFIG_VALUE_0: "always",
+                    GIT_CONFIG_KEY_1: "core.hooksPath",
+                    GIT_CONFIG_VALUE_1: hooks,
+                    ...env,
                 },
                 encoding: "utf8",
                 cwd: ROOT,
@@ -197,13 +273,18 @@ describe("utils/run-cert.mjs", function () {
             upstream = join(dir, "upstream.git");
             work = join(dir, "work");
             certDir = join(dir, "cert");
+            hooks = join(dir, "hooks");
+            mkdirSync(hooks);
+            const hook = join(hooks, "post-checkout");
+            writeFileSync(hook, `#!/bin/sh\nenv > "${join(dir, "checkout-env.txt")}"\n`);
+            chmodSync(hook, 0o755);
             git(dir, "init", "--bare", "-b", "main", upstream);
             git(dir, "clone", upstream, work);
-            commit("first");
+            commit("first", "first");
             git(work, "branch", "-M", "main");
             git(work, "push", "origin", "main");
             git(work, "checkout", "-b", "feat/xyz");
-            commit("on branch");
+            commit("on branch", "on branch");
             git(work, "push", "origin", "feat/xyz");
         });
 
@@ -235,10 +316,68 @@ describe("utils/run-cert.mjs", function () {
             expect(checkedOut()).to.deep.equal({ head: tip, detached: true });
         });
 
-        it("fails loudly with the step name for an unknown ref", () => {
+        it("fails with the exit code and name of the failing step for an unknown ref", () => {
             const result = checkoutRef("no/such-branch");
-            expect(result.status).to.not.equal(0);
-            expect(result.stderr).to.contain('step "fetch-ref" failed');
+            expect(result.status).to.equal(128);
+            expect(result.stderr).to.contain('step "fetch-ref" failed (exit code 128)');
+        });
+
+        it("continues after the optional direct fetch of a full sha fails", () => {
+            const unknown = "0123456789abcdef0123456789abcdef01234567";
+            const result = checkoutRef(unknown);
+            expect(result.stderr).to.contain('optional step "fetch-ref" failed');
+            expect(result.stderr).to.contain('step "checkout" failed (exit code 128)');
+            expect(result.status).to.equal(128);
+        });
+
+        it("checks out over tracked files the build left modified", () => {
+            expect(checkoutRef("main").status).to.equal(0);
+            writeFileSync(join(certDir, "matter.js", "file.txt"), "changed by a build");
+            const tip = git(work, "rev-parse", "feat/xyz");
+            const result = checkoutRef("feat/xyz");
+            expect(result.status, result.stderr).to.equal(0);
+            expect(checkedOut()).to.deep.equal({ head: tip, detached: true });
+        });
+
+        it("follows a hex-looking tag that moved upstream", () => {
+            const first = git(work, "rev-parse", "main");
+            git(work, "tag", "deadbeef", first);
+            git(work, "push", "origin", "deadbeef");
+            expect(checkoutRef("deadbeef").status).to.equal(0);
+            expect(checkedOut().head).to.equal(first);
+
+            const moved = git(work, "rev-parse", "feat/xyz");
+            git(work, "tag", "-f", "deadbeef", moved);
+            git(work, "push", "-f", "origin", "deadbeef");
+            const result = checkoutRef("deadbeef");
+            expect(result.status, result.stderr).to.equal(0);
+            expect(checkedOut().head).to.equal(moved);
+        });
+
+        it("passes the user's npm config to the steps, but not npm's description of this run", () => {
+            const result = checkoutRef("main", {
+                npm_config_registry: "https://registry.example",
+                npm_config_local_prefix: ROOT,
+                npm_lifecycle_event: "cert",
+                npm_package_name: "matterjs-server-monorepo",
+                npm_command: "run-script",
+                INIT_CWD: ROOT,
+            });
+            expect(result.status, result.stderr).to.equal(0);
+            const env = readFileSync(join(dir, "checkout-env.txt"), "utf8").split("\n");
+            expect(env).to.include("npm_config_registry=https://registry.example");
+            for (const name of [
+                "npm_config_local_prefix",
+                "npm_lifecycle_event",
+                "npm_package_name",
+                "npm_command",
+                "INIT_CWD",
+            ]) {
+                expect(
+                    env.some(line => line.startsWith(`${name}=`)),
+                    name,
+                ).to.equal(false);
+            }
         });
     });
 });

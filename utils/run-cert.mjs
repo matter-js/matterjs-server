@@ -4,7 +4,7 @@
  *
  * Usage: npm run cert -- [--tc TC-IDM-2.1] [--matterjs-ref <ref>] [--dry-run]
  * See DEVELOPMENT.md ("Certification tests") for flags, environment and prerequisites.
- * CERT_DIR, CERT_MATTERJS_URL, CERT_PLATFORM and CERT_SOURCE_ONLY exist for testing the runner only.
+ * The RUN_CERT_TEST_* variables exist for testing the runner only.
  */
 
 import { spawnSync } from "node:child_process";
@@ -13,11 +13,12 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const CERT_DIR = process.env.CERT_DIR ?? resolve(ROOT, ".cert");
+const CERT_DIR = process.env.RUN_CERT_TEST_DIR ?? resolve(ROOT, ".cert");
 const MATTERJS_DIR = resolve(CERT_DIR, "matter.js");
 const CHIP_TESTING_DIR = resolve(MATTERJS_DIR, "support/chip-testing");
 const SERVER_ENTRY = resolve(ROOT, "packages/matter-server/dist/esm/MatterServer.js");
-const MATTERJS_URL = process.env.CERT_MATTERJS_URL ?? "https://github.com/matter-js/matter.js";
+const MATTERJS_URL = process.env.RUN_CERT_TEST_MATTERJS_URL ?? "https://github.com/matter-js/matter.js";
+const PACKAGE_JSON = process.env.RUN_CERT_TEST_PACKAGE_JSON ?? resolve(ROOT, "packages/matter-server/package.json");
 
 const COMMIT_PATTERN = /^[0-9a-f]{7,40}$/;
 const FULL_SHA_PATTERN = /^[0-9a-f]{40}$/;
@@ -60,7 +61,7 @@ function parseArgs(argv) {
 }
 
 function defaultRef() {
-    const pkg = JSON.parse(readFileSync(resolve(ROOT, "packages/matter-server/package.json"), "utf8"));
+    const pkg = JSON.parse(readFileSync(PACKAGE_JSON, "utf8"));
     const version = pkg.dependencies?.["@matter/main"];
     if (typeof version !== "string") fail("@matter/main is not a dependency of packages/matter-server");
     return DEV_VERSION_PATTERN.exec(version)?.[1] ?? `v${version}`;
@@ -75,7 +76,7 @@ function resolveRef(options) {
 }
 
 function platformEnv() {
-    const platform = process.env.CERT_PLATFORM ?? process.platform;
+    const platform = process.env.RUN_CERT_TEST_PLATFORM ?? process.platform;
     if (platform === "linux") return { MATTER_CHIP_BINS_SOURCE: "cert-bins" };
     if (platform === "darwin") {
         const appDir = process.env.MATTER_CERT_APP_DIR;
@@ -92,14 +93,14 @@ function checkoutSteps(ref) {
     if (!COMMIT_PATTERN.test(ref)) {
         return [
             git("fetch-ref", ["fetch", "origin", ref]),
-            git("checkout", ["checkout", "--detach", "FETCH_HEAD", "--"]),
+            git("checkout", ["checkout", "--force", "--detach", "FETCH_HEAD", "--"]),
         ];
     }
-    const steps = [git("fetch-all", ["fetch", "origin"])];
+    const steps = [git("fetch-all", ["fetch", "--tags", "--force", "origin"])];
     if (FULL_SHA_PATTERN.test(ref)) {
         steps.push(git("fetch-ref", ["fetch", "origin", ref], { optional: true }));
     }
-    steps.push(git("checkout", ["checkout", "--detach", `${ref}^{commit}`, "--"]));
+    steps.push(git("checkout", ["checkout", "--force", "--detach", `${ref}^{commit}`, "--"]));
     return steps;
 }
 
@@ -147,7 +148,7 @@ if (options.tc !== undefined && !TC_PATTERN.test(options.tc)) {
 }
 const ref = resolveRef(options);
 let steps = buildSteps(options, ref, platformEnv());
-if (process.env.CERT_SOURCE_ONLY) {
+if (process.env.RUN_CERT_TEST_SOURCE_ONLY) {
     steps = steps.filter(({ step }) => step === "clone" || step.startsWith("fetch") || step === "checkout");
 }
 
@@ -156,9 +157,10 @@ if (options.dryRun) {
     process.exit(0);
 }
 
-const baseEnv = Object.fromEntries(
-    Object.entries(process.env).filter(([key]) => !key.startsWith("npm_") && key !== "INIT_CWD"),
-);
+// npm's description of this invocation, which would point nested npm runs at this project; user npm config passes.
+const NPM_INVOCATION_ENV =
+    /^(npm_lifecycle_|npm_package_|npm_command$|npm_execpath$|npm_node_execpath$|npm_config_local_prefix$|npm_config_user_agent$|INIT_CWD$)/;
+const baseEnv = Object.fromEntries(Object.entries(process.env).filter(([key]) => !NPM_INVOCATION_ENV.test(key)));
 
 for (const { step, cwd, command, args, env, optional } of steps) {
     console.error(`cert: [${step}] ${command} ${args.join(" ")} (in ${cwd})`);
