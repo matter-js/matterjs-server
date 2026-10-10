@@ -576,19 +576,25 @@ export interface APICommands {
         requestArgs: { filter_vendors?: Array<number> };
         response: { [key: string]: string };
     };
-    /** Schema 14. Paths use the `read_attribute` format; event paths are "endpoint/cluster/event". */
+    /**
+     * Schema 14. Paths use the `read_attribute` format; event paths are "endpoint/cluster/event". Only available with
+     * the server running with auto subscription disabled.
+     */
     subscribe: {
         requestArgs: InteractionReadArgs & {
             /** Seconds. */
             min_interval: number;
             /** Seconds. */
             max_interval: number;
-            /** Defaults to false. Only available with the server running with auto subscription disabled. */
+            /** Defaults to false. */
             keep_subscriptions?: boolean;
         };
         response: { subscription_id: number };
     };
-    /** Schema 14. Only the connection that opened the subscription can end it. */
+    /**
+     * Schema 14. Only the connection that opened the subscription can end it. Only available with the server running
+     * with auto subscription disabled.
+     */
     unsubscribe: {
         requestArgs: { subscription_id: number };
         response: null;

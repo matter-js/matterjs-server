@@ -499,8 +499,9 @@ Wildcard (all attributes from OnOff cluster):
 Schema 14. These commands give full control over the Matter Read and Subscribe requests. Most clients do not need
 them: the server subscribes to every node on its own. `subscribe` and `unsubscribe` are only available when the
 server runs with `--disable-auto-subscription`; with the server's own subscription active they fail with
-`InvalidArguments`, before anything is sent to a device. `read` works in both modes. The server does not advertise schema 14 yet: `server_info`
-still reports `schema_version` 13 until the version is raised, so a client that gates on 14 cannot use them yet.
+`InvalidArguments`, before anything is sent to a device. `read` works in both modes. The server does not advertise
+schema 14 yet: `server_info` still reports `schema_version` 13 until the version is raised, so a client that gates
+on 14 cannot use them yet.
 
 Paths:
 
@@ -549,8 +550,9 @@ to the device as given: unlike `read_attribute`, it is not split into batches an
 filters of its own.
 
 Side effects on all clients: matter.js merges the read attribute values into the node state, which sends the usual
-`attribute_updated` events to every listening client, but only when `fabric_filtered` matches the server's own
-subscription, which is fabric-filtered. Every event the read returns is also sent to every listening client as
+`attribute_updated` events to every listening client, but only when `fabric_filtered` is `true`, the default.
+matter.js applies a read only when its fabric filter matches the node's subscription settings, which the server
+leaves at fabric-filtered, whether or not the node currently has the server's own subscription. Every event the read returns is also sent to every listening client as
 `node_event` and added to the event history, whatever `fabric_filtered` is and without a check against events
 already seen. A read with event paths and a low `event_min` therefore replays old events (for example button
 presses) to all clients, Home Assistant included, as if they were new.
@@ -595,9 +597,10 @@ Arguments are those of `read` plus:
   a floor of 0 instead of `min_interval`.
 - `is_urgent` per event path (optional): the IsUrgent flag of that event path.
 - `keep_subscriptions` (optional, default `false`): the KeepSubscriptions flag, sent to the device as given
-  (`false` is the default of chip-tool and the Python controller; Matter has no default). `false` makes the device
-  end the other subscriptions of this controller to that node, including those of other connections;
-  each one that was opened with `subscribe` then arrives as `subscription_ended`. `true` keeps them.
+  (`false` is the default of chip-tool and the Python controller; Matter has no default). `false`, also when left
+  out, ends all other subscriptions of this controller to that node, on the device and in the server, including
+  those of other connections; each one that was opened with `subscribe` then arrives as `subscription_ended` at its
+  connection. `true` keeps them.
 
 The server adds the data versions it already knows for the requested clusters to the request's data version
 filters (matter.js does this for every subscription), so the priming report can leave out clusters that did not
@@ -614,14 +617,15 @@ Response:
 
 `subscription_id` is the SubscriptionId the device assigned. The reports follow as `subscription_report` events,
 the priming report first, after this response. The reports have the same side effects on all clients as `read`:
-`attribute_updated` to every listening client, and every reported event as `node_event` to every listening client
-and into the event history, without a check against events already seen.
+`attribute_updated` to every listening client, only when `fabric_filtered` is `true`, the default, and every
+reported event as `node_event` to every listening client and into the event history, whatever `fabric_filtered` is
+and without a check against events already seen.
 
 A subscription belongs to the connection that opened it. It ends when the connection sends `unsubscribe`, when the
 connection closes, when the node is removed, and when the server shuts down. It also ends when the device stops
-reporting (no report within the max interval plus a response margin) or when another subscription to the node is
-made with `keep_subscriptions: false`. Every end
-the connection did not ask for, including node removal, is announced with `subscription_ended`; `unsubscribe` and
+reporting (no report within the max interval plus a response margin) or when another subscription of this
+controller to the node is made with `keep_subscriptions` `false` or left out, from any connection. Every end the
+connection did not ask for, including node removal, is announced with `subscription_ended`; `unsubscribe` and
 closing the connection are not.
 
 The server only learns that a subscription ended on the device when the local subscription times out or matter.js
@@ -638,7 +642,8 @@ max interval plus a response margin; until then the subscription still looks act
 }
 ```
 
-Only available with `--disable-auto-subscription`; otherwise it fails with `InvalidArguments`. Returns `null`. An unknown id, or the id of another connection's subscription, gives an `InvalidArguments` error.
+Only available with `--disable-auto-subscription`; otherwise it fails with `InvalidArguments`. Returns `null`. An
+unknown id, or the id of another connection's subscription, gives an `InvalidArguments` error.
 Matter has no unsubscribe message: the server stops accepting reports, and the device ends the subscription at its
 next report.
 

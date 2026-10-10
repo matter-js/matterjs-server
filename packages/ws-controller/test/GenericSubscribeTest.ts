@@ -398,16 +398,14 @@ describe("subscribe over WebSocket", () => {
         expect(again.error_code).equals(ServerErrorCode.InvalidArguments);
     });
 
-    it("rejects unsubscribe while auto subscription is on", async () => {
-        const client = await harness.connect();
-        harness.nextSubscriptionId = 8;
-        await client.command("subscribe", SUBSCRIBE_ARGS);
+    it("rejects unsubscribe while auto subscription is on, naming the setting", async () => {
         harness.autoSubscriptionDisabled = false;
+        const client = await harness.connect();
 
         const response = await client.command("unsubscribe", { subscription_id: 8 });
 
         expect(response.error_code).equals(ServerErrorCode.InvalidArguments);
-        expect(harness.isOpen(8)).equals(true);
+        expect(response.details).contains("--disable-auto-subscription");
     });
 
     it("answers an unknown subscription id with an error result", async () => {
