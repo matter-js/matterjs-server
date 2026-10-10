@@ -1150,17 +1150,11 @@ export class ControllerCommandHandler {
 
     /**
      * Read with full control over the Matter request. Unlike {@link handleReadAttributes} the paths go out as one
-     * request, and only the data version filters the caller gives are sent. Without `eventMin`, a node with auto
-     * subscription only returns events newer than the last one matter.js received.
+     * request, and only the data version filters the caller gives are sent.
      */
     async read(request: InteractionReadRequest): Promise<InteractionReport> {
         const node = this.#nodes.get(request.nodeId);
-        let { eventMin } = request;
-        // Every event a read returns reaches all clients as node_event; skip those matter.js already received.
-        if (eventMin === undefined && request.eventPaths?.length && this.#autoSubscribes(node)) {
-            eventMin = node.stateOf(NetworkClient).maxEventNumber + 1n;
-        }
-        const read = { ...this.#readRequestOf({ ...request, eventMin }), includeKnownVersions: true };
+        const read = { ...this.#readRequestOf(request), includeKnownVersions: true };
         return this.#collectReport(request.nodeId, node.interaction.read(read));
     }
 

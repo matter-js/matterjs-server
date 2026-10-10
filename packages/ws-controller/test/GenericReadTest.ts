@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { ClientNode, NetworkClient, NodeId } from "@matter/main";
+import { ClientNode, NodeId } from "@matter/main";
 import { Read } from "@matter/main/protocol";
 import { Status } from "@matter/main/types";
 import { BooleanStateServer } from "@matter/node/behaviors/boolean-state";
@@ -180,96 +180,32 @@ describe("generic read", () => {
     });
 });
 
-describe("generic read of events already seen", () => {
+describe("generic read with auto subscription", () => {
     let site: HandlerSite;
 
     beforeEach(async () => {
         site = new HandlerSite();
         await site.startDevice();
+        await site.startController(false);
+        await site.commission();
     });
 
     afterEach(async () => {
         await site.close();
     });
 
-    async function read(request: Parameters<typeof site.handler.read>[0]) {
-        return await MockTime.resolve(site.handler.read(request), { macrotasks: true });
-    }
-
-    async function emitEvent() {
+    it("sends no event filter without event_min", async () => {
         await site.light.setStateOf(BooleanStateServer, { stateValue: true });
         await site.settle();
-    }
+        const captured = captureReads(site.peer);
 
-    const EVENTS = { nodeId: NODE_ID, eventPaths: [{ path: "1/69/*" }] };
+        const report = await MockTime.resolve(
+            site.handler.read({ nodeId: NODE_ID, eventPaths: [{ path: "1/69/*" }] }),
+            { macrotasks: true },
+        );
 
-    describe("with auto subscription", () => {
-        beforeEach(async () => {
-            await site.startController(false);
-            await site.commission();
-            await emitEvent();
-        });
-
-        it("asks only for events after the last one received when event_min is omitted", async () => {
-            const captured = captureReads(site.peer);
-            const maxEventNumber = site.peer.stateOf(NetworkClient).maxEventNumber;
-            expect(maxEventNumber).greaterThan(0n);
-
-            const report = await read(EVENTS);
-
-            expect(captured[0].eventFilters).deep.equals([{ eventMin: maxEventNumber + 1n }]);
-            expect(report.events).deep.equals([]);
-        });
-
-        it("sends an explicit event_min as given", async () => {
-            const captured = captureReads(site.peer);
-
-            const report = await read({ ...EVENTS, eventMin: 0 });
-
-            expect(captured[0].eventFilters).deep.equals([{ eventMin: 0n }]);
-            expect(report.events.length).greaterThan(0);
-        });
-
-        it("adds no event filter to a read without event paths", async () => {
-            const captured = captureReads(site.peer);
-
-            await read({ nodeId: NODE_ID, attributePaths: ["1/6/0"] });
-
-            expect(captured[0].eventFilters).undefined;
-        });
-    });
-
-    describe("with auto subscription disabled", () => {
-        beforeEach(async () => {
-            await site.startController(true);
-            await site.commission();
-        });
-
-        it("sends the request without an event filter", async () => {
-            const captured = captureReads(site.peer);
-
-            await read(EVENTS);
-
-            expect(captured[0].eventFilters).undefined;
-        });
-
-        it("skips events already seen once the node's auto subscription is enabled", async () => {
-            await MockTime.resolve(site.handler.setAutoSubscription(NODE_ID, true), { macrotasks: true });
-            await site.settle();
-            await emitEvent();
-            const captured = captureReads(site.peer);
-
-            await read(EVENTS);
-
-            expect(captured[0].eventFilters).deep.equals([
-                { eventMin: site.peer.stateOf(NetworkClient).maxEventNumber + 1n },
-            ]);
-
-            await MockTime.resolve(site.handler.setAutoSubscription(NODE_ID, false), { macrotasks: true });
-            await read(EVENTS);
-
-            expect(captured[1].eventFilters).undefined;
-        });
+        expect(captured[0].eventFilters).undefined;
+        expect(report.events.length).greaterThan(0);
     });
 });
 

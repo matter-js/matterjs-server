@@ -391,10 +391,7 @@ export interface InteractionReadArgs {
     attribute_paths?: string[];
     /** `path` is "endpoint/cluster/event", wildcards as in `read_attribute`. */
     event_paths?: Array<{ path: string; is_urgent?: boolean }>;
-    /**
-     * For `read` of a node with auto subscription on, defaults to one more than the highest event number the server
-     * has received from the node.
-     */
+    /** Without it, a `read` has no event filter and returns every event the device holds. */
     event_min?: number | bigint;
     /** Defaults to true. */
     fabric_filtered?: boolean;
