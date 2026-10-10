@@ -546,17 +546,23 @@ numeric Matter status code in `status` (as in the `write_attribute` result) and 
 ```
 
 At least one attribute or event path is required. `fabric_filtered` defaults to `true`, the Matter default (unlike
-`read_attribute`, which defaults to `false`). `event_min` becomes the EventFilter of the request. The request goes
-to the device as given: unlike `read_attribute`, it is not split into batches and the server adds no data version
-filters of its own.
+`read_attribute`, which defaults to `false`). `event_min` becomes the EventFilter of the request. Without
+`event_min`, for a node with auto subscription on the server sends the number after the highest event number it
+has received from the node, through any read or subscription and on any event path, so the read returns only newer
+events. That is every node, except with `--disable-auto-subscription` a node not switched on with
+`enable_auto_subscription`; for such a node the request has no event filter and returns every event the device
+still holds. An event the device reports while the read is in progress can arrive through both and be sent twice
+as `node_event`. Otherwise the request goes to the device as given: unlike `read_attribute`, it is not split into batches and the server adds no data version filters of its
+own.
 
 Side effects on all clients: matter.js merges the read attribute values into the node state, which sends the usual
 `attribute_updated` events to every listening client, but only when `fabric_filtered` is `true`, the default.
 matter.js applies a read only when its fabric filter matches the node's subscription settings, which the server
 leaves at fabric-filtered, whether or not the node currently has the server's own subscription. Every event the read returns is also sent to every listening client as
 `node_event` and added to the event history, whatever `fabric_filtered` is and without a check against events
-already seen. A read with event paths and a low `event_min` therefore replays old events (for example button
-presses) to all clients, Home Assistant included, as if they were new.
+already seen. A read with event paths and a low `event_min`, or without `event_min` for a node without the server's
+own subscription, therefore replays old events (for example button presses) to all clients, Home Assistant
+included, as if they were new.
 
 Response:
 
@@ -666,7 +672,9 @@ client, `available` follows the connection to the device, and `register_icd` wor
 once subscribed. Polling, time synchronization and fabric label pushes stay off. The setting is not kept: every
 start switches all nodes off again. Switching a node to the state it already has does nothing.
 
-Both return `null` once the setting is stored. The server then subscribes in the background, which needs the device
+The server's subscription asks the device only for events after the highest event number received from the node so
+far, also through client reads and subscriptions. Read with an explicit `event_min` before enabling to get events
+on paths not read yet. Both return `null` once the setting is stored. The server then subscribes in the background, which needs the device
 to be reachable. No event marks the moment the subscription is up: a node the server has not found unreachable is
 already `available`, so no `node_updated` is sent. Commands that need the subscription, such as `register_icd`, fail
 until then. A node whose device cannot be reached becomes unavailable as without `--disable-auto-subscription`.
