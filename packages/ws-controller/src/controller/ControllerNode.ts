@@ -12,6 +12,7 @@ import {
     MatterAggregateError,
     NodeId,
     ServerNode,
+    SoftwareUpdateManager,
     VendorId,
 } from "@matter/main";
 import { Ble, Fabric, FabricAuthority, FabricManager } from "@matter/main/protocol";
@@ -23,6 +24,15 @@ import { applyAutoSubscribe, PeerSettingsRepairMarker, repairRestoredPeers } fro
 // Auxiliary ACL feature with it.
 const ControllerRootEndpoint = ServerNode.RootEndpointWithoutGroupcast.with(ControllerBehavior);
 type ControllerRootEndpoint = typeof ControllerRootEndpoint;
+
+/**
+ * Skips the periodic DCL update check, which also announces consented updates to the devices, and with it the cleanup
+ * of stored OTA files no node needs anymore. `check_node_update` and `update_node` go through `queryUpdates` and
+ * `forceUpdate` and keep working.
+ */
+class OnRequestSoftwareUpdateManager extends SoftwareUpdateManager {
+    override async checkForUpdates() {}
+}
 
 /**
  * Parse a version string into a numeric version in MMmmpp format.
@@ -111,7 +121,14 @@ export async function createControllerNode(options: ControllerNodeOptions): Prom
 
     try {
         const otaProvider = options.enableOtaProvider
-            ? await node.add(new Endpoint(OtaProviderEndpoint, { id: "ota-provider" }))
+            ? await node.add(
+                  new Endpoint(
+                      options.disableAutoSubscription
+                          ? OtaProviderEndpoint.with(OnRequestSoftwareUpdateManager)
+                          : OtaProviderEndpoint,
+                      { id: "ota-provider" },
+                  ),
+              )
             : undefined;
         const webRtcRequestor = await node.add(new Endpoint(CameraControllerEndpoint, { id: "camera-controller" }));
 

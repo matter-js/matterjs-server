@@ -31,10 +31,11 @@ class StubReader implements NodeAttributeReader {
     readonly reads: PeerAddress[] = [];
     slowRead = false;
     failRead = false;
+    connected = true;
     #resolvers = new Array<(value: AttributesData) => void>();
 
     nodeConnected(): boolean {
-        return true;
+        return this.connected;
     }
 
     async handleReadAttributes(peer: PeerAddress): Promise<AttributesData> {
@@ -80,6 +81,15 @@ describe("CustomClusterPoller", () => {
         await MockTime.advance(PAST_INITIAL_DELAY_MS);
         await MockTime.yield3();
         expect(reader.reads.length).to.equal(1);
+    });
+
+    it("skips a node that is not connected", async () => {
+        reader.connected = false;
+        poller.registerNode(PEER_1, eveAttributes());
+
+        await MockTime.advance(PAST_INITIAL_DELAY_MS);
+        await MockTime.yield3();
+        expect(reader.reads.length).to.equal(0);
     });
 
     it("ignores a node that is not an Eve device", async () => {

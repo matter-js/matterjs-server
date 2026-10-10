@@ -411,6 +411,11 @@ from Matter-over-Thread commissioning and can be turned off entirely with `--dis
 Issuing either Thread command opts the connection in to `thread_diagnostics_updated` events (see
 Events); a client that never queries Thread data never receives them.
 
+With `--disable-auto-subscription` the server does not discover Border Routers on its own: the first
+`get_thread_border_routers`, `get_thread_diagnostics` or `get_network_topology` starts the discovery, so that first
+call can return no Border Routers or diagnostics yet. A `get_thread_diagnostics` with `ext_pan_id` that starts the
+discovery returns `null` instead of reporting the Border Router as unreachable; repeat it once discovery found it.
+
 ### Network Topology
 
 **get_network_topology** *(schema 13+)* - Return the whole Matter network as a graph
@@ -664,8 +669,9 @@ Only available with `--disable-auto-subscription`; otherwise they fail with `Inv
 changed. Test nodes are not supported (`InvalidArguments`). With the server's own subscription on, a node behaves as
 without `--disable-auto-subscription`: device reports send `attribute_updated` and `node_event` to every listening
 client, `available` follows the connection to the device, and `register_icd` works. A LIT ICD registers on its own
-once subscribed. Polling, time synchronization and fabric label pushes stay off. The setting is not kept: every
-start switches all nodes off again. Switching a node to the state it already has changes nothing.
+once subscribed. Polling, time synchronization, fabric label pushes and automatic OTA update checks stay off. The
+setting is not kept: every start switches all nodes off again. Switching a node to the state it already has changes
+nothing.
 
 The server's subscription asks the device only for events after the highest event number matter.js has received
 from the node so far, through any read or subscription.

@@ -36,6 +36,7 @@ import { OnOffServer } from "@matter/node/behaviors/on-off";
 import { OperationalCredentialsServer } from "@matter/node/behaviors/operational-credentials";
 import { TimeSynchronizationServer } from "@matter/node/behaviors/time-synchronization";
 import { OnOffLightDevice } from "@matter/node/devices/on-off-light";
+import { BorderRouterRegistry } from "@matter/thread-br-client";
 import { ControllerCommandHandler } from "../src/controller/ControllerCommandHandler.js";
 import { ControllerNode, createControllerNode } from "../src/controller/ControllerNode.js";
 import { MatterController, MatterControllerOptions } from "../src/controller/MatterController.js";
@@ -606,6 +607,69 @@ describe("auto subscription setting", () => {
         it("leaves auto subscription on by default", async () => {
             const controller = await createMatterController({});
             expect(controller.commandHandler.autoSubscriptionDisabled).false;
+        });
+
+        describe("Border Router discovery", () => {
+            let starts: number;
+            let restoreStart: () => void;
+
+            beforeEach(() => {
+                starts = 0;
+                const start = BorderRouterRegistry.prototype.start;
+                BorderRouterRegistry.prototype.start = async () => {
+                    starts++;
+                };
+                restoreStart = () => {
+                    BorderRouterRegistry.prototype.start = start;
+                };
+            });
+
+            afterEach(() => {
+                restoreStart();
+            });
+
+            async function started(disableAutoSubscription: boolean) {
+                const controller = await createMatterController({
+                    disableAutoSubscription,
+                    disableThreadDiagnostics: false,
+                });
+                await MockTime.resolve(controller.commandHandler.events.started.emit(), { macrotasks: true });
+                return controller;
+            }
+
+            it("starts with the controller", async () => {
+                await started(false);
+
+                expect(starts).equals(1);
+            });
+
+            it("waits for the first request when auto subscription is disabled, and starts once", async () => {
+                const controller = await started(true);
+                expect(starts).equals(0);
+
+                expect(controller.startBorderRouterDiscovery()).equals(true);
+                expect(controller.startBorderRouterDiscovery()).equals(false);
+
+                expect(starts).equals(1);
+            });
+
+            it("does not start with Thread diagnostics disabled", async () => {
+                const controller = await createMatterController({ disableAutoSubscription: true });
+
+                controller.startBorderRouterDiscovery();
+
+                expect(starts).equals(0);
+            });
+
+            it("does not start once the controller is stopped", async () => {
+                const controller = await started(true);
+                matterController = undefined;
+                await controller.stop();
+
+                controller.startBorderRouterDiscovery();
+
+                expect(starts).equals(0);
+            });
         });
 
         it("applies the setting to the stored peers", async () => {

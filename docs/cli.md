@@ -79,12 +79,21 @@ Without the server's own subscription matter.js never reports a node as connecte
 with `subscribe` does not change that. Such a node stays `available` unless the server finds it unreachable.
 `remove_node` always tries to tell the device to remove the fabric, also for a node switched on with
 `enable_auto_subscription`, and removes the node only locally when that fails, so removing an unreachable node
-takes the full discovery and retry time before it returns. Polling, time synchronization, the Thread refresh and
-fabric label pushes stay off for all nodes, also for those switched on with `enable_auto_subscription`:
+takes the full discovery and retry time before it returns. The server's background jobs stay off for all nodes,
+also for those switched on with `enable_auto_subscription`:
 
 - fabric label changes are not pushed to the device; matter.js itself still updates a stale label once when the
   server's subscription to a node first comes up
 - time synchronization, custom cluster polling and the Thread neighbor/route refresh do not run
+- the OTA provider does not check the DCL for updates on its own (otherwise 5 to 10 minutes after the start and
+  then every 24 hours); `check_node_update` and `update_node` still work, but matter.js only finds updates for nodes
+  with the server's own subscription, so for other nodes `check_node_update` returns `null`. Stored OTA files that no
+  node needs anymore are not deleted either, because that cleanup runs with the update check.
+- Thread Border Routers are not discovered and probed for a REST API until a client sends
+  `get_thread_border_routers`, `get_thread_diagnostics` or `get_network_topology`; from then on discovery keeps
+  running and every newly found Border Router is probed
+
+Devices can still contact the server on their own, for example to ask the OTA provider for an update.
 
 For a node without the server's own subscription:
 

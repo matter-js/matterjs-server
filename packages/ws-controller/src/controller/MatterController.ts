@@ -214,6 +214,7 @@ export class MatterController {
     #otaUploadOptions: OtaUploadOptions = {};
     #otaUploads?: OtaUploadRegistry;
     readonly #borderRouterRegistry: BorderRouterRegistry;
+    #borderRouterDiscoveryStarted = false;
     /** Background init tasks kept off the node-init critical path but given a bounded chance to settle on stop(). */
     readonly #backgroundInit = new Array<Promise<unknown>>();
     #stopped = false;
@@ -436,11 +437,9 @@ export class MatterController {
                 }
 
                 if (!this.#threadDiagnosticsDisabled) {
-                    // Diagnostics-only discovery — never gate node init / WS availability on it.
-                    this.#trackBackgroundInit(
-                        this.#borderRouterRegistry.start(),
-                        "Border router registry start failed",
-                    );
+                    if (!this.#disableAutoSubscription) {
+                        this.startBorderRouterDiscovery();
+                    }
                     this.#registerStoredThreadCredentials();
                 }
 
@@ -453,6 +452,20 @@ export class MatterController {
         }
 
         return this.#commandHandler;
+    }
+
+    /**
+     * Start Border Router discovery, which also probes every Border Router found for a REST API. Started with the
+     * controller, except with auto subscription disabled: then the first command that needs Border Routers starts it.
+     * Never gates node init or WebSocket availability. Returns true when this call started it.
+     */
+    startBorderRouterDiscovery(): boolean {
+        if (this.#threadDiagnosticsDisabled || this.#stopped || this.#borderRouterDiscoveryStarted) {
+            return false;
+        }
+        this.#borderRouterDiscoveryStarted = true;
+        this.#trackBackgroundInit(this.#borderRouterRegistry.start(), "Border router registry start failed");
+        return true;
     }
 
     get borderRouters(): BorderRouterRegistry {

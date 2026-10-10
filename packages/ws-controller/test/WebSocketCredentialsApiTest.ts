@@ -59,8 +59,10 @@ function makeStubController(credentials: ThreadCredentialsRegistry) {
 
     const stubDiagnostics = {
         events: { batchUpdated: new Observable() },
+        fetches: 0,
         // Model a disabled / nothing-cached service: single-network fetch yields undefined.
         async getOrFetch() {
+            this.fetches++;
             return undefined;
         },
         listCached() {
@@ -90,6 +92,13 @@ function makeStubController(credentials: ThreadCredentialsRegistry) {
     };
 
     return {
+        borderRouterDiscoveryStarts: 0,
+        startsBorderRouterDiscovery: false,
+        startBorderRouterDiscovery() {
+            this.borderRouterDiscoveryStarts++;
+            return this.startsBorderRouterDiscovery;
+        },
+        diagnosticsFetches: () => stubDiagnostics.fetches,
         get commandHandler() {
             return stubCommandHandler as unknown as InstanceType<
                 typeof import("../src/controller/ControllerCommandHandler.js").ControllerCommandHandler
@@ -123,6 +132,9 @@ interface TestHarness {
     emitDiagnosticsBatch(batch: unknown): void;
     emitWebRtcCallback(data: unknown): void;
     emitTopologyUpdated(topology: unknown): void;
+    borderRouterDiscoveryStarts(): number;
+    discoveryStartsNow(): void;
+    diagnosticsFetches(): number;
     config: ConfigStorage;
     close(): Promise<void>;
 }
@@ -232,6 +244,11 @@ async function createHarness(): Promise<TestHarness> {
         emitDiagnosticsBatch,
         emitWebRtcCallback,
         emitTopologyUpdated,
+        borderRouterDiscoveryStarts: () => controller.borderRouterDiscoveryStarts,
+        discoveryStartsNow: () => {
+            controller.startsBorderRouterDiscovery = true;
+        },
+        diagnosticsFetches: () => controller.diagnosticsFetches(),
         config,
         close,
     };
@@ -363,6 +380,30 @@ describe("WebSocket Credentials API", () => {
         expect(events).to.include("webrtc_callback");
 
         ws.close();
+    });
+
+    it("starts Border Router discovery for the commands that need Border Routers", async () => {
+        await h.handle("get_thread_border_routers", {});
+        await h.handle("get_thread_diagnostics", {});
+        await h.handle("get_thread_diagnostics", { ext_pan_id: "1122334455667788" });
+        await h.handle("get_network_topology", {});
+
+        expect(h.borderRouterDiscoveryStarts()).to.equal(4);
+    });
+
+    it("answers get_thread_diagnostics(ext_pan_id) with null and fetches nothing when that call starts discovery", async () => {
+        h.discoveryStartsNow();
+
+        const res = await h.handle<unknown>("get_thread_diagnostics", { ext_pan_id: "1122334455667788" });
+
+        expect(res).to.equal(null);
+        expect(h.diagnosticsFetches()).to.equal(0);
+    });
+
+    it("fetches diagnostics once Border Router discovery is already running", async () => {
+        await h.handle<unknown>("get_thread_diagnostics", { ext_pan_id: "1122334455667788" });
+
+        expect(h.diagnosticsFetches()).to.equal(1);
     });
 
     it("get_network_topology returns the built snapshot", async () => {

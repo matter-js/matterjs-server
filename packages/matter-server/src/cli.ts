@@ -313,7 +313,7 @@ export function parseCliArgs(argv?: string[]): CliOptions {
         .addOption(
             new Option(
                 "--disable-auto-subscription [value]",
-                "Do not subscribe to nodes automatically, neither after commissioning nor on start. You are responsible to subscribe as needed; only recommended for very special use cases.",
+                "Do not subscribe to nodes automatically, neither after commissioning nor on start, and run no polling, time sync, fabric label push, OTA update check or Border Router discovery on its own. You are responsible to subscribe as needed; only recommended for very special use cases.",
             )
                 .argParser(parseBooleanEnv)
                 .preset(true)

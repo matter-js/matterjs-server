@@ -788,6 +788,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
                     result = await this.#handleGetAllCredentials();
                     break;
                 case "get_thread_border_routers":
+                    this.#controller.startBorderRouterDiscovery();
                     result = this.#controller.borderRouters.list();
                     break;
                 case "get_thread_diagnostics":
@@ -1560,12 +1561,17 @@ export class WebSocketControllerHandler implements WebServerHandler {
         args: ArgsOf<"get_thread_diagnostics">,
     ): Promise<ResponseOf<"get_thread_diagnostics">> {
         if (args?.ext_pan_id === undefined) {
+            this.#controller.startBorderRouterDiscovery();
             this.#controller.threadDiagnostics.refreshAllKnown({ force: args?.force });
             const diagnostics = this.#controller.threadDiagnostics;
             return diagnostics.listCached().map(batch => serializeBatch(batch, diagnostics.remainingTtl(batch)));
         }
         if (!/^[0-9a-fA-F]{16}$/.test(args.ext_pan_id)) {
             throw ServerError.invalidArguments(`Invalid ext_pan_id "${args.ext_pan_id}": expected 16 hex characters`);
+        }
+        // An empty registry would make the service publish the Border Router as unreachable to every listener.
+        if (this.#controller.startBorderRouterDiscovery()) {
+            return null;
         }
         const batch = await this.#controller.threadDiagnostics.getOrFetch(args.ext_pan_id.toLowerCase(), {
             force: args.force,
@@ -1578,6 +1584,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
     }
 
     async #handleGetNetworkTopology(args: ArgsOf<"get_network_topology">): Promise<ResponseOf<"get_network_topology">> {
+        this.#controller.startBorderRouterDiscovery();
         // Imported test nodes are served by get_nodes, so the derived graph must include them
         // too. Attached here (not at construction) to keep the service lazily instantiated.
         this.#controller.networkTopology.addNodeSource(this.#testNodeSource);

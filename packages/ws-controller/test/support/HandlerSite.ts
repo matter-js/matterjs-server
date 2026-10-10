@@ -49,10 +49,10 @@ export class HandlerSite {
         return { env, crypto };
     }
 
-    async startDevice() {
+    async startDevice(root: ServerNode.RootEndpoint = ServerNode.RootEndpoint) {
         MockTime.reset();
         const { env, crypto } = this.#environment("device");
-        const node = new ServerNode(ServerNode.RootEndpoint, { id: "device", environment: env });
+        const node = new ServerNode(root, { id: "device", environment: env });
         const light = await node.add(OnOffLightDevice.with(BooleanStateServer), { id: "light" });
         await node.start();
         this.#device = { node, light, crypto };
@@ -91,14 +91,17 @@ export class HandlerSite {
         return this.peer.behaviors.internalsOf(NetworkClient).activeSubscription !== undefined;
     }
 
-    async startController(disableAutoSubscription: boolean) {
+    async startController(
+        disableAutoSubscription: boolean,
+        { otaEnabled = false, threadDiagnosticsEnabled = false } = {},
+    ) {
         const { env, crypto } = this.#environment("controller");
         const resources = await createControllerNode({
             environment: env,
             id: "controller",
             adminFabricLabel: "TestFabric",
             serverVersion: "1.0.0",
-            enableOtaProvider: false,
+            enableOtaProvider: otaEnabled,
             peerSettingsRepair: {
                 hasRepairedPeerSettings: () => true,
                 markPeerSettingsRepaired: async () => {},
@@ -108,7 +111,8 @@ export class HandlerSite {
         const handler = new ControllerCommandHandler(resources, {
             bleEnabled: false,
             bleProxyEnabled: false,
-            otaEnabled: false,
+            otaEnabled,
+            threadDiagnosticsEnabled,
             disableAutoSubscription,
         });
         await MockTime.resolve(handler.initializeNodes(), { macrotasks: true });
