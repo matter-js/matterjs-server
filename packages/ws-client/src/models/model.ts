@@ -602,7 +602,11 @@ export interface APICommands {
     };
     /**
      * Schema 14. Switches the server's own subscription to the node on, until the server restarts. Only available with
-     * the server running with auto subscription disabled. Ends the node's subscriptions opened with `subscribe`.
+     * the server running with auto subscription disabled. Ends the node's subscriptions opened with `subscribe`. Resolves
+     * once the subscription is active; fails when matter.js finds the device unreachable meanwhile, when the
+     * subscription is not active within 4 minutes 15 seconds, or when the node is removed or the server shuts down
+     * meanwhile, and the node then stays switched on. Also fails when `disable_auto_subscription` switches the node off
+     * meanwhile.
      */
     enable_auto_subscription: {
         requestArgs: { node_id: number | bigint };

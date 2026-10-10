@@ -52,6 +52,7 @@ import { WebRtcTransportProvider } from "@matter/main/clusters/web-rtc-transport
 import { AcceptedCommandList, AttributeList, ClusterRevision, FeatureMap } from "@matter/main/model";
 import {
     AttestationFinding,
+    DEFAULT_CASE_CONNECTION_TIMEOUT,
     DeviceAttestationCheck,
     Fabric,
     Invoke,
@@ -2035,8 +2036,10 @@ export class ControllerCommandHandler {
 
     /**
      * Switch the server's own subscription to one node on or off. Only available with auto subscription disabled, and
-     * not kept across a restart. Resolves once the setting is stored; matter.js subscribes in the background. Enabling
-     * ends the node's client subscriptions, because the server's subscription does not keep other subscriptions.
+     * not kept across a restart. Enabling resolves once the subscription is active and ends the node's client
+     * subscriptions, because the server's subscription does not keep other subscriptions. It fails when matter.js finds
+     * the device unreachable while waiting, after {@link DEFAULT_CASE_CONNECTION_TIMEOUT}, or when the node is removed,
+     * switched off again or the handler closes. Except when switched off, the setting stays enabled and matter.js keeps trying.
      */
     async setAutoSubscription(nodeId: NodeId, enabled: boolean): Promise<void> {
         if (!this.#autoSubscriptionDisabled) {
@@ -2044,7 +2047,60 @@ export class ControllerCommandHandler {
                 `${enabled ? "enable" : "disable"}_auto_subscription requires the server to run with --disable-auto-subscription`,
             );
         }
-        await this.#nodes.get(nodeId).set({ network: { autoSubscribe: enabled } });
+        const node = this.#nodes.get(nodeId);
+        if (!enabled) {
+            await node.set({ network: { autoSubscribe: false } });
+            return;
+        }
+
+        let settle!: (error: Error | undefined) => void;
+        const outcome = new Promise<Error | undefined>(resolve => (settle = resolve));
+        const observers = new ObserverGroup();
+        observers.on(node.eventsOf(NetworkClient).subscriptionStatusChanged, isActive => {
+            if (isActive) {
+                settle(undefined);
+            }
+        });
+        observers.on(node.eventsOf(NetworkClient).autoSubscribe$Changed, autoSubscribe => {
+            if (!autoSubscribe) {
+                settle(ServerError.nodeNotReady(nodeId, new Error("auto subscription was disabled while waiting")));
+            }
+        });
+        // Only a change counts: an older unreachable mark stays until a session comes up and says nothing about now.
+        observers.on(node.lifecycle.connectionStateChanged, state => {
+            if (state === NodeConnectionState.WaitingForDeviceDiscovery) {
+                settle(ServerError.nodeNotResolving(nodeId, new Error("the device is unreachable")));
+            }
+        });
+        observers.on(this.events.nodeDecommissioned, removed => {
+            if (removed === nodeId) {
+                settle(ServerError.nodeNotExists(nodeId));
+            }
+        });
+        const abort = new Abort({
+            abort: this.#shutdown,
+            timeout: DEFAULT_CASE_CONNECTION_TIMEOUT,
+            timeoutHandler() {
+                const timeout = Duration.format(DEFAULT_CASE_CONNECTION_TIMEOUT);
+                this.abort(
+                    ServerError.nodeNotReady(nodeId, new Error(`the subscription was not active within ${timeout}`)),
+                );
+            },
+            handler: reason => settle(reason),
+        });
+        try {
+            await node.set({ network: { autoSubscribe: true } });
+            if (await node.act(agent => agent.get(NetworkClient).subscriptionActive)) {
+                return;
+            }
+            const error = await outcome;
+            if (error !== undefined) {
+                throw error;
+            }
+        } finally {
+            observers.close();
+            abort.close();
+        }
     }
 
     async getIcdState(nodeId: NodeId): Promise<IcdStateData> {

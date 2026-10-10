@@ -86,6 +86,10 @@ export enum ServerErrorCode {
     OtaUploadError = 101,
 }
 
+function detailOf(cause?: Error) {
+    return cause === undefined ? "" : `: ${cause.message}`;
+}
+
 /**
  * Custom error class for server errors with typed error codes.
  * Use this to throw errors that will be properly mapped to Python-compatible error codes.
@@ -113,11 +117,15 @@ export class ServerError extends Error {
     }
 
     static nodeNotReady(nodeId: number | bigint, cause?: Error): ServerError {
-        return new ServerError(ServerErrorCode.NodeNotReady, `Node ${nodeId} is not ready`, cause);
+        return new ServerError(ServerErrorCode.NodeNotReady, `Node ${nodeId} is not ready${detailOf(cause)}`, cause);
     }
 
     static nodeNotResolving(nodeId: number | bigint, cause?: Error): ServerError {
-        return new ServerError(ServerErrorCode.NodeNotResolving, `Node ${nodeId} is not resolving`, cause);
+        return new ServerError(
+            ServerErrorCode.NodeNotResolving,
+            `Node ${nodeId} is not resolving${detailOf(cause)}`,
+            cause,
+        );
     }
 
     static nodeNotExists(nodeId: number | bigint): ServerError {

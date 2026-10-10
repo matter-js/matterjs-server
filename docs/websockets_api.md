@@ -665,17 +665,33 @@ changed. Test nodes are not supported (`InvalidArguments`). With the server's ow
 without `--disable-auto-subscription`: device reports send `attribute_updated` and `node_event` to every listening
 client, `available` follows the connection to the device, and `register_icd` works. A LIT ICD registers on its own
 once subscribed. Polling, time synchronization and fabric label pushes stay off. The setting is not kept: every
-start switches all nodes off again. Switching a node to the state it already has does nothing.
+start switches all nodes off again. Switching a node to the state it already has changes nothing.
 
 The server's subscription asks the device only for events after the highest event number matter.js has received
-from the node so far, through any read or subscription. Both return `null` once the setting is stored. The server then subscribes in the background, which needs the device
-to be reachable. No event marks the moment the subscription is up: a node the server has not found unreachable is
-already `available`, so no `node_updated` is sent. Commands that need the subscription, such as `register_icd`, fail
-until then. A node whose device cannot be reached becomes unavailable as without `--disable-auto-subscription`.
+from the node so far, through any read or subscription.
+
+`enable_auto_subscription` returns `null` once the server's subscription to the node is active, so commands that
+need it, such as `register_icd`, work from then on. If the node's subscription is already active, it returns at
+once. It fails with an error, and the node stays switched on with matter.js trying to subscribe in the background,
+when:
+
+- matter.js finds the device unreachable while waiting: `NodeNotResolving` (4). Only a new finding counts: a node
+  that was already marked unreachable before, for example after a failed `read`, is tried again and only fails here
+  when that try fails too.
+- the subscription is not active within 4 minutes 15 seconds, the time matter.js allows a CASE connection while
+  commissioning: `NodeNotReady` (3)
+- the node is removed while waiting: `NodeNotExists` (5)
+- the server shuts down while waiting: `UnknownError` (0)
+
+It also fails with `NodeNotReady` (3) when `disable_auto_subscription` switches the node off while it waits; the
+node then stays switched off. Send `disable_auto_subscription` to switch a node off again after a failure.
+`disable_auto_subscription` returns `null` once the server's subscription is closed in the server. A node whose
+device cannot be reached becomes unavailable as without `--disable-auto-subscription`.
 
 The server's subscription is made with KeepSubscriptions `false`, so it ends every subscription opened with
-`subscribe` to that node once its Subscribe request goes out, which for an unreachable or sleeping device can be
-much later than the response; each arrives as `subscription_ended` at its connection. While the node's auto
+`subscribe` to that node once its Subscribe request goes out, which is before a successful
+`enable_auto_subscription` returns and, after a failed one, can be much later; each arrives as `subscription_ended`
+at its connection. While the node's auto
 subscription is on, `subscribe` for it fails with `InvalidArguments`, also when it was enabled while the
 `subscribe` was in progress. `disable_auto_subscription` ends the server's subscription;
 as with `unsubscribe`, the device ends it at its next report.

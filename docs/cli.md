@@ -71,8 +71,9 @@ a fabric-filtered read such as `interview_node` returns is applied to the node, 
 
 The WebSocket commands `subscribe`, `unsubscribe`, `enable_auto_subscription` and `disable_auto_subscription` are
 only available with this setting; `read` works in both modes. `enable_auto_subscription` switches the server's own
-subscription to one node on until the next start, so reports, connection state and `register_icd` work for that
-node as without this setting; `subscribe` is then refused for that node.
+subscription to one node on until the next start and returns once that subscription is active, so reports,
+connection state and `register_icd` work for that node as without this setting; `subscribe` is then refused for
+that node.
 
 Without the server's own subscription matter.js never reports a node as connected; a subscription a client opens
 with `subscribe` does not change that. Such a node stays `available` unless the server finds it unreachable.

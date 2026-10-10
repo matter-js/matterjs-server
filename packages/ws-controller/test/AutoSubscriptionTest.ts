@@ -21,12 +21,15 @@ import {
 import {
     ClientNode,
     Endpoint,
+    InteractionServer,
     NetworkClient,
     NodeConnectionState,
     NodeId,
     ServerNode,
     SessionsBehavior,
 } from "@matter/main";
+import { PeerSet } from "@matter/main/protocol";
+import { Status, StatusResponseError } from "@matter/main/types";
 import { BooleanStateServer } from "@matter/node/behaviors/boolean-state";
 import { IcdManagementServer } from "@matter/node/behaviors/icd-management";
 import { OnOffServer } from "@matter/node/behaviors/on-off";
@@ -395,6 +398,148 @@ describe("auto subscription setting", () => {
             await MockTime.resolve(Time.sleep("time sync window", Minutes(10)), { macrotasks: true });
 
             expect(timeSyncsOnDevice).greaterThan(0);
+        });
+    });
+
+    describe("enabling per node", () => {
+        async function enable(controller: RunningController) {
+            await MockTime.resolve(controller.handler.setAutoSubscription(NODE_ID, true), { macrotasks: true });
+        }
+
+        async function enableFailure(controller: RunningController) {
+            return await enable(controller).then(
+                () => undefined,
+                (error: unknown) => error,
+            );
+        }
+
+        function expectServerError(error: unknown, code: ServerErrorCode) {
+            expect(error).instanceOf(ServerError);
+            if (error instanceof ServerError) {
+                expect(error.code).equals(code);
+            }
+        }
+
+        async function subscriptionActive(controller: RunningController) {
+            return await peerOf(controller).act(agent => agent.get(NetworkClient).subscriptionActive);
+        }
+
+        function refuseSubscriptions() {
+            device.env.get(InteractionServer).handleSubscribeRequest = async () => {
+                throw new StatusResponseError("Refused by the test", Status.ResourceExhausted);
+            };
+        }
+
+        it("resolves once the subscription is active", async () => {
+            const controller = await commissioned(true);
+
+            await enable(controller);
+
+            expect(await subscriptionActive(controller)).equals(true);
+            expect(controller.handler.events.nodeDecommissioned.isObserved).equals(false);
+        });
+
+        it("resolves at once when the subscription is already active", async () => {
+            const controller = await commissioned(true);
+            await enable(controller);
+            await settle();
+            const before = Time.nowMs;
+
+            await enable(controller);
+
+            expect(Time.nowMs).equals(before);
+        });
+
+        it("fails after the timeout when the subscription does not become active, and stays enabled", async () => {
+            const controller = await commissioned(true);
+            refuseSubscriptions();
+            const before = Time.nowMs;
+
+            const error = await enableFailure(controller);
+
+            expectServerError(error, ServerErrorCode.NodeNotReady);
+            expect(String(error)).contains("not active within");
+            expect(Time.nowMs - before).least(Seconds(255));
+            expect(peerOf(controller).stateOf(NetworkClient).autoSubscribe).equals(true);
+            expect(controller.handler.events.nodeDecommissioned.isObserved).equals(false);
+        });
+
+        it("fails when the node is removed while waiting", async () => {
+            const controller = await commissioned(true);
+            refuseSubscriptions();
+            const pending = controller.handler.setAutoSubscription(NODE_ID, true).then(
+                () => undefined,
+                (error: unknown) => error,
+            );
+            await settle();
+
+            await MockTime.resolve(controller.handler.decommissionNode(NODE_ID), { macrotasks: true });
+
+            expectServerError(await MockTime.resolve(pending), ServerErrorCode.NodeNotExists);
+            expect(controller.handler.events.nodeDecommissioned.isObserved).equals(false);
+        });
+
+        it("fails when the handler closes while waiting", async () => {
+            const controller = await commissioned(true);
+            refuseSubscriptions();
+            const pending = controller.handler.setAutoSubscription(NODE_ID, true).then(
+                () => undefined,
+                (error: unknown) => error,
+            );
+            await settle();
+
+            await MockTime.resolve(controller.handler.close(), { macrotasks: true });
+
+            const error = await MockTime.resolve(pending);
+            expect(error).instanceOf(Error);
+            expect(String(error)).contains("shutting down");
+        });
+
+        it("fails when the device does not respond", async () => {
+            const controller = await commissioned(true);
+            await MockTime.resolve(device.close(), { macrotasks: true });
+
+            const error = await enableFailure(controller);
+
+            expectServerError(error, ServerErrorCode.NodeNotResolving);
+        });
+
+        it("does not fail for an older unreachable mark and resolves once the subscription is active", async () => {
+            const controller = await commissioned(true);
+            const peer = controller.resources.node.env.get(PeerSet).get(controller.resources.fabric.addressOf(NODE_ID));
+            expect(peer).not.undefined;
+            peer?.establishmentUnresponsive.emit();
+            expect(peerOf(controller).lifecycle.connectionState).equals(NodeConnectionState.WaitingForDeviceDiscovery);
+
+            await enable(controller);
+
+            expect(await subscriptionActive(controller)).equals(true);
+        });
+
+        it("fails when switched off while waiting", async () => {
+            const controller = await commissioned(true);
+            refuseSubscriptions();
+            const pending = controller.handler.setAutoSubscription(NODE_ID, true).then(
+                () => undefined,
+                (error: unknown) => error,
+            );
+            await settle();
+
+            await MockTime.resolve(controller.handler.setAutoSubscription(NODE_ID, false), { macrotasks: true });
+
+            const error = await MockTime.resolve(pending);
+            expectServerError(error, ServerErrorCode.NodeNotReady);
+            expect(String(error)).contains("disabled while waiting");
+        });
+
+        it("closes the subscription by the time disabling resolves", async () => {
+            const controller = await commissioned(true);
+            await enable(controller);
+
+            await MockTime.resolve(controller.handler.setAutoSubscription(NODE_ID, false), { macrotasks: true });
+
+            expect(hasActiveSubscription(controller)).equals(false);
+            expect(await subscriptionActive(controller)).equals(false);
         });
     });
 
