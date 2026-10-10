@@ -372,7 +372,7 @@ export class ControllerCommandHandler {
         }
 
         const attributeReader: NodeAttributeReader = {
-            nodeConnected: peer => this.#isConnected(peer.nodeId),
+            nodeConnected: peer => this.#runsUpkeep(peer.nodeId),
             handleReadAttributes: (peer, paths, fabricFiltered) =>
                 this.handleReadAttributes(peer.nodeId, paths, fabricFiltered),
         };
@@ -389,7 +389,7 @@ export class ControllerCommandHandler {
             logger.info("Time synchronization enabled");
             this.#timeSyncManager = new TimeSyncManager({
                 syncTime: peer => this.#syncNodeTime(peer.nodeId),
-                nodeConnected: peer => this.#isConnected(peer.nodeId),
+                nodeConnected: peer => this.#runsUpkeep(peer.nodeId),
                 commissionedNodeCount: () => this.#node.peers.commissioned.length,
             });
         }
@@ -402,6 +402,18 @@ export class ControllerCommandHandler {
 
     #isConnected(nodeId: NodeId): boolean {
         return this.#nodes.has(nodeId) && this.#nodes.get(nodeId).lifecycle.isConnected;
+    }
+
+    /**
+     * Whether polling, time sync and fabric label pushes reach the node. Off with auto subscription disabled, also for a
+     * node whose auto subscription was enabled, so the client alone decides what is sent to the devices.
+     */
+    #runsUpkeep(nodeId: NodeId): boolean {
+        return !this.#autoSubscriptionDisabled && this.#isConnected(nodeId);
+    }
+
+    #autoSubscribes(node: ClientNode): boolean {
+        return node.stateOf(NetworkClient).autoSubscribe;
     }
 
     /** Format a NodeId as a PeerAddress string for logging. */
@@ -1147,7 +1159,8 @@ export class ControllerCommandHandler {
     }
 
     /**
-     * Open a subscription of the caller's own. Only available with auto subscription disabled. Reports reach
+     * Open a subscription of the caller's own. Only available with auto subscription disabled, and only for a node
+     * whose auto subscription was not enabled with {@link setAutoSubscription}. Reports reach
      * {@link InteractionSubscriptionListener.report}; the priming report arrives before this resolves. matter.js ends
      * the subscription when the node is removed or the controller goes offline.
      */
@@ -1168,6 +1181,11 @@ export class ControllerCommandHandler {
             throw ServerError.invalidArguments("max_interval must not be less than min_interval");
         }
         const node = this.#nodes.get(nodeId);
+        if (this.#autoSubscribes(node)) {
+            throw ServerError.invalidArguments(
+                `Node ${nodeId} has auto subscription enabled; subscribe requires disable_auto_subscription first`,
+            );
+        }
 
         const subscribe: Subscribe = {
             ...this.#readRequestOf(request),
@@ -1179,6 +1197,13 @@ export class ControllerCommandHandler {
             closed: () => listener.closed(),
         };
         const active = await node.interaction.subscribe(subscribe);
+        // Auto subscription enabled while this was being set up would leave both subscriptions running.
+        if (this.#autoSubscribes(node)) {
+            active.close();
+            throw ServerError.invalidArguments(
+                `Node ${nodeId} had its auto subscription enabled while subscribing; the subscription was closed`,
+            );
+        }
         return {
             id: active.subscriptionId,
             nodeId,
@@ -1356,7 +1381,7 @@ export class ControllerCommandHandler {
      * unwinding the devices that did accept, which no amount of local bookkeeping can do.
      */
     async #pushFabricLabel(label: string) {
-        const connected = this.#nodes.getIds().filter(nodeId => this.#isConnected(nodeId));
+        const connected = this.#nodes.getIds().filter(nodeId => this.#runsUpkeep(nodeId));
         const results = await Promise.allSettled(
             connected.map(async nodeId => {
                 const response = await this.#nodes
@@ -1995,17 +2020,31 @@ export class ControllerCommandHandler {
 
     /**
      * Drop the local ICD registration and reconnect; a LIT peer re-registers automatically once subscribed.
-     * With auto subscription disabled only the local registration is dropped.
+     * With auto subscription disabled, and not enabled for the node, only the local registration is dropped.
      */
     async resyncIcd(nodeId: NodeId): Promise<void> {
         const node = this.#nodes.get(nodeId);
         await node.act(agent => agent.get(IcdClient).forget());
-        if (this.#autoSubscriptionDisabled) {
+        if (this.#autoSubscriptionDisabled && !this.#autoSubscribes(node)) {
             return;
         }
         // Tearing the sustained subscription down and back up is what forces the re-registration.
         await node.set({ network: { autoSubscribe: false } });
         await node.set({ network: { autoSubscribe: true } });
+    }
+
+    /**
+     * Switch the server's own subscription to one node on or off. Only available with auto subscription disabled, and
+     * not kept across a restart. Resolves once the setting is stored; matter.js subscribes in the background. Enabling
+     * ends the node's client subscriptions, because the server's subscription does not keep other subscriptions.
+     */
+    async setAutoSubscription(nodeId: NodeId, enabled: boolean): Promise<void> {
+        if (!this.#autoSubscriptionDisabled) {
+            throw ServerError.invalidArguments(
+                `${enabled ? "enable" : "disable"}_auto_subscription requires the server to run with --disable-auto-subscription`,
+            );
+        }
+        await this.#nodes.get(nodeId).set({ network: { autoSubscribe: enabled } });
     }
 
     async getIcdState(nodeId: NodeId): Promise<IcdStateData> {

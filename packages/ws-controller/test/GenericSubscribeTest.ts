@@ -11,7 +11,7 @@ import { BooleanStateServer } from "@matter/node/behaviors/boolean-state";
 import { OnOffServer } from "@matter/node/behaviors/on-off";
 import { AttributeChange, EventChange } from "../src/controller/PeerChangeBus.js";
 import { InteractionReport, InteractionSubscribeRequest } from "../src/types/CommandHandler.js";
-import { ServerError, ServerErrorCode } from "../src/types/WebSocketMessageTypes.js";
+import { ServerError, ServerErrorCode, TEST_NODE_START } from "../src/types/WebSocketMessageTypes.js";
 import { HandlerSite, NODE_ID } from "./support/HandlerSite.js";
 import { InteractionWsHarness } from "./support/InteractionWsHarness.js";
 
@@ -283,6 +283,52 @@ describe("generic subscribe", () => {
             expect(captured).deep.equals([]);
         });
 
+        it("ends the node's subscriptions when auto subscription is enabled for it", async () => {
+            const record = recorder();
+            await subscribe(LIGHT_ON_OFF, record.listener);
+
+            await MockTime.resolve(site.handler.setAutoSubscription(NODE_ID, true), { macrotasks: true });
+            await site.settle();
+
+            expect(record.closed).equals(1);
+            expect(site.hasAutoSubscription).equals(true);
+        });
+
+        it("rejects subscribe while the node's auto subscription is enabled", async () => {
+            await MockTime.resolve(site.handler.setAutoSubscription(NODE_ID, true), { macrotasks: true });
+            await site.settle();
+            const captured = captureSubscribes(site.peer);
+
+            await expectInvalidArguments(site.handler.subscribe(LIGHT_ON_OFF, recorder().listener));
+            expect(captured).deep.equals([]);
+
+            await MockTime.resolve(site.handler.setAutoSubscription(NODE_ID, false), { macrotasks: true });
+            await site.settle();
+            await subscribe(LIGHT_ON_OFF, recorder().listener);
+            expect(captured.length).equals(1);
+        });
+
+        it("closes and rejects a subscription whose node had auto subscription enabled meanwhile", async () => {
+            const record = recorder();
+            const interaction = site.peer.interaction;
+            const subscribeOriginal = interaction.subscribe.bind(interaction);
+            let enabled = false;
+            interaction.subscribe = async (request, session) => {
+                const active = await subscribeOriginal(request, session);
+                if (!enabled) {
+                    enabled = true;
+                    await site.peer.set({ network: { autoSubscribe: true } });
+                }
+                return active;
+            };
+
+            await expectInvalidArguments(
+                MockTime.resolve(site.handler.subscribe(LIGHT_ON_OFF, record.listener), { macrotasks: true }),
+            );
+
+            expect(record.closed).equals(1);
+        });
+
         it("rejects a data version filter without a concrete endpoint or cluster", async () => {
             for (const path of ["1/*", "*/6"]) {
                 await expectInvalidArguments(
@@ -406,6 +452,32 @@ describe("subscribe over WebSocket", () => {
 
         expect(response.error_code).equals(ServerErrorCode.InvalidArguments);
         expect(response.details).contains("--disable-auto-subscription");
+    });
+
+    it("maps enable_auto_subscription and disable_auto_subscription onto the controller", async () => {
+        const client = await harness.connect();
+
+        const enabled = await client.command("enable_auto_subscription", { node_id: 42 });
+        const disabled = await client.command("disable_auto_subscription", { node_id: 42 });
+
+        expect(enabled.error_code).undefined;
+        expect(enabled.result).equals(null);
+        expect(disabled.result).equals(null);
+        expect(harness.autoSubscriptionRequests).deep.equals([
+            { nodeId: NodeId(42), enabled: true },
+            { nodeId: NodeId(42), enabled: false },
+        ]);
+    });
+
+    it("rejects enable_auto_subscription and disable_auto_subscription for test nodes", async () => {
+        const client = await harness.connect();
+
+        for (const command of ["enable_auto_subscription", "disable_auto_subscription"]) {
+            const response = await client.command(command, { node_id: TEST_NODE_START });
+            expect(response.error_code, command).equals(ServerErrorCode.InvalidArguments);
+            expect(response.details, command).contains("test nodes");
+        }
+        expect(harness.autoSubscriptionRequests).deep.equals([]);
     });
 
     it("answers an unknown subscription id with an error result", async () => {

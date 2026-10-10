@@ -738,6 +738,12 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 case "unsubscribe":
                     result = this.#handleUnsubscribe(args, connection);
                     break;
+                case "enable_auto_subscription":
+                    result = await this.#handleSetAutoSubscription(args, true);
+                    break;
+                case "disable_auto_subscription":
+                    result = await this.#handleSetAutoSubscription(args, false);
+                    break;
                 case "get_vendor_names":
                     result = await this.#handleGetVendorNames(args);
                     break;
@@ -1298,6 +1304,18 @@ export class WebSocketControllerHandler implements WebServerHandler {
         }
         this.#interactionSubscriptions.delete(subscription_id);
         entry.subscription.close();
+        return null;
+    }
+
+    async #handleSetAutoSubscription(
+        args: ArgsOf<"enable_auto_subscription" | "disable_auto_subscription">,
+        enabled: boolean,
+    ): Promise<null> {
+        const { node_id } = args;
+        if (TestNodeCommandHandler.isTestNodeId(node_id)) {
+            throw ServerError.invalidArguments("Auto subscription commands are not supported for test nodes");
+        }
+        await this.#commandHandler.setAutoSubscription(NodeId(node_id), enabled);
         return null;
     }
 

@@ -13,6 +13,7 @@ import {
     MockStorageService,
     Network,
     NetworkSimulator,
+    Minutes,
     Seconds,
     SupportedStorageTypes,
     Time,
@@ -29,13 +30,24 @@ import {
 import { BooleanStateServer } from "@matter/node/behaviors/boolean-state";
 import { IcdManagementServer } from "@matter/node/behaviors/icd-management";
 import { OnOffServer } from "@matter/node/behaviors/on-off";
+import { OperationalCredentialsServer } from "@matter/node/behaviors/operational-credentials";
+import { TimeSynchronizationServer } from "@matter/node/behaviors/time-synchronization";
 import { OnOffLightDevice } from "@matter/node/devices/on-off-light";
 import { ControllerCommandHandler } from "../src/controller/ControllerCommandHandler.js";
 import { ControllerNode, createControllerNode } from "../src/controller/ControllerNode.js";
 import { MatterController, MatterControllerOptions } from "../src/controller/MatterController.js";
 import { ConfigStorage } from "../src/server/ConfigStorage.js";
+import { ServerError, ServerErrorCode } from "../src/types/WebSocketMessageTypes.js";
 
 const NODE_ID = NodeId(42n);
+
+let timeSyncsOnDevice = 0;
+
+class CountingTimeSynchronizationServer extends TimeSynchronizationServer {
+    override setUtcTime() {
+        timeSyncsOnDevice++;
+    }
+}
 
 interface RunningController {
     resources: ControllerNode;
@@ -72,12 +84,16 @@ describe("auto subscription setting", () => {
         storage = {};
         nextHost = 1;
         subscriptionsOnDevice = 0;
+        timeSyncsOnDevice = 0;
         running = undefined;
 
         const { env, crypto } = environment("device");
         deviceCrypto = crypto;
         // ICD management, so resync_icd has a registration to drop.
-        device = new ServerNode(ServerNode.RootEndpoint.with(IcdManagementServer), { id: "device", environment: env });
+        device = new ServerNode(ServerNode.RootEndpoint.with(IcdManagementServer, CountingTimeSynchronizationServer), {
+            id: "device",
+            environment: env,
+        });
         light = await device.add(OnOffLightDevice.with(BooleanStateServer), { id: "light" });
         await device.start();
         device.eventsOf(SessionsBehavior).subscriptionAdded.on(() => {
@@ -95,6 +111,7 @@ describe("auto subscription setting", () => {
     async function startController(
         disableAutoSubscription: boolean,
         repairPending = false,
+        timeSyncEnabled = false,
     ): Promise<RunningController> {
         const { env, crypto } = environment("controller");
         const resources = await createControllerNode({
@@ -114,6 +131,7 @@ describe("auto subscription setting", () => {
             bleProxyEnabled: false,
             otaEnabled: false,
             disableAutoSubscription,
+            timeSyncEnabled,
         });
         await MockTime.resolve(handler.initializeNodes(), { macrotasks: true });
         running = { resources, handler, crypto };
@@ -284,6 +302,99 @@ describe("auto subscription setting", () => {
             expect(peerOf(controller).stateOf(NetworkClient).autoSubscribe).equals(true);
             expect(hasActiveSubscription(controller)).equals(true);
             expect(subscriptionsOnDevice).greaterThan(0);
+        });
+    });
+
+    describe("per node", () => {
+        async function setAutoSubscription(controller: RunningController, enabled: boolean) {
+            await MockTime.resolve(controller.handler.setAutoSubscription(NODE_ID, enabled), { macrotasks: true });
+            await settle();
+        }
+
+        it("is rejected without changing the node while auto subscription is on", async () => {
+            const controller = await commissioned(false);
+
+            for (const enabled of [true, false]) {
+                const error = await controller.handler.setAutoSubscription(NODE_ID, enabled).then(
+                    () => undefined,
+                    (error: unknown) => error,
+                );
+                expect(error).instanceOf(ServerError);
+                if (error instanceof ServerError) {
+                    expect(error.code).equals(ServerErrorCode.InvalidArguments);
+                    expect(error.message).contains("--disable-auto-subscription");
+                }
+            }
+
+            expect(peerOf(controller).stateOf(NetworkClient).autoSubscribe).equals(true);
+            expect(hasActiveSubscription(controller)).equals(true);
+        });
+
+        it("subscribes to the node once enabled and stops once disabled", async () => {
+            const controller = await commissioned(true);
+
+            await setAutoSubscription(controller, true);
+
+            expect(peerOf(controller).stateOf(NetworkClient).autoSubscribe).equals(true);
+            expect(hasActiveSubscription(controller)).equals(true);
+            expect(subscriptionsOnDevice).greaterThan(0);
+            expect(peerOf(controller).lifecycle.connectionState).equals(NodeConnectionState.Connected);
+
+            await setAutoSubscription(controller, false);
+
+            expect(peerOf(controller).stateOf(NetworkClient).autoSubscribe).equals(false);
+            expect(hasActiveSubscription(controller)).equals(false);
+        });
+
+        it("is switched off again on the next start", async () => {
+            await setAutoSubscription(await commissioned(true), true);
+
+            const controller = await restartController(true);
+
+            expect(peerOf(controller).stateOf(NetworkClient).autoSubscribe).equals(false);
+            expect(hasActiveSubscription(controller)).equals(false);
+        });
+
+        it("subscribes again to an enabled node when the ICD registration is resynced", async () => {
+            const controller = await commissioned(true);
+            await setAutoSubscription(controller, true);
+            const subscriptionsBefore = subscriptionsOnDevice;
+
+            await MockTime.resolve(controller.handler.resyncIcd(NODE_ID), { macrotasks: true });
+            await settle();
+
+            expect(hasActiveSubscription(controller)).equals(true);
+            expect(subscriptionsOnDevice).greaterThan(subscriptionsBefore);
+        });
+
+        it("does not push a changed fabric label to an enabled node", async () => {
+            const controller = await commissioned(true);
+            await setAutoSubscription(controller, true);
+
+            await MockTime.resolve(controller.handler.setFabricLabel("Changed"), { macrotasks: true });
+            await settle();
+
+            expect(device.stateOf(OperationalCredentialsServer).fabrics[0]?.label).equals("TestFabric");
+        });
+
+        it("does not synchronize the time of an enabled node", async () => {
+            const controller = await startController(true, false, true);
+            await commission(controller);
+            await setAutoSubscription(controller, true);
+
+            await MockTime.resolve(Time.sleep("time sync window", Minutes(10)), { macrotasks: true });
+
+            expect(hasActiveSubscription(controller)).equals(true);
+            expect(timeSyncsOnDevice).equals(0);
+        });
+
+        it("synchronizes the time with auto subscription on, as the reference for the test above", async () => {
+            const controller = await startController(false, false, true);
+            await commission(controller);
+
+            await MockTime.resolve(Time.sleep("time sync window", Minutes(10)), { macrotasks: true });
+
+            expect(timeSyncsOnDevice).greaterThan(0);
         });
     });
 

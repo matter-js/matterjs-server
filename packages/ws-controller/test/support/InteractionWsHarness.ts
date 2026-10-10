@@ -114,6 +114,7 @@ export class WsTestClient {
 export class InteractionWsHarness {
     readonly subscribeRequests = new Array<InteractionSubscribeRequest>();
     readonly readRequests = new Array<InteractionReadRequest>();
+    readonly autoSubscriptionRequests = new Array<{ nodeId: NodeId; enabled: boolean }>();
     readonly subscriptions = new Array<FakeSubscription>();
     primingReport?: InteractionReport;
     readResult: InteractionReport = { attributes: {}, events: [] };
@@ -172,6 +173,9 @@ export class InteractionWsHarness {
             initializeNodes: async () => {},
             subscribe: async (request: InteractionSubscribeRequest, listener: InteractionSubscriptionListener) =>
                 harness.#subscribe(request, listener),
+            setAutoSubscription: async (nodeId: NodeId, enabled: boolean) => {
+                harness.autoSubscriptionRequests.push({ nodeId, enabled });
+            },
             read: async (request: InteractionReadRequest) => {
                 harness.readRequests.push(request);
                 return harness.readResult;

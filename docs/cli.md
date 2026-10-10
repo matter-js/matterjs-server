@@ -47,7 +47,7 @@ npm run server -- --bluetooth-adapter 0
 | --thread-rest-probe-port     | integer      | 8081             | No       | TCP port of the OTBR REST API probed on discovered Thread Border Routers — env `THREAD_REST_PROBE_PORT`. Set it when the Border Router exposes its REST API on another port (e.g. `8080`). A wrong port costs probe time on every discovered Border Router before the probe gives up and the network falls back to CoAP. |
 | --enable-time-sync           | boolean flag | false            | No       | Enables automatic time synchronization for devices that support it (env `ENABLE_TIME_SYNC`). Only enable when the host clock is reliably synced (e.g., NTP); pushes UTC time + time zone / DST.                                                                      |
 | --custom-cluster-poll-interval | integer    | 60               | No       | Interval in seconds for polling custom cluster attributes that do not support Matter subscriptions (legacy Eve Energy devices) — env `CUSTOM_CLUSTER_POLL_INTERVAL`. Accepts 60 to 86400; raise it (e.g. `300`, `600`) to cut periodic Thread traffic on networks with many such devices, at the cost of less current energy readings. |
-| --disable-auto-subscription  | boolean flag | false            | No       | Do not subscribe to nodes automatically, neither after commissioning nor on start, and stop the subscriptions of already commissioned nodes — env `DISABLE_AUTO_SUBSCRIPTION`. You are responsible to subscribe as needed (WebSocket `subscribe`/`unsubscribe` are only available with it); only recommended for very special use cases. See [Disabled auto subscription](#disabled-auto-subscription). |
+| --disable-auto-subscription  | boolean flag | false            | No       | Do not subscribe to nodes automatically, neither after commissioning nor on start, and stop the subscriptions of already commissioned nodes — env `DISABLE_AUTO_SUBSCRIPTION`. You are responsible to subscribe as needed (WebSocket `subscribe`/`unsubscribe` and the per-node `enable_auto_subscription`/`disable_auto_subscription` are only available with it); only recommended for very special use cases. See [Disabled auto subscription](#disabled-auto-subscription). |
 
 > **Log rotation:** `--log-file` must be a full file path including the filename. The log is rotated
 > every 24 hours, and on each startup: backups are shifted (`.6`→`.7`, …, `.1`→`.2`, current→`.1`),
@@ -69,23 +69,30 @@ reads the full node once, so `commission_with_code` / `commission_on_network` re
 a fabric-filtered read such as `interview_node` returns is applied to the node, so `get_node` and
 `attribute_updated` events reflect it, including endpoints the read discovered.
 
-The WebSocket commands `subscribe` and `unsubscribe` are only available with this setting; `read` works in both
-modes.
+The WebSocket commands `subscribe`, `unsubscribe`, `enable_auto_subscription` and `disable_auto_subscription` are
+only available with this setting; `read` works in both modes. `enable_auto_subscription` switches the server's own
+subscription to one node on until the next start, so reports, connection state and `register_icd` work for that
+node as without this setting; `subscribe` is then refused for that node.
 
 Without the server's own subscription matter.js never reports a node as connected; a subscription a client opens
-with `subscribe` does not change that, and does not start the features below either. The node stays `available`
-unless the server finds it unreachable. `remove_node` always tries to tell the device to remove the fabric and
-removes the node only locally when that fails, so removing an unreachable node takes the full discovery and retry
-time before it returns. Background features that require a connected node are skipped:
+with `subscribe` does not change that. Such a node stays `available` unless the server finds it unreachable.
+`remove_node` always tries to tell the device to remove the fabric, also for a node switched on with
+`enable_auto_subscription`, and removes the node only locally when that fails, so removing an unreachable node
+takes the full discovery and retry time before it returns. Polling, time synchronization, the Thread refresh and
+fabric label pushes stay off for all nodes, also for those switched on with `enable_auto_subscription`:
 
-- fabric label changes are not pushed to the device
+- fabric label changes are not pushed to the device; matter.js itself still updates a stale label once when the
+  server's subscription to a node first comes up
 - time synchronization, custom cluster polling and the Thread neighbor/route refresh do not run
+
+For a node without the server's own subscription:
+
 - `register_icd` fails, because matter.js only registers while the server's own subscription is active
 - `resync_icd` only drops the local ICD registration; a LIT device re-registers only once the server's own
-  subscription is active again, which needs the setting turned off
+  subscription is active again, through `enable_auto_subscription` or with the setting turned off
 
-The setting is applied to every stored node on each start. Starting again without it restores the automatic
-subscriptions.
+The setting is applied to every stored node on each start, which also switches off every node enabled with
+`enable_auto_subscription`. Starting again without it restores the automatic subscriptions.
 
 ### Behavioral Differences from Python Matter Server
 

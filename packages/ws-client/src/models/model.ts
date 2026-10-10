@@ -599,6 +599,19 @@ export interface APICommands {
         requestArgs: { subscription_id: number };
         response: null;
     };
+    /**
+     * Schema 14. Switches the server's own subscription to the node on, until the server restarts. Only available with
+     * the server running with auto subscription disabled. Ends the node's subscriptions opened with `subscribe`.
+     */
+    enable_auto_subscription: {
+        requestArgs: { node_id: number | bigint };
+        response: null;
+    };
+    /** Schema 14. Only available with the server running with auto subscription disabled. */
+    disable_auto_subscription: {
+        requestArgs: { node_id: number | bigint };
+        response: null;
+    };
     /** Schema 14. */
     read: {
         requestArgs: InteractionReadArgs;

@@ -436,9 +436,9 @@ strength values, and `packages/ws-client/src/models/model.ts` for the exact wire
 
 > [!NOTE]
 > When the server runs with `--disable-auto-subscription`, it does not subscribe to nodes, so there are no
-> automatic `attribute_updated` or node events from device reports. You are responsible to subscribe as needed
-> (see [Subscriptions and generic read](#subscriptions-and-generic-read)); only recommended for very special use
-> cases. See [CLI: Disabled auto subscription](cli.md#disabled-auto-subscription).
+> automatic `attribute_updated` or node events from device reports. You are responsible to subscribe as needed,
+> or to switch the server's subscription on per node with `enable_auto_subscription` (see
+> [Subscriptions and generic read](#subscriptions-and-generic-read)); only recommended for very special use cases. See [CLI: Disabled auto subscription](cli.md#disabled-auto-subscription).
 
 **read_attribute** - Read attribute(s) from a node
 
@@ -497,9 +497,10 @@ Wildcard (all attributes from OnOff cluster):
 ### Subscriptions and generic read
 
 Schema 14. These commands give full control over the Matter Read and Subscribe requests. Most clients do not need
-them: the server subscribes to every node on its own. `subscribe` and `unsubscribe` are only available when the
-server runs with `--disable-auto-subscription`; with the server's own subscription active they fail with
-`InvalidArguments`, before anything is sent to a device. `read` works in both modes. The server does not advertise
+them: the server subscribes to every node on its own. `subscribe`, `unsubscribe`, `enable_auto_subscription` and
+`disable_auto_subscription` are only available when the server runs with `--disable-auto-subscription`; otherwise
+they fail with `InvalidArguments`, before anything is sent to a device. `subscribe` also fails this way for a node
+whose auto subscription was switched on with `enable_auto_subscription`. `read` works in both modes. The server does not advertise
 schema 14 yet: `server_info` still reports `schema_version` 13 until the version is raised, so a client that gates
 on 14 cannot use them yet.
 
@@ -646,6 +647,36 @@ Only available with `--disable-auto-subscription`; otherwise it fails with `Inva
 unknown id, or the id of another connection's subscription, gives an `InvalidArguments` error.
 Matter has no unsubscribe message: the server stops accepting reports, and the device ends the subscription at its
 next report.
+
+**enable_auto_subscription** / **disable_auto_subscription** - Switch the server's own subscription to one node on
+or off
+
+```json
+{
+  "message_id": "1",
+  "command": "enable_auto_subscription",
+  "args": { "node_id": 1 }
+}
+```
+
+Only available with `--disable-auto-subscription`; otherwise they fail with `InvalidArguments` and the node is not
+changed. Test nodes are not supported (`InvalidArguments`). With the server's own subscription on, a node behaves as
+without `--disable-auto-subscription`: device reports send `attribute_updated` and `node_event` to every listening
+client, `available` follows the connection to the device, and `register_icd` works. A LIT ICD registers on its own
+once subscribed. Polling, time synchronization and fabric label pushes stay off. The setting is not kept: every
+start switches all nodes off again. Switching a node to the state it already has does nothing.
+
+Both return `null` once the setting is stored. The server then subscribes in the background, which needs the device
+to be reachable. No event marks the moment the subscription is up: a node the server has not found unreachable is
+already `available`, so no `node_updated` is sent. Commands that need the subscription, such as `register_icd`, fail
+until then. A node whose device cannot be reached becomes unavailable as without `--disable-auto-subscription`.
+
+The server's subscription is made with KeepSubscriptions `false`, so it ends every subscription opened with
+`subscribe` to that node once its Subscribe request goes out, which for an unreachable or sleeping device can be
+much later than the response; each arrives as `subscription_ended` at its connection. While the node's auto
+subscription is on, `subscribe` for it fails with `InvalidArguments`, also when it was enabled while the
+`subscribe` was in progress. `disable_auto_subscription` ends the server's subscription;
+as with `unsubscribe`, the device ends it at its next report.
 
 ### Commands
 
@@ -950,8 +981,9 @@ This should be the last resort to try to get an ICD device in LIT mode connected
 ```
 
 A LIT peer re-registers automatically once subscribed. With `--disable-auto-subscription` the server only drops the
-local registration and does not reconnect; the device registers again only through `register_icd`, which needs the
-server's own subscription and so fails with this setting. A subscription opened with `subscribe` does not count.
+local registration and does not reconnect, unless `enable_auto_subscription` switched the server's own subscription
+to the node on; the device registers again only through `register_icd`, which needs the server's own subscription
+and so fails for a node without it. A subscription opened with `subscribe` does not count.
 
 ### Vendor Information
 
@@ -1308,12 +1340,14 @@ These commands are available only in the Matter.js server and not in the Python 
 | `get_icd_state` | Get ICD Check-In state for a node |
 | `register_icd` | Register this controller as an ICD Check-In client |
 | `unregister_icd` | Drop this controller's ICD Check-In registration |
-| `resync_icd` | Drop the local ICD registration and reconnect (with `--disable-auto-subscription`: only drop it) |
+| `resync_icd` | Drop the local ICD registration and reconnect (with `--disable-auto-subscription`: only drop it, unless the node's auto subscription is enabled) |
 | `get_network_topology` | Return the Thread/Wi-Fi network as a graph (schema 13+) |
 | `initiate_ota_upload` | Reserve an id for the `POST /ota-upload/<upload_id>` HTTP endpoint (schema 13+) |
 | `read` | Read attributes and events in one Matter Read request (schema 14+) |
 | `subscribe` | Open a Matter subscription owned by the connection (schema 14+) |
 | `unsubscribe` | End a subscription opened with `subscribe` (schema 14+) |
+| `enable_auto_subscription` | Switch the server's own subscription to one node on, with `--disable-auto-subscription` (schema 14+) |
+| `disable_auto_subscription` | Switch the server's own subscription to one node off again (schema 14+) |
 
 ### Data Differences
 
