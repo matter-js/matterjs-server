@@ -4,10 +4,10 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import type { Behavior, EndpointNumber, Immutable, NodeId } from "@matter/main";
+import { Logger, type Behavior, type EndpointNumber, type Immutable, type NodeId } from "@matter/main";
 import { CameraAvStreamManagement } from "@matter/main/clusters/camera-av-stream-management";
 import { WebRtcTransportProvider } from "@matter/main/clusters/web-rtc-transport-provider";
-import type { Specifier } from "@matter/main/protocol";
+import { Read, type Specifier } from "@matter/main/protocol";
 import type { Endpoint } from "@matter/node";
 import { CameraAvStreamManagementClient } from "@matter/node/behaviors/camera-av-stream-management";
 import { WebRtcTransportProviderClient } from "@matter/node/behaviors/web-rtc-transport-provider";
@@ -16,6 +16,19 @@ import { resolveWebRtcSessionStreams } from "../controller/webRtcSessionStreams.
 import { dropWebRtcSessionTracking, invokeEndSession } from "../controller/webRtcSessionTracking.js";
 import type { CameraDeviceIo, CameraState } from "./CameraStreamManager.js";
 import type { CameraFeatures, DeviceWebRtcSession, Resolution } from "./cameraTypes.js";
+
+const logger = Logger.get("MatterCameraDeviceIo");
+
+type StreamListAttribute = "allocatedVideoStreams" | "allocatedAudioStreams" | "allocatedSnapshotStreams";
+
+const STREAM_LIST_OF_COMMAND = new Map<string, StreamListAttribute>([
+    ["videoStreamAllocate", "allocatedVideoStreams"],
+    ["videoStreamDeallocate", "allocatedVideoStreams"],
+    ["audioStreamAllocate", "allocatedAudioStreams"],
+    ["audioStreamDeallocate", "allocatedAudioStreams"],
+    ["snapshotStreamAllocate", "allocatedSnapshotStreams"],
+    ["snapshotStreamDeallocate", "allocatedSnapshotStreams"],
+]);
 
 function toResolution(resolution: { width: number; height: number }): Resolution {
     return { width: resolution.width, height: resolution.height };
@@ -173,6 +186,32 @@ export class MatterCameraDeviceIo implements CameraDeviceIo {
         }));
     }
 
+    /**
+     * Read a stream list now. The camera answers the command before it reports the changed list, so
+     * without this read the next request sees a freed stream as still allocated.
+     */
+    async #refreshStreamList(
+        nodeId: NodeId,
+        endpointId: EndpointNumber,
+        attribute: StreamListAttribute,
+    ): Promise<void> {
+        // Fabric-filtered like the subscription: matter.js only applies a read to the cache when the filters match.
+        const read = Read(
+            { fabricFilter: true },
+            Read.Attribute({ endpoint: endpointId, cluster: CameraAvStreamManagement, attributes: attribute }),
+        );
+        try {
+            for await (const chunk of this.#handler.getNode(nodeId).interaction.read(read)) {
+                for await (const _entry of chunk);
+            }
+        } catch (error) {
+            // The command succeeded; the subscription report will still bring the list up to date.
+            logger.warn(
+                `Node ${nodeId} endpoint ${endpointId}: reading ${attribute} after the change failed: ${error}`,
+            );
+        }
+    }
+
     async missingCameraClusters(nodeId: NodeId, endpointId: EndpointNumber): Promise<number[]> {
         const endpoint = this.#endpoint(nodeId, endpointId);
         const missing = new Array<number>();
@@ -197,12 +236,15 @@ export class MatterCameraDeviceIo implements CameraDeviceIo {
             const node = this.#handler.getNode(args.nodeId);
             // Widened: the command name is a runtime string validated by the manager.
             const cluster: Specifier.ClusterLike = CameraAvStreamManagement.Cluster;
-            return this.#handler.invokeCommand(node, {
+            const response = await this.#handler.invokeCommand(node, {
                 endpoint: args.endpointId,
                 cluster,
                 command: args.command,
                 fields: args.fields,
             });
+            const streamList = STREAM_LIST_OF_COMMAND.get(args.command);
+            if (streamList !== undefined) await this.#refreshStreamList(args.nodeId, args.endpointId, streamList);
+            return response;
         }
 
         if (args.command === "provideOffer" || args.command === "solicitOffer") {

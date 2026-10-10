@@ -596,6 +596,130 @@ describe("MatterCameraDeviceIo.invoke (webrtcProvider routing)", () => {
     });
 });
 
+describe("MatterCameraDeviceIo.invoke (stream list re-read)", () => {
+    const NODE_ID = NodeId(5n);
+    const ENDPOINT_ID = EndpointNumber(2);
+    const AVSM = CameraAvStreamManagement.Cluster;
+
+    interface ReadRequest {
+        isFabricFiltered: boolean;
+        attributeRequests: { endpointId: number; clusterId: number; attributeId: number }[];
+    }
+
+    function makeHandler(options: { invokeCommand?: () => Promise<unknown>; read?: () => Promise<void> } = {}) {
+        const events = new Array<string>();
+        const reads = new Array<ReadRequest>();
+        const stub = {
+            getNode: () => ({
+                interaction: {
+                    read: async function* (request: ReadRequest) {
+                        reads.push(request);
+                        events.push("read");
+                        await options.read?.();
+                        // The camera reports nothing when the list's data version is unchanged.
+                        yield new Array<never>();
+                    },
+                },
+            }),
+            invokeCommand: async () => {
+                events.push("invoke");
+                return (options.invokeCommand ?? (async () => ({ ok: true })))();
+            },
+        };
+        return { handler: stub as unknown as ControllerCommandHandler, events, reads };
+    }
+
+    const cases = [
+        ["videoStreamAllocate", AVSM.attributes.allocatedVideoStreams.id],
+        ["videoStreamDeallocate", AVSM.attributes.allocatedVideoStreams.id],
+        ["audioStreamAllocate", AVSM.attributes.allocatedAudioStreams.id],
+        ["audioStreamDeallocate", AVSM.attributes.allocatedAudioStreams.id],
+        ["snapshotStreamAllocate", AVSM.attributes.allocatedSnapshotStreams.id],
+        ["snapshotStreamDeallocate", AVSM.attributes.allocatedSnapshotStreams.id],
+    ] as const;
+
+    for (const [command, attributeId] of cases) {
+        it(`re-reads the stream list the camera changed after ${command} succeeds`, async () => {
+            const { handler, events, reads } = makeHandler();
+            const io = new MatterCameraDeviceIo(handler);
+
+            const response = await io.invoke({
+                nodeId: NODE_ID,
+                endpointId: ENDPOINT_ID,
+                cluster: "avsm",
+                command,
+                fields: {},
+            });
+
+            expect(response).to.deep.equal({ ok: true });
+            expect(events).to.deep.equal(["invoke", "read"]);
+            expect(reads[0].isFabricFiltered).to.equal(true);
+            expect(reads[0].attributeRequests).to.deep.equal([
+                { endpointId: ENDPOINT_ID, clusterId: AVSM.id, attributeId },
+            ]);
+        });
+    }
+
+    it("does not read after a command that leaves the stream lists alone", async () => {
+        const { handler, events } = makeHandler();
+        const io = new MatterCameraDeviceIo(handler);
+
+        await io.invoke({
+            nodeId: NODE_ID,
+            endpointId: ENDPOINT_ID,
+            cluster: "avsm",
+            command: "captureSnapshot",
+            fields: {},
+        });
+
+        expect(events).to.deep.equal(["invoke"]);
+    });
+
+    it("does not read when the camera refuses the command", async () => {
+        const { handler, events } = makeHandler({
+            invokeCommand: async () => {
+                throw new StatusResponse.ResourceExhaustedError("no encoder");
+            },
+        });
+        const io = new MatterCameraDeviceIo(handler);
+
+        let thrown: unknown;
+        try {
+            await io.invoke({
+                nodeId: NODE_ID,
+                endpointId: ENDPOINT_ID,
+                cluster: "avsm",
+                command: "videoStreamAllocate",
+                fields: {},
+            });
+        } catch (error) {
+            thrown = error;
+        }
+
+        expect(deviceStatusOf(thrown)).to.equal(Status.ResourceExhausted);
+        expect(events).to.deep.equal(["invoke"]);
+    });
+
+    it("returns the camera's answer when the re-read fails", async () => {
+        const { handler } = makeHandler({
+            read: async () => {
+                throw new Error("session lost");
+            },
+        });
+        const io = new MatterCameraDeviceIo(handler);
+
+        const response = await io.invoke({
+            nodeId: NODE_ID,
+            endpointId: ENDPOINT_ID,
+            cluster: "avsm",
+            command: "snapshotStreamDeallocate",
+            fields: { snapshotStreamId: 5 },
+        });
+
+        expect(response).to.deep.equal({ ok: true });
+    });
+});
+
 /** Mirrors matter.js `Endpoints`: `for()` throws NotFound for an endpoint the node does not have. */
 function endpointsOf<T>(endpoint: T | undefined) {
     return {
