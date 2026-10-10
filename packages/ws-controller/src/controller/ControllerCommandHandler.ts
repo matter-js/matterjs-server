@@ -1147,7 +1147,7 @@ export class ControllerCommandHandler {
     }
 
     /**
-     * Open a subscription of the caller's own, next to the one the controller keeps for the node. Reports reach
+     * Open a subscription of the caller's own. Only available with auto subscription disabled. Reports reach
      * {@link InteractionSubscriptionListener.report}; the priming report arrives before this resolves. matter.js ends
      * the subscription when the node is removed or the controller goes offline.
      */
@@ -1156,10 +1156,8 @@ export class ControllerCommandHandler {
         listener: InteractionSubscriptionListener,
     ): Promise<InteractionSubscription> {
         const { nodeId, minInterval, maxInterval } = request;
-        if (request.keepSubscriptions === false && !this.#autoSubscriptionDisabled) {
-            throw ServerError.invalidArguments(
-                "keep_subscriptions=false would end the server's own subscription; only allowed with auto subscription disabled",
-            );
+        if (!this.#autoSubscriptionDisabled) {
+            throw ServerError.invalidArguments("subscribe requires the server to run with --disable-auto-subscription");
         }
         if (!isIntervalSeconds(minInterval) || !isIntervalSeconds(maxInterval)) {
             throw ServerError.invalidArguments(
@@ -1173,7 +1171,7 @@ export class ControllerCommandHandler {
 
         const subscribe: Subscribe = {
             ...this.#readRequestOf(request),
-            keepSubscriptions: request.keepSubscriptions ?? true,
+            keepSubscriptions: request.keepSubscriptions ?? false,
             minIntervalFloor: Seconds(minInterval),
             maxIntervalCeiling: Seconds(maxInterval),
             // Draining the data is what applies it to the node state.

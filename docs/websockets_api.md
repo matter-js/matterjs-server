@@ -497,7 +497,9 @@ Wildcard (all attributes from OnOff cluster):
 ### Subscriptions and generic read
 
 Schema 14. These commands give full control over the Matter Read and Subscribe requests. Most clients do not need
-them: the server subscribes to every node on its own. The server does not advertise schema 14 yet: `server_info`
+them: the server subscribes to every node on its own. `subscribe` and `unsubscribe` are only available when the
+server runs with `--disable-auto-subscription`; with the server's own subscription active they fail with
+`InvalidArguments`, before anything is sent to a device. `read` works in both modes. The server does not advertise schema 14 yet: `server_info`
 still reports `schema_version` 13 until the version is raised, so a client that gates on 14 cannot use them yet.
 
 Paths:
@@ -592,10 +594,10 @@ Arguments are those of `read` plus:
   0 to 65535, `max_interval` not below `min_interval`. For intermittently connected (ICD) devices matter.js sends
   a floor of 0 instead of `min_interval`.
 - `is_urgent` per event path (optional): the IsUrgent flag of that event path.
-- `keep_subscriptions` (optional, default `true`): the KeepSubscriptions flag. `false` tells the device to drop
-  all other subscriptions of this controller. With auto subscription on (the default) `false` is rejected with
-  `InvalidArguments`, because it would end the server's own subscription. With `--disable-auto-subscription` it is
-  sent as given; it then also ends the other subscriptions to that node, including those of other connections.
+- `keep_subscriptions` (optional, default `false`): the KeepSubscriptions flag, sent to the device as given
+  (`false` is the default of chip-tool and the Python controller; Matter has no default). `false` makes the device
+  end the other subscriptions of this controller to that node, including those of other connections;
+  each one that was opened with `subscribe` then arrives as `subscription_ended`. `true` keeps them.
 
 The server adds the data versions it already knows for the requested clusters to the request's data version
 filters (matter.js does this for every subscription), so the priming report can leave out clusters that did not
@@ -612,15 +614,13 @@ Response:
 
 `subscription_id` is the SubscriptionId the device assigned. The reports follow as `subscription_report` events,
 the priming report first, after this response. The reports have the same side effects on all clients as `read`:
-`attribute_updated` to every listening client only when `fabric_filtered` matches the server's own subscription,
-and every reported event as `node_event` to every listening client and into the event history, without a check
-against events already seen. With auto subscription on, an event that both the server's own subscription and this
-one report can reach clients twice.
+`attribute_updated` to every listening client, and every reported event as `node_event` to every listening client
+and into the event history, without a check against events already seen.
 
 A subscription belongs to the connection that opened it. It ends when the connection sends `unsubscribe`, when the
 connection closes, when the node is removed, and when the server shuts down. It also ends when the device stops
 reporting (no report within the max interval plus a response margin) or when another subscription to the node is
-made with `keep_subscriptions: false` (the server's own subscription does that when it is set up again). Every end
+made with `keep_subscriptions: false`. Every end
 the connection did not ask for, including node removal, is announced with `subscription_ended`; `unsubscribe` and
 closing the connection are not.
 
@@ -638,7 +638,7 @@ max interval plus a response margin; until then the subscription still looks act
 }
 ```
 
-Returns `null`. An unknown id, or the id of another connection's subscription, gives an `InvalidArguments` error.
+Only available with `--disable-auto-subscription`; otherwise it fails with `InvalidArguments`. Returns `null`. An unknown id, or the id of another connection's subscription, gives an `InvalidArguments` error.
 Matter has no unsubscribe message: the server stops accepting reports, and the device ends the subscription at its
 next report.
 

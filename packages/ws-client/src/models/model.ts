@@ -583,7 +583,7 @@ export interface APICommands {
             min_interval: number;
             /** Seconds. */
             max_interval: number;
-            /** Defaults to true. False is rejected unless the server runs with auto subscription disabled. */
+            /** Defaults to false. Only available with the server running with auto subscription disabled. */
             keep_subscriptions?: boolean;
         };
         response: { subscription_id: number };

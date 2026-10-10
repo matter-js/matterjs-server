@@ -130,15 +130,24 @@ describe("generic subscribe", () => {
             expect(request.eventFilters).deep.equals([{ eventMin: 3n }]);
         });
 
-        it("keeps other subscriptions and filters by fabric unless told otherwise", async () => {
+        it("filters by fabric unless told otherwise", async () => {
             const captured = captureSubscribes(site.peer);
 
             await subscribe(LIGHT_ON_OFF, recorder().listener);
 
-            expect(captured[0].keepSubscriptions).equals(true);
             expect(captured[0].isFabricFiltered).equals(true);
             expect(captured[0].dataVersionFilters).undefined;
             expect(captured[0].eventFilters).undefined;
+        });
+
+        it("sends keep_subscriptions false when omitted and passes an explicit value through", async () => {
+            const captured = captureSubscribes(site.peer);
+
+            await subscribe(LIGHT_ON_OFF, recorder().listener);
+            await subscribe({ ...LIGHT_ON_OFF, keepSubscriptions: true }, recorder().listener);
+            await subscribe({ ...LIGHT_ON_OFF, keepSubscriptions: false }, recorder().listener);
+
+            expect(captured.map(({ keepSubscriptions }) => keepSubscriptions)).deep.equals([false, true, false]);
         });
 
         it("forwards the priming report and later changes, next to the usual change events", async () => {
@@ -292,23 +301,14 @@ describe("generic subscribe", () => {
             await site.commission();
         });
 
-        it("keeps the server's own subscription", async () => {
-            expect(site.hasAutoSubscription).equals(true);
-            expect(activeSubscriptionsOnDevice(site)).equals(1);
-
-            await subscribe(LIGHT_ON_OFF, recorder().listener);
-            await site.settle(Seconds(5));
-
-            expect(activeSubscriptionsOnDevice(site)).equals(2);
-            expect(site.hasAutoSubscription).equals(true);
-        });
-
-        it("rejects keep_subscriptions=false without contacting the device", async () => {
+        it("rejects subscribe without contacting the device", async () => {
             const captured = captureSubscribes(site.peer);
 
-            await expectInvalidArguments(
-                site.handler.subscribe({ ...LIGHT_ON_OFF, keepSubscriptions: false }, recorder().listener),
-            );
+            for (const keepSubscriptions of [undefined, true, false]) {
+                await expectInvalidArguments(
+                    site.handler.subscribe({ ...LIGHT_ON_OFF, keepSubscriptions }, recorder().listener),
+                );
+            }
 
             expect(captured.length).equals(0);
             expect(activeSubscriptionsOnDevice(site)).equals(1);
@@ -396,6 +396,18 @@ describe("subscribe over WebSocket", () => {
 
         const again = await owner.command("unsubscribe", { subscription_id: 5 });
         expect(again.error_code).equals(ServerErrorCode.InvalidArguments);
+    });
+
+    it("rejects unsubscribe while auto subscription is on", async () => {
+        const client = await harness.connect();
+        harness.nextSubscriptionId = 8;
+        await client.command("subscribe", SUBSCRIBE_ARGS);
+        harness.autoSubscriptionDisabled = false;
+
+        const response = await client.command("unsubscribe", { subscription_id: 8 });
+
+        expect(response.error_code).equals(ServerErrorCode.InvalidArguments);
+        expect(harness.isOpen(8)).equals(true);
     });
 
     it("answers an unknown subscription id with an error result", async () => {

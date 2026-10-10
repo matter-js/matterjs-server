@@ -118,6 +118,7 @@ export type InteractionSubscribeRequest = InteractionReadRequest & {
     minInterval: number;
     /** Seconds. */
     maxInterval: number;
+    /** Defaults to false. */
     keepSubscriptions?: boolean;
 };
 

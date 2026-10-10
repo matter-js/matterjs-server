@@ -47,7 +47,7 @@ npm run server -- --bluetooth-adapter 0
 | --thread-rest-probe-port     | integer      | 8081             | No       | TCP port of the OTBR REST API probed on discovered Thread Border Routers — env `THREAD_REST_PROBE_PORT`. Set it when the Border Router exposes its REST API on another port (e.g. `8080`). A wrong port costs probe time on every discovered Border Router before the probe gives up and the network falls back to CoAP. |
 | --enable-time-sync           | boolean flag | false            | No       | Enables automatic time synchronization for devices that support it (env `ENABLE_TIME_SYNC`). Only enable when the host clock is reliably synced (e.g., NTP); pushes UTC time + time zone / DST.                                                                      |
 | --custom-cluster-poll-interval | integer    | 60               | No       | Interval in seconds for polling custom cluster attributes that do not support Matter subscriptions (legacy Eve Energy devices) — env `CUSTOM_CLUSTER_POLL_INTERVAL`. Accepts 60 to 86400; raise it (e.g. `300`, `600`) to cut periodic Thread traffic on networks with many such devices, at the cost of less current energy readings. |
-| --disable-auto-subscription  | boolean flag | false            | No       | Do not subscribe to nodes automatically, neither after commissioning nor on start, and stop the subscriptions of already commissioned nodes — env `DISABLE_AUTO_SUBSCRIPTION`. You are responsible to subscribe as needed; only recommended for very special use cases. See [Disabled auto subscription](#disabled-auto-subscription). |
+| --disable-auto-subscription  | boolean flag | false            | No       | Do not subscribe to nodes automatically, neither after commissioning nor on start, and stop the subscriptions of already commissioned nodes — env `DISABLE_AUTO_SUBSCRIPTION`. You are responsible to subscribe as needed (WebSocket `subscribe`/`unsubscribe` are only available with it); only recommended for very special use cases. See [Disabled auto subscription](#disabled-auto-subscription). |
 
 > **Log rotation:** `--log-file` must be a full file path including the filename. The log is rotated
 > every 24 hours, and on each startup: backups are shifted (`.6`→`.7`, …, `.1`→`.2`, current→`.1`),
@@ -68,6 +68,9 @@ reads the full node once, so `commission_with_code` / `commission_on_network` re
 `interview_node` still performs a full read. Otherwise node data only changes through the reads you issue. What
 a fabric-filtered read such as `interview_node` returns is applied to the node, so `get_node` and
 `attribute_updated` events reflect it, including endpoints the read discovered.
+
+The WebSocket commands `subscribe` and `unsubscribe` are only available with this setting; `read` works in both
+modes.
 
 Without the server's own subscription matter.js never reports a node as connected; a subscription a client opens
 with `subscribe` does not change that, and does not start the features below either. The node stays `available`

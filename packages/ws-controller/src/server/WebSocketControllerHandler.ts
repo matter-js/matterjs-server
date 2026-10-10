@@ -1287,6 +1287,11 @@ export class WebSocketControllerHandler implements WebServerHandler {
 
     #handleUnsubscribe(args: ArgsOf<"unsubscribe">, connection: WebSocketConnection): ResponseOf<"unsubscribe"> {
         const { subscription_id } = args;
+        if (!this.#commandHandler.autoSubscriptionDisabled) {
+            throw ServerError.invalidArguments(
+                "unsubscribe requires the server to run with --disable-auto-subscription",
+            );
+        }
         const entry = this.#interactionSubscriptions.get(subscription_id);
         if (entry === undefined || entry.connection !== connection) {
             throw ServerError.invalidArguments(`No subscription ${subscription_id} on this connection`);

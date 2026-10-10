@@ -122,6 +122,7 @@ export class InteractionWsHarness {
     subscribeGate?: Promise<void>;
     /** When false, closing a subscription does not call its listener's `closed`, as matter.js may do it later. */
     closeNotifies = true;
+    autoSubscriptionDisabled = true;
     #handler?: WebSocketControllerHandler;
     #httpServer?: Server;
 
@@ -156,6 +157,9 @@ export class InteractionWsHarness {
             getNodeIds: () => new Array<NodeId>(),
             hasNode: () => false,
             formatNode: (nodeId: NodeId) => `test-node-${nodeId}`,
+            get autoSubscriptionDisabled() {
+                return harness.autoSubscriptionDisabled;
+            },
             bleEnabled: false,
             bleProxyEnabled: false,
             getCommissionerNodeId: () => NodeId(112233),
