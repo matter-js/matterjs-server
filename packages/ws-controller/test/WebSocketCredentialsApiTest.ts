@@ -4,10 +4,15 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import { toBigIntAwareJson } from "@matter-server/ws-client";
 import { AsyncObservable, Environment, Millis, MockStorageService, Observable } from "@matter/general";
+import { CaseAuthenticatedTag, EndpointNumber, NodeId } from "@matter/main";
+import { WebRtcTransportProvider } from "@matter/main/clusters/web-rtc-transport-provider";
+import { Status, StatusResponseError } from "@matter/main/types";
 import { ThreadCredentialsRegistry } from "@matter/thread-br-client";
 import { createServer } from "node:http";
 import WebSocket from "ws";
+import type { CameraSessionEnded, CameraStreamEvicted } from "../src/camera/cameraTypes.js";
 import { ConfigStorage } from "../src/server/ConfigStorage.js";
 import { WebSocketControllerHandler } from "../src/server/WebSocketControllerHandler.js";
 
@@ -21,7 +26,111 @@ function freshEnv(): Environment {
     return env;
 }
 
-function makeStubController(credentials: ThreadCredentialsRegistry) {
+interface StubCameraStreams {
+    releaseConnection(connectionId: string): Promise<void>;
+    startStream?(args: { connectionId: string; allowEviction?: boolean }): Promise<unknown>;
+    stopStream?(nodeId: bigint, endpointId: number, webRtcSessionId: number, requestedBy?: string): Promise<boolean>;
+    /** What the manager reports on nobody's request: a session that ended, a stream that was taken. */
+    events?: {
+        sessionEnded: Observable<[CameraSessionEnded]>;
+        streamEvicted: Observable<[CameraStreamEvicted]>;
+    };
+    snapshot?(args: { watermarkEnabled?: boolean; osdEnabled?: boolean }): Promise<unknown>;
+    releaseStream?(args: { streamId: number }): Promise<void>;
+    endedByClient?(
+        nodeId: bigint,
+        endpointId: number,
+        webRtcSessionId: number,
+        requestedBy: string,
+        deviceHeldSession: boolean,
+    ): boolean;
+    /** Which connections may receive a session's signalling; absent means the manager holds no record. */
+    signallingOwners?(nodeId: bigint, endpointId: number, webRtcSessionId: number): ReadonlySet<string> | undefined;
+}
+
+/** The command-handler behaviour a test needs to vary; everything else is fixed in the stub. */
+interface StubCommandHandlerOverrides {
+    handleInvoke?(): Promise<unknown>;
+    handleWriteAttribute?(data: unknown): Promise<{ status: number }>;
+    handleGroupWriteAttribute?(data: unknown): Promise<void>;
+    handleGroupInvoke?(data: unknown): Promise<void>;
+    removeTrackedWebRtcSession?(webRtcSessionId: number, nodeId: bigint, endpointId: number): Promise<void>;
+    invokeWebRtcProviderCommand?(args: { commandName: string; fields: Record<string, unknown> }): Promise<unknown>;
+    invokeWebRtcSignallingCommand?(args: { commandName: string; fields: Record<string, unknown> }): Promise<void>;
+}
+
+/** Well under the 2000 ms per-test timeout, so a frame that never comes fails as this error. */
+const FRAME_WAIT_MS = 1000;
+
+/** Resolve on the first frame the predicate accepts. Arm it before provoking the frame. */
+function nextFrame(ws: WebSocket, what: string, wanted: (msg: WireFrame) => boolean): Promise<WireFrame> {
+    return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+            ws.off("message", onMessage);
+            reject(new Error(`no ${what} frame arrived within ${FRAME_WAIT_MS} ms`));
+        }, FRAME_WAIT_MS);
+        const onMessage = (raw: WebSocket.RawData) => {
+            const msg = JSON.parse(raw.toString()) as WireFrame;
+            if (!wanted(msg)) return;
+            clearTimeout(timer);
+            ws.off("message", onMessage);
+            resolve(msg);
+        };
+        ws.on("message", onMessage);
+    });
+}
+
+/**
+ * The frame sent as already-serialized text, for a `node_id` that only a bigint states exactly:
+ * `JSON.stringify` throws on a bigint, so such a frame cannot go through {@link answerTo}.
+ */
+async function answerToFrameText(h: TestHarness, messageId: string, frameText: string): Promise<WireFrame> {
+    const ws = await h.openClient();
+    try {
+        const answer = nextFrame(ws, "response", msg => msg.message_id === messageId);
+        ws.send(frameText);
+        return await answer;
+    } finally {
+        ws.close();
+    }
+}
+
+/** The whole frame, sent as written, so a message that states no `args` at all can be tested. */
+async function answerTo(h: TestHarness, frame: Record<string, unknown>): Promise<WireFrame> {
+    const ws = await h.openClient();
+    try {
+        const answer = nextFrame(ws, "response", msg => msg.message_id === frame.message_id);
+        ws.send(JSON.stringify(frame));
+        return await answer;
+    } finally {
+        ws.close();
+    }
+}
+
+type AnswerOutcome = { ok: true; frame: WireFrame } | { ok: false; error: Error };
+
+interface WireFrame {
+    event?: string;
+    message_id?: string;
+    result?: unknown;
+    data?: unknown;
+    error_code?: number;
+    details?: string;
+}
+
+function makeStubController(
+    credentials: ThreadCredentialsRegistry,
+    cameraStreams?: StubCameraStreams,
+    commandHandler?: StubCommandHandlerOverrides,
+) {
+    // An unowned session is what the WebSocket route reads as "send to every opted-in connection".
+    const stubCameraStreams: StubCameraStreams = {
+        async releaseConnection() {},
+        signallingOwners: () => undefined,
+        events: { sessionEnded: new Observable(), streamEvicted: new Observable() },
+        ...cameraStreams,
+    };
+
     const stubEvents = {
         started: new AsyncObservable(),
         attributeChanged: new Observable(),
@@ -38,6 +147,37 @@ function makeStubController(credentials: ThreadCredentialsRegistry) {
 
     const stubCommandHandler = {
         events: stubEvents,
+        handleInvoke:
+            commandHandler?.handleInvoke ??
+            (async () => {
+                return {};
+            }),
+        handleWriteAttribute:
+            commandHandler?.handleWriteAttribute ??
+            (async () => {
+                return { status: 0 };
+            }),
+        handleGroupWriteAttribute:
+            commandHandler?.handleGroupWriteAttribute ??
+            (async () => {
+                throw new Error("no groupcast write stubbed");
+            }),
+        handleGroupInvoke:
+            commandHandler?.handleGroupInvoke ??
+            (async () => {
+                throw new Error("no groupcast invoke stubbed");
+            }),
+        removeTrackedWebRtcSession: commandHandler?.removeTrackedWebRtcSession ?? (async () => {}),
+        invokeWebRtcProviderCommand:
+            commandHandler?.invokeWebRtcProviderCommand ??
+            (async () => {
+                throw new Error("no WebRTC provider stubbed");
+            }),
+        invokeWebRtcSignallingCommand:
+            commandHandler?.invokeWebRtcSignallingCommand ??
+            (async () => {
+                throw new Error("no WebRTC provider stubbed");
+            }),
         bleEnabled: false,
         bleProxyEnabled: false,
         async start() {},
@@ -56,6 +196,9 @@ function makeStubController(credentials: ThreadCredentialsRegistry) {
             return undefined;
         },
     };
+
+    /** `getAllVendors` answers a map of vendor id to the DCL entry, which the handler iterates. */
+    const stubVendors = new Map([[4631, { vendorName: "Test Vendor" }]]);
 
     const stubDiagnostics = {
         events: { batchUpdated: new Observable() },
@@ -90,6 +233,9 @@ function makeStubController(credentials: ThreadCredentialsRegistry) {
     };
 
     return {
+        async getAllVendors() {
+            return stubVendors;
+        },
         get commandHandler() {
             return stubCommandHandler as unknown as InstanceType<
                 typeof import("../src/controller/ControllerCommandHandler.js").ControllerCommandHandler
@@ -113,6 +259,16 @@ function makeStubController(credentials: ThreadCredentialsRegistry) {
                 typeof import("@matter/thread-br-client").BorderRouterRegistry
             >;
         },
+        get cameraStreams() {
+            return stubCameraStreams as unknown as InstanceType<
+                typeof import("../src/camera/CameraStreamManager.js").CameraStreamManager
+            >;
+        },
+        get cameraStreamsIfCreated() {
+            return stubCameraStreams as unknown as InstanceType<
+                typeof import("../src/camera/CameraStreamManager.js").CameraStreamManager
+            >;
+        },
     };
 }
 
@@ -127,10 +283,13 @@ interface TestHarness {
     close(): Promise<void>;
 }
 
-async function createHarness(): Promise<TestHarness> {
+async function createHarness(
+    cameraStreams?: StubCameraStreams,
+    commandHandler?: StubCommandHandlerOverrides,
+): Promise<TestHarness> {
     const config = await ConfigStorage.create(freshEnv());
     const credentials = new ThreadCredentialsRegistry();
-    const controller = makeStubController(credentials);
+    const controller = makeStubController(credentials, cameraStreams, commandHandler);
 
     const handler = new WebSocketControllerHandler(
         controller as unknown as InstanceType<typeof import("../src/controller/MatterController.js").MatterController>,
@@ -330,7 +489,7 @@ describe("WebSocket Credentials API", () => {
             if (msg.event !== undefined) events.push(msg.event);
         });
 
-        const cb = { webrtc_session_id: 1, event_type: "end", data: null };
+        const cb = { webrtc_session_id: 1, node_id: 1, endpoint_id: 1, event_type: "end", data: null };
 
         // A connection that never touched WebRTC must not receive another session's callbacks.
         h.emitWebRtcCallback(cb);
@@ -353,7 +512,12 @@ describe("WebSocket Credentials API", () => {
                 JSON.stringify({
                     message_id: id,
                     command: "send_webrtc_provider_command",
-                    args: { node_id: 1, endpoint_id: 1, command_name: "ProvideOffer", payload: {} },
+                    args: {
+                        node_id: 1,
+                        endpoint_id: 1,
+                        command_name: "ProvideOffer",
+                        payload: { webRtcSessionId: null, sdp: "v=0" },
+                    },
                 }),
             );
         });
@@ -363,6 +527,326 @@ describe("WebSocket Credentials API", () => {
         expect(events).to.include("webrtc_callback");
 
         ws.close();
+    });
+
+    it("camera_start_stream opts a connection in to webrtc_callback the same way", async () => {
+        const ws = await h.openClient();
+        const events = new Array<string>();
+        ws.on("message", raw => {
+            const msg = JSON.parse(raw.toString()) as { event?: string };
+            if (msg.event !== undefined) events.push(msg.event);
+        });
+
+        const cb = { webrtc_session_id: 1, node_id: 1, endpoint_id: 1, event_type: "end", data: null };
+
+        // Issuing the command opts this connection in (even though the stub controller errors on it).
+        await new Promise<void>((resolve, reject) => {
+            const id = "req-camera-start-stream";
+            const onMsg = (raw: WebSocket.RawData) => {
+                const msg = JSON.parse(raw.toString()) as { message_id?: string };
+                if (msg.message_id === id) {
+                    ws.off("message", onMsg);
+                    resolve();
+                }
+            };
+            ws.on("message", onMsg);
+            ws.once("error", reject);
+            ws.send(
+                JSON.stringify({
+                    message_id: id,
+                    command: "camera_start_stream",
+                    args: { node_id: 1, endpoint_id: 1, stream_usage: "LiveView" },
+                }),
+            );
+        });
+
+        h.emitWebRtcCallback(cb);
+        await new Promise(r => setTimeout(r, 50));
+        expect(events).to.include("webrtc_callback");
+
+        ws.close();
+    });
+
+    /**
+     * Drive a command that reaches the camera, hold it there, and emit the answer the camera sends
+     * while it is still in flight. Returns the order the client saw the frames in and the response.
+     */
+    async function webRtcAnswerDuring(
+        command: string,
+        args: unknown,
+        harnessFor: (reached: () => void, answered: Promise<void>) => Promise<TestHarness>,
+    ): Promise<{ order: string[]; response: WireFrame }> {
+        let reachedDevice: () => void = () => {};
+        const atDevice = new Promise<void>(resolve => {
+            reachedDevice = resolve;
+        });
+        let releaseDevice: () => void = () => {};
+        const deviceAnswered = new Promise<void>(resolve => {
+            releaseDevice = resolve;
+        });
+        const h = await harnessFor(() => reachedDevice(), deviceAnswered);
+        try {
+            const ws = await h.openClient();
+            const order = new Array<string>();
+            const callback = nextFrame(ws, "webrtc_callback", msg => msg.event === "webrtc_callback").then(msg => {
+                order.push("webrtc_callback");
+                return msg;
+            });
+            // Settled, not awaited: the callback assertion below can throw first and orphan this rejection.
+            const answer = nextFrame(ws, "response", msg => msg.message_id === "req-in-flight")
+                .then(msg => {
+                    order.push("response");
+                    return msg;
+                })
+                .then<AnswerOutcome, AnswerOutcome>(
+                    frame => ({ ok: true, frame }),
+                    error => ({ ok: false, error: error as Error }),
+                );
+
+            ws.send(JSON.stringify({ message_id: "req-in-flight", command, args }));
+            await atDevice;
+            h.emitWebRtcCallback({
+                webrtc_session_id: 1,
+                node_id: 1,
+                endpoint_id: 1,
+                event_type: "answer",
+                data: null,
+            });
+            await callback;
+
+            releaseDevice();
+            const outcome = await answer;
+            if (!outcome.ok) throw outcome.error;
+            ws.close();
+            return { order, response: outcome.frame };
+        } finally {
+            // Also released here, or a missing callback leaves the command parked and the harness unable to close.
+            releaseDevice();
+            await h.close();
+        }
+    }
+
+    it("delivers a webrtc_callback emitted while camera_start_stream is still in flight", async () => {
+        // Signaling for this session starts at ProvideOffer, not at the command's response.
+        const { order, response } = await webRtcAnswerDuring(
+            "camera_start_stream",
+            { node_id: 1, endpoint_id: 1, stream_usage: "LiveView" },
+            (reached, answered) =>
+                createHarness({
+                    async releaseConnection() {},
+                    async startStream() {
+                        reached();
+                        await answered;
+                        return { webRtcSessionId: 1, mode: "provide_offer" };
+                    },
+                }),
+        );
+
+        expect(order).to.deep.equal(["webrtc_callback", "response"]);
+        expect(response.error_code).to.equal(undefined);
+        expect((response.result as { webrtc_session_id?: number }).webrtc_session_id).to.equal(1);
+    });
+
+    it("delivers a webrtc_callback emitted while send_webrtc_provider_command is still in flight", async () => {
+        // On the raw provider route the session is tracked before ProvideOffer returns.
+        const { order, response } = await webRtcAnswerDuring(
+            "send_webrtc_provider_command",
+            {
+                node_id: 1,
+                endpoint_id: 1,
+                command_name: "ProvideOffer",
+                payload: { webRtcSessionId: null, sdp: "v=0" },
+            },
+            (reached, answered) =>
+                createHarness(undefined, {
+                    async invokeWebRtcProviderCommand() {
+                        reached();
+                        await answered;
+                        return { webRtcSessionId: 1 };
+                    },
+                }),
+        );
+
+        expect(order).to.deep.equal(["webrtc_callback", "response"]);
+        expect(response.error_code).to.equal(undefined);
+    });
+
+    it("hands send_webrtc_provider_command's payload down as cluster-shaped fields", async () => {
+        let fields: Record<string, unknown> | undefined;
+        await h.close();
+        h = await createHarness(undefined, {
+            async invokeWebRtcProviderCommand(args) {
+                fields = args.fields;
+                return { webRtcSessionId: 1 };
+            },
+        });
+        await h.handle("send_webrtc_provider_command", {
+            node_id: 1,
+            endpoint_id: 1,
+            command_name: "ProvideOffer",
+            payload: {
+                webRtcSessionId: null,
+                sdp: "v=0",
+                ice_servers: [{ urls: "stun:stun.example:3478" }],
+            },
+        });
+        expect(fields?.iceServers).to.deep.equal([{ urls: ["stun:stun.example:3478"] }]);
+    });
+
+    it("relays ProvideIceCandidates as cluster-shaped fields and answers null", async () => {
+        let seen: Record<string, unknown> | undefined;
+        let established = false;
+        await h.close();
+        h = await createHarness(undefined, {
+            async invokeWebRtcSignallingCommand(args) {
+                seen = args.fields;
+            },
+            async invokeWebRtcProviderCommand() {
+                established = true;
+                return { webRtcSessionId: 1 };
+            },
+        });
+        const result = await h.handle("send_webrtc_provider_command", {
+            node_id: 1,
+            endpoint_id: 1,
+            command_name: "ProvideIceCandidates",
+            // As a webrtc_callback ice_candidates event reports them.
+            payload: {
+                webrtc_session_id: 4,
+                ice_candidates: [{ candidate: "candidate:1", sdpMid: "0", sdpMLineIndex: 0 }],
+            },
+        });
+        expect(seen).to.deep.equal({
+            webRtcSessionId: 4,
+            iceCandidates: [{ candidate: "candidate:1", sdpMid: "0", sdpmLineIndex: 0 }],
+        });
+        // The session-establishing path would look for a session id in a response that carries none.
+        expect(established).to.equal(false);
+        expect(result).to.equal(null);
+    });
+
+    it("relays ProvideAnswer on the raw route and answers null", async () => {
+        let seen: { commandName: string; fields: Record<string, unknown> } | undefined;
+        await h.close();
+        h = await createHarness(undefined, {
+            async invokeWebRtcSignallingCommand(args) {
+                seen = { commandName: args.commandName, fields: args.fields };
+            },
+        });
+        const result = await h.handle("send_webrtc_provider_command", {
+            node_id: 1,
+            endpoint_id: 1,
+            command_name: "ProvideAnswer",
+            payload: { webrtc_session_id: 4, sdp: "v=0" },
+        });
+        expect(seen).to.deep.equal({ commandName: "ProvideAnswer", fields: { webRtcSessionId: 4, sdp: "v=0" } });
+        expect(result).to.equal(null);
+    });
+
+    it("sends the SDP answer for a managed session through camera_provide_answer", async () => {
+        let seen: { commandName: string; fields: Record<string, unknown> } | undefined;
+        await h.close();
+        h = await createHarness(undefined, {
+            async invokeWebRtcSignallingCommand(args) {
+                seen = { commandName: args.commandName, fields: args.fields };
+            },
+        });
+        // Camera API style only: the session id as camera_start_stream answered it, no cluster field names.
+        const result = await h.handle("camera_provide_answer", {
+            node_id: 1,
+            endpoint_id: 1,
+            webrtc_session_id: 4,
+            sdp: "v=0",
+        });
+        expect(seen).to.deep.equal({ commandName: "ProvideAnswer", fields: { webRtcSessionId: 4, sdp: "v=0" } });
+        expect(result).to.equal(null);
+    });
+
+    it("sends candidates for a managed session through camera_provide_ice_candidates", async () => {
+        let seen: { commandName: string; fields: Record<string, unknown> } | undefined;
+        await h.close();
+        h = await createHarness(undefined, {
+            async invokeWebRtcSignallingCommand(args) {
+                seen = { commandName: args.commandName, fields: args.fields };
+            },
+        });
+        const result = await h.handle("camera_provide_ice_candidates", {
+            node_id: 1,
+            endpoint_id: 1,
+            webrtc_session_id: 4,
+            // As a webrtc_callback ice_candidates event reports them.
+            ice_candidates: [{ candidate: "candidate:1", sdpMid: "0", sdpMLineIndex: 0 }],
+        });
+        expect(seen).to.deep.equal({
+            commandName: "ProvideIceCandidates",
+            fields: {
+                webRtcSessionId: 4,
+                iceCandidates: [{ candidate: "candidate:1", sdpMid: "0", sdpmLineIndex: 0 }],
+            },
+        });
+        expect(result).to.equal(null);
+    });
+
+    it("names the camera command a signalling refusal is about", async () => {
+        // The client named no cluster command, so it is not told about one.
+        let thrown: unknown;
+        try {
+            await h.handle("camera_provide_answer", { node_id: 1, endpoint_id: 1, sdp: "v=0" });
+        } catch (error) {
+            thrown = error;
+        }
+        expect((thrown as Error).message).to.contain("camera_provide_answer requires webRtcSessionId");
+    });
+
+    it("refuses a camera_provide_ice_candidates argument it does not take", async () => {
+        let thrown: unknown;
+        try {
+            await h.handle("camera_provide_ice_candidates", {
+                node_id: 1,
+                endpoint_id: 1,
+                webrtc_session_id: 4,
+                ice_candidates: [{ candidate: "candidate:1", sdpMid: "0", sdpMLineIndex: 0 }],
+                stream_usage: "LiveView",
+            });
+        } catch (error) {
+            thrown = error;
+        }
+        expect((thrown as Error).message).to.contain(
+            "unknown camera_provide_ice_candidates argument key: stream_usage",
+        );
+    });
+
+    it("refuses a send_webrtc_provider_command argument it does not take", async () => {
+        let thrown: unknown;
+        try {
+            await h.handle("send_webrtc_provider_command", {
+                node_id: 1,
+                endpoint_id: 1,
+                command_name: "ProvideOffer",
+                payload: { webRtcSessionId: null, sdp: "v=0" },
+                timed_request_timeout_ms: 100,
+            });
+        } catch (error) {
+            thrown = error;
+        }
+        expect((thrown as Error).message).to.match(
+            /^unknown send_webrtc_provider_command argument key: timed_request_timeout_ms\./,
+        );
+    });
+
+    it("refuses a send_webrtc_provider_command naming another provider command", async () => {
+        let thrown: unknown;
+        try {
+            await h.handle("send_webrtc_provider_command", {
+                node_id: 1,
+                endpoint_id: 1,
+                command_name: "EndSession",
+                payload: { webRtcSessionId: 1 },
+            });
+        } catch (error) {
+            thrown = error;
+        }
+        expect((thrown as Error).message).to.match(/Unsupported WebRTC provider command "EndSession"/);
     });
 
     it("get_network_topology returns the built snapshot", async () => {
@@ -463,12 +947,12 @@ describe("WebSocket Credentials API", () => {
         expect(def?.extPanId).to.equal(def?.extPanId?.toUpperCase());
     });
 
-    it("server_info reports schema 13 / min 11", async () => {
+    it("server_info reports schema 14 / min 11", async () => {
         const info = await h.handle<{ schema_version: number; min_supported_schema_version: number }>(
             "server_info",
             {},
         );
-        expect(info.schema_version).to.equal(13);
+        expect(info.schema_version).to.equal(14);
         expect(info.min_supported_schema_version).to.equal(11);
     });
 
@@ -570,6 +1054,1240 @@ describe("WebSocket set_default_fabric_label ownership", () => {
             expect(h.config.fabricLabel).to.equal("Pinned");
         } finally {
             ws.close();
+        }
+    });
+});
+
+describe("WebSocket camera session tracking on the raw path", () => {
+    /** Records every local record drop the raw EndSession path makes, in the order it makes them. */
+    function recordingHarness(options: { trackingFails?: boolean; invoke?: () => Promise<unknown> } = {}): {
+        drops: string[];
+        targets: Array<{ nodeId: bigint; endpointId: number; webRtcSessionId: number }>;
+        harness: Promise<TestHarness>;
+    } {
+        const drops = new Array<string>();
+        const targets = new Array<{ nodeId: bigint; endpointId: number; webRtcSessionId: number }>();
+        const harness = createHarness(
+            {
+                async releaseConnection() {},
+                // `requestedBy` and `deviceHeldSession` are covered by `harnessWithRawEndAnnouncing`.
+                endedByClient(nodeId, endpointId, webRtcSessionId) {
+                    drops.push("registry");
+                    targets.push({ nodeId, endpointId, webRtcSessionId });
+                    return true;
+                },
+            },
+            {
+                handleInvoke: options.invoke,
+                async removeTrackedWebRtcSession(webRtcSessionId, nodeId, endpointId) {
+                    drops.push("tracking");
+                    targets.push({ nodeId, endpointId, webRtcSessionId });
+                    if (options.trackingFails === true) throw new Error("requestor endpoint gone");
+                },
+            },
+        );
+        return { drops, targets, harness };
+    }
+
+    async function endSessionOnRawPath(h: TestHarness, payload: unknown): Promise<unknown> {
+        return h.handle("device_command", {
+            node_id: 1,
+            endpoint_id: 1,
+            cluster_id: WebRtcTransportProvider.id,
+            command_name: "EndSession",
+            payload,
+        });
+    }
+
+    it("drops both local records, registry first, when a client ends the session itself", async () => {
+        const { drops, targets, harness } = recordingHarness();
+        const h = await harness;
+        try {
+            await endSessionOnRawPath(h, { webRtcSessionId: 7 });
+            expect(drops).to.deep.equal(["registry", "tracking"]);
+            expect(targets).to.deep.equal([
+                { nodeId: 1n, endpointId: 1, webRtcSessionId: 7 },
+                { nodeId: 1n, endpointId: 1, webRtcSessionId: 7 },
+            ]);
+        } finally {
+            await h.close();
+        }
+    });
+
+    it("drops the camera registry entry, and still answers, when the requestor tracking cannot be reached", async () => {
+        const { drops, harness } = recordingHarness({ trackingFails: true });
+        const h = await harness;
+        try {
+            const result = await endSessionOnRawPath(h, { webRtcSessionId: 7 });
+            expect(drops).to.deep.equal(["registry", "tracking"]);
+            expect(result).to.equal(null);
+        } finally {
+            await h.close();
+        }
+    });
+
+    it("drops both local records when the device answers NotFound, and reports the device's error", async () => {
+        const { drops, harness } = recordingHarness({
+            invoke: async () => {
+                throw new StatusResponseError("no such session", Status.NotFound);
+            },
+        });
+        const h = await harness;
+        try {
+            let thrown: unknown;
+            try {
+                await endSessionOnRawPath(h, { webRtcSessionId: 7 });
+            } catch (error) {
+                thrown = error;
+            }
+            expect(drops).to.deep.equal(["registry", "tracking"]);
+            expect(thrown).to.not.equal(undefined);
+        } finally {
+            await h.close();
+        }
+    });
+
+    it("keeps both local records when the EndSession fails for any other reason", async () => {
+        const { drops, harness } = recordingHarness({
+            invoke: async () => {
+                throw new StatusResponseError("busy", Status.Busy);
+            },
+        });
+        const h = await harness;
+        try {
+            let thrown: unknown;
+            try {
+                await endSessionOnRawPath(h, { webRtcSessionId: 7 });
+            } catch (error) {
+                thrown = error;
+            }
+            expect(drops).to.deep.equal([]);
+            expect(thrown).to.not.equal(undefined);
+        } finally {
+            await h.close();
+        }
+    });
+
+    // The spellings camelize maps to webRtcSessionId that a client plausibly sends.
+    for (const spelling of ["WebRtcSessionId", "webRtcSessionId", "webRtcSessionID", "WebRTCSessionID"]) {
+        it(`drops both local records for a session id spelled ${spelling}`, async () => {
+            const { drops, targets, harness } = recordingHarness();
+            const h = await harness;
+            try {
+                await endSessionOnRawPath(h, { [spelling]: 7 });
+                expect(drops).to.deep.equal(["registry", "tracking"]);
+                expect(targets.map(target => target.webRtcSessionId)).to.deep.equal([7, 7]);
+            } finally {
+                await h.close();
+            }
+        });
+    }
+});
+
+describe("WebSocket camera_start_stream arguments", () => {
+    it("forwards allow_eviction to the stream manager", async () => {
+        const stated = new Array<boolean | undefined>();
+        const h = await createHarness({
+            async releaseConnection() {},
+            async startStream(args: { connectionId: string; allowEviction?: boolean }) {
+                stated.push(args.allowEviction);
+                return { webRtcSessionId: 1, mode: "solicit_offer" };
+            },
+        });
+        try {
+            const client = await h.openClient();
+            try {
+                const base = { node_id: 1, endpoint_id: 1, stream_usage: "LiveView" };
+                await h.sendOn(client, "camera_start_stream", { ...base, allow_eviction: false });
+                await h.sendOn(client, "camera_start_stream", base);
+                expect(stated).to.deep.equal([false, undefined]);
+            } finally {
+                client.close();
+            }
+        } finally {
+            await h.close();
+        }
+    });
+});
+
+describe("WebSocket camera_release_stream response", () => {
+    it("answers null, because a failure throws and a success has nothing to state", async () => {
+        const released = new Array<number>();
+        const h = await createHarness({
+            async releaseConnection() {},
+            async releaseStream(args: { streamId: number }) {
+                released.push(args.streamId);
+            },
+        });
+        try {
+            const answer = await answerTo(h, {
+                message_id: "release",
+                command: "camera_release_stream",
+                args: { node_id: 1, endpoint_id: 1, kind: "video", stream_id: 4 },
+            });
+            expect(answer.error_code).to.equal(undefined);
+            expect(answer.result).to.equal(null);
+            expect(released).to.deep.equal([4]);
+        } finally {
+            await h.close();
+        }
+    });
+});
+
+describe("WebSocket camera_snapshot arguments", () => {
+    it("forwards the overlay arguments to the stream manager", async () => {
+        const stated = new Array<{ watermarkEnabled?: boolean; osdEnabled?: boolean }>();
+        const h = await createHarness({
+            async releaseConnection() {},
+            async snapshot(args: { watermarkEnabled?: boolean; osdEnabled?: boolean }) {
+                stated.push({ watermarkEnabled: args.watermarkEnabled, osdEnabled: args.osdEnabled });
+                return {
+                    data: new Uint8Array([1]),
+                    imageCodec: 0,
+                    resolution: { width: 640, height: 480 },
+                    degraded: false,
+                    snapshotStreamId: 3,
+                };
+            },
+        });
+        try {
+            const client = await h.openClient();
+            try {
+                const base = { node_id: 1, endpoint_id: 1 };
+                await h.sendOn(client, "camera_snapshot", { ...base, watermark_enabled: true, osd_enabled: false });
+                await h.sendOn(client, "camera_snapshot", base);
+                expect(stated).to.deep.equal([
+                    { watermarkEnabled: true, osdEnabled: false },
+                    { watermarkEnabled: undefined, osdEnabled: undefined },
+                ]);
+            } finally {
+                client.close();
+            }
+        } finally {
+            await h.close();
+        }
+    });
+});
+
+describe("WebSocket camera session cleanup on disconnect", () => {
+    it("releases camera sessions owned by the connection that closed, and no others", async () => {
+        const released = new Array<string>();
+        const owners = new Array<string>();
+        const h = await createHarness({
+            async releaseConnection(connectionId: string) {
+                released.push(connectionId);
+            },
+            async startStream(args: { connectionId: string }) {
+                owners.push(args.connectionId);
+                return { webRtcSessionId: 1, mode: "solicit_offer" };
+            },
+        });
+        try {
+            const closing = await h.openClient();
+            const staysOpen = await h.openClient();
+            try {
+                // Both connections start a stream, so releasing the wrong one would show.
+                for (const client of [closing, staysOpen]) {
+                    await h.sendOn(client, "camera_start_stream", {
+                        node_id: 1,
+                        endpoint_id: 1,
+                        stream_usage: "LiveView",
+                    });
+                }
+                const [closingConnectionId, otherConnectionId] = owners;
+                expect(owners).to.have.lengthOf(2);
+                expect(closingConnectionId).to.not.equal(otherConnectionId);
+                // The owner key is a counter that never repeats, not the four-hex log tag, which wraps.
+                expect(closingConnectionId).to.match(/^conn-\d+$/);
+
+                await new Promise<void>(resolve => {
+                    closing.once("close", () => resolve());
+                    closing.close();
+                });
+
+                // Server-side close handling can lag the client close event.
+                for (let i = 0; i < 40 && released.length === 0; i++) {
+                    await new Promise<void>(resolve => setTimeout(resolve, 25));
+                }
+                expect(released).to.deep.equal([closingConnectionId]);
+            } finally {
+                staysOpen.close();
+            }
+        } finally {
+            await h.close();
+        }
+    });
+});
+
+describe("WebSocket camera lifecycle events", () => {
+    /** Every camera event frame a connection received, in arrival order. */
+    function collectCameraEvents(ws: WebSocket): Array<{ event: string; data: Record<string, unknown> }> {
+        const seen = new Array<{ event: string; data: Record<string, unknown> }>();
+        ws.on("message", raw => {
+            const msg = JSON.parse(raw.toString()) as { event?: string; data?: Record<string, unknown> };
+            if (msg.event === "camera_session_ended" || msg.event === "camera_stream_evicted") {
+                seen.push({ event: msg.event, data: msg.data ?? {} });
+            }
+        });
+        return seen;
+    }
+
+    const STARTED = { node_id: 1, endpoint_id: 1, stream_usage: "LiveView" };
+
+    /** A harness whose `camera_stop_stream` announces what the real manager's release path announces. */
+    async function harnessWithStopAnnouncing(): Promise<{
+        h: TestHarness;
+        sessionEnded: Observable<[CameraSessionEnded]>;
+        streamEvicted: Observable<[CameraStreamEvicted]>;
+    }> {
+        const sessionEnded = new Observable<[CameraSessionEnded]>();
+        const streamEvicted = new Observable<[CameraStreamEvicted]>();
+        const ownerBySession = new Map<number, string>();
+        let nextSessionId = 1;
+        const h = await createHarness({
+            async releaseConnection() {},
+            events: { sessionEnded, streamEvicted },
+            async startStream(args: { connectionId: string }) {
+                const webRtcSessionId = nextSessionId++;
+                ownerBySession.set(webRtcSessionId, args.connectionId);
+                return { webRtcSessionId, mode: "solicit_offer" };
+            },
+            // The registry announces every release, naming the session's owner and the connection that
+            // asked; an id it holds no record of names only the asking connection.
+            async stopStream(nodeId: bigint, endpointId: number, webRtcSessionId: number, requestedBy?: string) {
+                sessionEnded.emit({
+                    nodeId: NodeId(nodeId),
+                    endpointId: EndpointNumber(endpointId),
+                    webRtcSessionId,
+                    ownerId: ownerBySession.get(webRtcSessionId),
+                    requestedBy,
+                });
+                return true;
+            },
+        });
+        return { h, sessionEnded, streamEvicted };
+    }
+
+    it("tells the connection that started a session that another connection ended it", async () => {
+        const { h } = await harnessWithStopAnnouncing();
+        try {
+            const owner = await h.openClient();
+            const other = await h.openClient();
+            const uninvolved = await h.openClient();
+            try {
+                const seenByOwner = collectCameraEvents(owner);
+                const seenByOther = collectCameraEvents(other);
+                const seenByUninvolved = collectCameraEvents(uninvolved);
+
+                const session = await h.sendOn<{ webrtc_session_id: number }>(owner, "camera_start_stream", STARTED);
+                // Both are camera-aware, so ownership, not the opt-in, is what withholds the event.
+                await h.sendOn(other, "camera_start_stream", STARTED);
+                await h.sendOn(uninvolved, "camera_start_stream", STARTED);
+
+                const stopped = await h.sendOn<{ ended: boolean }>(other, "camera_stop_stream", {
+                    node_id: 1,
+                    endpoint_id: 1,
+                    webrtc_session_id: session.webrtc_session_id,
+                });
+                expect(stopped.ended).to.equal(true);
+                await new Promise(resolve => setTimeout(resolve, 100));
+
+                expect(seenByOwner).to.deep.equal([
+                    {
+                        event: "camera_session_ended",
+                        data: { node_id: 1, endpoint_id: 1, webrtc_session_id: session.webrtc_session_id },
+                    },
+                ]);
+                expect(seenByOther).to.deep.equal([]);
+                expect(seenByUninvolved).to.deep.equal([]);
+            } finally {
+                owner.close();
+                other.close();
+                uninvolved.close();
+            }
+        } finally {
+            await h.close();
+        }
+    });
+
+    it("tells no connection about a session it ended itself", async () => {
+        // The response to its own camera_stop_stream already answers it.
+        const { h } = await harnessWithStopAnnouncing();
+        try {
+            const owner = await h.openClient();
+            try {
+                const seenByOwner = collectCameraEvents(owner);
+                const session = await h.sendOn<{ webrtc_session_id: number }>(owner, "camera_start_stream", STARTED);
+                await h.sendOn(owner, "camera_stop_stream", {
+                    node_id: 1,
+                    endpoint_id: 1,
+                    webrtc_session_id: session.webrtc_session_id,
+                });
+                await new Promise(resolve => setTimeout(resolve, 100));
+                expect(seenByOwner).to.deep.equal([]);
+            } finally {
+                owner.close();
+            }
+        } finally {
+            await h.close();
+        }
+    });
+
+    /**
+     * A harness whose raw `device_command` EndSession announces what the real manager announces.
+     * `invoke` stands in for the camera's answer, so a test can make it refuse.
+     */
+    async function harnessWithRawEndAnnouncing(invoke?: () => Promise<unknown>): Promise<TestHarness> {
+        const sessionEnded = new Observable<[CameraSessionEnded]>();
+        const streamEvicted = new Observable<[CameraStreamEvicted]>();
+        const ownerBySession = new Map<number, string>();
+        let nextSessionId = 1;
+        return createHarness(
+            {
+                async releaseConnection() {},
+                events: { sessionEnded, streamEvicted },
+                async startStream(args: { connectionId: string }) {
+                    const webRtcSessionId = nextSessionId++;
+                    ownerBySession.set(webRtcSessionId, args.connectionId);
+                    return { webRtcSessionId, mode: "solicit_offer" };
+                },
+                // What the manager does for a client's own EndSession: an entry it holds is announced to
+                // that session's owner, and an id no entry names is announced with no owner unless the
+                // camera denied the session.
+                endedByClient(nodeId, endpointId, webRtcSessionId, requestedBy, deviceHeldSession) {
+                    const ownerId = ownerBySession.get(webRtcSessionId);
+                    if (ownerId === undefined && !deviceHeldSession) return false;
+                    ownerBySession.delete(webRtcSessionId);
+                    sessionEnded.emit({
+                        nodeId: NodeId(nodeId),
+                        endpointId: EndpointNumber(endpointId),
+                        webRtcSessionId,
+                        ownerId,
+                        requestedBy,
+                    });
+                    return ownerId !== undefined;
+                },
+            },
+            invoke === undefined ? undefined : { handleInvoke: invoke },
+        );
+    }
+
+    async function endSessionThroughDeviceCommand(
+        h: TestHarness,
+        ws: WebSocket,
+        webRtcSessionId: number,
+    ): Promise<void> {
+        await h.sendOn(ws, "device_command", {
+            node_id: 1,
+            endpoint_id: 1,
+            cluster_id: WebRtcTransportProvider.id,
+            command_name: "EndSession",
+            payload: { webRtcSessionId },
+        });
+    }
+
+    it("tells the connection that started a session that another connection ended it with a raw EndSession", async () => {
+        // device_command reaches the manager's records without going through camera_stop_stream.
+        const h = await harnessWithRawEndAnnouncing();
+        try {
+            const owner = await h.openClient();
+            const other = await h.openClient();
+            try {
+                const seenByOwner = collectCameraEvents(owner);
+                const seenByOther = collectCameraEvents(other);
+                const session = await h.sendOn<{ webrtc_session_id: number }>(owner, "camera_start_stream", STARTED);
+                await h.sendOn(other, "camera_start_stream", STARTED);
+
+                await endSessionThroughDeviceCommand(h, other, session.webrtc_session_id);
+                await new Promise(resolve => setTimeout(resolve, 100));
+
+                expect(seenByOwner).to.deep.equal([
+                    {
+                        event: "camera_session_ended",
+                        data: { node_id: 1, endpoint_id: 1, webrtc_session_id: session.webrtc_session_id },
+                    },
+                ]);
+                expect(seenByOther).to.deep.equal([]);
+            } finally {
+                owner.close();
+                other.close();
+            }
+        } finally {
+            await h.close();
+        }
+    });
+
+    it("tells a camera-aware connection about an untracked session a raw EndSession ended", async () => {
+        // A raw-route session has no owner record, so it goes to everyone but the connection that ended it.
+        const h = await harnessWithRawEndAnnouncing();
+        try {
+            const rawRouteClient = await h.openClient();
+            const ender = await h.openClient();
+            try {
+                const seenByRawRouteClient = collectCameraEvents(rawRouteClient);
+                const seenByEnder = collectCameraEvents(ender);
+                await h
+                    .sendOn(rawRouteClient, "send_webrtc_provider_command", {
+                        node_id: 1,
+                        endpoint_id: 1,
+                        command_name: "ProvideOffer",
+                        payload: { webRtcSessionId: null, sdp: "v=0" },
+                    })
+                    .catch(() => undefined);
+                await h.sendOn(ender, "camera_get_capabilities", { node_id: 1, endpoint_id: 1 }).catch(() => undefined);
+
+                await endSessionThroughDeviceCommand(h, ender, 99);
+                await new Promise(resolve => setTimeout(resolve, 100));
+
+                expect(seenByRawRouteClient).to.deep.equal([
+                    { event: "camera_session_ended", data: { node_id: 1, endpoint_id: 1, webrtc_session_id: 99 } },
+                ]);
+                expect(seenByEnder).to.deep.equal([]);
+            } finally {
+                rawRouteClient.close();
+                ender.close();
+            }
+        } finally {
+            await h.close();
+        }
+    });
+
+    it("tells nobody about an untracked id the camera denies, which named no session at all", async () => {
+        // The camera says the session never existed, so there is nothing to announce.
+        const h = await harnessWithRawEndAnnouncing(async () => {
+            throw new StatusResponseError("no such session", Status.NotFound);
+        });
+        try {
+            const watcher = await h.openClient();
+            const ender = await h.openClient();
+            try {
+                const seenByWatcher = collectCameraEvents(watcher);
+                await h
+                    .sendOn(watcher, "camera_get_capabilities", { node_id: 1, endpoint_id: 1 })
+                    .catch(() => undefined);
+                await endSessionThroughDeviceCommand(h, ender, 99).catch(() => undefined);
+                await new Promise(resolve => setTimeout(resolve, 100));
+                expect(seenByWatcher).to.deep.equal([]);
+            } finally {
+                watcher.close();
+                ender.close();
+            }
+        } finally {
+            await h.close();
+        }
+    });
+
+    it("tells no connection about a session it ended itself with a raw EndSession", async () => {
+        const h = await harnessWithRawEndAnnouncing();
+        try {
+            const owner = await h.openClient();
+            try {
+                const seenByOwner = collectCameraEvents(owner);
+                const session = await h.sendOn<{ webrtc_session_id: number }>(owner, "camera_start_stream", STARTED);
+                await endSessionThroughDeviceCommand(h, owner, session.webrtc_session_id);
+                await new Promise(resolve => setTimeout(resolve, 100));
+                expect(seenByOwner).to.deep.equal([]);
+            } finally {
+                owner.close();
+            }
+        } finally {
+            await h.close();
+        }
+    });
+
+    it("tells a raw-route client about a session with no owner, and every camera-aware connection about an eviction", async () => {
+        const { h, sessionEnded, streamEvicted } = await harnessWithStopAnnouncing();
+        try {
+            const raw = await h.openClient();
+            const bystander = await h.openClient();
+            try {
+                const seenByRaw = collectCameraEvents(raw);
+                const seenByBystander = collectCameraEvents(bystander);
+                // A raw-route client issues no camera_* command, so that route must opt it in.
+                await h
+                    .sendOn(raw, "send_webrtc_provider_command", {
+                        node_id: 1,
+                        endpoint_id: 1,
+                        command_name: "ProvideOffer",
+                        payload: { webRtcSessionId: null, sdp: "v=0" },
+                    })
+                    .catch(() => undefined);
+
+                sessionEnded.emit({
+                    nodeId: NodeId(1n),
+                    endpointId: EndpointNumber(1),
+                    webRtcSessionId: 4,
+                    requestedBy: "conn-elsewhere",
+                });
+                streamEvicted.emit({
+                    nodeId: NodeId(1n),
+                    endpointId: EndpointNumber(1),
+                    kind: "video",
+                    streamId: 2,
+                });
+                await new Promise(resolve => setTimeout(resolve, 100));
+
+                expect(seenByRaw).to.deep.equal([
+                    { event: "camera_session_ended", data: { node_id: 1, endpoint_id: 1, webrtc_session_id: 4 } },
+                    {
+                        event: "camera_stream_evicted",
+                        data: { node_id: 1, endpoint_id: 1, kind: "video", stream_id: 2 },
+                    },
+                ]);
+                // A connection that issued no camera command may not know the event types.
+                expect(seenByBystander).to.deep.equal([]);
+            } finally {
+                raw.close();
+                bystander.close();
+            }
+        } finally {
+            await h.close();
+        }
+    });
+});
+
+describe("WebSocket camera signalling routing", () => {
+    it("delivers each connection only the signalling of the session it owns", async () => {
+        const ownerBySession = new Map<number, string>();
+        let nextSessionId = 1;
+        const h = await createHarness({
+            async releaseConnection() {},
+            async startStream(args: { connectionId: string }) {
+                const webRtcSessionId = nextSessionId++;
+                ownerBySession.set(webRtcSessionId, args.connectionId);
+                return { webRtcSessionId, mode: "solicit_offer" };
+            },
+            // What the real manager answers: the connection whose camera_start_stream established the
+            // session, and nothing for a session it holds no record of.
+            signallingOwners(nodeId, _endpointId, webRtcSessionId) {
+                // Pins the branded NodeId; the registry's own key would match a plain number by chance.
+                if (typeof nodeId !== "bigint") return undefined;
+                const owner = ownerBySession.get(webRtcSessionId);
+                return owner === undefined ? undefined : new Set([owner]);
+            },
+        });
+        const started = { node_id: 1, endpoint_id: 1, stream_usage: "LiveView" };
+        try {
+            const first = await h.openClient();
+            const second = await h.openClient();
+            try {
+                const seenByFirst = new Array<number>();
+                const seenBySecond = new Array<number>();
+                const collect = (ws: WebSocket, into: number[]) =>
+                    ws.on("message", raw => {
+                        const msg = JSON.parse(raw.toString()) as {
+                            event?: string;
+                            data?: { webrtc_session_id?: number };
+                        };
+                        if (msg.event === "webrtc_callback" && msg.data?.webrtc_session_id !== undefined) {
+                            into.push(msg.data.webrtc_session_id);
+                        }
+                    });
+                collect(first, seenByFirst);
+                collect(second, seenBySecond);
+
+                // With one connection, the filter could not be told from no filter.
+                const ours = await h.sendOn<{ webrtc_session_id: number }>(first, "camera_start_stream", started);
+                const theirs = await h.sendOn<{ webrtc_session_id: number }>(second, "camera_start_stream", started);
+                expect(ours.webrtc_session_id).to.not.equal(theirs.webrtc_session_id);
+
+                const UNOWNED_SESSION = 99;
+                for (const webrtc_session_id of [ours.webrtc_session_id, theirs.webrtc_session_id, UNOWNED_SESSION]) {
+                    h.emitWebRtcCallback({
+                        webrtc_session_id,
+                        node_id: 1,
+                        endpoint_id: 1,
+                        event_type: "answer",
+                        data: null,
+                    });
+                }
+                await new Promise(resolve => setTimeout(resolve, 100));
+
+                expect(seenByFirst).to.deep.equal([ours.webrtc_session_id, UNOWNED_SESSION]);
+                expect(seenBySecond).to.deep.equal([theirs.webrtc_session_id, UNOWNED_SESSION]);
+            } finally {
+                first.close();
+                second.close();
+            }
+        } finally {
+            await h.close();
+        }
+    });
+});
+
+describe("WebSocket webrtc_callback opt-in", () => {
+    const SIGNALLING_ARGS = {
+        camera_provide_answer: { webrtc_session_id: 4, sdp: "v=0" },
+        camera_provide_ice_candidates: {
+            webrtc_session_id: 4,
+            ice_candidates: [{ candidate: "candidate:1", sdpMid: "0", sdpMLineIndex: 0 }],
+        },
+    };
+
+    for (const command of ["camera_provide_answer", "camera_provide_ice_candidates"] as const) {
+        it(`opts the connection in to webrtc_callback when it issues ${command}`, async () => {
+            // A client that only signals for a session still needs the camera's half of it.
+            const h = await createHarness();
+            try {
+                const ws = await h.openClient();
+                try {
+                    const events = new Array<string>();
+                    ws.on("message", raw => {
+                        const msg = JSON.parse(raw.toString()) as { event?: string };
+                        if (msg.event !== undefined) events.push(msg.event);
+                    });
+                    // The stub throws for every provider invoke; the opt-in must not depend on the outcome.
+                    await h
+                        .sendOn(ws, command, { node_id: 1, endpoint_id: 1, ...SIGNALLING_ARGS[command] })
+                        .catch(() => undefined);
+                    h.emitWebRtcCallback({
+                        webrtc_session_id: 4,
+                        node_id: 1,
+                        endpoint_id: 1,
+                        event_type: "answer",
+                        data: null,
+                    });
+                    await new Promise(resolve => setTimeout(resolve, 50));
+                    expect(events).to.include("webrtc_callback");
+                } finally {
+                    ws.close();
+                }
+            } finally {
+                await h.close();
+            }
+        });
+    }
+});
+
+describe("WebSocket camera command arguments", () => {
+    const CAMERA_COMMANDS = [
+        "camera_get_capabilities",
+        "camera_start_stream",
+        "camera_stop_stream",
+        "camera_snapshot",
+        "camera_release_stream",
+        "camera_provide_answer",
+        "camera_provide_ice_candidates",
+        // Not one of the camera commands, but the same route family and the same argument walk.
+        "send_webrtc_provider_command",
+    ] as const;
+
+    for (const command of CAMERA_COMMANDS) {
+        // A missing or null `args` becomes an empty argument set, so the command's required argument refuses it.
+        const missingArgument =
+            command === "send_webrtc_provider_command" ? "requires command_name" : "numeric or bigint node_id";
+
+        it(`refuses ${command} with error 8 when the message states no args`, async () => {
+            const h = await createHarness();
+            try {
+                const answer = await answerTo(h, { message_id: "no-args", command });
+                expect(answer.error_code).to.equal(8);
+                expect(answer.details).to.contain(command);
+                expect(answer.details).to.contain(missingArgument);
+            } finally {
+                await h.close();
+            }
+        });
+
+        it(`refuses ${command} with error 8 when args is null`, async () => {
+            const h = await createHarness();
+            try {
+                const answer = await answerTo(h, { message_id: "null-args", command, args: null });
+                expect(answer.error_code).to.equal(8);
+                expect(answer.details).to.contain(command);
+                expect(answer.details).to.contain(missingArgument);
+            } finally {
+                await h.close();
+            }
+        });
+
+        it(`refuses ${command} with error 8 when args is not an object`, async () => {
+            const h = await createHarness();
+            try {
+                const answer = await answerTo(h, { message_id: "string-args", command, args: "node_id=1" });
+                expect(answer.error_code).to.equal(8);
+                expect(answer.details).to.contain(command);
+                // Not "unknown argument key: 0, 1, 2": a string's keys are its indices.
+                expect(answer.details).to.contain("object of arguments");
+            } finally {
+                await h.close();
+            }
+        });
+    }
+});
+
+describe("WebSocket generic command arguments", () => {
+    // Stands for every generic command with a required argument; it reaches no device before refusing.
+    const WITH_REQUIRED_ARGUMENT = "set_thread_dataset";
+
+    for (const [what, args] of [
+        ["states no args", undefined],
+        ["states args as null", null],
+    ] as const) {
+        it(`answers ${WITH_REQUIRED_ARGUMENT} that ${what} with the argument's own error 8`, async () => {
+            const h = await createHarness();
+            try {
+                const answer = await answerTo(h, {
+                    message_id: what,
+                    command: WITH_REQUIRED_ARGUMENT,
+                    ...(args === undefined ? {} : { args }),
+                });
+                expect(answer.error_code).to.equal(8);
+                expect(answer.details).to.contain("set_thread_dataset requires dataset");
+            } finally {
+                await h.close();
+            }
+        });
+    }
+
+    for (const [what, args] of [
+        ["a string", "dataset=00"],
+        ["a number", 42],
+        ["an array", ["00"]],
+    ] as const) {
+        it(`refuses ${WITH_REQUIRED_ARGUMENT} with error 8 when args is ${what}`, async () => {
+            const h = await createHarness();
+            try {
+                const answer = await answerTo(h, { message_id: what, command: WITH_REQUIRED_ARGUMENT, args });
+                expect(answer.error_code).to.equal(8);
+                expect(answer.details).to.contain(WITH_REQUIRED_ARGUMENT);
+                expect(answer.details).to.contain("object of arguments");
+            } finally {
+                await h.close();
+            }
+        });
+    }
+
+    // set_loglevel takes only optional arguments and reads them by destructuring.
+    it("answers a command whose arguments are all optional and whose message states none", async () => {
+        const h = await createHarness();
+        try {
+            const before = await answerTo(h, { message_id: "levels-before", command: "get_loglevel" });
+            const answer = await answerTo(h, { message_id: "no-args-needed", command: "set_loglevel" });
+            expect(answer.error_code).to.equal(undefined);
+            // An empty argument set states no level, so both levels are left as they were.
+            expect(answer.result).to.deep.equal(before.result);
+        } finally {
+            await h.close();
+        }
+    });
+
+    // A defaulted label would rename the fabric, persist it and claim the label for this connection.
+    it("refuses a command whose required argument would otherwise be defaulted and written", async () => {
+        const h = await createHarness();
+        try {
+            const labelBefore = h.config.fabricLabel;
+            const answer = await answerTo(h, { message_id: "no-label", command: "set_default_fabric_label" });
+            expect(answer.error_code).to.equal(8);
+            expect(answer.details).to.contain("set_default_fabric_label requires label");
+            expect(h.config.fabricLabel).to.equal(labelBefore);
+            // The label is still free to claim, which a refused request must not have taken.
+            const claimed = await answerTo(h, {
+                message_id: "with-label",
+                command: "set_default_fabric_label",
+                args: { label: "Kitchen" },
+            });
+            expect(claimed.error_code).to.equal(undefined);
+            expect(h.config.fabricLabel).to.equal("Kitchen");
+        } finally {
+            await h.close();
+        }
+    });
+
+    // get_vendor_names also destructures `args` with no guard of its own.
+    it("answers get_vendor_names when the message states no args", async () => {
+        const h = await createHarness();
+        try {
+            const answer = await answerTo(h, { message_id: "vendors-no-args", command: "get_vendor_names" });
+            expect(answer.error_code).to.equal(undefined);
+            expect(answer.result).to.be.an("object");
+        } finally {
+            await h.close();
+        }
+    });
+
+    // The shape is checked before the command is looked up, so a frame wrong in both ways answers 8, not 9.
+    it("answers 8 for an unknown command whose args is not an object", async () => {
+        const h = await createHarness();
+        try {
+            const answer = await answerTo(h, { message_id: "unknown-bad-args", command: "no_such_command", args: 1 });
+            expect(answer.error_code).to.equal(8);
+        } finally {
+            await h.close();
+        }
+    });
+
+    it("answers 9 for an unknown command whose args is an object", async () => {
+        const h = await createHarness();
+        try {
+            const answer = await answerTo(h, { message_id: "unknown-ok-args", command: "no_such_command", args: {} });
+            expect(answer.error_code).to.equal(9);
+        } finally {
+            await h.close();
+        }
+    });
+
+    it("answers start_listening when the message states no args", async () => {
+        const h = await createHarness();
+        try {
+            const answer = await answerTo(h, { message_id: "listen-no-args", command: "start_listening" });
+            expect(answer.error_code).to.equal(undefined);
+            expect(answer.result).to.be.an("array");
+        } finally {
+            await h.close();
+        }
+    });
+});
+
+describe("node id classes on the generic node-targeted commands", () => {
+    // One per shape the node-only routes take: a read, two lookups, and a command that brands the id inline.
+    const NODE_ONLY_ROUTES: ReadonlyArray<readonly [string, Record<string, unknown>]> = [
+        ["read_attribute", { attribute_path: "1/6/0" }],
+        ["ping_node", {}],
+        ["get_node", {}],
+        ["set_acl_entry", { entry: {} }],
+    ];
+
+    /** The two routes matter.js can carry to a group; they refuse the rest of the classes. */
+    const GROUP_CAPABLE_ROUTES: ReadonlyArray<readonly [string, Record<string, unknown>]> = [
+        ["write_attribute", { attribute_path: "1/6/0", value: 1 }],
+        ["device_command", { endpoint_id: 1, cluster_id: 6, command_name: "toggle", payload: {} }],
+    ];
+
+    const GROUP_NODE_ID = NodeId.fromGroupId(1);
+
+    // Every class that names no node, with the words the refusal must carry; they tell the branch from the
+    // reserved fall-through.
+    const UNUSABLE: ReadonlyArray<readonly [string, bigint, string]> = [
+        ["the unspecified node id", NodeId.UNSPECIFIED_NODE_ID, "the Unspecified Node ID"],
+        [
+            "a CASE authenticated tag",
+            NodeId.fromCaseAuthenticatedTag(CaseAuthenticatedTag(1)),
+            "a CASE Authenticated Tag",
+        ],
+        ["a PAKE key identifier", NodeId.getFromPakeKeyIdentifier(1), "a PAKE key identifier"],
+        ["a reserved node id", NodeId(0xffff_ffff_0000_0000n), "a reserved Node ID"],
+    ];
+
+    async function answerFor(
+        h: TestHarness,
+        command: string,
+        args: Record<string, unknown>,
+        tag: string,
+    ): Promise<WireFrame> {
+        return answerToFrameText(h, tag, toBigIntAwareJson({ message_id: tag, command, args }));
+    }
+
+    for (const [command, extraArgs] of [...NODE_ONLY_ROUTES, ...GROUP_CAPABLE_ROUTES]) {
+        for (const [label, nodeId, namedClass] of UNUSABLE) {
+            it(`refuses ${command} addressed to ${label} with error 8 naming the class`, async () => {
+                const h = await createHarness();
+                try {
+                    const answer = await answerFor(
+                        h,
+                        command,
+                        { node_id: nodeId, ...extraArgs },
+                        `${command}-${namedClass}`,
+                    );
+                    expect(answer.error_code).to.equal(8);
+                    expect(answer.details).to.contain(command);
+                    expect(answer.details).to.contain(namedClass);
+                } finally {
+                    await h.close();
+                }
+            });
+        }
+    }
+
+    for (const [command, extraArgs] of [...NODE_ONLY_ROUTES, ...GROUP_CAPABLE_ROUTES]) {
+        it(`refuses ${command} addressed to the Null Group ID, which names no group`, async () => {
+            const h = await createHarness();
+            try {
+                const answer = await answerFor(
+                    h,
+                    command,
+                    { node_id: NodeId.fromGroupId(0), ...extraArgs },
+                    `${command}-null-group`,
+                );
+                expect(answer.error_code).to.equal(8);
+                expect(answer.details).to.contain("the Null Group ID");
+            } finally {
+                await h.close();
+            }
+        });
+    }
+
+    for (const [command, extraArgs] of NODE_ONLY_ROUTES) {
+        it(`refuses ${command} addressed to a group node id, which names no single node`, async () => {
+            const h = await createHarness();
+            try {
+                const answer = await answerFor(
+                    h,
+                    command,
+                    { node_id: GROUP_NODE_ID, ...extraArgs },
+                    `${command}-group`,
+                );
+                expect(answer.error_code).to.equal(8);
+                expect(answer.details).to.contain("a Group Node ID");
+                expect(answer.details).to.contain("must name one node");
+            } finally {
+                await h.close();
+            }
+        });
+    }
+});
+
+describe("groupcast on the generic commands", () => {
+    const GROUP_NODE_ID = NodeId.fromGroupId(1);
+
+    async function answerFor(
+        h: TestHarness,
+        command: string,
+        args: Record<string, unknown>,
+        tag: string,
+    ): Promise<WireFrame> {
+        return answerToFrameText(h, tag, toBigIntAwareJson({ message_id: tag, command, args }));
+    }
+
+    it("routes write_attribute for a group node id to the groupcast path and answers null", async () => {
+        const groupWrites = new Array<Record<string, unknown>>();
+        const unicastWrites = new Array<unknown>();
+        const h = await createHarness(undefined, {
+            handleGroupWriteAttribute: async data => {
+                groupWrites.push(data as Record<string, unknown>);
+            },
+            handleWriteAttribute: async data => {
+                unicastWrites.push(data);
+                return { status: 0 };
+            },
+        });
+        try {
+            const answer = await answerFor(
+                h,
+                "write_attribute",
+                { node_id: GROUP_NODE_ID, attribute_path: "*/6/16385", value: 5 },
+                "group-write",
+            );
+
+            expect(answer.error_code).to.equal(undefined);
+            // No node answers a groupcast, so there is no status to report.
+            expect(answer.result).to.equal(null);
+            expect(unicastWrites.length).to.equal(0);
+            expect(groupWrites.length).to.equal(1);
+            expect(groupWrites[0].nodeId).to.equal(GROUP_NODE_ID);
+            expect(groupWrites[0].clusterId).to.equal(6);
+            expect(groupWrites[0].attributeId).to.equal(16385);
+            expect(groupWrites[0].value).to.equal(5);
+            expect("endpointId" in groupWrites[0]).to.equal(false);
+        } finally {
+            await h.close();
+        }
+    });
+
+    it("refuses write_attribute for a group node id that names an endpoint", async () => {
+        const h = await createHarness(undefined, {
+            handleGroupWriteAttribute: async () => {
+                throw new Error("groupcast must not be reached");
+            },
+        });
+        try {
+            const answer = await answerFor(
+                h,
+                "write_attribute",
+                { node_id: GROUP_NODE_ID, attribute_path: "1/6/16385", value: 5 },
+                "group-write-endpoint",
+            );
+            expect(answer.error_code).to.equal(8);
+            expect(answer.details).to.contain("wildcard endpoint");
+        } finally {
+            await h.close();
+        }
+    });
+
+    for (const [label, path] of [
+        ["attribute", "*/6/*"],
+        ["cluster", "*/*/16385"],
+    ] as const) {
+        it(`still refuses a wildcard ${label} for a group node id`, async () => {
+            const h = await createHarness(undefined, {
+                handleGroupWriteAttribute: async () => {
+                    throw new Error("groupcast must not be reached");
+                },
+            });
+            try {
+                const answer = await answerFor(
+                    h,
+                    "write_attribute",
+                    { node_id: GROUP_NODE_ID, attribute_path: path, value: 5 },
+                    `group-write-wildcard-${label}`,
+                );
+                expect(answer.error_code).to.equal(8);
+                expect(answer.details).to.contain("wildcards");
+            } finally {
+                await h.close();
+            }
+        });
+    }
+
+    it("takes an explicitly null endpoint_id for a group node id", async () => {
+        const groupInvokes = new Array<Record<string, unknown>>();
+        const h = await createHarness(undefined, {
+            handleGroupInvoke: async data => {
+                groupInvokes.push(data as Record<string, unknown>);
+            },
+        });
+        try {
+            const answer = await answerFor(
+                h,
+                "device_command",
+                { node_id: GROUP_NODE_ID, endpoint_id: null, cluster_id: 6, command_name: "toggle", payload: {} },
+                "group-invoke-null-endpoint",
+            );
+            expect(answer.error_code).to.equal(undefined);
+            expect(answer.result).to.equal(null);
+            expect(groupInvokes.length).to.equal(1);
+        } finally {
+            await h.close();
+        }
+    });
+
+    it("refuses an explicitly null endpoint_id for a node id that is not a group", async () => {
+        const h = await createHarness();
+        try {
+            const answer = await answerFor(
+                h,
+                "device_command",
+                { node_id: 1, endpoint_id: null, cluster_id: 6, command_name: "toggle", payload: {} },
+                "unicast-invoke-null-endpoint",
+            );
+            expect(answer.error_code).to.equal(8);
+            expect(answer.details).to.contain("requires endpoint_id");
+        } finally {
+            await h.close();
+        }
+    });
+
+    // A wrong-type timeout converts to `undefined`, so the check must read the stated value.
+    for (const [name, stated] of [
+        ["timed_request_timeout_ms", 1000],
+        ["timed_request_timeout_ms", "1000"],
+        ["interaction_timeout_ms", 5000],
+    ] as const) {
+        it(`refuses ${name} stated as ${typeof stated} on a groupcast`, async () => {
+            const h = await createHarness(undefined, {
+                handleGroupInvoke: async () => {
+                    throw new Error("groupcast must not be reached");
+                },
+            });
+            try {
+                const answer = await answerFor(
+                    h,
+                    "device_command",
+                    {
+                        node_id: GROUP_NODE_ID,
+                        cluster_id: 6,
+                        command_name: "toggle",
+                        payload: {},
+                        [name]: stated,
+                    },
+                    `group-invoke-${name}-${typeof stated}`,
+                );
+                expect(answer.error_code).to.equal(8);
+                expect(answer.details).to.contain(name);
+            } finally {
+                await h.close();
+            }
+        });
+    }
+
+    it("answers a unicast write_attribute with the node's own status", async () => {
+        const h = await createHarness(undefined, {
+            handleWriteAttribute: async () => {
+                return { status: 0x86 };
+            },
+        });
+        try {
+            const answer = await answerFor(
+                h,
+                "write_attribute",
+                { node_id: 1, attribute_path: "1/6/16385", value: 5 },
+                "unicast-write",
+            );
+            expect(answer.error_code).to.equal(undefined);
+            expect(answer.result).to.deep.equal([
+                { Path: { EndpointId: 1, ClusterId: 6, AttributeId: 16385 }, Status: 0x86 },
+            ]);
+        } finally {
+            await h.close();
+        }
+    });
+
+    it("routes device_command for a group node id to the groupcast path and answers null", async () => {
+        const groupInvokes = new Array<Record<string, unknown>>();
+        const unicastInvokes = new Array<unknown>();
+        const h = await createHarness(undefined, {
+            handleGroupInvoke: async data => {
+                groupInvokes.push(data as Record<string, unknown>);
+            },
+            handleInvoke: async () => {
+                unicastInvokes.push(true);
+                return {};
+            },
+        });
+        try {
+            const answer = await answerFor(
+                h,
+                "device_command",
+                { node_id: GROUP_NODE_ID, cluster_id: 6, command_name: "toggle", payload: {} },
+                "group-invoke",
+            );
+
+            expect(answer.error_code).to.equal(undefined);
+            expect(answer.result).to.equal(null);
+            expect(unicastInvokes.length).to.equal(0);
+            expect(groupInvokes.length).to.equal(1);
+            expect(groupInvokes[0].nodeId).to.equal(GROUP_NODE_ID);
+            expect(groupInvokes[0].clusterId).to.equal(6);
+            expect(groupInvokes[0].commandName).to.equal("toggle");
+            expect("endpointId" in groupInvokes[0]).to.equal(false);
+        } finally {
+            await h.close();
+        }
+    });
+
+    it("refuses device_command for a group node id that names an endpoint", async () => {
+        const h = await createHarness(undefined, {
+            handleGroupInvoke: async () => {
+                throw new Error("groupcast must not be reached");
+            },
+        });
+        try {
+            const answer = await answerFor(
+                h,
+                "device_command",
+                { node_id: GROUP_NODE_ID, endpoint_id: 1, cluster_id: 6, command_name: "toggle", payload: {} },
+                "group-invoke-endpoint",
+            );
+            expect(answer.error_code).to.equal(8);
+            expect(answer.details).to.contain("takes no endpoint_id");
+        } finally {
+            await h.close();
+        }
+    });
+
+    it("refuses device_command without an endpoint_id for a node id that is not a group", async () => {
+        const h = await createHarness();
+        try {
+            const answer = await answerFor(
+                h,
+                "device_command",
+                { node_id: 1, cluster_id: 6, command_name: "toggle", payload: {} },
+                "unicast-invoke-no-endpoint",
+            );
+            expect(answer.error_code).to.equal(8);
+            expect(answer.details).to.contain("requires endpoint_id");
+        } finally {
+            await h.close();
         }
     });
 });

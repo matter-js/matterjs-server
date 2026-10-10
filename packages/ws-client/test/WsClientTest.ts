@@ -356,6 +356,10 @@ describe("ws-client", () => {
                     expect(error).to.be.instanceOf(ServerCommandError);
                     expect((error as ServerCommandError).errorCode).to.equal(100);
                     expect((error as ServerCommandError).message).to.equal(details);
+                    expect((error as ServerCommandError).details).to.deep.equal({
+                        message: "multi admin",
+                        admin_vendor_ids: [4631],
+                    });
                 }
             });
 
@@ -503,6 +507,140 @@ describe("ws-client", () => {
                 expect(nodesChangedCalled).to.be.true;
                 const nodeKey = String(nodeId);
                 expect(client.nodes[nodeKey]?.attributes["1/6/0"]).to.equal(true);
+            });
+
+            it("hands a camera session ending and a camera eviction to their own listeners", async () => {
+                await client.connect();
+                const endings = new Array<unknown>();
+                const evictions = new Array<unknown>();
+                const stopEndings = client.addCameraSessionEndedListener(data => endings.push(data));
+                const stopEvictions = client.addCameraStreamEvictedListener(data => evictions.push(data));
+                try {
+                    server.sendEvent("camera_session_ended", {
+                        node_id: 5,
+                        endpoint_id: 1,
+                        webrtc_session_id: 7,
+                    });
+                    server.sendEvent("camera_stream_evicted", {
+                        node_id: 5,
+                        endpoint_id: 1,
+                        kind: "snapshot",
+                        stream_id: 3,
+                    });
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                } finally {
+                    stopEndings();
+                    stopEvictions();
+                }
+                expect(endings).to.deep.equal([{ node_id: 5, endpoint_id: 1, webrtc_session_id: 7 }]);
+                expect(evictions).to.deep.equal([{ node_id: 5, endpoint_id: 1, kind: "snapshot", stream_id: 3 }]);
+
+                server.sendEvent("camera_session_ended", {
+                    node_id: 5,
+                    endpoint_id: 1,
+                    webrtc_session_id: 8,
+                });
+                await new Promise(resolve => setTimeout(resolve, 100));
+                expect(endings).to.have.length(1);
+            });
+
+            it("keeps the ICE credentials and TURN secret of an incoming offer out of the console", async () => {
+                const bigIntSafe = (_key: string, value: unknown) =>
+                    typeof value === "bigint" ? value.toString() : value;
+                server.onCommand("start_listening", () => []);
+                await client.startListening();
+
+                const sdp = [
+                    "v=0",
+                    "m=video 9 UDP/TLS/RTP/SAVPF 96",
+                    "a=ice-ufrag:uNgu3ss4ble-ufrag",
+                    "a=ice-pwd:uNgu3ss4ble-ice-password",
+                    "a=rtpmap:96 H264/90000",
+                ].join("\r\n");
+                const logged = new Array<string>();
+                const debug = console.debug;
+                console.debug = (...args: unknown[]) => {
+                    logged.push(args.map(arg => JSON.stringify(arg, bigIntSafe)).join(" "));
+                };
+                try {
+                    server.sendEvent("webrtc_callback", {
+                        type: "offer",
+                        node_id: 5,
+                        session_id: 7,
+                        sdp,
+                        ice_servers: [
+                            { urls: ["turn:turn.example.org:3478"], username: "cam", credential: "uNgu3ss4ble-turn" },
+                        ],
+                    });
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                } finally {
+                    console.debug = debug;
+                }
+
+                const offerLines = logged.filter(line => line.includes("m=video"));
+                expect(offerLines.length).to.equal(2);
+                for (const line of logged) {
+                    expect(line).to.not.contain("uNgu3ss4ble-ufrag");
+                    expect(line).to.not.contain("uNgu3ss4ble-ice-password");
+                    expect(line).to.not.contain("uNgu3ss4ble-turn");
+                }
+            });
+
+            it("keeps a snapshot frame out of the console and the rest of the response in it", async () => {
+                const frame = `${"Zm9vYmFy".repeat(400)}ZnJhbWUtYnl0ZXMtZG8tbm90LWxvZw==`;
+                server.onCommand("camera_snapshot", () => ({
+                    data: frame,
+                    codec: "JPEG",
+                    resolution: { width: 640, height: 480 },
+                    degraded: false,
+                    stream_id: 3,
+                    provenance: "allocated",
+                }));
+                await client.connect();
+
+                const logged = new Array<string>();
+                const debug = console.debug;
+                console.debug = (...args: unknown[]) => {
+                    logged.push(args.map(arg => JSON.stringify(arg)).join(" "));
+                };
+                let result;
+                try {
+                    result = await client.sendCommand("camera_snapshot", 0, { node_id: 5, endpoint_id: 1 });
+                } finally {
+                    console.debug = debug;
+                }
+
+                expect(result.data).to.equal(frame);
+                for (const line of logged) {
+                    expect(line).to.not.contain("ZnJhbWUtYnl0ZXMtZG8tbm90LWxvZw");
+                }
+                const frameLine = logged.find(line => line.includes("JPEG"));
+                expect(frameLine).to.contain(`[${frame.length} chars omitted]`);
+                expect(frameLine).to.contain('"width":640');
+                expect(frameLine).to.contain('"height":480');
+                expect(frameLine).to.contain('"stream_id":3');
+            });
+
+            // A guard against over-redaction; green on the unmodified baseline too.
+            it("logs a short data field of another command in full", async () => {
+                server.onCommand("read_attribute", () => ({ data: "1/6/0", node_id: 5 }));
+                await client.connect();
+
+                const logged = new Array<string>();
+                const debug = console.debug;
+                console.debug = (...args: unknown[]) => {
+                    logged.push(args.map(arg => JSON.stringify(arg)).join(" "));
+                };
+                try {
+                    await client.sendCommand("read_attribute", 0, {
+                        node_id: 5,
+                        attribute_path: "1/6/0",
+                    });
+                } finally {
+                    console.debug = debug;
+                }
+
+                expect(logged.some(line => line.includes('"data":"1/6/0"'))).to.be.true;
             });
         });
 

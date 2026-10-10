@@ -193,7 +193,7 @@ describe("Integration Test", function () {
 
             expect(info).to.have.property("fabric_id");
             expect(info).to.have.property("compressed_fabric_id");
-            expect(info.schema_version).to.equal(13);
+            expect(info.schema_version).to.equal(14);
             expect(info.min_supported_schema_version).to.equal(11);
             expect(info.sdk_version).to.be.a("string").that.includes("matter-server");
             expect(info.sdk_version).to.be.a("string").that.includes("matter.js");
@@ -236,7 +236,7 @@ describe("Integration Test", function () {
             expect(diag).to.have.property("info");
             expect(diag).to.have.property("nodes");
             expect(diag).to.have.property("events");
-            expect(diag.info.schema_version).to.equal(13);
+            expect(diag.info.schema_version).to.equal(14);
             expect(diag.nodes).to.be.an("array");
             expect(diag.events).to.be.an("array");
         });
@@ -784,6 +784,40 @@ describe("Integration Test", function () {
 
             expect(error.error_code).to.equal(ServerErrorCode.InvalidArguments);
             expect(error.details).to.include("Endpoint 99");
+        });
+
+        it("should return InvalidArguments for a WebRTC provider command to an endpoint the node does not have", async function () {
+            const error = await client.sendCommandExpectError("send_webrtc_provider_command", {
+                node_id: commissionedNodeId,
+                endpoint_id: 99,
+                command_name: "ProvideOffer",
+                payload: { webRtcSessionId: null, sdp: "v=0", streamUsage: 3 },
+            });
+
+            expect(error.error_code).to.equal(ServerErrorCode.InvalidArguments);
+            expect(error.details).to.include("Endpoint 99");
+        });
+
+        it("should return InvalidArguments for a WebRTC provider command to an endpoint without the provider cluster", async function () {
+            const error = await client.sendCommandExpectError("send_webrtc_provider_command", {
+                node_id: commissionedNodeId,
+                endpoint_id: 1,
+                command_name: "ProvideAnswer",
+                payload: { webRtcSessionId: 1, sdp: "v=0" },
+            });
+
+            expect(error.error_code).to.equal(ServerErrorCode.InvalidArguments);
+            expect(error.details).to.include("webRtcTransportProvider");
+        });
+
+        it("should return CameraNotSupported naming both clusters for a camera command to an endpoint the node does not have", async function () {
+            const error = await client.sendCommandExpectError("camera_get_capabilities", {
+                node_id: commissionedNodeId,
+                endpoint_id: 99,
+            });
+
+            expect(error.error_code).to.equal(ServerErrorCode.CameraNotSupported);
+            expect(JSON.parse(error.details).missing_clusters).to.deep.equal([0x0551, 0x0553]);
         });
     });
 

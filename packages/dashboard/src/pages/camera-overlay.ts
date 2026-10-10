@@ -10,42 +10,33 @@ import "@material/web/button/text-button.js";
 import "@material/web/iconbutton/icon-button.js";
 import "@material/web/select/outlined-select.js";
 import "@material/web/select/select-option.js";
-import type { MatterClient } from "@matter-server/ws-client";
+import type { CameraCapabilitiesResult, CameraResolution, MatterClient } from "@matter-server/ws-client";
 import { mdiCamera, mdiClose, mdiVolumeHigh, mdiVolumeOff } from "@mdi/js";
 import { LitElement, css, html, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { createRef, ref } from "lit/directives/ref.js";
 import { clientContext } from "../client/client-context.js";
-import {
-    AVSM_FEAT_OSD,
-    AVSM_FEAT_WMARK,
-    AVSM_FEATURE_MAP_ATTR_ID,
-    CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID,
-} from "../components/webrtc-stream-view.js";
 import "../components/avsum-ptz-strip.js";
 import "../components/ha-svg-icon.js";
 import "../components/webrtc-stream-view.js";
 import type { WebRtcStreamView } from "../components/webrtc-stream-view.js";
-import { asObject, pickNumber } from "../util/attribute-shapes.js";
 import { hasAvsumOnEndpoint } from "../util/avsum.js";
-import { supportsAudioOnlyLiveView, supportsLiveView, supportsSnapshot } from "../util/camera.js";
+import {
+    cameraErrorText,
+    type CameraQualityBadge,
+    hasCameraFeature,
+    parseResolutionOption,
+    resolutionOption,
+    snapshotResolutionOptions,
+    videoResolutionOptions,
+} from "../util/camera-api.js";
+import { supportsLiveView, supportsSnapshot } from "../util/camera.js";
 
 type StreamState = "idle" | "connecting" | "streaming" | "error";
 
-interface Resolution {
-    width: number;
-    height: number;
-}
-
-const HA_DEFAULT_RESOLUTIONS: Resolution[] = [
-    { width: 1920, height: 1080 },
-    { width: 1280, height: 720 },
-    { width: 640, height: 480 },
-];
-
 function snapshotExtension(dataUri: string): string {
     const mime = /^data:image\/([a-z0-9.+-]+)/i.exec(dataUri)?.[1]?.toLowerCase();
-    return mime === "png" ? "png" : "jpg";
+    return mime === "heic" ? "heic" : "jpg";
 }
 
 @customElement("camera-overlay")
@@ -60,19 +51,22 @@ export class CameraOverlay extends LitElement {
     @state() private _state: StreamState = "idle";
     @state() private _errorMessage: string | null = null;
     @state() private _snapshotDataUri: string | null = null;
-    @state() private _snapshotResolution: Resolution | null = null;
+    @state() private _snapshotResolution: CameraResolution | null = null;
+    @state() private _snapshotDegraded = false;
     @state() private _snapshotBusy = false;
     @state() private _snapshotError: string | null = null;
-    @state() private _resolutions: Resolution[] = [];
-    @state() private _selectedResolution: Resolution | null = null;
-    @state() private _resolutionsLoading = true;
+    @state() private _capabilities: CameraCapabilitiesResult | null = null;
+    @state() private _capabilitiesError: string | null = null;
+    @state() private _capabilitiesLoading = true;
+    /** null is "Auto": no resolution hint. */
+    @state() private _selectedResolution: CameraResolution | null = null;
+    @state() private _selectedSnapshotResolution: CameraResolution | null = null;
     @state() private _closing = false;
     @state() private _activeVideoStreamId: number | null = null;
+    @state() private _qualityBadges = new Array<CameraQualityBadge>();
     @state() private _muted = true;
     @state() private _watermarkEnabled = false;
     @state() private _osdEnabled = false;
-    @state() private _snapshotResolutions: Resolution[] = [];
-    @state() private _selectedSnapshotResolution: Resolution | null = null;
 
     private get _liveViewSupported(): boolean {
         const node = this.client?.nodes[String(this.nodeId)];
@@ -87,103 +81,26 @@ export class CameraOverlay extends LitElement {
     private _streamViewRef = createRef<WebRtcStreamView>();
 
     override firstUpdated(): void {
-        this._initResolutions();
+        this._loadCapabilities().catch(err => console.warn("[camera-overlay] loading capabilities failed", err));
     }
 
-    private _initResolutions(): void {
-        this._resolutions = this._loadResolutions();
-        this._selectedResolution = this._resolutions[0] ?? null;
-        this._snapshotResolutions = this._loadSnapshotResolutions();
-        this._selectedSnapshotResolution = this._snapshotResolutions[0] ?? null;
-        this._resolutionsLoading = false;
-    }
-
-    private _loadSnapshotResolutions(): Resolution[] {
-        const raw = this._readCachedAvsmAttribute(10);
-        if (!Array.isArray(raw)) return [];
-        const seen = new Map<string, Resolution>();
-        for (const item of raw) {
-            const obj = asObject(item);
-            if (!obj) continue;
-            const res = asObject(obj["resolution"] ?? obj["0"]);
-            if (!res) continue;
-            const w = pickNumber(res, "width", "0");
-            const h = pickNumber(res, "height", "1");
-            if (w !== null && h !== null) {
-                const key = `${w}x${h}`;
-                if (!seen.has(key)) seen.set(key, { width: w, height: h });
-            }
+    private async _loadCapabilities(): Promise<void> {
+        const client = this.client;
+        try {
+            if (!client) return;
+            this._capabilities = await client.sendCommand("camera_get_capabilities", 14, {
+                node_id: this.nodeId,
+                endpoint_id: this.endpointId,
+            });
+        } catch (err) {
+            this._capabilitiesError = cameraErrorText(err);
+        } finally {
+            this._capabilitiesLoading = false;
         }
-        return [...seen.values()].sort((a, b) => b.width * b.height - a.width * a.height);
     }
 
     private _onSnapshotResolutionChange(ev: Event): void {
-        const value = (ev.target as HTMLSelectElement).value;
-        const [w, h] = value.split("x").map(Number);
-        if (!Number.isFinite(w) || !Number.isFinite(h)) return;
-        this._selectedSnapshotResolution = { width: w, height: h };
-    }
-
-    private _readCachedAvsmAttribute(attributeId: number): unknown {
-        const node = this.client?.nodes[String(this.nodeId)];
-        if (!node) return undefined;
-        return node.attributes[`${this.endpointId}/${CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID}/${attributeId}`];
-    }
-
-    private _loadResolutions(): Resolution[] {
-        // 1. RateDistortionTradeOffPoints (attr id 5) — richest capability source
-        const rdtRaw = this._readCachedAvsmAttribute(5);
-        if (Array.isArray(rdtRaw) && rdtRaw.length > 0) {
-            const seen = new Map<string, Resolution>();
-            for (const item of rdtRaw) {
-                const resObj = asObject(item)?.["resolution"];
-                const res = asObject(resObj);
-                if (!res) continue;
-                const w = pickNumber(res, "width");
-                const h = pickNumber(res, "height");
-                if (w !== null && h !== null) {
-                    const key = `${w}x${h}`;
-                    if (!seen.has(key)) seen.set(key, { width: w, height: h });
-                }
-            }
-            const results = [...seen.values()].sort((a, b) => b.width * b.height - a.width * a.height);
-            if (results.length > 0) return results;
-        }
-
-        // 2. MinViewportResolution (attr id 4) — single VideoResolution struct {width, height}
-        const minVpRaw = this._readCachedAvsmAttribute(4);
-        const minVp = asObject(minVpRaw);
-        if (minVp) {
-            const w = pickNumber(minVp, "width");
-            const h = pickNumber(minVp, "height");
-            if (w !== null && h !== null && w > 0 && h > 0) return [{ width: w, height: h }];
-        }
-
-        return HA_DEFAULT_RESOLUTIONS;
-    }
-
-    private _getSensorSize(): { width: number; height: number } | null {
-        // AVSM VideoSensorParams (attr 0x2): SensorWidth/SensorHeight.
-        const raw = this._readCachedAvsmAttribute(0x2);
-        const obj = asObject(raw);
-        if (!obj) return null;
-        const w = pickNumber(obj, "sensorWidth", "0");
-        const h = pickNumber(obj, "sensorHeight", "1");
-        if (w === null || h === null) return null;
-        return { width: w, height: h };
-    }
-
-    private _avsmFeatures(): { wmark: boolean; osd: boolean } {
-        const node = this.client?.nodes[String(this.nodeId)];
-        const raw =
-            node?.attributes[
-                `${this.endpointId}/${CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID}/${AVSM_FEATURE_MAP_ATTR_ID}`
-            ];
-        const bits = typeof raw === "number" ? raw : 0;
-        return {
-            wmark: (bits & AVSM_FEAT_WMARK) !== 0,
-            osd: (bits & AVSM_FEAT_OSD) !== 0,
-        };
+        this._selectedSnapshotResolution = parseResolutionOption((ev.target as HTMLSelectElement).value);
     }
 
     private _avsumPresent(): boolean {
@@ -198,7 +115,7 @@ export class CameraOverlay extends LitElement {
             this._closing = true;
             try {
                 await view.stop();
-                await view.deallocateSnapshot();
+                await view.releaseSnapshotStreams();
             } finally {
                 this._closing = false;
             }
@@ -212,34 +129,29 @@ export class CameraOverlay extends LitElement {
         // Only expose the underlying VideoStreamID to the AVSUM strip while actively
         // streaming. Other states would surface a stale id (during error/idle the
         // stream is being torn down) or a not-yet-allocated null (during connecting).
-        this._activeVideoStreamId =
-            ev.detail.state === "streaming" ? (this._streamViewRef.value?.videoStreamId ?? null) : null;
+        const view = this._streamViewRef.value;
+        const streaming = ev.detail.state === "streaming";
+        this._activeVideoStreamId = streaming ? (view?.videoStreamId ?? null) : null;
+        this._qualityBadges = streaming ? (view?.qualityBadges ?? []) : [];
 
         // Audio-only "Listen" sessions have no video; starting muted would defeat the feature, so
         // unmute on stream start. Started from the user's Start click, so autoplay policy allows it.
-        if (ev.detail.state === "streaming" && this._isAudioOnly()) {
-            this._streamViewRef.value?.setMuted(false);
+        if (streaming && view?.audioOnlySession) {
+            view.setMuted(false);
             this._muted = false;
         }
     }
 
-    private _isAudioOnly(): boolean {
-        const node = this.client?.nodes[String(this.nodeId)];
-        return node ? supportsAudioOnlyLiveView(node, this.endpointId) : false;
-    }
-
     private _start(): void {
-        const view = this._streamViewRef.value;
-        if (view) {
-            void view.start();
-        }
+        this._streamViewRef.value
+            ?.start()
+            .catch(err => console.warn("[camera-overlay] starting the stream failed", err));
     }
 
     private _stop(): void {
-        const view = this._streamViewRef.value;
-        if (view) {
-            void view.stop();
-        }
+        this._streamViewRef.value
+            ?.stop()
+            .catch(err => console.warn("[camera-overlay] stopping the stream failed", err));
     }
 
     private _toggleMute(): void {
@@ -256,11 +168,12 @@ export class CameraOverlay extends LitElement {
         this._snapshotBusy = true;
         this._snapshotError = null;
         try {
-            const { dataUri, resolution } = await view.takeSnapshot();
+            const { dataUri, resolution, degraded } = await view.takeSnapshot();
             this._snapshotDataUri = dataUri;
             this._snapshotResolution = resolution;
+            this._snapshotDegraded = degraded;
         } catch (e) {
-            this._snapshotError = e instanceof Error ? e.message : String(e);
+            this._snapshotError = cameraErrorText(e);
         } finally {
             this._snapshotBusy = false;
         }
@@ -277,10 +190,60 @@ export class CameraOverlay extends LitElement {
     }
 
     private _onResolutionChange(ev: Event): void {
-        const value = (ev.target as HTMLSelectElement).value;
-        const [w, h] = value.split("x").map(Number);
-        if (!Number.isFinite(w) || !Number.isFinite(h)) return;
-        this._selectedResolution = { width: w, height: h };
+        this._selectedResolution = parseResolutionOption((ev.target as HTMLSelectElement).value);
+    }
+
+    private _renderResolutionSelect(args: {
+        label: string;
+        autoLabel: string;
+        options: CameraResolution[];
+        optionLabel: (resolution: CameraResolution) => string;
+        selected: CameraResolution | null;
+        onChange: (ev: Event) => void;
+    }) {
+        return html`
+            <md-outlined-select label=${args.label} .value=${resolutionOption(args.selected)} @change=${args.onChange}>
+                <md-select-option value=${resolutionOption(null)}>
+                    <div slot="headline">${args.autoLabel}</div>
+                </md-select-option>
+                ${args.options.map(
+                    r => html`
+                        <md-select-option value=${resolutionOption(r)}>
+                            <div slot="headline">${args.optionLabel(r)}</div>
+                        </md-select-option>
+                    `,
+                )}
+            </md-outlined-select>
+        `;
+    }
+
+    private _renderOverlayToggles() {
+        return html`
+            ${
+                hasCameraFeature(this._capabilities, "Watermark")
+                    ? html`<label class="overlay-toggle">
+                          <input
+                              type="checkbox"
+                              ?checked=${this._watermarkEnabled}
+                              @change=${(e: Event) => (this._watermarkEnabled = (e.target as HTMLInputElement).checked)}
+                          />
+                          Watermark
+                      </label>`
+                    : nothing
+            }
+            ${
+                hasCameraFeature(this._capabilities, "OnScreenDisplay")
+                    ? html`<label class="overlay-toggle">
+                          <input
+                              type="checkbox"
+                              ?checked=${this._osdEnabled}
+                              @change=${(e: Event) => (this._osdEnabled = (e.target as HTMLInputElement).checked)}
+                          />
+                          OSD
+                      </label>`
+                    : nothing
+            }
+        `;
     }
 
     override render() {
@@ -303,7 +266,7 @@ export class CameraOverlay extends LitElement {
                               .nodeId=${this.nodeId}
                               .endpointId=${this.endpointId}
                               .activeVideoStreamId=${this._activeVideoStreamId}
-                              .sensorSize=${this._getSensorSize()}
+                              .sensorSize=${this._capabilities?.video.sensor ?? null}
                           ></avsum-ptz-strip>`
                         : nothing
                 }
@@ -315,6 +278,7 @@ export class CameraOverlay extends LitElement {
                                   .nodeId=${this.nodeId}
                                   .endpointId=${this.endpointId}
                                   .liveViewSupported=${liveViewSupported}
+                                  .capabilities=${this._capabilities}
                                   .resolution=${this._selectedResolution}
                                   .watermarkEnabled=${this._watermarkEnabled}
                                   .osdEnabled=${this._osdEnabled}
@@ -345,6 +309,15 @@ export class CameraOverlay extends LitElement {
                                       >
                                           <ha-svg-icon .path=${mdiClose}></ha-svg-icon>
                                       </md-icon-button>
+                                      ${
+                                          this._snapshotDegraded
+                                              ? html`<span
+                                                    class="quality-badge"
+                                                    title="Smaller than the requested bounds allow, because no encoder was free"
+                                                    >Degraded</span
+                                                >`
+                                              : nothing
+                                      }
                                   </div>
                               `
                             : nothing
@@ -364,84 +337,60 @@ export class CameraOverlay extends LitElement {
                             : nothing
                     }
                     ${
-                        canStart && this._resolutions.length > 0
-                            ? html`
-                                  <md-outlined-select
-                                      label="Resolution"
-                                      .value=${
-                                          this._selectedResolution
-                                              ? `${this._selectedResolution.width}x${this._selectedResolution.height}`
-                                              : ""
-                                      }
-                                      @change=${this._onResolutionChange}
-                                  >
-                                      ${this._resolutions.map(
-                                          r => html`
-                                              <md-select-option value=${`${r.width}x${r.height}`}>
-                                                  <div slot="headline">${r.width}×${r.height}</div>
-                                              </md-select-option>
-                                          `,
-                                      )}
-                                  </md-outlined-select>
-                              `
+                        !this._closing && this._state === "idle" && this._capabilitiesError
+                            ? html`<span class="footer-status error"
+                                  >Camera capabilities unavailable: ${this._capabilitiesError}</span
+                              >`
                             : nothing
                     }
                     ${
-                        idleOrError && this._snapshotSupported && this._snapshotResolutions.length > 0
-                            ? html`
-                                  <md-outlined-select
-                                      label="Snapshot"
-                                      .value=${
-                                          this._selectedSnapshotResolution
-                                              ? `${this._selectedSnapshotResolution.width}x${this._selectedSnapshotResolution.height}`
-                                              : ""
-                                      }
-                                      @change=${this._onSnapshotResolutionChange}
-                                  >
-                                      ${this._snapshotResolutions.map(
-                                          r => html`
-                                              <md-select-option value=${`${r.width}x${r.height}`}>
-                                                  <div slot="headline">${r.width}×${r.height}</div>
-                                              </md-select-option>
-                                          `,
-                                      )}
-                                  </md-outlined-select>
-                              `
-                            : nothing
-                    }
-                    ${
-                        canStart && this._avsmFeatures().wmark
-                            ? html`<label class="overlay-toggle">
-                                  <input
-                                      type="checkbox"
-                                      ?checked=${this._watermarkEnabled}
-                                      @change=${(e: Event) =>
-                                          (this._watermarkEnabled = (e.target as HTMLInputElement).checked)}
-                                  />
-                                  Watermark
-                              </label>`
-                            : nothing
-                    }
-                    ${
-                        canStart && this._avsmFeatures().osd
-                            ? html`<label class="overlay-toggle">
-                                  <input
-                                      type="checkbox"
-                                      ?checked=${this._osdEnabled}
-                                      @change=${(e: Event) => (this._osdEnabled = (e.target as HTMLInputElement).checked)}
-                                  />
-                                  OSD
-                              </label>`
+                        this._state === "streaming" && this._qualityBadges.length > 0
+                            ? html`<span class="footer-status">
+                                  ${this._qualityBadges.map(
+                                      badge =>
+                                          html`<span class="quality-badge" title=${badge.detail}>${badge.label}</span>`,
+                                  )}
+                              </span>`
                             : nothing
                     }
                     ${
                         canStart
+                            ? this._renderResolutionSelect({
+                                  label: "Resolution",
+                                  autoLabel: "Auto (best)",
+                                  options: videoResolutionOptions(this._capabilities),
+                                  optionLabel: r => `Up to ${r.width}×${r.height}`,
+                                  selected: this._selectedResolution,
+                                  onChange: this._onResolutionChange,
+                              })
+                            : nothing
+                    }
+                    ${
+                        idleOrError && this._snapshotSupported
+                            ? this._renderResolutionSelect({
+                                  label: "Snapshot",
+                                  autoLabel: "Auto",
+                                  options: snapshotResolutionOptions(this._capabilities),
+                                  optionLabel: r => `${r.width}×${r.height}`,
+                                  selected: this._selectedSnapshotResolution,
+                                  onChange: this._onSnapshotResolutionChange,
+                              })
+                            : nothing
+                    }
+                    ${idleOrError ? this._renderOverlayToggles() : nothing}
+                    ${
+                        canStart
                             ? html`<md-filled-button
                                   @click=${this._start}
-                                  ?disabled=${!this.client || this._resolutionsLoading}
+                                  ?disabled=${!this.client || this._capabilitiesLoading}
                               >
                                   ${this._state === "error" ? "Retry" : "Start"}
                               </md-filled-button>`
+                            : nothing
+                    }
+                    ${
+                        this._state === "connecting"
+                            ? html`<md-filled-button @click=${this._stop}>End</md-filled-button>`
                             : nothing
                     }
                     ${
@@ -573,6 +522,10 @@ export class CameraOverlay extends LitElement {
             display: block;
             border-radius: 2px;
         }
+        .snapshot-preview .quality-badge {
+            grid-column: 1 / -1;
+            justify-self: start;
+        }
         .snapshot-error {
             position: absolute;
             bottom: 8px;
@@ -598,6 +551,17 @@ export class CameraOverlay extends LitElement {
             margin-right: auto;
             color: var(--md-sys-color-on-surface-variant);
             font-style: italic;
+        }
+        .quality-badge {
+            display: inline-block;
+            margin-right: 6px;
+            padding: 2px 8px;
+            border-radius: 8px;
+            font-size: 0.75rem;
+            font-style: normal;
+            background: var(--md-sys-color-tertiary-container);
+            color: var(--md-sys-color-on-tertiary-container);
+            cursor: help;
         }
         .footer-status.error {
             color: var(--danger-color);
