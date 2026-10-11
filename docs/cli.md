@@ -105,6 +105,18 @@ For a node without the server's own subscription:
 The setting is applied to every stored node on each start, which also switches off every node enabled with
 `enable_auto_subscription`. Starting again without it restores the automatic subscriptions.
 
+### Readiness line
+
+Each TCP or unix socket listener logs one line once it accepts WebSocket connections on `/ws`:
+
+```
+Webserver listening on http://<host>:<port>
+Webserver listening on unix socket <path>
+```
+
+`<port>` is the bound port, also with `--port 0`. Tools may wait for this line and read the port from the text after
+the last `:` (IPv6 hosts are not bracketed). Its wording is a contract: a change to it is a breaking change.
+
 ### Behavioral Differences from Python Matter Server
 
 | Option     | Python Default | Matter.js Default | Notes                                                   |
