@@ -140,7 +140,10 @@ export interface InteractionSubscription {
     /** The subscription id the device assigned. */
     readonly id: number;
     readonly nodeId: NodeId;
-    /** The first report, which carries the subscribed state; later reports reach the listener. */
+    /**
+     * The first report; later reports reach the listener. matter.js adds the data versions it knows, so clusters that
+     * did not change are left out.
+     */
     readonly priming: InteractionReport;
     close(): void;
 }

@@ -92,7 +92,7 @@ export class PeerChangeBus {
 
     /**
      * @param options.reportWithoutSubscription forward every peer's changes from the start. For a controller that
-     * never subscribes, where explicit reads are the only changes and there is no startup seeding read.
+     * does not subscribe on its own, where explicit reads can be the only changes and there is no startup seeding read.
      */
     constructor(controller: ServerNode, options: { reportWithoutSubscription?: boolean } = {}) {
         this.#reportWithoutSubscription = options.reportWithoutSubscription ?? false;

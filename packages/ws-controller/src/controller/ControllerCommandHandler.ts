@@ -297,8 +297,8 @@ export interface ControllerCommandHandlerOptions {
     /** Interval between custom cluster polling cycles. Defaults to, and is floored at, 60 seconds. */
     customClusterPollInterval?: Duration;
     /**
-     * Never subscribe to peers on our own: not after commissioning and not when the server starts. Peers are only
-     * read on request. Defaults to false.
+     * Do not subscribe to peers on our own, neither after commissioning nor when the server starts, unless switched on
+     * per peer. Defaults to false.
      */
     disableAutoSubscription?: boolean;
 }
@@ -429,7 +429,7 @@ export class ControllerCommandHandler {
         this.#otaEnabled = otaEnabled;
         this.#autoSubscriptionDisabled = disableAutoSubscription;
         if (disableAutoSubscription) {
-            logger.notice("Auto subscription is disabled; peers are only read on request");
+            logger.notice("Auto subscription is disabled; peers are only subscribed to when a client asks");
         }
 
         const attributeReader: NodeAttributeReader = {
@@ -1007,7 +1007,7 @@ export class ControllerCommandHandler {
         this.#nodeUpdateTimers.get(nodeId)?.stop();
         this.#nodeUpdateTimers.delete(nodeId);
 
-        // Without auto subscription the node is never connected, and reads are the only source of its state.
+        // Without auto subscription a node is usually not connected, and reads are then the only source of its state.
         if (this.#autoSubscriptionDisabled || this.#isConnected(nodeId)) {
             await this.#nodes.attributeCache.update(node);
         }
@@ -1075,9 +1075,7 @@ export class ControllerCommandHandler {
     async interviewNode(nodeId: NodeId) {
         const node = this.#nodes.get(nodeId);
 
-        // Our nodes are kept up-to-date via attribute subscriptions, so we don't need
-        // to re-read all attributes like the Python server does. The caller is responsible
-        // for broadcasting node_updated after the interview completes.
+        // The caller is responsible for broadcasting node_updated after the interview completes.
         logger.info(`Interview requested for node ${this.formatNode(nodeId)} - do a complete read`);
 
         // Do a full Read of the node
@@ -1974,8 +1972,8 @@ export class ControllerCommandHandler {
         // A reachable device must be told to drop our fabric, or it keeps holding it and never becomes
         // commissionable again without a manual factory reset. An unreachable one cannot be told
         // anything, and attempting it costs the caller the full discovery and retry budget, so go
-        // straight to the local removal for those. Without auto subscription a node is never connected, so
-        // reachability is unknown and the device is always tried.
+        // straight to the local removal for those. Without auto subscription a node is usually not connected,
+        // so reachability is unknown and the device is always tried.
         let removed = false;
         if (this.#autoSubscriptionDisabled || this.#isConnected(nodeId)) {
             try {

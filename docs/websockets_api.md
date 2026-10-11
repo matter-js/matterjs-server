@@ -458,8 +458,8 @@ strength values, and `packages/ws-client/src/models/model.ts` for the exact wire
 
 > [!NOTE]
 > When the server runs with `--disable-auto-subscription`, it does not subscribe to nodes, so there are no
-> automatic `attribute_updated` or node events from device reports. You are responsible to subscribe as needed,
-> or to switch the server's subscription on per node with `enable_auto_subscription` (see
+> automatic `attribute_updated` or node events from device reports. You are responsible for subscribing as needed,
+> or for switching the server's subscription on per node with `enable_auto_subscription` (see
 > [Subscriptions and generic read](#subscriptions-and-generic-read)); only recommended for very special use cases. See [CLI: Disabled auto subscription](cli.md#disabled-auto-subscription).
 
 **read_attribute** - Read attribute(s) from a node
@@ -530,8 +530,8 @@ Schema 14. These commands give full control over the Matter Read and Subscribe r
 them: the server subscribes to every node on its own. `subscribe`, `unsubscribe`, `enable_auto_subscription` and
 `disable_auto_subscription` are only available when the server runs with `--disable-auto-subscription`; otherwise
 they fail with `InvalidArguments`, before anything is sent to a device. `subscribe` also fails this way for a node
-whose auto subscription was switched on with `enable_auto_subscription`. `read` works in both modes. The server does not advertise
-schema 14 yet: `server_info` still reports `schema_version` 13 until the version is raised, so a client that gates
+whose auto subscription was switched on with `enable_auto_subscription`. `read` works in both modes. The server does
+not advertise schema 14 yet: `server_info` still reports `schema_version` 13 until the version is raised, so a client that gates
 on 14 cannot use them yet.
 
 Paths:
@@ -583,12 +583,16 @@ At least one attribute or event path is required. `fabric_filtered` defaults to 
 `read_attribute`, which defaults to `false`). `event_min` becomes the EventFilter of the request; without it the
 request has no event filter, also for a node with the server's own subscription, and returns every event the device
 still holds on the requested paths. The request goes to the device as given: unlike `read_attribute`, it is not
-split into batches and the server adds no data version filters of its own.
+split into batches and the server adds no data version filters of its own. For a LIT ICD with this controller
+registered, matter.js holds the request while the device sleeps and sends it at the next check-in, as it does for
+every other request.
 
 Side effects on all clients: matter.js merges the read attribute values into the node state, which sends the usual
 `attribute_updated` events to every listening client, but only when `fabric_filtered` is `true`, the default.
 matter.js applies a read only when its fabric filter matches the node's subscription settings, which the server
-leaves at fabric-filtered, whether or not the node currently has the server's own subscription. Every event the read returns is also sent to every listening client as
+leaves at fabric-filtered, whether or not the node currently has the server's own subscription. With auto
+subscription on, the server forwards changes of a node only once its subscription has been active since the server
+started, so a read of a node that has not been subscribed yet sends neither event. Every event the read returns is also sent to every listening client as
 `node_event` and added to the event history, whatever `fabric_filtered` is and without a check against events
 already seen. A read with event paths and a low or no `event_min` therefore replays old events (for example button
 presses) to all clients, Home Assistant included, as if they were new.
@@ -688,8 +692,7 @@ unknown id, or the id of another connection's subscription, gives an `InvalidArg
 Matter has no unsubscribe message: the server stops accepting reports, and the device ends the subscription at its
 next report.
 
-**enable_auto_subscription** / **disable_auto_subscription** - Switch the server's own subscription to one node on
-or off
+**enable_auto_subscription** / **disable_auto_subscription** - Switch the server's own subscription to one node on or off
 
 ```json
 {
@@ -731,10 +734,9 @@ device cannot be reached becomes unavailable as without `--disable-auto-subscrip
 The server's subscription is made with KeepSubscriptions `false`, so it ends every subscription opened with
 `subscribe` to that node once its Subscribe request goes out, which is before a successful
 `enable_auto_subscription` returns and, after a failed one, can be much later; each arrives as `subscription_ended`
-at its connection. While the node's auto
-subscription is on, `subscribe` for it fails with `InvalidArguments`, also when it was enabled while the
-`subscribe` was in progress. `disable_auto_subscription` ends the server's subscription;
-as with `unsubscribe`, the device ends it at its next report.
+at its connection. While the node's auto subscription is on, `subscribe` for it fails with `InvalidArguments`, also
+when it was enabled while the `subscribe` was in progress. `disable_auto_subscription` ends the server's
+subscription; as with `unsubscribe`, the device ends it at its next report.
 
 ### Commands
 

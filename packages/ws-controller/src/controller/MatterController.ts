@@ -120,8 +120,8 @@ export interface MatterControllerOptions {
      */
     customClusterPollInterval?: Duration;
     /**
-     * Never subscribe to peers on our own: not after commissioning and not when the server starts. Peers are only
-     * read on request. Defaults to false.
+     * Do not subscribe to peers on our own, neither after commissioning nor when the server starts, unless switched on
+     * per peer. Defaults to false.
      */
     disableAutoSubscription?: boolean;
 }

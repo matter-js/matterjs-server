@@ -48,7 +48,7 @@ npm run server -- --bluetooth-adapter 0
 | --thread-rest-probe-port     | integer      | 8081             | No       | TCP port of the OTBR REST API probed on discovered Thread Border Routers — env `THREAD_REST_PROBE_PORT`. Set it when the Border Router exposes its REST API on another port (e.g. `8080`). A wrong port costs probe time on every discovered Border Router before the probe gives up and the network falls back to CoAP. |
 | --enable-time-sync           | boolean flag | false            | No       | Enables automatic time synchronization for devices that support it (env `ENABLE_TIME_SYNC`). Only enable when the host clock is reliably synced (e.g., NTP); pushes UTC time + time zone / DST.                                                                      |
 | --custom-cluster-poll-interval | integer    | 60               | No       | Interval in seconds for polling custom cluster attributes that do not support Matter subscriptions (legacy Eve Energy devices) — env `CUSTOM_CLUSTER_POLL_INTERVAL`. Accepts 60 to 86400; raise it (e.g. `300`, `600`) to cut periodic Thread traffic on networks with many such devices, at the cost of less current energy readings. |
-| --disable-auto-subscription  | boolean flag | false            | No       | Do not subscribe to nodes automatically, neither after commissioning nor on start, and stop the subscriptions of already commissioned nodes — env `DISABLE_AUTO_SUBSCRIPTION`. You are responsible to subscribe as needed (WebSocket `subscribe`/`unsubscribe` and the per-node `enable_auto_subscription`/`disable_auto_subscription` are only available with it); only recommended for very special use cases. See [Disabled auto subscription](#disabled-auto-subscription). |
+| --disable-auto-subscription  | boolean flag | false            | No       | Do not subscribe to nodes automatically, neither after commissioning nor on start, and stop the subscriptions of already commissioned nodes — env `DISABLE_AUTO_SUBSCRIPTION`. You are responsible for subscribing as needed (WebSocket `subscribe`/`unsubscribe` and the per-node `enable_auto_subscription`/`disable_auto_subscription` are only available with it); only recommended for very special use cases. See [Disabled auto subscription](#disabled-auto-subscription). |
 
 > **Log rotation:** `--log-file` must be a full file path including the filename. The log is rotated
 > every 24 hours, and on each startup: backups are shifted (`.6`→`.7`, …, `.1`→`.2`, current→`.1`),
@@ -87,8 +87,8 @@ also for those switched on with `enable_auto_subscription`:
   server's subscription to a node first comes up
 - time synchronization, custom cluster polling and the Thread neighbor/route refresh do not run
 - the OTA provider does not check the DCL for updates on its own (otherwise 5 to 10 minutes after the start and
-  then every 24 hours); `check_node_update` and `update_node` still work, but matter.js only finds updates for nodes
-  with the server's own subscription, so for other nodes `check_node_update` returns `null`. Stored OTA files that no
+  then every 24 hours); matter.js only offers updates to nodes with the server's own subscription, so for other nodes
+  `check_node_update` returns `null` and `update_node` fails. Stored OTA files that no
   node needs anymore are not deleted either, because that cleanup runs with the update check.
 - Thread Border Routers are not discovered and probed for a REST API until a client sends
   `get_thread_border_routers`, `get_thread_diagnostics` or `get_network_topology`; from then on discovery keeps
@@ -115,7 +115,8 @@ Webserver listening on unix socket <path>
 ```
 
 `<port>` is the bound port, also with `--port 0`. Tools may wait for this line and read the port from the text after
-the last `:` (IPv6 hosts are not bracketed). Its wording is a contract: a change to it is a breaking change.
+the last `:` (IPv6 hosts are not bracketed). Its wording is a contract: a change to it is a breaking change. The line
+is logged at level `notice`, so a tool waiting for it must not set `--log-level` to `warn` or `error`.
 
 ### Behavioral Differences from Python Matter Server
 
