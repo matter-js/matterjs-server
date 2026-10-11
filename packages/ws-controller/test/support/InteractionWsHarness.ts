@@ -116,7 +116,9 @@ export class InteractionWsHarness {
     readonly readRequests = new Array<InteractionReadRequest>();
     readonly autoSubscriptionRequests = new Array<{ nodeId: NodeId; enabled: boolean }>();
     readonly subscriptions = new Array<FakeSubscription>();
-    primingReport?: InteractionReport;
+    primingReport: InteractionReport = { attributes: {}, events: [] };
+    /** Reported through the listener before the subscription resolves. */
+    earlyReport?: InteractionReport;
     readResult: InteractionReport = { attributes: {}, events: [] };
     nextSubscriptionId = 1;
     /** While set, subscribe waits for it before answering. */
@@ -201,13 +203,14 @@ export class InteractionWsHarness {
 
     async #subscribe(request: InteractionSubscribeRequest, listener: InteractionSubscriptionListener) {
         this.subscribeRequests.push(request);
-        if (this.primingReport !== undefined) {
-            listener.report(this.primingReport);
+        if (this.earlyReport !== undefined) {
+            listener.report(this.earlyReport);
         }
         await this.subscribeGate;
         const subscription: FakeSubscription = {
             id: this.nextSubscriptionId,
             nodeId: request.nodeId,
+            priming: this.primingReport,
             open: true,
             listener,
             close: () => {

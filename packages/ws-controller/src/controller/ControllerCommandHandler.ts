@@ -17,6 +17,7 @@ import {
     FabricIndex,
     IcdClient,
     IcdMultiAdminError,
+    InternalError,
     isObject,
     Logger,
     MatterAggregateError,
@@ -1162,7 +1163,7 @@ export class ControllerCommandHandler {
     /**
      * Open a subscription of the caller's own. Only available with auto subscription disabled, and only for a node
      * whose auto subscription was not enabled with {@link setAutoSubscription}. Reports reach
-     * {@link InteractionSubscriptionListener.report}; the priming report arrives before this resolves. matter.js ends
+     * {@link InteractionSubscriptionListener.report} except the priming report, which the result carries. matter.js ends
      * the subscription when the node is removed or the controller goes offline.
      */
     async subscribe(
@@ -1188,16 +1189,28 @@ export class ControllerCommandHandler {
             );
         }
 
+        let priming: InteractionReport | undefined;
         const subscribe: Subscribe = {
             ...this.#readRequestOf(request),
             keepSubscriptions: request.keepSubscriptions ?? false,
             minIntervalFloor: Seconds(minInterval),
             maxIntervalCeiling: Seconds(maxInterval),
             // Draining the data is what applies it to the node state.
-            updated: async data => listener.report(await this.#collectReport(nodeId, data)),
+            updated: async data => {
+                const report = await this.#collectReport(nodeId, data);
+                if (priming === undefined) {
+                    priming = report;
+                } else {
+                    listener.report(report);
+                }
+            },
             closed: () => listener.closed(),
         };
         const active = await node.interaction.subscribe(subscribe);
+        if (priming === undefined) {
+            active.close();
+            throw new InternalError(`Subscription ${active.subscriptionId} became active without a priming report`);
+        }
         // Auto subscription enabled while this was being set up would leave both subscriptions running.
         if (this.#autoSubscribes(node)) {
             active.close();
@@ -1208,6 +1221,7 @@ export class ControllerCommandHandler {
         return {
             id: active.subscriptionId,
             nodeId,
+            priming,
             close: () => {
                 Promise.resolve(active.close()).catch(error =>
                     logger.warn(`Failed to close subscription ${active.subscriptionId}:`, error),

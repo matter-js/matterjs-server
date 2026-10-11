@@ -150,7 +150,7 @@ describe("generic subscribe", () => {
             expect(captured.map(({ keepSubscriptions }) => keepSubscriptions)).deep.equals([false, true, false]);
         });
 
-        it("forwards the priming report and later changes, next to the usual change events", async () => {
+        it("returns the priming report and forwards later changes, next to the usual change events", async () => {
             const record = recorder();
             const attributeChanges = new Array<AttributeChange>();
             const eventChanges = new Array<EventChange>();
@@ -165,14 +165,14 @@ describe("generic subscribe", () => {
 
             expect(subscription.nodeId).equals(NODE_ID);
             expect(subscription.id).a("number");
-            expect(record.reports.length).equals(1);
-            expect(record.reports[0].attributes).deep.equals({ "1/6/0": false });
+            expect(subscription.priming.attributes).deep.equals({ "1/6/0": false });
+            expect(record.reports.length).equals(0);
 
             await site.light.setStateOf(OnOffServer, { onOff: true });
             await site.light.setStateOf(BooleanStateServer, { stateValue: true });
             await site.settle(Seconds(5));
 
-            const attributes = record.reports.slice(1).map(report => report.attributes);
+            const attributes = record.reports.map(report => report.attributes);
             expect(attributes).deep.include({ "1/6/0": true });
             const events = record.reports.flatMap(report => report.events);
             const stateChange = events.find(event => event.cluster_id === 69 && event.event_id === 0);
@@ -187,11 +187,12 @@ describe("generic subscribe", () => {
         });
 
         it("reports the status of an unsupported path in the priming report", async () => {
-            const record = recorder();
+            const subscription = await subscribe(
+                { ...LIGHT_ON_OFF, attributePaths: ["1/6/0", "1/6/9999"] },
+                recorder().listener,
+            );
 
-            await subscribe({ ...LIGHT_ON_OFF, attributePaths: ["1/6/0", "1/6/9999"] }, record.listener);
-
-            expect(record.reports[0].attribute_status).deep.equals({
+            expect(subscription.priming.attribute_status).deep.equals({
                 "1/6/9999": { status: Status.UnsupportedAttribute },
             });
         });
@@ -405,24 +406,34 @@ describe("subscribe over WebSocket", () => {
         ]);
     });
 
-    it("answers with the subscription id, then sends the priming report to the owner only", async () => {
+    it("answers with the subscription id and the priming report, then sends later reports to the owner only", async () => {
         const owner = await harness.connect();
         const other = await harness.connect();
         harness.primingReport = { attributes: { "1/6/0": false }, events: [] };
         harness.nextSubscriptionId = 77;
 
         const response = await owner.command("subscribe", SUBSCRIBE_ARGS);
-        expect(response.result).deep.equals({ subscription_id: 77 });
-        const priming = await owner.nextEvent("subscription_report");
-        expect(priming.data).deep.equals({ subscription_id: 77, attributes: { "1/6/0": false }, events: [] });
-        expect(owner.indexOf(priming)).greaterThan(owner.indexOf(response));
+        expect(response.result).deep.equals({ subscription_id: 77, attributes: { "1/6/0": false }, events: [] });
 
         harness.report(77, { attributes: { "1/6/0": true }, events: [] });
         const update = await owner.nextEvent("subscription_report");
         expect(update.data).deep.equals({ subscription_id: 77, attributes: { "1/6/0": true }, events: [] });
+        expect(owner.events("subscription_report")).deep.equals([update]);
 
         await other.command("server_info", {});
         expect(other.events("subscription_report")).deep.equals([]);
+    });
+
+    it("sends a report that arrives before the subscription resolves after the response", async () => {
+        const owner = await harness.connect();
+        harness.earlyReport = { attributes: { "1/6/0": true }, events: [] };
+        harness.nextSubscriptionId = 78;
+
+        const response = await owner.command("subscribe", SUBSCRIBE_ARGS);
+        const early = await owner.nextEvent("subscription_report");
+
+        expect(early.data).deep.equals({ subscription_id: 78, attributes: { "1/6/0": true }, events: [] });
+        expect(owner.indexOf(early)).greaterThan(owner.indexOf(response));
     });
 
     it("ends the subscription on unsubscribe from its owner only", async () => {
@@ -586,7 +597,7 @@ describe("subscribe over WebSocket", () => {
 
         const response = await other.command("subscribe", SUBSCRIBE_ARGS);
         expect(response.error_code).undefined;
-        expect(response.result).deep.equals({ subscription_id: 40 });
+        expect(response.result).deep.include({ subscription_id: 40 });
     });
 
     it("never drops an end notice under backpressure, unlike reports", async () => {

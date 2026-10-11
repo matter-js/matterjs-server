@@ -590,7 +590,8 @@ export interface APICommands {
             /** Defaults to false. */
             keep_subscriptions?: boolean;
         };
-        response: { subscription_id: number };
+        /** Carries the priming report; `subscription_report` carries only the later ones. */
+        response: InteractionReportData & { subscription_id: number };
     };
     /**
      * Schema 14. Only the connection that opened the subscription can end it. Only available with the server running

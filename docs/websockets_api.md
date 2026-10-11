@@ -618,12 +618,17 @@ Response:
 ```json
 {
   "message_id": "1",
-  "result": { "subscription_id": 2864434397 }
+  "result": {
+    "subscription_id": 2864434397,
+    "attributes": { "1/6/0": false },
+    "events": []
+  }
 }
 ```
 
-`subscription_id` is the SubscriptionId the device assigned. The reports follow as `subscription_report` events,
-the priming report first, after this response. The reports have the same side effects on all clients as `read`:
+`subscription_id` is the SubscriptionId the device assigned. The rest of the result is the priming report, in the
+shape of the `read` result (`attributes`, `events`, `attribute_status`, `event_status`). Later reports follow as
+`subscription_report` events after this response. All reports have the same side effects on all clients as `read`:
 `attribute_updated` to every listening client, only when `fabric_filtered` is `true`, the default, and every
 reported event as `node_event` to every listening client and into the event history, whatever `fabric_filtered` is
 and without a check against events already seen.
@@ -1192,7 +1197,7 @@ Format: `[node_id, "endpoint/cluster/attribute", value]`
 
 ### Subscription Events
 
-**subscription_report** - A report of a subscription opened with `subscribe` (schema 14)
+**subscription_report** - A report after the priming report of a subscription opened with `subscribe` (schema 14)
 
 Sent only to the connection that opened the subscription, also when it has not called `start_listening`.
 

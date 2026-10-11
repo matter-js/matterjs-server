@@ -134,6 +134,8 @@ export interface InteractionSubscription {
     /** The subscription id the device assigned. */
     readonly id: number;
     readonly nodeId: NodeId;
+    /** The first report, which carries the subscribed state; later reports reach the listener. */
+    readonly priming: InteractionReport;
     close(): void;
 }
 

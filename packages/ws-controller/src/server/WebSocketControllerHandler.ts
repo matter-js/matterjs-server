@@ -1198,10 +1198,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
         };
     }
 
-    /**
-     * The priming report arrives before the subscription id is known, so the subscription's events are held until the
-     * response is sent.
-     */
+    /** The subscription's events are held until the response is sent, so the client knows the id first. */
     async #handleSubscribe(
         args: ArgsOf<"subscribe">,
         connection: WebSocketConnection,
@@ -1264,7 +1261,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
         this.#interactionSubscriptions.set(id, registered.entry);
 
         return {
-            result: { subscription_id: id },
+            result: { subscription_id: id, ...subscription.priming },
             afterResponse: () => {
                 for (const send of pending.splice(0)) {
                     send(id);
