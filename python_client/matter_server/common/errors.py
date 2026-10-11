@@ -9,9 +9,16 @@ ERROR_MAP: dict[int, type] = {}
 
 
 class MatterError(Exception):
-    """Generic Matter exception."""
+    """Generic Matter exception.
+
+    `status` and `cluster_status` hold the Matter status the device answered with, when the server reports the
+    failure as one; `reason` is the commissioning failure reason. All are set from the server's error reply.
+    """
 
     error_code = 0
+    status: int | None = None
+    cluster_status: int | None = None
+    reason: str | None = None
 
     def __init_subclass__(cls, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
         """Register a subclass."""

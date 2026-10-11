@@ -196,6 +196,9 @@ class ErrorResultMessage(ResultMessageBase):
 
     error_code: int
     details: str | None = None
+    status: int | None = None
+    cluster_status: int | None = None
+    reason: str | None = None
 
 
 @dataclass

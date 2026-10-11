@@ -10,9 +10,9 @@ import pytest
 
 from chip.clusters import Objects as clusters
 from matter_server.client.client import MatterClient
-from matter_server.client.connection import MatterClientConnection
+from matter_server.client.connection import MatterClientConnection, parse_message
 from matter_server.common.const import SCHEMA_VERSION
-from matter_server.common.errors import NodeCommissionFailed
+from matter_server.common.errors import IcdMultiAdmin, NodeCommissionFailed
 from matter_server.common.models import (
     APICommand,
     CommandMessage,
@@ -81,6 +81,41 @@ async def test_handle_incoming_message_rejects_pending_error() -> None:
     error = future.exception()
     assert type(error) is NodeCommissionFailed
     assert str(error) == "expected error"
+
+
+async def test_handle_incoming_message_keeps_status_and_reason_of_error() -> None:
+    client = _make_client()
+    future = asyncio.get_running_loop().create_future()
+    client._result_futures["pending-error"] = future
+
+    client._handle_incoming_message(
+        parse_message(
+            {
+                "message_id": "pending-error",
+                "error_code": 1,
+                "details": "rejected",
+                "status": 1,
+                "cluster_status": 3,
+                "reason": "timeout",
+            }
+        )
+    )
+
+    error = future.exception()
+    assert isinstance(error, NodeCommissionFailed)
+    assert (error.status, error.cluster_status, error.reason) == (1, 3, "timeout")
+
+
+async def test_handle_incoming_message_leaves_absent_error_fields_unset() -> None:
+    client = _make_client()
+    future = asyncio.get_running_loop().create_future()
+    client._result_futures["pending-error"] = future
+
+    client._handle_incoming_message(parse_message({"message_id": "pending-error", "error_code": 100}))
+
+    error = future.exception()
+    assert isinstance(error, IcdMultiAdmin)
+    assert (error.status, error.cluster_status, error.reason) == (None, None, None)
 
 
 async def test_write_attribute_sends_tag_keyed_value() -> None:

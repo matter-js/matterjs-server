@@ -861,8 +861,11 @@ class MatterClient:
                 future.set_result(msg.result)
                 return
             if isinstance(msg, ErrorResultMessage):
-                exc = exception_from_error_code(msg.error_code)
-                future.set_exception(exc(msg.details))
+                error = exception_from_error_code(msg.error_code)(msg.details)
+                error.status = msg.status
+                error.cluster_status = msg.cluster_status
+                error.reason = msg.reason
+                future.set_exception(error)
                 return
 
         # handle EventMessage
