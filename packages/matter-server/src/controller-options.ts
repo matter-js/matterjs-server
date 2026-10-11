@@ -22,6 +22,7 @@ export function controllerOptionsFrom(
         enableTestNetDcl: cliOptions.enableTestNetDcl,
         disableOtaProvider: cliOptions.disableOta,
         disableDclSeed: cliOptions.disableDclSeed,
+        dclOffline: cliOptions.dclOffline,
         serverId,
         serverVersion,
         bleProxyEnabled: cliOptions.bleProxy,

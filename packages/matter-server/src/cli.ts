@@ -65,6 +65,7 @@ export interface CliOptions {
     // Certificate configuration
     enableTestNetDcl: boolean;
     disableDclSeed: boolean;
+    dclOffline: boolean;
 
     // Bluetooth configuration
     bluetoothAdapter: number | null;
@@ -232,6 +233,16 @@ export function parseCliArgs(argv?: string[]): CliOptions {
                 .env("DISABLE_DCL_SEED"),
         )
         .addOption(
+            new Option(
+                "--dcl-offline [value]",
+                "Never contact the DCL for attestation certificates; use only the bundled seed and certificates already stored",
+            )
+                .argParser(parseBooleanEnv)
+                .preset(true)
+                .default(false)
+                .env("DCL_OFFLINE"),
+        )
+        .addOption(
             new Option("--bluetooth-adapter <id>", "Bluetooth adapter HCI ID (e.g., 0 for hci0)")
                 .argParser(parseIntOption)
                 .env("BLUETOOTH_ADAPTER"),
@@ -343,6 +354,10 @@ export function parseCliArgs(argv?: string[]): CliOptions {
     program.parse(argv);
     const opts = program.opts();
 
+    if (opts.dclOffline && opts.disableDclSeed) {
+        program.error("error: --dcl-offline needs the DCL seed, so it cannot be combined with --disable-dcl-seed");
+    }
+
     // Warn about deprecated options if used
     for (const [key, flag] of Object.entries(DEPRECATED_OPTIONS)) {
         if (opts[key] !== undefined && opts[key] !== false) {
@@ -395,6 +410,7 @@ export function parseCliArgs(argv?: string[]): CliOptions {
         defaultFabricLabel: opts.defaultFabricLabel ?? null,
         enableTestNetDcl: opts.enableTestNetDcl,
         disableDclSeed: opts.disableDclSeed,
+        dclOffline: opts.dclOffline,
         bluetoothAdapter: opts.bluetoothAdapter ?? null,
         bleProxy: opts.bleProxy,
         disableOta: opts.disableOta,

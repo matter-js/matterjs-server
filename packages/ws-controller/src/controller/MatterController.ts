@@ -15,6 +15,7 @@ import {
     FabricId,
     GlobalFabricId,
     Logger,
+    ImplementationError,
     MatterAggregateError,
     Millis,
     NodeId,
@@ -86,6 +87,12 @@ export interface MatterControllerOptions {
     disableOtaProvider?: boolean;
     /** Disable bundled offline DCL seed data (PAA roots, CD signers, vendors). When true, only network DCL is used. */
     disableDclSeed?: boolean;
+    /**
+     * Never contact the DCL or GitHub for attestation certificates and run no certificate updates or revocation checks;
+     * the trust store is the bundled seed plus certificates stored by earlier runs. Vendor information and OTA update
+     * queries still use the network DCL.
+     */
+    dclOffline?: boolean;
     /** Server ID for storage. Default is "server", but may be "server-<hex(fabricId)>-<hex(vendorId)>" for multi-fabric support */
     serverId?: string;
     /** Server version string (e.g., "0.2.10" or "0.2.10-alpha.0"). Used for BasicInformation cluster. */
@@ -206,6 +213,7 @@ export class MatterController {
     #enableTestNetDcl = false;
     #disableOtaProvider = true;
     #disableDclSeed = false;
+    #dclOffline = false;
     #bleProxyEnabled = false;
     #enableTimeSync = false;
     #threadDiagnosticsDisabled = false;
@@ -300,6 +308,12 @@ export class MatterController {
         this.#enableTestNetDcl = options.enableTestNetDcl ?? this.#enableTestNetDcl;
         this.#disableOtaProvider = options.disableOtaProvider ?? this.#disableOtaProvider;
         this.#disableDclSeed = options.disableDclSeed ?? this.#disableDclSeed;
+        this.#dclOffline = options.dclOffline ?? this.#dclOffline;
+        if (this.#dclOffline && this.#disableDclSeed) {
+            throw new ImplementationError(
+                "dclOffline needs the DCL seed, so it cannot be combined with disableDclSeed",
+            );
+        }
         this.#bleProxyEnabled = options.bleProxyEnabled ?? this.#bleProxyEnabled;
         this.#enableTimeSync = options.enableTimeSync ?? this.#enableTimeSync;
         this.#threadDiagnosticsDisabled = options.disableThreadDiagnostics ?? this.#threadDiagnosticsDisabled;
@@ -369,6 +383,7 @@ export class MatterController {
                 fetchTestCertificates,
                 fetchGithubCertificates,
                 acceptTestCertificates: trustTestCertificates,
+                offline: this.#dclOffline,
                 seed: {
                     paaRoots: paaRoots({ includeTest: true }),
                     cdSigners: cdSigners({ includeTest: true }),

@@ -175,6 +175,55 @@ describe("cli", () => {
         });
     });
 
+    describe("--dcl-offline", () => {
+        it("defaults to false", () => {
+            expect(parseCliArgs(argv()).dclOffline).to.equal(false);
+        });
+
+        it("is set by the flag and the environment", () => {
+            expect(parseCliArgs(argv("--dcl-offline")).dclOffline).to.equal(true);
+            process.env.DCL_OFFLINE = "true";
+            try {
+                expect(parseCliArgs(argv()).dclOffline).to.equal(true);
+            } finally {
+                delete process.env.DCL_OFFLINE;
+            }
+        });
+
+        it("reaches the controller options", () => {
+            const cliOptions = parseCliArgs(argv("--dcl-offline"));
+            expect(controllerOptionsFrom(cliOptions, "server", "1.2.3").dclOffline).to.equal(true);
+        });
+
+        it("cannot be combined with --disable-dcl-seed", () => {
+            const cli = JSON.stringify(import.meta.resolve("../src/cli.js"));
+            const result = spawnSync(
+                process.execPath,
+                [
+                    "--input-type=module",
+                    "-e",
+                    `const m = await import(${cli}); m.parseCliArgs(["node", "matter-server", "--dcl-offline", "--disable-dcl-seed"]);`,
+                ],
+                { encoding: "utf8" },
+            );
+
+            expect(result.status, `stdout: ${result.stdout}\nstderr: ${result.stderr}`).to.equal(1);
+            expect(result.stderr).to.include("cannot be combined with --disable-dcl-seed");
+        });
+
+        it("accepts both options set to false", () => {
+            process.env.DCL_OFFLINE = "false";
+            process.env.DISABLE_DCL_SEED = "false";
+            try {
+                const cliOptions = parseCliArgs(argv("--dcl-offline", "false", "--disable-dcl-seed", "false"));
+                expect([cliOptions.dclOffline, cliOptions.disableDclSeed]).deep.equals([false, false]);
+            } finally {
+                delete process.env.DCL_OFFLINE;
+                delete process.env.DISABLE_DCL_SEED;
+            }
+        });
+    });
+
     describe("LISTEN_ADDRESS", () => {
         function withListenAddressEnv(value: string, run: () => void) {
             process.env.LISTEN_ADDRESS = value;
