@@ -23,6 +23,7 @@ import {
     MatterSoftwareVersion,
     NodePingResult,
     ResponseOf,
+    SubscriptionReportData,
     SuccessResultMessage,
     ThreadDiagnosticsBatch,
     WebRtcCallbackData,
@@ -72,6 +73,14 @@ export interface CredentialCommandOptions {
     timeout?: number;
 }
 
+/** Receives the events of one subscription opened with {@link MatterClient.subscribe}. */
+export interface SubscriptionListener {
+    /** A report after the first one, which the `subscribe` result carries. */
+    report(data: SubscriptionReportData): void;
+    /** The subscription ended without `unsubscribe`, or the connection to the server was lost. */
+    ended?(): void;
+}
+
 export class MatterClient {
     public connection: Connection;
     public nodes: Record<string, MatterNode> = {};
@@ -95,6 +104,7 @@ export class MatterClient {
             timeoutId?: ReturnType<typeof setTimeout>;
         }
     > = {};
+    private subscriptionListeners = new Map<number, SubscriptionListener>();
     // Start with random offset for defense-in-depth and easier debugging across sessions
     private msgId = Math.floor(Math.random() * 0x7fffffff);
     private eventListeners: Record<string, Array<() => void>> = {};
@@ -375,6 +385,32 @@ export class MatterClient {
         );
     }
 
+    /** Schema 14. A Matter Read with full control over the request. */
+    async read(args: APICommands["read"]["requestArgs"], timeout?: number): Promise<ResponseOf<"read">> {
+        return await this.sendCommand("read", 0, args, timeout);
+    }
+
+    /**
+     * Schema 14. Opens a Matter subscription owned by this connection. The result carries the first report; later
+     * reports and the end go to `listener` until {@link unsubscribe}.
+     */
+    async subscribe(
+        args: APICommands["subscribe"]["requestArgs"],
+        listener: SubscriptionListener,
+        timeout?: number,
+    ): Promise<ResponseOf<"subscribe">> {
+        // Registered when the response is handled, because a report can arrive in the same socket read.
+        return await this.sendCommand("subscribe", 0, args, timeout, ({ subscription_id }) =>
+            this.subscriptionListeners.set(subscription_id, listener),
+        );
+    }
+
+    /** Schema 14. Ends a subscription opened with {@link subscribe}; its listener gets no further calls. */
+    async unsubscribe(subscriptionId: number, timeout?: number): Promise<void> {
+        this.subscriptionListeners.delete(subscriptionId);
+        await this.sendCommand("unsubscribe", 0, { subscription_id: subscriptionId }, timeout);
+    }
+
     async writeAttribute(
         nodeId: number | bigint,
         attributePath: string,
@@ -574,6 +610,7 @@ export class MatterClient {
      * @param require_schema Minimum schema version required (0 for any version)
      * @param args Command arguments
      * @param timeout Optional timeout in milliseconds. Defaults to `commandTimeout`. Set to 0 to disable.
+     * @param onResult Called with the result while the response message is handled, before the next message
      * @returns Promise that resolves with the command result
      * @throws Error if the command times out or fails
      */
@@ -582,6 +619,7 @@ export class MatterClient {
         require_schema: number | undefined = undefined,
         args: APICommands[T]["requestArgs"],
         timeout = this.commandTimeout,
+        onResult?: (result: APICommands[T]["response"]) => void,
     ): Promise<APICommands[T]["response"]> {
         if (require_schema && this.serverInfo.schema_version < require_schema) {
             throw new InvalidServerVersion(
@@ -622,7 +660,13 @@ export class MatterClient {
 
             // Type-erased storage: resolve/reject are stored as unknown handlers
             this.result_futures[messageId] = {
-                resolve,
+                resolve:
+                    onResult === undefined
+                        ? resolve
+                        : result => {
+                              onResult(result);
+                              resolve(result);
+                          },
                 reject,
                 timeoutId,
             };
@@ -666,6 +710,15 @@ export class MatterClient {
      * Reject all pending commands with a ConnectionClosedError.
      * Called when the connection is closed or lost.
      */
+    /** The server ends every subscription of a connection when it closes, without a `subscription_ended`. */
+    private _endAllSubscriptions(): void {
+        const listeners = [...this.subscriptionListeners.values()];
+        this.subscriptionListeners.clear();
+        for (const listener of listeners) {
+            listener.ended?.();
+        }
+    }
+
     private _rejectAllPendingCommands(): void {
         const error = new ConnectionClosedError();
         const pendingIds = Object.keys(this.result_futures);
@@ -682,6 +735,7 @@ export class MatterClient {
             msg => this._handleIncomingMessage(msg as IncomingMessage),
             () => {
                 this._rejectAllPendingCommands();
+                this._endAllSubscriptions();
                 this.fireEvent("connection_lost");
             },
         );
@@ -690,6 +744,7 @@ export class MatterClient {
     disconnect(clearStorage = false) {
         // Reject all pending commands before disconnecting
         this._rejectAllPendingCommands();
+        this._endAllSubscriptions();
         // disconnect from the server
         if (this.connection && this.connection.connected) {
             this.connection.disconnect();
@@ -816,6 +871,18 @@ export class MatterClient {
             for (const listener of this.nodeEventListeners) {
                 listener(event.data);
             }
+            return;
+        }
+
+        if (event.event === "subscription_report") {
+            this.subscriptionListeners.get(event.data.subscription_id)?.report(event.data);
+            return;
+        }
+
+        if (event.event === "subscription_ended") {
+            const listener = this.subscriptionListeners.get(event.data.subscription_id);
+            this.subscriptionListeners.delete(event.data.subscription_id);
+            listener?.ended?.();
             return;
         }
     }

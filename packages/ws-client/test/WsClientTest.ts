@@ -233,6 +233,75 @@ describe("ws-client", () => {
             });
         });
 
+        describe("subscriptions", () => {
+            const EMPTY_REPORT = { attributes: {}, events: [] };
+            const LIGHT_ON_OFF = { node_id: 1, attribute_paths: ["1/6/0"], min_interval: 0, max_interval: 60 };
+
+            function recorder() {
+                const reports = new Array<number>();
+                let ended = 0;
+                return {
+                    listener: {
+                        report: ({ subscription_id }: { subscription_id: number }) => reports.push(subscription_id),
+                        ended: () => ended++,
+                    },
+                    reports,
+                    ended: () => ended,
+                };
+            }
+
+            async function eventsArrived() {
+                server.onCommand("get_nodes", () => []);
+                await client.getNodes();
+            }
+
+            it("passes the reports and the end of a subscription to its listener only", async () => {
+                server.onCommand("subscribe", () => {
+                    queueMicrotask(() =>
+                        server.sendEvent("subscription_report", { subscription_id: 7, ...EMPTY_REPORT }),
+                    );
+                    return { subscription_id: 7, ...EMPTY_REPORT };
+                });
+                await client.connect();
+                const own = recorder();
+
+                const result = await client.subscribe(LIGHT_ON_OFF, own.listener);
+                server.sendEvent("subscription_report", { subscription_id: 8, ...EMPTY_REPORT });
+                server.sendEvent("subscription_ended", { subscription_id: 7 });
+                server.sendEvent("subscription_report", { subscription_id: 7, ...EMPTY_REPORT });
+                await eventsArrived();
+
+                expect(result.subscription_id).equals(7);
+                expect([own.reports, own.ended()]).deep.equals([[7], 1]);
+            });
+
+            it("stops calling the listener after unsubscribe", async () => {
+                server.onCommand("subscribe", () => ({ subscription_id: 7, ...EMPTY_REPORT }));
+                await client.connect();
+                const own = recorder();
+
+                await client.subscribe(LIGHT_ON_OFF, own.listener);
+                await client.unsubscribe(7);
+                server.sendEvent("subscription_report", { subscription_id: 7, ...EMPTY_REPORT });
+                server.sendEvent("subscription_ended", { subscription_id: 7 });
+                await eventsArrived();
+
+                expect([own.reports, own.ended()]).deep.equals([[], 0]);
+                expect(server.getReceivedCommands().map(({ message }) => message.command)).includes("unsubscribe");
+            });
+
+            it("ends every subscription when the client disconnects", async () => {
+                server.onCommand("subscribe", () => ({ subscription_id: 7, ...EMPTY_REPORT }));
+                await client.connect();
+                const own = recorder();
+
+                await client.subscribe(LIGHT_ON_OFF, own.listener);
+                client.disconnect();
+
+                expect(own.ended()).equals(1);
+            });
+        });
+
         describe("commands", () => {
             it("should send command and receive response", async () => {
                 server.onCommand("get_nodes", () => []);
