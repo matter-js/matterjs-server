@@ -24,6 +24,11 @@ export class WebServer {
         this.#handlers = handlers;
     }
 
+    /** Port of the TCP listeners; the OS-chosen one when configured as 0. */
+    get port() {
+        return this.#port;
+    }
+
     async start() {
         // Determine which addresses to bind to
         // null/empty means bind to all interfaces (single server with no host specified)
@@ -65,17 +70,25 @@ export class WebServer {
 
     async #startServer(server: HttpServer, host: string | undefined): Promise<void> {
         const socketPath = host !== undefined && isUnixSocketPath(host) ? host : undefined;
-        const displayAddress =
-            socketPath !== undefined ? `unix socket ${socketPath}` : `http://${host ?? "0.0.0.0"}:${this.#port}`;
 
         if (socketPath !== undefined) {
             await removeStaleSocket(socketPath);
         }
 
+        const describeAddress = () =>
+            socketPath !== undefined ? `unix socket ${socketPath}` : `http://${host ?? "0.0.0.0"}:${this.#port}`;
+        let displayAddress = describeAddress();
+
         return new Promise<void>((resolve, reject) => {
             let resolvedOrErrored = false;
 
             server.listen(socketPath !== undefined ? { path: socketPath } : { host, port: this.#port }, () => {
+                const bound = server.address();
+                if (socketPath === undefined && bound !== null && typeof bound === "object") {
+                    // Port 0 lets the OS choose once; later TCP listeners must share that port.
+                    this.#port = bound.port;
+                }
+                displayAddress = describeAddress();
                 logger.notice(`Webserver listening on ${displayAddress}`);
                 if (!resolvedOrErrored) {
                     resolvedOrErrored = true;
@@ -167,6 +180,7 @@ export namespace WebServer {
     export interface Config {
         /** IP addresses or absolute unix socket paths to bind to. null means bind to all interfaces. */
         listenAddresses: string[] | null;
+        /** TCP port; 0 binds a free port chosen by the OS, shared by all TCP listeners. */
         port: number;
     }
 }

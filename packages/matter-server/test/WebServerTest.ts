@@ -7,7 +7,7 @@
 import type { HttpServer, WebServerHandler } from "@matter-server/ws-controller";
 import { spawn } from "node:child_process";
 import { chmod, lstat, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { request as httpRequest } from "node:http";
+import { get as httpGet, request as httpRequest } from "node:http";
 import { connect, createServer as createNetServer, type Server as NetServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -145,5 +145,53 @@ describe("WebServer", () => {
 
         await expect(createWebServer().start()).to.be.rejectedWith(/EADDRINUSE/);
         expect(await readFile(socketPath, "utf8")).to.equal("keep me");
+    });
+
+    describe("port 0", () => {
+        function getOverTcp(host: string, port: number): Promise<string> {
+            return new Promise((resolve, reject) => {
+                httpGet({ host, port, path: "/", agent: false }, res => {
+                    let body = "";
+                    res.setEncoding("utf8");
+                    res.on("data", chunk => (body += chunk));
+                    res.on("end", () => resolve(body));
+                }).on("error", reject);
+            });
+        }
+
+        async function ipv6LoopbackAvailable() {
+            const probe = createNetServer();
+            try {
+                await new Promise<void>((resolve, reject) => {
+                    probe.once("error", reject);
+                    probe.listen(0, "::1", resolve);
+                });
+                return true;
+            } catch {
+                return false;
+            } finally {
+                await new Promise<void>(resolve => probe.close(() => resolve()));
+            }
+        }
+
+        it("binds a free port and reports it", async () => {
+            webServer = new WebServer({ listenAddresses: ["127.0.0.1"], port: 0 }, [new OkHandler()]);
+            await webServer.start();
+
+            expect(webServer.port).to.be.greaterThan(0);
+            expect(await getOverTcp("127.0.0.1", webServer.port)).to.equal("ok");
+        });
+
+        it("uses the same port for every TCP listener", async function () {
+            if (!(await ipv6LoopbackAvailable())) {
+                this.skip();
+            }
+            webServer = new WebServer({ listenAddresses: ["127.0.0.1", "::1"], port: 0 }, [new OkHandler()]);
+            await webServer.start();
+
+            expect(webServer.port).to.be.greaterThan(0);
+            expect(await getOverTcp("127.0.0.1", webServer.port)).to.equal("ok");
+            expect(await getOverTcp("::1", webServer.port)).to.equal("ok");
+        });
     });
 });

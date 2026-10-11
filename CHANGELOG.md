@@ -9,6 +9,7 @@ This page shows a detailed overview of the changes between versions without the 
 
 ## **WORK IN PROGRESS**
 
+- Enhancement: `--port 0` binds a free port, and the startup log line `Webserver listening on …` shows the bound port
 - Enhancement: Update matter.js to the latest 0.18.0 nightly
     - Adds support for Matter 1.6.1 (including Python client)
 - Enhancement: Finishes the migration to the new matter.js controller API

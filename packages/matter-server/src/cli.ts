@@ -183,7 +183,7 @@ export function parseCliArgs(argv?: string[]): CliOptions {
                 .env("STORAGE_PATH"),
         )
         .addOption(
-            new Option("--port <port>", "TCP Port for WebSocket server")
+            new Option("--port <port>", "TCP Port for WebSocket server (0 binds a free port)")
                 .argParser(parseIntOption)
                 .default(DEFAULT_PORT)
                 .env("PORT"),
