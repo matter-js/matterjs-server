@@ -23,42 +23,30 @@ function argv(...args: string[]): string[] {
 
 describe("cli", () => {
     // parseCliArgs reads the ambient environment, and this repo's documented test command exports env vars.
-    let savedEnv: string | undefined;
-    let savedProbePortEnv: string | undefined;
-    let savedListenAddressEnv: string | undefined;
-    let savedAutoSubscriptionEnv: string | undefined;
+    const isolatedEnv = [
+        "DISABLE_AUTO_SUBSCRIPTION",
+        "LISTEN_ADDRESS",
+        "CUSTOM_CLUSTER_POLL_INTERVAL",
+        "THREAD_REST_PROBE_PORT",
+        "DCL_OFFLINE",
+        "DISABLE_DCL_SEED",
+    ];
+    const savedEnv = new Map<string, string | undefined>();
 
     before(() => {
-        savedAutoSubscriptionEnv = process.env.DISABLE_AUTO_SUBSCRIPTION;
-        delete process.env.DISABLE_AUTO_SUBSCRIPTION;
-        savedListenAddressEnv = process.env.LISTEN_ADDRESS;
-        delete process.env.LISTEN_ADDRESS;
-        savedEnv = process.env.CUSTOM_CLUSTER_POLL_INTERVAL;
-        delete process.env.CUSTOM_CLUSTER_POLL_INTERVAL;
-        savedProbePortEnv = process.env.THREAD_REST_PROBE_PORT;
-        delete process.env.THREAD_REST_PROBE_PORT;
+        for (const name of isolatedEnv) {
+            savedEnv.set(name, process.env[name]);
+            delete process.env[name];
+        }
     });
 
     after(() => {
-        if (savedAutoSubscriptionEnv === undefined) {
-            delete process.env.DISABLE_AUTO_SUBSCRIPTION;
-        } else {
-            process.env.DISABLE_AUTO_SUBSCRIPTION = savedAutoSubscriptionEnv;
-        }
-        if (savedListenAddressEnv === undefined) {
-            delete process.env.LISTEN_ADDRESS;
-        } else {
-            process.env.LISTEN_ADDRESS = savedListenAddressEnv;
-        }
-        if (savedProbePortEnv === undefined) {
-            delete process.env.THREAD_REST_PROBE_PORT;
-        } else {
-            process.env.THREAD_REST_PROBE_PORT = savedProbePortEnv;
-        }
-        if (savedEnv === undefined) {
-            delete process.env.CUSTOM_CLUSTER_POLL_INTERVAL;
-        } else {
-            process.env.CUSTOM_CLUSTER_POLL_INTERVAL = savedEnv;
+        for (const [name, value] of savedEnv) {
+            if (value === undefined) {
+                delete process.env[name];
+            } else {
+                process.env[name] = value;
+            }
         }
     });
 

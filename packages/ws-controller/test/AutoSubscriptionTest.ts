@@ -444,23 +444,23 @@ describe("auto subscription setting", () => {
             const controller = await commissioned(true);
             await enable(controller);
             await settle();
-            const before = Time.nowMs;
+            const before = Time.nowUs;
 
             await enable(controller);
 
-            expect(Time.nowMs).equals(before);
+            expect(Time.nowUs).equals(before);
         });
 
         it("fails after the timeout when the subscription does not become active, and stays enabled", async () => {
             const controller = await commissioned(true);
             refuseSubscriptions();
-            const before = Time.nowMs;
+            const before = Time.nowUs;
 
             const error = await enableFailure(controller);
 
             expectServerError(error, ServerErrorCode.NodeNotReady);
             expect(String(error)).contains("not active within");
-            expect(Time.nowMs - before).least(Seconds(255));
+            expect(Time.nowUs - before).least(Seconds(255));
             expect(peerOf(controller).stateOf(NetworkClient).autoSubscribe).equals(true);
             expect(controller.handler.events.nodeDecommissioned.isObserved).equals(false);
         });

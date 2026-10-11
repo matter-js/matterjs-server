@@ -157,12 +157,14 @@ describe("commissionNode", () => {
         expect([error.code, error.reason]).deep.equals([ServerErrorCode.NodeCommissionFailed, "not-discovered"]);
     });
 
-    it("reports a pairing code that does not decode as an invalid payload", async () => {
-        const error = await failureOf(() => handler.commissionNode({ nodeId: NODE_ID, manualCode: "12345" }));
+    for (const request of [{ manualCode: "12345" }, { qrCode: "MT:not-a-code" }]) {
+        it(`reports a ${Object.keys(request)[0]} that does not decode as an invalid payload`, async () => {
+            const error = await failureOf(() => handler.commissionNode({ nodeId: NODE_ID, ...request }));
 
-        expect([error.code, error.reason]).deep.equals([ServerErrorCode.InvalidArguments, "invalid-payload"]);
-        expect(error.message).match(/^Invalid pairing code: /);
-    });
+            expect([error.code, error.reason]).deep.equals([ServerErrorCode.InvalidArguments, "invalid-payload"]);
+            expect(error.message).match(/^Invalid pairing code: /);
+        });
+    }
 
     it("falls back to discovery without a caller-chosen node id", async () => {
         // The node id is the server's to allocate, but a library caller may omit it. Nothing about the

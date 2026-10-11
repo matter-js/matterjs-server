@@ -61,7 +61,7 @@ const LIGHT_ON_OFF: InteractionSubscribeRequest = {
     maxInterval: 60,
 };
 
-async function expectInvalidArguments(promise: Promise<unknown>) {
+async function expectInvalidArguments(promise: Promise<unknown>, message?: string) {
     const error = await promise.then(
         () => undefined,
         (error: unknown) => error,
@@ -69,6 +69,9 @@ async function expectInvalidArguments(promise: Promise<unknown>) {
     expect(error).instanceOf(ServerError);
     if (error instanceof ServerError) {
         expect(error.code).equals(ServerErrorCode.InvalidArguments);
+        if (message !== undefined) {
+            expect(error.message).contains(message);
+        }
     }
 }
 
@@ -354,6 +357,7 @@ describe("generic subscribe", () => {
             for (const keepSubscriptions of [undefined, true, false]) {
                 await expectInvalidArguments(
                     site.handler.subscribe({ ...LIGHT_ON_OFF, keepSubscriptions }, recorder().listener),
+                    "requires the server to run with --disable-auto-subscription",
                 );
             }
 

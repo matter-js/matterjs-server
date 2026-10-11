@@ -5,6 +5,7 @@
  */
 
 import type { HttpServer, WebServerHandler } from "@matter-server/ws-controller";
+import { Logger, LogLevel } from "@matter/main";
 import { spawn } from "node:child_process";
 import { chmod, lstat, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { get as httpGet, request as httpRequest } from "node:http";
@@ -12,6 +13,24 @@ import { connect, createServer as createNetServer, type Server as NetServer } fr
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { WebServer } from "../src/server/WebServer.js";
+
+async function logsOf(facility: string, run: () => Promise<void>) {
+    const logged = new Array<{ level: LogLevel; text: string }>();
+    const destination = Logger.destinations.default;
+    const add = destination.add.bind(destination);
+    destination.add = message => {
+        if (message.facility === facility) {
+            logged.push({ level: message.level, text: message.values.join(" ") });
+        }
+        add(message);
+    };
+    try {
+        await run();
+    } finally {
+        destination.add = add;
+    }
+    return logged;
+}
 
 class OkHandler implements WebServerHandler {
     async register(server: HttpServer) {
@@ -175,11 +194,17 @@ describe("WebServer", () => {
         }
 
         it("binds a free port and reports it", async () => {
-            webServer = new WebServer({ listenAddresses: ["127.0.0.1"], port: 0 }, [new OkHandler()]);
-            await webServer.start();
+            const server = new WebServer({ listenAddresses: ["127.0.0.1"], port: 0 }, [new OkHandler()]);
+            webServer = server;
+            const logged = await logsOf("WebServer", () => server.start());
 
-            expect(webServer.port).to.be.greaterThan(0);
-            expect(await getOverTcp("127.0.0.1", webServer.port)).to.equal("ok");
+            expect(server.port).to.be.greaterThan(0);
+            expect(await getOverTcp("127.0.0.1", server.port)).to.equal("ok");
+            // The readiness line is a documented contract, see docs/cli.md.
+            expect(logged).to.deep.include({
+                level: LogLevel.NOTICE,
+                text: `Webserver listening on http://127.0.0.1:${server.port}`,
+            });
         });
 
         it("uses the same port for every TCP listener", async function () {

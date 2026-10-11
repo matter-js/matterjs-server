@@ -11,7 +11,7 @@ import { EndpointNumber } from "@matter/main/types";
 import { OnOffServer } from "@matter/node/behaviors/on-off";
 import { SustainedSubscription } from "@matter/protocol";
 import { AttributeChange, EventChange, PeerChangeBus } from "../src/controller/PeerChangeBus.js";
-import { PeerSettingsRepairMarker, repairRestoredPeers } from "../src/controller/restoredPeers.js";
+import { applyAutoSubscribe, PeerSettingsRepairMarker, repairRestoredPeers } from "../src/controller/restoredPeers.js";
 import { TestSite } from "./support/ControllerSite.js";
 
 describe("PeerChangeBus", () => {
@@ -257,5 +257,34 @@ describe("repairRestoredPeers", () => {
         expect(peer().stateOf(NetworkClient).autoSubscribe).equals(false);
         expect(peer().stateOf(NetworkClient).isDisabled).equals(true);
         expect(marker.markedFor).deep.equals([]);
+    });
+});
+
+describe("applyAutoSubscribe", () => {
+    let site: TestSite;
+    let controller: ServerNode;
+
+    beforeEach(async () => {
+        MockTime.reset();
+        site = new TestSite();
+        let device: ServerNode;
+        ({ controller, device } = await site.startPair());
+        await site.commission(controller, device);
+    });
+
+    afterEach(async () => {
+        await site.close();
+    });
+
+    it("rewrites only the peers whose setting differs, and counts them", async () => {
+        const [peer] = controller.peers.commissioned;
+        expect(peer.stateOf(NetworkClient).autoSubscribe).equals(true);
+
+        expect(await applyAutoSubscribe(controller, false)).equals(1);
+        expect(peer.stateOf(NetworkClient).autoSubscribe).equals(false);
+
+        expect(await applyAutoSubscribe(controller, false)).equals(0);
+        expect(await applyAutoSubscribe(controller, true)).equals(1);
+        expect(peer.stateOf(NetworkClient).autoSubscribe).equals(true);
     });
 });

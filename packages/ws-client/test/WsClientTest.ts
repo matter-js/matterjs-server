@@ -352,8 +352,10 @@ describe("ws-client", () => {
                     await client.registerIcd(BigInt(5));
                     expect.fail("Should have thrown");
                 } catch (error) {
-                    expect(error).to.be.instanceOf(ServerCommandError);
-                    const { status, clusterStatus, reason } = error as ServerCommandError;
+                    if (!(error instanceof ServerCommandError)) {
+                        throw error;
+                    }
+                    const { status, clusterStatus, reason } = error;
                     expect({ status, clusterStatus, reason }).to.deep.equal({
                         status: 1,
                         clusterStatus: 3,

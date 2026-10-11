@@ -200,6 +200,8 @@ describe("utils/run-cert.mjs", function () {
             ["--matterjs-ref", "a b"],
             ["--matterjs-ref", "a..b"],
             ["--matterjs-ref", "$(x)"],
+            ["--matterjs-ref", "feat/"],
+            ["--matterjs-ref", "main.lock"],
         ]) {
             const result = runCert(["--dry-run", ...args], { RUN_CERT_TEST_PLATFORM: "linux" });
             expect(result.status, args.join(" ")).to.equal(2);
@@ -361,6 +363,9 @@ describe("utils/run-cert.mjs", function () {
                 npm_lifecycle_event: "cert",
                 npm_package_name: "matterjs-server-monorepo",
                 npm_command: "run-script",
+                npm_execpath: "/usr/lib/npm-cli.js",
+                npm_node_execpath: process.execPath,
+                npm_config_user_agent: "npm/10 node/v22",
                 INIT_CWD: ROOT,
             });
             expect(result.status, result.stderr).to.equal(0);
@@ -371,6 +376,9 @@ describe("utils/run-cert.mjs", function () {
                 "npm_lifecycle_event",
                 "npm_package_name",
                 "npm_command",
+                "npm_execpath",
+                "npm_node_execpath",
+                "npm_config_user_agent",
                 "INIT_CWD",
             ]) {
                 expect(
