@@ -18,6 +18,7 @@ import {
     InteractionSubscribeRequest,
     InteractionSubscription,
     InteractionSubscriptionListener,
+    InvokeRequest,
 } from "../../src/types/CommandHandler.js";
 
 type WsMessage = Record<string, unknown>;
@@ -116,6 +117,7 @@ export class InteractionWsHarness {
     readonly readRequests = new Array<InteractionReadRequest>();
     readonly autoSubscriptionRequests = new Array<{ nodeId: NodeId; enabled: boolean }>();
     readonly subscriptions = new Array<FakeSubscription>();
+    readonly invokeRequests = new Array<InvokeRequest>();
     primingReport: InteractionReport = { attributes: {}, events: [] };
     /** Reported through the listener before the subscription resolves. */
     earlyReport?: InteractionReport;
@@ -177,6 +179,10 @@ export class InteractionWsHarness {
                 harness.#subscribe(request, listener),
             setAutoSubscription: async (nodeId: NodeId, enabled: boolean) => {
                 harness.autoSubscriptionRequests.push({ nodeId, enabled });
+            },
+            handleInvoke: async (request: InvokeRequest) => {
+                harness.invokeRequests.push(request);
+                return undefined;
             },
             read: async (request: InteractionReadRequest) => {
                 harness.readRequests.push(request);

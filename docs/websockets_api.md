@@ -709,7 +709,7 @@ as with `unsubscribe`, the device ends it at its next report.
 
 ### Commands
 
-**device_command** - Send a command to a device
+**device_command** - Send a command to a device. Identical commands sent in parallel on the same connection are sent to the device once and share the result; commands from different connections are always sent separately.
 
 ```json
 {

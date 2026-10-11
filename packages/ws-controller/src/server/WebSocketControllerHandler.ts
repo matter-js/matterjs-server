@@ -748,7 +748,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
                     result = await this.#handleGetVendorNames(args);
                     break;
                 case "device_command":
-                    result = await this.#handleDeviceCommand(args);
+                    result = await this.#handleDeviceCommand(args, connection);
                     break;
                 case "send_webrtc_provider_command":
                     result = await this.#handleSendWebRtcProviderCommand(args);
@@ -1385,7 +1385,10 @@ export class WebSocketControllerHandler implements WebServerHandler {
         return result;
     }
 
-    async #handleDeviceCommand(args: ArgsOf<"device_command">): Promise<ResponseOf<"device_command">> {
+    async #handleDeviceCommand(
+        args: ArgsOf<"device_command">,
+        connection: WebSocketConnection,
+    ): Promise<ResponseOf<"device_command">> {
         const {
             node_id: nodeId,
             endpoint_id: endpointId,
@@ -1404,6 +1407,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
             data: payload,
             timedInteractionTimeoutMs:
                 typeof timedInteractionTimeoutMs === "number" ? Millis(timedInteractionTimeoutMs) : undefined,
+            dedupScope: connection,
         });
 
         // Test nodes return null

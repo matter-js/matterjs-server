@@ -293,6 +293,8 @@ class UnreachedAddressError extends Error {
     }
 }
 
+const UNSCOPED_INVOKES = {};
+
 export class ControllerCommandHandler {
     #node: ServerNode;
     #fabric: Fabric;
@@ -325,8 +327,8 @@ export class ControllerCommandHandler {
     #nodeUpdateDeadlines = new Map<NodeId, number>();
     /** Nodes with a lazy getNodeDetails populate in flight, so concurrent reads emit node_updated once. */
     #pendingLazyPopulate = new Set<NodeId>();
-    /** Track in-flight invoke-commands for deduplication across all WebSocket connections */
-    readonly #inFlightInvokes = new Map<string, Promise<unknown>>();
+    /** In-flight invokes per dedup scope; a scope dropped by its owner takes its entries with it. */
+    readonly #inFlightInvokes = new WeakMap<object, Map<string, Promise<unknown>>>();
     events = {
         started: new AsyncObservable(),
         attributeChanged: new Observable<[nodeId: NodeId, data: AttributeChange]>(),
@@ -1509,9 +1511,15 @@ export class ControllerCommandHandler {
         // Build dedup key from validated/converted fields
         const serializedData = commandData !== undefined ? toBigIntAwareJson(commandData) : "";
         const dedupKey = `${nodeId}:${endpointId}:${clusterId}:${commandName}:${serializedData}`;
+        const scope = data.dedupScope ?? UNSCOPED_INVOKES;
+        let inFlight = this.#inFlightInvokes.get(scope);
+        if (inFlight === undefined) {
+            inFlight = new Map();
+            this.#inFlightInvokes.set(scope, inFlight);
+        }
 
         // Check for in-flight duplicate
-        const existing = this.#inFlightInvokes.get(dedupKey);
+        const existing = inFlight.get(dedupKey);
         if (existing !== undefined) {
             logger.warn(
                 `Duplicate command detected for ${this.formatNode(nodeId)}/${endpointId}/${clusterName}/${commandName} - coalescing with in-flight request`,
@@ -1538,11 +1546,11 @@ export class ControllerCommandHandler {
         );
 
         // Store the in-flight invoke immediately so concurrent requests can see it
-        this.#inFlightInvokes.set(dedupKey, invokePromise);
+        inFlight.set(dedupKey, invokePromise);
 
         // Ensure cleanup of the in-flight entry once the invoke completes
         return invokePromise.finally(() => {
-            this.#inFlightInvokes.delete(dedupKey);
+            inFlight.delete(dedupKey);
         });
     }
 

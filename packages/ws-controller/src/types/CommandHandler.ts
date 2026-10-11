@@ -32,6 +32,11 @@ export type InvokeRequest = {
     data: unknown;
     timedInteractionTimeoutMs?: Duration;
     interactionTimeoutMs?: Duration;
+    /**
+     * Identical concurrent invokes are coalesced only within one scope; an unscoped invoke only with other unscoped ones.
+     * The WebSocket handler passes the connection object, not its connId, which is recycled.
+     */
+    dedupScope?: object;
 };
 
 export type CommissioningRequest = {
