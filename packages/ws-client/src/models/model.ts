@@ -642,6 +642,7 @@ export interface APICommands {
         response: Array<{
             Path: { EndpointId: number; ClusterId: number; AttributeId: number };
             Status: number;
+            ClusterStatus?: number;
         }>;
     };
     ping_node: {
@@ -931,9 +932,22 @@ export interface ResultMessageBase {
     message_id: string;
 }
 
+/** Why commissioning failed; sent with `commission_with_code` and `commission_on_network` errors. */
+export type CommissionFailureReason =
+    | "not-discovered"
+    | "passcode-mismatch"
+    | "invalid-payload"
+    | "attestation-rejected"
+    | "timeout"
+    | "other";
+
 export interface ErrorResultMessage extends ResultMessageBase {
     error_code: number;
     details?: string;
+    /** The Matter status the device answered with, when the failure is one. */
+    status?: number;
+    cluster_status?: number;
+    reason?: CommissionFailureReason;
 }
 
 export interface SuccessResultMessage extends ResultMessageBase {

@@ -13,6 +13,7 @@ import { ConfigStorage } from "../../src/server/ConfigStorage.js";
 import { toBigIntAwareJson } from "../../src/server/Converters.js";
 import { WebSocketControllerHandler } from "../../src/server/WebSocketControllerHandler.js";
 import {
+    AttributeResponseStatus,
     InteractionReadRequest,
     InteractionReport,
     InteractionSubscribeRequest,
@@ -118,6 +119,8 @@ export class InteractionWsHarness {
     readonly autoSubscriptionRequests = new Array<{ nodeId: NodeId; enabled: boolean }>();
     readonly subscriptions = new Array<FakeSubscription>();
     readonly invokeRequests = new Array<InvokeRequest>();
+    invokeError?: Error;
+    writeResult: AttributeResponseStatus = { endpointId: 1, clusterId: 6, attributeId: 0, status: 0 };
     primingReport: InteractionReport = { attributes: {}, events: [] };
     /** Reported through the listener before the subscription resolves. */
     earlyReport?: InteractionReport;
@@ -182,8 +185,12 @@ export class InteractionWsHarness {
             },
             handleInvoke: async (request: InvokeRequest) => {
                 harness.invokeRequests.push(request);
+                if (harness.invokeError !== undefined) {
+                    throw harness.invokeError;
+                }
                 return undefined;
             },
+            handleWriteAttribute: async () => harness.writeResult,
             read: async (request: InteractionReadRequest) => {
                 harness.readRequests.push(request);
                 return harness.readResult;

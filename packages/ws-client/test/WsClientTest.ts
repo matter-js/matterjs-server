@@ -343,6 +343,25 @@ describe("ws-client", () => {
                 expect(state.registered).to.equal(true);
             });
 
+            it("preserves the device status and commissioning reason on command errors", async () => {
+                server.onCommand("register_icd", () => {
+                    throw new MockCommandError("failed", 0, { status: 1, cluster_status: 3, reason: "timeout" });
+                });
+                await client.connect();
+                try {
+                    await client.registerIcd(BigInt(5));
+                    expect.fail("Should have thrown");
+                } catch (error) {
+                    expect(error).to.be.instanceOf(ServerCommandError);
+                    const { status, clusterStatus, reason } = error as ServerCommandError;
+                    expect({ status, clusterStatus, reason }).to.deep.equal({
+                        status: 1,
+                        clusterStatus: 3,
+                        reason: "timeout",
+                    });
+                }
+            });
+
             it("preserves error_code on command errors", async () => {
                 const details = '{"message":"multi admin","admin_vendor_ids":[4631]}';
                 server.onCommand("register_icd", () => {

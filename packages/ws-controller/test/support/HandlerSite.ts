@@ -17,7 +17,7 @@ import {
     SupportedStorageTypes,
     Time,
 } from "@matter/general";
-import { ClientNode, Endpoint, NetworkClient, NodeId, ServerNode } from "@matter/main";
+import { ClientNode, Endpoint, EndpointType, NetworkClient, NodeId, ServerNode } from "@matter/main";
 import { BooleanStateServer } from "@matter/node/behaviors/boolean-state";
 import { OnOffLightDevice } from "@matter/node/devices/on-off-light";
 import { ControllerCommandHandler } from "../../src/controller/ControllerCommandHandler.js";
@@ -49,13 +49,16 @@ export class HandlerSite {
         return { env, crypto };
     }
 
-    async startDevice(root: ServerNode.RootEndpoint = ServerNode.RootEndpoint) {
+    async startDevice(
+        root: ServerNode.RootEndpoint = ServerNode.RootEndpoint,
+        light: EndpointType = OnOffLightDevice.with(BooleanStateServer),
+    ) {
         MockTime.reset();
         const { env, crypto } = this.#environment("device");
         const node = new ServerNode(root, { id: "device", environment: env });
-        const light = await node.add(OnOffLightDevice.with(BooleanStateServer), { id: "light" });
+        const endpoint = await node.add(light, { id: "light" });
         await node.start();
-        this.#device = { node, light, crypto };
+        this.#device = { node, light: endpoint, crypto };
     }
 
     get device() {

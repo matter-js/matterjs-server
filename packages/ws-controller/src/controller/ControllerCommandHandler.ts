@@ -10,6 +10,7 @@ import {
     AsyncObservable,
     camelize,
     causedBy,
+    DiscoveryError,
     ClientNode,
     CommissioningClient,
     Duration,
@@ -30,6 +31,7 @@ import {
     SoftwareUpdateInfo,
     SoftwareUpdateManager,
     Time,
+    TimeoutError,
     Timer,
     DnsRecordType,
     EndpointLifecycle,
@@ -53,6 +55,7 @@ import { WebRtcTransportProvider } from "@matter/main/clusters/web-rtc-transport
 import { AcceptedCommandList, AttributeList, ClusterRevision, FeatureMap } from "@matter/main/model";
 import {
     AttestationFinding,
+    CommissioningTimeoutError,
     DEFAULT_CASE_CONNECTION_TIMEOUT,
     DeviceAttestationCheck,
     Fabric,
@@ -79,6 +82,7 @@ import {
     QrPairingCodeCodec,
     SpecificationVersion,
     Status,
+    ReceivedStatusResponseError,
     StatusResponseError,
     VendorId,
 } from "@matter/main/types";
@@ -127,8 +131,10 @@ import {
     IcdStateData,
     MatterNodeEvent,
     MatterSoftwareVersion,
+    CommissionFailureReason,
     NodePingResult,
     ServerError,
+    ServerErrorCode,
     UpdateSource,
 } from "../types/WebSocketMessageTypes.js";
 import { isBridgeNode } from "../util/bridgeDetection.js";
@@ -294,6 +300,46 @@ class UnreachedAddressError extends Error {
 }
 
 const UNSCOPED_INVOKES = {};
+
+function decodePairingCode<T>(decode: () => T): T {
+    try {
+        return decode();
+    } catch (error) {
+        const cause = error instanceof Error ? error : undefined;
+        throw new ServerError(
+            ServerErrorCode.InvalidArguments,
+            `Invalid pairing code: ${cause?.message ?? String(error)}`,
+            cause,
+            "invalid-payload",
+        );
+    }
+}
+
+export function commissionFailureOf(error: unknown, attestationRejected: boolean): ServerError {
+    const cause = error instanceof Error ? error : undefined;
+    const failed = (
+        reason: CommissionFailureReason,
+        message = `Commission failed: ${cause?.message ?? String(error)}`,
+    ) => ServerError.nodeCommissionFailed(message, reason, cause);
+    if (attestationRejected) {
+        return failed("attestation-rejected");
+    }
+    // PASE rejects the device's key confirmation, which is what a mistyped pairing code looks
+    // like on the wire. Saying so lets a client offer the code again instead of a generic retry.
+    if (causedBy(error, PasscodeMismatchError)) {
+        return failed(
+            "passcode-mismatch",
+            "The pairing code does not match the device. Check the code and commission again.",
+        );
+    }
+    if (causedBy(error, TimeoutError, CommissioningTimeoutError)) {
+        return failed("timeout");
+    }
+    if (causedBy(error, DiscoveryError)) {
+        return failed("not-discovered");
+    }
+    return failed("other");
+}
 
 export class ControllerCommandHandler {
     #node: ServerNode;
@@ -1464,7 +1510,12 @@ export class ControllerCommandHandler {
                 switch (entry.kind) {
                     case "cmd-status":
                         if (entry.status !== Status.Success) {
-                            throw StatusResponseError.create(entry.status, undefined, entry.clusterStatus);
+                            const { message } = StatusResponseError.create(
+                                entry.status,
+                                undefined,
+                                entry.clusterStatus,
+                            );
+                            throw new ReceivedStatusResponseError(message, entry.status, entry.clusterStatus);
                         }
                         return;
 
@@ -1554,7 +1605,10 @@ export class ControllerCommandHandler {
         });
     }
 
-    #determineCommissionOptions(data: CommissioningRequest): CommissioningDiscovery.Options {
+    #determineCommissionOptions(
+        data: CommissioningRequest,
+        attestation: { rejected: boolean },
+    ): CommissioningDiscovery.Options {
         let passcode: number | undefined = undefined;
         let shortDiscriminator: number | undefined = undefined;
         let longDiscriminator: number | undefined = undefined;
@@ -1562,12 +1616,12 @@ export class ControllerCommandHandler {
         let vendorId: VendorId | undefined = undefined;
 
         if ("manualCode" in data && data.manualCode.length > 0) {
-            const pairingCodeCodec = ManualPairingCodeCodec.decode(data.manualCode);
+            const pairingCodeCodec = decodePairingCode(() => ManualPairingCodeCodec.decode(data.manualCode));
             shortDiscriminator = pairingCodeCodec.shortDiscriminator;
             longDiscriminator = undefined;
             passcode = pairingCodeCodec.passcode;
         } else if ("qrCode" in data && data.qrCode.length > 0) {
-            const pairingCodeCodec = QrPairingCodeCodec.decode(data.qrCode);
+            const pairingCodeCodec = decodePairingCode(() => QrPairingCodeCodec.decode(data.qrCode));
             // TODO handle the case where multiple devices are included
             longDiscriminator = pairingCodeCodec[0].discriminator;
             shortDiscriminator = undefined;
@@ -1626,9 +1680,11 @@ export class ControllerCommandHandler {
                 }
                 if (testCertReason !== undefined) {
                     logger.notice(`Attestation rejected: ${testCertReason}`);
+                    attestation.rejected = true;
                     return testCertReason;
                 }
                 logger.info(`Attestation ${hardError ? "rejected" : "accepted"}`);
+                attestation.rejected = hardError;
                 return !hardError;
             },
         };
@@ -1661,7 +1717,8 @@ export class ControllerCommandHandler {
     }
 
     async commissionNode(data: CommissioningRequest): Promise<CommissioningResponse> {
-        const options = this.#determineCommissionOptions(data);
+        const attestation = { rejected: false };
+        const options = this.#determineCommissionOptions(data, attestation);
         const { knownAddress } = data;
 
         let nodeId: NodeId;
@@ -1690,20 +1747,7 @@ export class ControllerCommandHandler {
             // command, not an unmapped throw with a node the server tracks and never announced.
             await this.#registerNode(nodeId);
         } catch (error) {
-            // PASE rejects the device's key confirmation, which is what a mistyped pairing code looks
-            // like on the wire. Saying so lets a client offer the code again instead of a generic retry.
-            if (error instanceof Error && causedBy(error, PasscodeMismatchError)) {
-                throw ServerError.nodeCommissionFailed(
-                    "The pairing code does not match the device. Check the code and commission again.",
-                    error,
-                );
-            }
-            // Preserve the original error message with context
-            const originalMessage = error instanceof Error ? error.message : String(error);
-            throw ServerError.nodeCommissionFailed(
-                `Commission failed: ${originalMessage}`,
-                error instanceof Error ? error : undefined,
-            );
+            throw commissionFailureOf(error, attestation.rejected);
         }
 
         this.events.nodeAdded.emit(nodeId);

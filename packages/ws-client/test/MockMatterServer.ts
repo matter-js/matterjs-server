@@ -23,16 +23,18 @@ export class MockCommandError extends Error {
     constructor(
         message: string,
         readonly errorCode: number,
+        readonly wireFields: Record<string, unknown> = {},
     ) {
         super(message);
         this.name = "MockCommandError";
     }
 }
 
-function toWireError(error: unknown): { error_code: number; details: string } {
+function toWireError(error: unknown): Record<string, unknown> {
     return {
         error_code: error instanceof MockCommandError ? error.errorCode : 1,
         details: error instanceof Error ? error.message : String(error),
+        ...(error instanceof MockCommandError ? error.wireFields : {}),
     };
 }
 

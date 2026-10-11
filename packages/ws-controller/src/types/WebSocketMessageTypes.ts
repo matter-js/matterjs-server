@@ -16,6 +16,7 @@ export {
     type AccessControlEntry,
     type AccessControlTarget,
     type AllCredentialsSummary,
+    type CommissionFailureReason,
     type APICommands,
     type APIEvents,
     type ArgsOf,
@@ -50,6 +51,8 @@ export {
 
 // Re-export MatterNodeData as MatterNode for backward compatibility within ws-controller
 export type { MatterNodeData as MatterNode } from "@matter-server/ws-client";
+
+import type { CommissionFailureReason } from "@matter-server/ws-client";
 
 /**
  * Error codes matching Python Matter Server for API compatibility.
@@ -99,6 +102,7 @@ export class ServerError extends Error {
         public readonly code: ServerErrorCode,
         message: string,
         cause?: Error,
+        public readonly reason?: CommissionFailureReason,
     ) {
         super(message, { cause });
         this.name = "ServerError";
@@ -108,8 +112,8 @@ export class ServerError extends Error {
         return new ServerError(ServerErrorCode.UnknownError, message, cause);
     }
 
-    static nodeCommissionFailed(message: string, cause?: Error): ServerError {
-        return new ServerError(ServerErrorCode.NodeCommissionFailed, message, cause);
+    static nodeCommissionFailed(message: string, reason: CommissionFailureReason, cause?: Error): ServerError {
+        return new ServerError(ServerErrorCode.NodeCommissionFailed, message, cause, reason);
     }
 
     static nodeInterviewFailed(message: string, cause?: Error): ServerError {

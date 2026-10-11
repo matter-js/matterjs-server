@@ -726,7 +726,11 @@ export class MatterClient {
             const details = msg.details ?? "";
             this._rejectPendingCommand(
                 msg.message_id,
-                new ServerCommandError(details !== "" ? details : `Server error ${msg.error_code}`, msg.error_code),
+                new ServerCommandError(details !== "" ? details : `Server error ${msg.error_code}`, msg.error_code, {
+                    status: msg.status,
+                    clusterStatus: msg.cluster_status,
+                    reason: msg.reason,
+                }),
             );
             return;
         }

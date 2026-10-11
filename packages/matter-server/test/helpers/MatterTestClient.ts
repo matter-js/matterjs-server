@@ -26,6 +26,7 @@ import WebSocket from "ws";
 export interface ServerErrorResponse {
     error_code: ServerErrorCode;
     details: string;
+    reason?: string;
 }
 
 /** WebSocket event for testing */
@@ -251,6 +252,7 @@ export class MatterTestClient extends MatterClient {
                         resolve({
                             error_code: data.error_code,
                             details: data.details ?? "",
+                            reason: data.reason,
                         });
                     } else {
                         reject(new Error(`Expected error response but got success for ${command}`));

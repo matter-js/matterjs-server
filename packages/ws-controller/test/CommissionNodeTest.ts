@@ -6,8 +6,19 @@
 
 import { Crypto, FabricId, MockCrypto, NodeId, ServerNode } from "@matter/main";
 import { Endpoint } from "@matter/node";
-import { FabricAuthority } from "@matter/protocol";
-import { CameraControllerEndpoint, ControllerCommandHandler } from "../src/controller/ControllerCommandHandler.js";
+import {
+    CommissioningError,
+    CommissioningTimeoutError,
+    FabricAuthority,
+    PairRetransmissionLimitReachedError,
+    PasscodeMismatchError,
+} from "@matter/protocol";
+import {
+    CameraControllerEndpoint,
+    commissionFailureOf,
+    ControllerCommandHandler,
+} from "../src/controller/ControllerCommandHandler.js";
+import { ServerError, ServerErrorCode } from "../src/types/WebSocketMessageTypes.js";
 import { TestSite } from "./support/ControllerSite.js";
 
 const NODE_ID = NodeId(42n);
@@ -63,6 +74,18 @@ describe("commissionNode", () => {
         }
     }
 
+    async function failureOf(act: () => Promise<unknown>): Promise<ServerError> {
+        try {
+            await act();
+        } catch (error) {
+            if (error instanceof ServerError) {
+                return error;
+            }
+            throw error;
+        }
+        throw new Error("Expected the command to fail");
+    }
+
     function request(knownAddress?: { ip: string; port: number }) {
         const { passcode, discriminator } = device.state.commissioning;
         return { nodeId: NODE_ID, passcode, longDiscriminator: discriminator, knownAddress };
@@ -108,7 +131,7 @@ describe("commissionNode", () => {
         const { passcode, discriminator } = device.state.commissioning;
         const port = device.state.network.operationalPort;
 
-        await expect(
+        const error = await failureOf(() =>
             commissioning(() =>
                 handler.commissionNode({
                     nodeId: NODE_ID,
@@ -117,9 +140,28 @@ describe("commissionNode", () => {
                     knownAddress: { ip: "10.10.10.2", port },
                 }),
             ),
-        ).rejectedWith(/pairing code does not match/);
+        );
 
+        expect(error.message).match(/pairing code does not match/);
+        expect([error.code, error.reason]).deep.equals([ServerErrorCode.NodeCommissionFailed, "passcode-mismatch"]);
         expect(handler.isNodeIdInUse(NODE_ID)).equals(false);
+    });
+
+    it("reports a device that is not found as not discovered", async () => {
+        const { passcode } = device.state.commissioning;
+
+        const error = await failureOf(() =>
+            commissioning(() => handler.commissionNode({ nodeId: NODE_ID, passcode, longDiscriminator: 0xfff })),
+        );
+
+        expect([error.code, error.reason]).deep.equals([ServerErrorCode.NodeCommissionFailed, "not-discovered"]);
+    });
+
+    it("reports a pairing code that does not decode as an invalid payload", async () => {
+        const error = await failureOf(() => handler.commissionNode({ nodeId: NODE_ID, manualCode: "12345" }));
+
+        expect([error.code, error.reason]).deep.equals([ServerErrorCode.InvalidArguments, "invalid-payload"]);
+        expect(error.message).match(/^Invalid pairing code: /);
     });
 
     it("falls back to discovery without a caller-chosen node id", async () => {
@@ -144,5 +186,22 @@ describe("commissionNode", () => {
 
         expect(nodeId).equals(NODE_ID);
         expect(handler.isNodeIdInUse(NODE_ID)).equals(true);
+    });
+});
+
+describe("commissionFailureOf", () => {
+    it("names a timeout anywhere in the cause chain", () => {
+        const timeout = new CommissioningError("PASE failed", { cause: new PairRetransmissionLimitReachedError() });
+        expect(commissionFailureOf(timeout, false).reason).equals("timeout");
+        expect(commissionFailureOf(new CommissioningTimeoutError("too long"), false).reason).equals("timeout");
+    });
+
+    it("names an attestation rejection before any other cause", () => {
+        const rejected = new CommissioningError("rejected", { cause: new PasscodeMismatchError() });
+        expect(commissionFailureOf(rejected, true).reason).equals("attestation-rejected");
+    });
+
+    it("names anything else other", () => {
+        expect(commissionFailureOf(new CommissioningError("network setup failed"), false).reason).equals("other");
     });
 });

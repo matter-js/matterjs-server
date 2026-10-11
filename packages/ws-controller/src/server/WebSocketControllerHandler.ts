@@ -21,7 +21,7 @@ import {
 } from "@matter/main";
 import { WebRtcTransportProvider } from "@matter/main/clusters";
 import { ControllerCommissioningFlowOptions, OperationalDataset } from "@matter/main/protocol";
-import { EndpointNumber } from "@matter/main/types";
+import { EndpointNumber, ReceivedStatusResponseError } from "@matter/main/types";
 import { WebSocketServer } from "ws";
 import { ControllerCommandHandler } from "../controller/ControllerCommandHandler.js";
 import { MatterController, registerThreadCredentialsFromHex } from "../controller/MatterController.js";
@@ -135,6 +135,22 @@ function extractWebRtcSessionId(payload: unknown): number | undefined {
 interface OwnedSubscription {
     connection: WebSocketConnection;
     subscription: InteractionSubscription;
+}
+
+/** The status the device answered with, if the failure is one; matter.js also reports local validation as status errors. */
+function statusResponseOf(error: unknown): ReceivedStatusResponseError | undefined {
+    if (error instanceof ReceivedStatusResponseError) {
+        return error;
+    }
+    if (error instanceof AggregateError) {
+        for (const inner of error.errors) {
+            const status = statusResponseOf(inner);
+            if (status !== undefined) {
+                return status;
+            }
+        }
+    }
+    return error instanceof Error ? statusResponseOf(error.cause) : undefined;
 }
 
 /** WebSocket Server with the Python Matter Server compatible API, see {@link SCHEMA_VERSION}. */
@@ -864,11 +880,15 @@ export class WebSocketControllerHandler implements WebServerHandler {
         } catch (err) {
             logger.error(`[${connId}] WebSocket error response (${command})`, messageId, err);
             const errorCode = err instanceof ServerError ? err.code : ServerErrorCode.UnknownError;
+            const status = statusResponseOf(err);
             return {
                 response: {
                     message_id: messageId ?? "",
                     error_code: errorCode,
                     details: (err as Error).message,
+                    ...(status !== undefined && { status: status.code }),
+                    ...(status?.clusterCode !== undefined && { cluster_status: status.clusterCode }),
+                    ...(err instanceof ServerError && err.reason !== undefined && { reason: err.reason }),
                 },
                 wantsThreadDiagnostics: command !== undefined && THREAD_DIAGNOSTICS_OPT_IN_COMMANDS.has(command),
                 wantsNetworkTopology: command !== undefined && NETWORK_TOPOLOGY_OPT_IN_COMMANDS.has(command),
@@ -1014,6 +1034,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
         const reason = lastError instanceof Error ? `: ${lastError.message}` : "";
         throw ServerError.nodeCommissionFailed(
             `Commission failed: could not find a free node id after ${MAX_COMMISSION_NODE_ID_ATTEMPTS} attempts${reason}`,
+            "other",
             lastError instanceof Error ? lastError : undefined,
         );
     }
@@ -1335,7 +1356,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
             throw ServerError.invalidArguments("write_attribute does not support wildcards in attribute path");
         }
 
-        const { status } = await this.#handlerFor(nodeId).handleWriteAttribute({
+        const { status, clusterStatus } = await this.#handlerFor(nodeId).handleWriteAttribute({
             nodeId: NodeId(nodeId),
             endpointId,
             clusterId,
@@ -1346,6 +1367,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
             {
                 Path: { EndpointId: endpointId, ClusterId: clusterId, AttributeId: attributeId },
                 Status: status ?? 0,
+                ...(clusterStatus !== undefined && { ClusterStatus: clusterStatus }),
             },
         ];
     }

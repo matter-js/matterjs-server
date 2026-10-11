@@ -48,6 +48,19 @@ Error responses:
 }
 ```
 
+Optional fields of an error response (schema 14):
+
+- `status` and `cluster_status`: when the failure is a Matter status the device answered with, for example
+  `UNSUPPORTED_COMMAND` (0x81) to a `device_command`, the numeric Matter status code and, if the device sent one,
+  the cluster-specific status code. Arguments the server rejects before anything is sent carry no `status`.
+  `error_code` stays as it was.
+- `reason`: why commissioning failed, with every `NodeCommissionFailed` error of `commission_with_code` and
+  `commission_on_network`, and with a pairing code that cannot be decoded: `not-discovered` (no matching device was
+  found, or none got through pairing before discovery ended), `passcode-mismatch` (the device rejected the pairing
+  code), `invalid-payload` (the pairing code could not be decoded; `error_code` is `InvalidArguments`),
+  `attestation-rejected` (the device certificates were not accepted), `timeout` (the device stopped answering or
+  commissioning took too long), `other`. Other argument errors carry no `reason`.
+
 ## Commands
 
 ### Server Information
@@ -497,6 +510,13 @@ Wildcard (all attributes from OnOff cluster):
     "value": 10
   }
 }
+```
+
+The result lists the written path with the Matter status the device answered with, and its cluster-specific status
+in `ClusterStatus` when the device sent one (schema 14):
+
+```json
+[{ "Path": { "EndpointId": 1, "ClusterId": 6, "AttributeId": 16385 }, "Status": 0 }]
 ```
 
 ### Subscriptions and generic read
