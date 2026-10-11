@@ -37,6 +37,7 @@ This page shows a detailed overview of the changes between versions without the 
 - Enhancement: Adds the IKEA thermostat ValveCalibration vendor cluster (0x117cfc01) to the custom cluster and a Dashboard panel
 - Enhancement: (@lboue) Allows creating temporary/expiring PIN users (UserType=ExpiringUser) and configuring the lock's ExpiringUserTimeout to the Dashboard DoorLock cluster panel
 - Enhancement: (@RAR) Adds the vendor clusters of the Aqara Spatial Multi-Sensor FP400 (AmbientSensingConfiguration 0x115ffc0a with detection zones, RadarSensingUnion 0x115ffc0b, OccupantLocation 0x115ffc0c with the target position event) to the custom cluster definitions and the Python client
+- Adjustment: Structured values of clusters, attributes and events the server does not know are sent keyed by their TLV tags instead of as `null`
 - Adjustment: A node counts as available based on its connection state alone. The former 3-minute grace period after a connection loss is gone, so an unreachable node is reported as soon as matter.js gives up on reaching it rather than after a fixed timer on top
 - Adjustment: Dashboard network view uses the Thread 1.4 role names
 - Fix: Dashboard shows manufacturer-specific enum values (vendor mode tags, operational and error states, closure errors) as "Manufacturer 0x…"

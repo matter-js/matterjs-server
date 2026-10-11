@@ -1292,6 +1292,13 @@ Attribute paths use the format: `endpoint/cluster/attribute`
 - `0/40/1` - Endpoint 0, BasicInformation cluster (40), VendorName attribute (1)
 - `*/6/*` - All endpoints, OnOff cluster, all attributes (wildcard)
 
+A value of a cluster, attribute or event that the server's data model does not know (for example a manufacturer
+cluster without a custom cluster definition, or an attribute newer than the server) is sent as decoded from the TLV:
+a structure becomes an object keyed by the member's tag number (`{"1": 5, "3": {"0": "a"}}`), bytes become base64,
+lists become arrays. This also applies to the event data of `node_event`, which is otherwise keyed by field name.
+Exception: the `FeatureMap` of an unknown cluster is sent as `{}`, because matter.js cannot decode its bits without the
+cluster definition.
+
 ## Common Cluster IDs
 
 | Cluster | ID | Description |

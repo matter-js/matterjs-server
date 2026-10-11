@@ -13,7 +13,21 @@ import {
     WindowCovering,
 } from "@matter/main/clusters";
 import { AttributeModel, ClusterModel, FieldModel } from "@matter/main/model";
-import { ClusterId, EndpointNumber, EventId, EventNumber, MATTER_EPOCH_OFFSET_US, Status } from "@matter/main/types";
+import {
+    ClusterId,
+    EndpointNumber,
+    EventId,
+    EventNumber,
+    MATTER_EPOCH_OFFSET_US,
+    Status,
+    TlvAny,
+    TlvArray,
+    TlvByteString,
+    TlvField,
+    TlvObject,
+    TlvString,
+    TlvUInt8,
+} from "@matter/main/types";
 import { ClusterMap } from "../src/model/ModelMapper.js";
 import {
     convertEventToWebSocket,
@@ -340,6 +354,33 @@ describe("convertMatterToWebSocketTagBased - bitmap packing", () => {
         const decoded = convertWebSocketTagBasedToMatter(22, operationalStatus, clusterEntry.model);
 
         expect(convertMatterToWebSocketTagBased(decoded, operationalStatus, clusterEntry.model)).to.equal(22);
+    });
+});
+
+describe("values without a model", () => {
+    const Inner = TlvObject({ text: TlvField(0, TlvString) });
+    const Outer = TlvObject({
+        number: TlvField(1, TlvUInt8),
+        bytes: TlvField(2, TlvByteString),
+        inner: TlvField(3, Inner),
+        list: TlvField(4, TlvArray(Inner)),
+    });
+    const unmodeled = TlvAny.decodeAnyTlvStream(
+        Outer.encodeTlv({ number: 5, bytes: Bytes.fromHex("0102"), inner: { text: "a" }, list: [{ text: "b" }] }),
+    );
+    const tagKeyed = { "1": 5, "2": "AQI=", "3": { "0": "a" }, "4": [{ "0": "b" }] };
+
+    it("sends a structure as tag-keyed JSON", () => {
+        expect(convertMatterToWebSocketTagBased(unmodeled, undefined, undefined)).deep.equals(tagKeyed);
+    });
+
+    it("sends the payload of an unknown event as tag-keyed JSON", () => {
+        const event = convertEventToWebSocket(
+            NodeId(5),
+            { endpointId: EndpointNumber(1), clusterId: ClusterId(0xfff1fc05), eventId: EventId(1) },
+            { eventNumber: EventNumber(1n), priority: 1, data: unmodeled },
+        );
+        expect(event.data).deep.equals(tagKeyed);
     });
 });
 

@@ -1085,9 +1085,9 @@ describe("Converters", () => {
     });
 
     describe("convertMatterToWebSocketTagBased - unknown/custom cluster handling", () => {
-        it("should return null for objects without a model", () => {
-            const result = convertMatterToWebSocketTagBased({ foo: "bar" }, undefined, undefined);
-            expect(result).to.equal(null);
+        it("should keep the tag keys of objects without a model", () => {
+            const result = convertMatterToWebSocketTagBased({ "1": "bar" }, undefined, undefined);
+            expect(result).to.deep.equal({ "1": "bar" });
         });
 
         it("should pass through primitive numbers without a model", () => {
@@ -1121,11 +1121,9 @@ describe("Converters", () => {
             expect(result).to.deep.equal([]);
         });
 
-        it("should convert nested array of objects without a model (best-effort, nulls for inner objects)", () => {
-            const result = convertMatterToWebSocketTagBased([{ a: 1 }, { b: 2 }], undefined, undefined);
-            expect(result).to.be.an("array").with.lengthOf(2);
-            // Inner objects have no model either, so they become null
-            expect((result as unknown[])[0]).to.equal(null);
+        it("should convert nested array of objects without a model", () => {
+            const result = convertMatterToWebSocketTagBased([{ "0": 1 }, { "1": 2 }], undefined, undefined);
+            expect(result).to.deep.equal([{ "0": 1 }, { "1": 2 }]);
         });
     });
 

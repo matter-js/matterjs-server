@@ -417,7 +417,6 @@ function convertMatterToWebSocket(
         return null;
     }
     if (model === undefined) {
-        // Unknown attributes: simple type conversions only
         if (Bytes.isBytes(value)) {
             return Bytes.toBase64(value);
         }
@@ -425,7 +424,16 @@ function convertMatterToWebSocket(
             // Best-effort: recursively convert elements without schema
             return value.map(v => convertMatterToWebSocket(v, undefined, clusterModel, tagBased));
         }
-        if (isObject(value) || !PRIMITIVE_TYPEOF.has(typeof value)) {
+        // matter.js decodes an unmodeled TLV structure to an object keyed by tag number
+        if (isObject(value)) {
+            return Object.fromEntries(
+                Object.entries(value).map(([tag, member]) => [
+                    tag,
+                    convertMatterToWebSocket(member, undefined, clusterModel, tagBased),
+                ]),
+            );
+        }
+        if (!PRIMITIVE_TYPEOF.has(typeof value)) {
             return null;
         }
         return value;
