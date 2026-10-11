@@ -261,6 +261,18 @@ function isIntervalSeconds(value: number) {
     return Number.isInteger(value) && value >= 0 && value <= 0xffff;
 }
 
+/** The matter.js id types reject an id out of range for its kind. */
+function requestIdsOf<T>(path: string, split: (path: string) => T): T {
+    try {
+        return split(path);
+    } catch (error) {
+        if (error instanceof ValidationError) {
+            throw ServerError.invalidArguments(`Invalid id in path "${path}": ${error.message}`);
+        }
+        throw error;
+    }
+}
+
 function isEventNumber(value: number | bigint) {
     return typeof value === "bigint"
         ? value >= 0n && value <= 0xffff_ffff_ffff_ffffn
@@ -1310,33 +1322,30 @@ export class ControllerCommandHandler {
                 `Malformed path(s) ${malformed.map(path => JSON.stringify(path)).join(", ")}: expected three parts (two for a data version filter), each a number or "*"`,
             );
         }
-        try {
-            return Read({
-                fabricFilter: fabricFiltered,
-                attributes: attributePaths?.length ? attributePaths.map(path => splitAttributePath(path)) : undefined,
-                events: eventPaths?.length
-                    ? eventPaths.map(({ path, isUrgent }): EventPath => ({ ...splitEventPath(path), isUrgent }))
-                    : undefined,
-                versionFilters: dataVersionFilters?.length
-                    ? dataVersionFilters.map(({ path, dataVersion }): DataVersionFilter => {
-                          const { endpointId, clusterId } = splitAttributePath(path);
-                          if (endpointId === undefined || clusterId === undefined) {
-                              throw ServerError.invalidArguments(
-                                  `Data version filter path "${path}" must name an endpoint and a cluster`,
-                              );
-                          }
-                          return { path: { endpointId, clusterId }, dataVersion };
-                      })
-                    : undefined,
-                eventFilters: eventMin !== undefined ? [{ eventMin: EventNumber(eventMin) }] : undefined,
-            });
-        } catch (error) {
-            // The id constructors check each id's range, the MEI vendor prefix included.
-            if (error instanceof ValidationError) {
-                throw ServerError.invalidArguments(`Invalid id in a path: ${error.message}`);
-            }
-            throw error;
-        }
+        return Read({
+            fabricFilter: fabricFiltered,
+            attributes: attributePaths?.length
+                ? attributePaths.map(path => requestIdsOf(path, splitAttributePath))
+                : undefined,
+            events: eventPaths?.length
+                ? eventPaths.map(({ path, isUrgent }): EventPath => ({
+                      ...requestIdsOf(path, splitEventPath),
+                      isUrgent,
+                  }))
+                : undefined,
+            versionFilters: dataVersionFilters?.length
+                ? dataVersionFilters.map(({ path, dataVersion }): DataVersionFilter => {
+                      const { endpointId, clusterId } = requestIdsOf(path, splitAttributePath);
+                      if (endpointId === undefined || clusterId === undefined) {
+                          throw ServerError.invalidArguments(
+                              `Data version filter path "${path}" must name an endpoint and a cluster`,
+                          );
+                      }
+                      return { path: { endpointId, clusterId }, dataVersion };
+                  })
+                : undefined,
+            eventFilters: eventMin !== undefined ? [{ eventMin: EventNumber(eventMin) }] : undefined,
+        });
     }
 
     async #collectReport(nodeId: NodeId, data: ReadResult): Promise<InteractionReport> {

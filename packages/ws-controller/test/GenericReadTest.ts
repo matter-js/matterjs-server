@@ -162,14 +162,16 @@ describe("generic read", () => {
             "1/4294967296/0",
             "1/6/4294967296",
             "1/4294967294/0",
+            "1/32768/0",
         ]) {
             await expectInvalidArguments(site.handler.read({ nodeId: NODE_ID, attributePaths: [attributePath] }));
         }
         await expectInvalidArguments(site.handler.read({ nodeId: NODE_ID, eventPaths: [{ path: "1/Switch/*" }] }));
+        await expectInvalidArguments(site.handler.read({ nodeId: NODE_ID, eventPaths: [{ path: "1/59/256" }] }));
         await expectInvalidArguments(
             site.handler.read({ nodeId: NODE_ID, eventPaths: [{ path: "1/59/1" }, { path: "1/59" }] }),
         );
-        for (const filterPath of ["1/6/0", "one/6", "1"]) {
+        for (const filterPath of ["1/6/0", "one/6", "1", "65536/6"]) {
             await expectInvalidArguments(
                 site.handler.read({
                     nodeId: NODE_ID,

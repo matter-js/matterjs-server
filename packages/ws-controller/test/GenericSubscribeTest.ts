@@ -283,6 +283,13 @@ describe("generic subscribe", () => {
             await expectInvalidArguments(
                 site.handler.subscribe({ ...LIGHT_ON_OFF, eventPaths: [{ path: "x" }] }, recorder().listener),
             );
+            await expectInvalidArguments(
+                site.handler.subscribe({ ...LIGHT_ON_OFF, attributePaths: ["1/32768/0"] }, recorder().listener),
+                'Invalid id in path "1/32768/0"',
+            );
+            await expectInvalidArguments(
+                site.handler.subscribe({ ...LIGHT_ON_OFF, eventMin: -1 }, recorder().listener),
+            );
 
             expect(captured).deep.equals([]);
         });

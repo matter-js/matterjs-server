@@ -59,8 +59,8 @@ Optional fields of an error response (schema 14):
   stays as it was.
 - `reason`: why commissioning failed, with every `NodeCommissionFailed` error of `commission_with_code` and
   `commission_on_network`, and with a pairing code that cannot be decoded: `not-discovered` (no matching device was
-  found; when devices were found but none could be paired, the reason is `timeout` if an attempt timed out, otherwise
-  `other`), `passcode-mismatch` (the device rejected the pairing
+  found, or the attempts ended without a recorded error; when an attempt failed with an error, the reason is `timeout`
+  if one timed out, otherwise `other`), `passcode-mismatch` (the device rejected the pairing
   code), `invalid-payload` (the pairing code could not be decoded; `error_code` is `InvalidArguments`),
   `attestation-rejected` (the device certificates were not accepted), `timeout` (the device stopped answering or
   commissioning took too long), `other`. Other argument errors carry no `reason`.
@@ -540,8 +540,8 @@ Paths:
 - Event paths use the same format with an event id: `endpoint/cluster/event`, for example `1/59/1`
   (Switch `InitialPress` on endpoint 1) or `*/59/*`.
 - Data version filter paths are `endpoint/cluster` and must name both.
-- Every part must be a decimal number or `*`, and a number must be a valid id of its kind (the endpoint fits 16 bits;
-  cluster, attribute and event ids fit 32 bits and carry a valid vendor prefix). Unlike `read_attribute`, which reads
+- Every part must be a decimal number or `*`, and a number must be a valid id of its kind as matter.js defines it (for
+  example a standard cluster id below 0x8000, a standard event id below 0x100, a valid vendor prefix). Unlike `read_attribute`, which reads
   any other part as a wildcard, a malformed path is rejected with `InvalidArguments`. As in `read_attribute`, 65535 as
   endpoint and 4294967295 as cluster, attribute or event id also act as wildcards.
 - `event_min` must be an integer from 0 to 2^64-1 and `data_version` one from 0 to 2^32-1, otherwise the request is
@@ -585,7 +585,7 @@ request has no event filter, also for a node with the server's own subscription,
 still holds on the requested paths. The request goes to the device as given: unlike `read_attribute`, it is not
 split into batches and the server adds no data version filters of its own. For a LIT ICD with this controller
 registered, matter.js holds the request while the device sleeps and sends it at the next check-in, as it does for
-every other request.
+every other request; the request fails if the device does not check in in time.
 
 Side effects on all clients: matter.js merges the read attribute values into the node state, which sends the usual
 `attribute_updated` events to every listening client, but only when `fabric_filtered` is `true`, the default.

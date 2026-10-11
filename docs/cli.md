@@ -88,7 +88,8 @@ also for those switched on with `enable_auto_subscription`:
 - time synchronization, custom cluster polling and the Thread neighbor/route refresh do not run
 - the OTA provider does not check the DCL for updates on its own (otherwise 5 to 10 minutes after the start and
   then every 24 hours); matter.js only offers updates to nodes with the server's own subscription, so for other nodes
-  `check_node_update` returns `null` and `update_node` fails. Stored OTA files that no
+  `check_node_update` returns `null` and `update_node` fails, unless an update was found while the node was still
+  subscribed. Stored OTA files that no
   node needs anymore are not deleted either, because that cleanup runs with the update check.
 - Thread Border Routers are not discovered and probed for a REST API until a client sends
   `get_thread_border_routers`, `get_thread_diagnostics` or `get_network_topology`; from then on discovery keeps
@@ -116,7 +117,7 @@ Webserver listening on unix socket <path>
 
 `<port>` is the bound port, also with `--port 0`. Tools may wait for this line and read the port from the text after
 the last `:` (IPv6 hosts are not bracketed). Its wording is a contract: a change to it is a breaking change. The line
-is logged at level `notice`, so a tool waiting for it must not set `--log-level` to `warn` or `error`.
+is logged at level `notice`, so a tool waiting for it needs `--log-level` at `notice` or a lower level.
 
 ### Behavioral Differences from Python Matter Server
 
