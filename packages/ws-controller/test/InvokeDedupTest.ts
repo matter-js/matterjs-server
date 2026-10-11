@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { ClientNode, ClusterId, EndpointNumber } from "@matter/main";
+import { ClientNode, ClusterId, Duration, EndpointNumber, Millis } from "@matter/main";
 import { InvokeRequest } from "../src/types/CommandHandler.js";
 import { HandlerSite, NODE_ID } from "./support/HandlerSite.js";
 import { InteractionWsHarness } from "./support/InteractionWsHarness.js";
@@ -37,13 +37,14 @@ describe("invoke de-duplication", () => {
             await site.close();
         });
 
-        function toggle(dedupScope?: object): InvokeRequest {
+        function toggle(dedupScope?: object, timedInteractionTimeoutMs?: Duration): InvokeRequest {
             return {
                 nodeId: NODE_ID,
                 endpointId: EndpointNumber(1),
                 clusterId: ClusterId(ON_OFF_CLUSTER),
                 commandName: "toggle",
                 data: {},
+                timedInteractionTimeoutMs,
                 dedupScope,
             };
         }
@@ -68,6 +69,14 @@ describe("invoke de-duplication", () => {
             const invokes = countInvokes(site.peer);
 
             await invokeConcurrently(toggle(connA), toggle(connB));
+
+            expect(invokes.count).equals(2);
+        });
+
+        it("sends invokes that differ only in the timed interaction timeout to the device separately", async () => {
+            const invokes = countInvokes(site.peer);
+
+            await invokeConcurrently(toggle(connA), toggle(connA, Millis(5000)));
 
             expect(invokes.count).equals(2);
         });
