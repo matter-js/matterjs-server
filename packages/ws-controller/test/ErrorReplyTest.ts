@@ -117,6 +117,18 @@ describe("write_attribute results", () => {
         ]);
     });
 
+    it("reject an out-of-range id as invalid arguments", async () => {
+        const client = await harness.connect();
+
+        const reply = await client.command("write_attribute", {
+            node_id: 1,
+            attribute_path: "1/32768/0",
+            value: true,
+        });
+
+        expect(reply.error_code).equals(ServerErrorCode.InvalidArguments);
+    });
+
     it("leave the cluster status out otherwise", async () => {
         const client = await harness.connect();
 

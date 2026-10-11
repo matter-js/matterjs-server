@@ -7,9 +7,17 @@
 import { matterNameToWireField, type MatterNodeEvent, type PathStatus } from "@matter-server/ws-client";
 import { AttributeId, Bytes, camelize, ClusterId, isObject, Logger, NodeId } from "@matter/main";
 import { ClusterModel, FieldModel, FieldValue, ValueModel } from "@matter/main/model";
-import { EndpointNumber, EventId, MATTER_EPOCH_OFFSET_S, MATTER_EPOCH_OFFSET_US, Status } from "@matter/main/types";
+import {
+    EndpointNumber,
+    EventId,
+    MATTER_EPOCH_OFFSET_S,
+    MATTER_EPOCH_OFFSET_US,
+    Status,
+    ValidationError,
+} from "@matter/main/types";
 import type { EventChange, EventOccurrence } from "../controller/PeerChangeBus.js";
 import { ClusterMap } from "../model/ModelMapper.js";
+import { ServerError } from "../types/WebSocketMessageTypes.js";
 
 export { parseBigIntAwareJson, toBigIntAwareJson } from "@matter-server/ws-client";
 
@@ -683,11 +691,23 @@ export function splitAttributePath(path: string): {
         attributeNum = undefined;
     }
 
-    return {
+    return idsOf(path, () => ({
         endpointId: endpointNum !== undefined ? EndpointNumber(endpointNum) : undefined,
         clusterId: clusterNum !== undefined ? ClusterId(clusterNum) : undefined,
         attributeId: attributeNum !== undefined ? AttributeId(attributeNum) : undefined,
-    };
+    }));
+}
+
+/** The matter.js id types reject an id out of range for its kind. */
+function idsOf<T>(path: string, ids: () => T): T {
+    try {
+        return ids();
+    } catch (error) {
+        if (error instanceof ValidationError) {
+            throw ServerError.invalidArguments(`Invalid id in path "${path}": ${error.message}`);
+        }
+        throw error;
+    }
 }
 
 /**
@@ -718,7 +738,11 @@ export function splitEventPath(path: string): {
     eventId: EventId | undefined;
 } {
     const { endpointId, clusterId, attributeId } = splitAttributePath(path);
-    return { endpointId, clusterId, eventId: attributeId === undefined ? undefined : EventId(attributeId) };
+    return idsOf(path, () => ({
+        endpointId,
+        clusterId,
+        eventId: attributeId === undefined ? undefined : EventId(attributeId),
+    }));
 }
 
 /** Convert one event occurrence into the `node_event` wire shape. */

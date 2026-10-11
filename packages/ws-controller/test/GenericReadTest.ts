@@ -203,6 +203,14 @@ describe("generic read", () => {
         expect(captured).deep.equals([]);
     });
 
+    it("rejects an out-of-range id in read_attribute without contacting the device", async () => {
+        const captured = captureReads(site.peer);
+
+        await expectInvalidArguments(site.handler.handleReadAttributes(NODE_ID, ["1/32768/0"]));
+
+        expect(captured).deep.equals([]);
+    });
+
     it("accepts the largest event_min and data_version", async () => {
         const captured = captureReads(site.peer);
 

@@ -1328,6 +1328,9 @@ Attribute paths use the format: `endpoint/cluster/attribute`
 - `0/40/1` - Endpoint 0, BasicInformation cluster (40), VendorName attribute (1)
 - `*/6/*` - All endpoints, OnOff cluster, all attributes (wildcard)
 
+A number that is not a valid id of its kind as matter.js defines it (for example cluster 32768, which has no valid
+vendor prefix) fails the command with `InvalidArguments`.
+
 A value of a cluster, attribute or event that the server's data model does not know (for example a manufacturer
 cluster without a custom cluster definition, or an attribute newer than the server) is sent as decoded from the TLV:
 a structure becomes an object keyed by the member's tag number (`{"1": 5, "3": {"0": "a"}}`), bytes become base64,

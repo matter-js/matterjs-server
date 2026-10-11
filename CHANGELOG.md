@@ -51,6 +51,7 @@ This page shows a detailed overview of the changes between versions without the 
 - Fix: WebSocket clients that read slowly are no longer disconnected when the server queues messages for them; the queued messages are now delivered
 - Fix: Large negative 64-bit values keep their precision in WebSocket messages, and a text value starting with `__BIGINT__` is no longer turned into a number or rejected; the server and the ws-client share one bigint-aware JSON implementation
 - Fix: Verified endpoint and cluster existence for `device_command` and `write_attribute` and return proper errors
+- Fix: `read_attribute` and `write_attribute` reject a path whose id is invalid for its kind (for example cluster 32768) with `InvalidArguments` instead of an unknown error
 - Fix: The server exits with code 1 when it fails to start (for example when the WebSocket port is in use), so systemd or Docker can restart it; before, it logged the error and kept running without a listener
 - Fix: Door Lock PIN fields (`credentialData`, `pinCode`) are redacted from the debug logs
 - Fix: BLE proxy connections are pinged every 15 seconds and terminated after 45 to 60 seconds of silence, so a proxy client that loses power is detected instead of staying registered indefinitely
