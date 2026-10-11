@@ -397,12 +397,37 @@ export class MatterClient {
     async subscribe(
         args: APICommands["subscribe"]["requestArgs"],
         listener: SubscriptionListener,
-        timeout?: number,
+        timeout = this.commandTimeout,
     ): Promise<ResponseOf<"subscribe">> {
+        let timedOut = false;
         // Registered when the response is handled, because a report can arrive in the same socket read.
-        return await this.sendCommand("subscribe", 0, args, timeout, ({ subscription_id }) =>
-            this.subscriptionListeners.set(subscription_id, listener),
-        );
+        const response = this.sendCommand("subscribe", 0, args, 0, ({ subscription_id }) => {
+            if (timedOut) {
+                // The caller never learned this id, so nobody else can end the subscription.
+                this.unsubscribe(subscription_id).catch(error =>
+                    console.warn(`Could not end subscription ${subscription_id} after its subscribe timed out`, error),
+                );
+                return;
+            }
+            this.subscriptionListeners.set(subscription_id, listener);
+        });
+        if (timeout <= 0) {
+            return await response;
+        }
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        try {
+            return await Promise.race([
+                response,
+                new Promise<never>((_resolve, reject) => {
+                    timer = setTimeout(() => {
+                        timedOut = true;
+                        reject(new CommandTimeoutError("subscribe", timeout));
+                    }, timeout);
+                }),
+            ]);
+        } finally {
+            clearTimeout(timer);
+        }
     }
 
     /** Schema 14. Ends a subscription opened with {@link subscribe}; its listener gets no further calls. */
@@ -706,19 +731,24 @@ export class MatterClient {
         }
     }
 
-    /**
-     * Reject all pending commands with a ConnectionClosedError.
-     * Called when the connection is closed or lost.
-     */
     /** The server ends every subscription of a connection when it closes, without a `subscription_ended`. */
     private _endAllSubscriptions(): void {
         const listeners = [...this.subscriptionListeners.values()];
         this.subscriptionListeners.clear();
         for (const listener of listeners) {
-            listener.ended?.();
+            // Runs inside disconnect and the connection-lost handling, which must complete.
+            try {
+                listener.ended?.();
+            } catch (error) {
+                console.error("Subscription listener failed on end", error);
+            }
         }
     }
 
+    /**
+     * Reject all pending commands with a ConnectionClosedError.
+     * Called when the connection is closed or lost.
+     */
     private _rejectAllPendingCommands(): void {
         const error = new ConnectionClosedError();
         const pendingIds = Object.keys(this.result_futures);

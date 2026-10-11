@@ -732,14 +732,14 @@ node then stays switched off. Send `disable_auto_subscription` to switch a node 
 device cannot be reached becomes unavailable as without `--disable-auto-subscription`.
 
 The server's subscription is made with KeepSubscriptions `false`, so it ends every subscription opened with
-`subscribe` to that node once its Subscribe request goes out, which is before a successful
-`enable_auto_subscription` returns and, after a failed one, can be much later; each arrives as `subscription_ended`
-at its connection. While the node's auto subscription is on, `subscribe` for it fails with `InvalidArguments`, also
-when it was enabled while the `subscribe` was in progress. Do not send `enable_auto_subscription` while a
-`subscribe` for the same node is still in progress: if that `subscribe` reaches the device after the server's
-Subscribe request, the device can end the server's subscription, which the server then treats as active until it
-times out. `disable_auto_subscription` ends the server's subscription; as with `unsubscribe`, the device ends it at its
-next report.
+`subscribe` to that node once its Subscribe request goes out, which is before a successful `enable_auto_subscription`
+returns and, after a failed one, can be much later; each arrives as `subscription_ended` at its connection. While the
+node's auto subscription is on, `subscribe` for it fails with `InvalidArguments`, also when it was enabled while the
+`subscribe` was in progress. Do not send `enable_auto_subscription` while a `subscribe` for the same node with
+`keep_subscriptions` `false` (the default) is still in progress: if that `subscribe` reaches the device after the
+server's Subscribe request, the device can end the server's subscription, which the server then treats as active until
+it times out. `disable_auto_subscription` ends the server's subscription; as with `unsubscribe`, the device ends it at
+its next report.
 
 ### Commands
 
@@ -1331,8 +1331,8 @@ Attribute paths use the format: `endpoint/cluster/attribute`
 - `0/40/1` - Endpoint 0, BasicInformation cluster (40), VendorName attribute (1)
 - `*/6/*` - All endpoints, OnOff cluster, all attributes (wildcard)
 
-A number that is not a valid id of its kind as matter.js defines it (for example cluster 32768, which has no valid
-vendor prefix) fails the command with `InvalidArguments`.
+A number that is not a valid id of its kind as matter.js defines it (for example cluster 32768, above the standard
+cluster range that ends at 0x7fff) fails the command with `InvalidArguments`.
 
 A value of a cluster, attribute or event that the server's data model does not know (for example a manufacturer
 cluster without a custom cluster definition, or an attribute newer than the server) is sent as decoded from the TLV:

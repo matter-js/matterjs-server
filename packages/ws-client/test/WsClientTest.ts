@@ -290,6 +290,88 @@ describe("ws-client", () => {
                 expect(server.getReceivedCommands().map(({ message }) => message.command)).includes("unsubscribe");
             });
 
+            it("reads with the request as given", async () => {
+                server.onCommand("read", () => EMPTY_REPORT);
+                await client.connect();
+
+                const result = await client.read({ node_id: 1, attribute_paths: ["1/6/0"], fabric_filtered: true });
+
+                expect(result).deep.equals(EMPTY_REPORT);
+                expect(server.getReceivedCommands().at(-1)?.message.args).deep.equals({
+                    node_id: 1,
+                    attribute_paths: ["1/6/0"],
+                    fabric_filtered: true,
+                });
+            });
+
+            it("registers no listener when the subscribe fails", async () => {
+                server.onCommand("subscribe", () => {
+                    throw new MockCommandError("rejected", 8);
+                });
+                await client.connect();
+                const own = recorder();
+
+                const error = await client.subscribe(LIGHT_ON_OFF, own.listener).catch((error: unknown) => error);
+                server.sendEvent("subscription_report", { subscription_id: 7, ...EMPTY_REPORT });
+                await eventsArrived();
+
+                expect(error).instanceOf(ServerCommandError);
+                expect(own.reports).deep.equals([]);
+            });
+
+            it("ends a subscription whose response arrives after the timeout", async () => {
+                server.onCommand(
+                    "subscribe",
+                    () =>
+                        new Promise(resolve => setTimeout(() => resolve({ subscription_id: 7, ...EMPTY_REPORT }), 50)),
+                );
+                await client.connect();
+                const own = recorder();
+
+                const error = await client.subscribe(LIGHT_ON_OFF, own.listener, 10).catch((error: unknown) => error);
+                await new Promise(resolve => setTimeout(resolve, 100));
+                server.sendEvent("subscription_report", { subscription_id: 7, ...EMPTY_REPORT });
+                await eventsArrived();
+
+                expect(error).instanceOf(CommandTimeoutError);
+                expect(own.reports).deep.equals([]);
+                expect(server.getReceivedCommands().map(({ message }) => message.args)).deep.includes({
+                    subscription_id: 7,
+                });
+            });
+
+            it("ends every subscription when the connection is lost", async () => {
+                server.onCommand("subscribe", () => ({ subscription_id: 7, ...EMPTY_REPORT }));
+                await client.connect();
+                const own = recorder();
+                const lost = new Promise<void>(resolve => client.addEventListener("connection_lost", resolve));
+
+                await client.subscribe(LIGHT_ON_OFF, own.listener);
+                await server.stop();
+                await lost;
+
+                expect(own.ended()).equals(1);
+            });
+
+            it("ends the other subscriptions and disconnects when a listener fails on end", async () => {
+                let id = 7;
+                server.onCommand("subscribe", () => ({ subscription_id: id++, ...EMPTY_REPORT }));
+                await client.connect();
+                const other = recorder();
+
+                await client.subscribe(LIGHT_ON_OFF, {
+                    report: () => {},
+                    ended: () => {
+                        throw new Error("listener failed");
+                    },
+                });
+                await client.subscribe(LIGHT_ON_OFF, other.listener);
+                client.disconnect();
+
+                expect(other.ended()).equals(1);
+                expect(client.connection.connected).equals(false);
+            });
+
             it("ends every subscription when the client disconnects", async () => {
                 server.onCommand("subscribe", () => ({ subscription_id: 7, ...EMPTY_REPORT }));
                 await client.connect();
