@@ -535,8 +535,12 @@ Paths:
 - Event paths use the same format with an event id: `endpoint/cluster/event`, for example `1/59/1`
   (Switch `InitialPress` on endpoint 1) or `*/59/*`.
 - Data version filter paths are `endpoint/cluster` and must name both.
-- Every part must be a decimal number or `*`. Unlike `read_attribute`, which reads any other part as a wildcard, a
-  malformed path is rejected with `InvalidArguments`. Test nodes are not supported (`InvalidArguments`).
+- Every part must be a decimal number or `*`, and a number must be a valid id of its kind (the endpoint fits 16 bits;
+  cluster, attribute and event ids fit 32 bits and carry a valid vendor prefix). Unlike `read_attribute`, which reads
+  any other part as a wildcard, a malformed path is rejected with `InvalidArguments`. As in `read_attribute`, 65535 as
+  endpoint and 4294967295 as cluster, attribute or event id also act as wildcards.
+- `event_min` must be an integer from 0 to 2^64-1 and `data_version` one from 0 to 2^32-1, otherwise the request is
+  rejected with `InvalidArguments`. Test nodes are not supported (`InvalidArguments`).
 
 Values in the results and reports have the same shape as in `read_attribute` (attributes) and `node_event`
 (events). When the device answers a path with a status instead of data (for example an unsupported attribute),

@@ -390,7 +390,7 @@ export interface InteractionReadArgs {
     /** "endpoint/cluster/attribute", wildcards as in `read_attribute`. */
     attribute_paths?: string[];
     /** `path` is "endpoint/cluster/event", wildcards as in `read_attribute`. */
-    event_paths?: Array<{ path: string; is_urgent?: boolean }>;
+    event_paths?: Array<{ path: string }>;
     /** Without it, a `read` has no event filter and returns every event the device holds. */
     event_min?: number | bigint;
     /** Defaults to true. */
@@ -582,7 +582,8 @@ export interface APICommands {
      * the server running with auto subscription disabled.
      */
     subscribe: {
-        requestArgs: InteractionReadArgs & {
+        requestArgs: Omit<InteractionReadArgs, "event_paths"> & {
+            event_paths?: Array<{ path: string; is_urgent?: boolean }>;
             /** Seconds. */
             min_interval: number;
             /** Seconds. */

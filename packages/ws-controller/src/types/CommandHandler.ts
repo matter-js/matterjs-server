@@ -110,7 +110,7 @@ export type InteractionReadRequest = {
     /** "endpoint/cluster/attribute" */
     attributePaths?: string[];
     /** "endpoint/cluster/event" */
-    eventPaths?: { path: string; isUrgent?: boolean }[];
+    eventPaths?: { path: string }[];
     eventMin?: number | bigint;
     /** Defaults to true. */
     fabricFiltered?: boolean;
@@ -118,7 +118,8 @@ export type InteractionReadRequest = {
     dataVersionFilters?: { path: string; dataVersion: number }[];
 };
 
-export type InteractionSubscribeRequest = InteractionReadRequest & {
+export type InteractionSubscribeRequest = Omit<InteractionReadRequest, "eventPaths"> & {
+    eventPaths?: { path: string; isUrgent?: boolean }[];
     /** Seconds. */
     minInterval: number;
     /** Seconds. */

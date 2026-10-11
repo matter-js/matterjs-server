@@ -59,7 +59,7 @@ describe("generic read", () => {
         await read({
             nodeId: NODE_ID,
             attributePaths: ["1/6/0", "*/29/*"],
-            eventPaths: [{ path: "1/69/0" }, { path: "1/69/*", isUrgent: true }],
+            eventPaths: [{ path: "1/69/0" }, { path: "1/69/*" }],
             eventMin: 2,
             fabricFiltered: false,
             dataVersionFilters: [{ path: "1/6", dataVersion: 9 }],
@@ -73,7 +73,7 @@ describe("generic read", () => {
         ]);
         expect(request.eventRequests).deep.equals([
             { endpointId: 1, clusterId: 69, eventId: 0, isUrgent: undefined },
-            { endpointId: 1, clusterId: 69, eventId: undefined, isUrgent: true },
+            { endpointId: 1, clusterId: 69, eventId: undefined, isUrgent: undefined },
         ]);
         expect(request.eventFilters).deep.equals([{ eventMin: 2n }]);
         expect(request.isFabricFiltered).equals(false);
@@ -149,7 +149,20 @@ describe("generic read", () => {
     it("rejects a malformed path instead of reading it as a wildcard, without contacting the device", async () => {
         const captured = captureReads(site.peer);
 
-        for (const attributePath of ["1/OnOff/0", "", "x", "1/6", "1/6/0/1", "1//0", "-1/6/0"]) {
+        for (const attributePath of [
+            "1/OnOff/0",
+            "",
+            "x",
+            "1/6",
+            "1/6/0/1",
+            "1//0",
+            "-1/6/0",
+            "1/6/0x",
+            "65536/6/0",
+            "1/4294967296/0",
+            "1/6/4294967296",
+            "1/4294967294/0",
+        ]) {
             await expectInvalidArguments(site.handler.read({ nodeId: NODE_ID, attributePaths: [attributePath] }));
         }
         await expectInvalidArguments(site.handler.read({ nodeId: NODE_ID, eventPaths: [{ path: "1/Switch/*" }] }));
@@ -167,6 +180,38 @@ describe("generic read", () => {
         }
 
         expect(captured).deep.equals([]);
+    });
+
+    it("rejects an event_min or data_version out of range without contacting the device", async () => {
+        const captured = captureReads(site.peer);
+
+        for (const eventMin of [-1, 1.5, Number.MAX_SAFE_INTEGER + 1, -1n, 0x1_0000_0000_0000_0000n]) {
+            await expectInvalidArguments(site.handler.read({ nodeId: NODE_ID, attributePaths: ["1/6/0"], eventMin }));
+        }
+        for (const dataVersion of [-1, 1.5, 0x1_0000_0000]) {
+            await expectInvalidArguments(
+                site.handler.read({
+                    nodeId: NODE_ID,
+                    attributePaths: ["1/6/0"],
+                    dataVersionFilters: [{ path: "1/6", dataVersion }],
+                }),
+            );
+        }
+
+        expect(captured).deep.equals([]);
+    });
+
+    it("accepts the largest event_min and data_version", async () => {
+        const captured = captureReads(site.peer);
+
+        await read({
+            nodeId: NODE_ID,
+            attributePaths: ["1/6/0"],
+            eventMin: 0xffff_ffff_ffff_ffffn,
+            dataVersionFilters: [{ path: "1/6", dataVersion: 0xffff_ffff }],
+        });
+
+        expect(captured[0].eventFilters).deep.equals([{ eventMin: 0xffff_ffff_ffff_ffffn }]);
     });
 
     it("rejects a data version filter without a concrete endpoint", async () => {
@@ -238,7 +283,7 @@ describe("read over WebSocket", () => {
             {
                 nodeId: NodeId(42),
                 attributePaths: ["1/6/0"],
-                eventPaths: [{ path: "1/69/0", isUrgent: undefined }],
+                eventPaths: [{ path: "1/69/0" }],
                 eventMin: 2,
                 fabricFiltered: false,
                 dataVersionFilters: [{ path: "1/6", dataVersion: 9 }],

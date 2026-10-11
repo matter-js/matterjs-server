@@ -1209,7 +1209,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
         return {
             nodeId: NodeId(node_id),
             attributePaths: attribute_paths,
-            eventPaths: event_paths?.map(({ path, is_urgent }) => ({ path, isUrgent: is_urgent })),
+            eventPaths: event_paths?.map(({ path }) => ({ path })),
             eventMin: event_min,
             fabricFiltered: fabric_filtered,
             dataVersionFilters: data_version_filters?.map(({ path, data_version }) => ({
@@ -1224,7 +1224,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
         args: ArgsOf<"subscribe">,
         connection: WebSocketConnection,
     ): Promise<{ result: ResponseOf<"subscribe">; afterResponse: () => void }> {
-        const { min_interval, max_interval, keep_subscriptions } = args;
+        const { event_paths, min_interval, max_interval, keep_subscriptions } = args;
         const pending = new Array<(id: number) => void>();
         let deliver = (send: (id: number) => void) => {
             pending.push(send);
@@ -1234,6 +1234,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
         const subscription = await this.#commandHandler.subscribe(
             {
                 ...this.#interactionReadRequestOf(args),
+                eventPaths: event_paths?.map(({ path, is_urgent }) => ({ path, isUrgent: is_urgent })),
                 minInterval: min_interval,
                 maxInterval: max_interval,
                 keepSubscriptions: keep_subscriptions,

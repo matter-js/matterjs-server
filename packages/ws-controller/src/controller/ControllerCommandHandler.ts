@@ -84,6 +84,7 @@ import {
     Status,
     ReceivedStatusResponseError,
     StatusResponseError,
+    ValidationError,
     VendorId,
 } from "@matter/main/types";
 import { CommissioningDiscovery, Endpoint, ServerNode } from "@matter/node";
@@ -258,6 +259,16 @@ async function awaitSeeded(node: ClientNode, abort: Abort): Promise<void> {
 
 function isIntervalSeconds(value: number) {
     return Number.isInteger(value) && value >= 0 && value <= 0xffff;
+}
+
+function isEventNumber(value: number | bigint) {
+    return typeof value === "bigint"
+        ? value >= 0n && value <= 0xffff_ffff_ffff_ffffn
+        : Number.isSafeInteger(value) && value >= 0;
+}
+
+function isDataVersion(value: number) {
+    return Number.isInteger(value) && value >= 0 && value <= 0xffff_ffff;
 }
 
 /**
@@ -1278,10 +1289,18 @@ export class ControllerCommandHandler {
         };
     }
 
-    #readRequestOf(request: InteractionReadRequest): Read {
+    #readRequestOf(
+        request: Omit<InteractionSubscribeRequest, "minInterval" | "maxInterval" | "keepSubscriptions">,
+    ): Read {
         const { attributePaths, eventPaths, eventMin, fabricFiltered = true, dataVersionFilters } = request;
         if (!attributePaths?.length && !eventPaths?.length) {
             throw ServerError.invalidArguments("At least one attribute or event path is required");
+        }
+        if (eventMin !== undefined && !isEventNumber(eventMin)) {
+            throw ServerError.invalidArguments("event_min must be an event number, an integer from 0 to 2^64-1");
+        }
+        if (dataVersionFilters?.some(({ dataVersion }) => !isDataVersion(dataVersion))) {
+            throw ServerError.invalidArguments("data_version must be an integer from 0 to 2^32-1");
         }
         const malformed = [
             ...(attributePaths ?? []).filter(path => !isWellFormedPath(path, 3)),
@@ -1293,25 +1312,33 @@ export class ControllerCommandHandler {
                 `Malformed path(s) ${malformed.map(path => JSON.stringify(path)).join(", ")}: expected three parts (two for a data version filter), each a number or "*"`,
             );
         }
-        return Read({
-            fabricFilter: fabricFiltered,
-            attributes: attributePaths?.length ? attributePaths.map(path => splitAttributePath(path)) : undefined,
-            events: eventPaths?.length
-                ? eventPaths.map(({ path, isUrgent }): EventPath => ({ ...splitEventPath(path), isUrgent }))
-                : undefined,
-            versionFilters: dataVersionFilters?.length
-                ? dataVersionFilters.map(({ path, dataVersion }): DataVersionFilter => {
-                      const { endpointId, clusterId } = splitAttributePath(path);
-                      if (endpointId === undefined || clusterId === undefined) {
-                          throw ServerError.invalidArguments(
-                              `Data version filter path "${path}" must name an endpoint and a cluster`,
-                          );
-                      }
-                      return { path: { endpointId, clusterId }, dataVersion };
-                  })
-                : undefined,
-            eventFilters: eventMin !== undefined ? [{ eventMin: EventNumber(eventMin) }] : undefined,
-        });
+        try {
+            return Read({
+                fabricFilter: fabricFiltered,
+                attributes: attributePaths?.length ? attributePaths.map(path => splitAttributePath(path)) : undefined,
+                events: eventPaths?.length
+                    ? eventPaths.map(({ path, isUrgent }): EventPath => ({ ...splitEventPath(path), isUrgent }))
+                    : undefined,
+                versionFilters: dataVersionFilters?.length
+                    ? dataVersionFilters.map(({ path, dataVersion }): DataVersionFilter => {
+                          const { endpointId, clusterId } = splitAttributePath(path);
+                          if (endpointId === undefined || clusterId === undefined) {
+                              throw ServerError.invalidArguments(
+                                  `Data version filter path "${path}" must name an endpoint and a cluster`,
+                              );
+                          }
+                          return { path: { endpointId, clusterId }, dataVersion };
+                      })
+                    : undefined,
+                eventFilters: eventMin !== undefined ? [{ eventMin: EventNumber(eventMin) }] : undefined,
+            });
+        } catch (error) {
+            // The id constructors check each id's range, the MEI vendor prefix included.
+            if (error instanceof ValidationError) {
+                throw ServerError.invalidArguments(`Invalid id in a path: ${error.message}`);
+            }
+            throw error;
+        }
     }
 
     async #collectReport(nodeId: NodeId, data: ReadResult): Promise<InteractionReport> {
