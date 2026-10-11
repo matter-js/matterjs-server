@@ -35,7 +35,7 @@ export class ConnectionClosedError extends MatterError {
 
 /** Command failure reported by the server; preserves the wire error_code and the typed failure details. */
 export class ServerCommandError extends MatterError {
-    /** The Matter status the device answered with, when the failure is one. */
+    /** The Matter status received from the device, when matter.js reports the failure as one; see the API docs. */
     readonly status?: number;
     readonly clusterStatus?: number;
     /** Why commissioning failed, for `commission_with_code` and `commission_on_network`. */

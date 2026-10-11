@@ -1537,11 +1537,10 @@ export class ControllerCommandHandler {
                 switch (entry.kind) {
                     case "cmd-status":
                         if (entry.status !== Status.Success) {
-                            const { message } = StatusResponseError.create(
-                                entry.status,
-                                undefined,
-                                entry.clusterStatus,
-                            );
+                            const message =
+                                Status[entry.status] === undefined
+                                    ? `Unknown status response (code ${entry.status})`
+                                    : StatusResponseError.create(entry.status, undefined, entry.clusterStatus).message;
                             throw new ReceivedStatusResponseError(message, entry.status, entry.clusterStatus);
                         }
                         return;

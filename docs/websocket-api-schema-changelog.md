@@ -21,7 +21,7 @@ gate on 14 cannot use these additions yet.
 
 ### Error details
 
-- **Optional `status` / `cluster_status` on error responses**: the Matter status the device answered with, when the failure is one (e.g. a `device_command` the device rejected). `error_code` is unchanged.
+- **Optional `status` / `cluster_status` on error responses**: the Matter status the device answered with, when matter.js reports the failure as one: always for a `device_command` the device rejected, not for commands the server sends on its own behalf. `error_code` is unchanged.
 - **Optional `reason` on `NodeCommissionFailed` errors of `commission_with_code` / `commission_on_network`, and on an undecodable pairing code**: `not-discovered`, `passcode-mismatch`, `invalid-payload`, `attestation-rejected`, `timeout` or `other`. A pairing code that cannot be decoded now fails with `InvalidArguments` and `reason: "invalid-payload"` instead of `UnknownError`.
 - **Optional `ClusterStatus` in the `write_attribute` result**, next to `Status`, when the device sent a cluster-specific status.
 

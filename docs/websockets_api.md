@@ -50,13 +50,17 @@ Error responses:
 
 Optional fields of an error response (schema 14):
 
-- `status` and `cluster_status`: when the failure is a Matter status the device answered with, for example
-  `UNSUPPORTED_COMMAND` (0x81) to a `device_command`, the numeric Matter status code and, if the device sent one,
-  the cluster-specific status code. Arguments the server rejects before anything is sent carry no `status`.
-  `error_code` stays as it was.
+- `status` and `cluster_status`: when the failure is a Matter status that matter.js reports as received from the
+  device, the numeric Matter status code and, if the device sent one, the cluster-specific status code. This is
+  always the case for a `device_command` the device rejected, for example with `UNSUPPORTED_COMMAND` (0x81), and for
+  any command whose whole interaction the device answered with a status. matter.js does not mark the status of a
+  command the server sends on its own behalf (for example to open a commissioning window or remove a fabric), so
+  those failures carry no `status`. Neither do arguments the server rejects before anything is sent. `error_code`
+  stays as it was.
 - `reason`: why commissioning failed, with every `NodeCommissionFailed` error of `commission_with_code` and
   `commission_on_network`, and with a pairing code that cannot be decoded: `not-discovered` (no matching device was
-  found, or none got through pairing before discovery ended), `passcode-mismatch` (the device rejected the pairing
+  found; when devices were found but none could be paired, the reason is `timeout` if an attempt timed out, otherwise
+  `other`), `passcode-mismatch` (the device rejected the pairing
   code), `invalid-payload` (the pairing code could not be decoded; `error_code` is `InvalidArguments`),
   `attestation-rejected` (the device certificates were not accepted), `timeout` (the device stopped answering or
   commissioning took too long), `other`. Other argument errors carry no `reason`.
@@ -512,8 +516,9 @@ Wildcard (all attributes from OnOff cluster):
 }
 ```
 
-The result lists the written path with the Matter status the device answered with, and its cluster-specific status
-in `ClusterStatus` when the device sent one (schema 14):
+The result lists the written path with its Matter status and, when there is one, the cluster-specific status in
+`ClusterStatus` (schema 14). The status is usually the device's answer, but can also come from matter.js before
+anything is sent, for example `CONSTRAINT_ERROR` (0x87) for a value out of range:
 
 ```json
 [{ "Path": { "EndpointId": 1, "ClusterId": 6, "AttributeId": 16385 }, "Status": 0 }]

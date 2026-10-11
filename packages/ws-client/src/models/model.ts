@@ -945,7 +945,7 @@ export type CommissionFailureReason =
 export interface ErrorResultMessage extends ResultMessageBase {
     error_code: number;
     details?: string;
-    /** The Matter status the device answered with, when the failure is one. */
+    /** The Matter status received from the device, when matter.js reports the failure as one; see the API docs. */
     status?: number;
     cluster_status?: number;
     reason?: CommissionFailureReason;

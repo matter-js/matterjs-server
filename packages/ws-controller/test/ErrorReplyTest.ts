@@ -127,9 +127,12 @@ describe("write_attribute results", () => {
 });
 
 describe("device status of a command", () => {
+    const UNKNOWN_STATUS: number = 0x02;
+    let answer: StatusResponseError;
+
     class RejectingOnOffServer extends OnOffServer {
         override toggle() {
-            throw new StatusResponseError("Refused", Status.Failure, 5);
+            throw answer;
         }
     }
 
@@ -146,7 +149,7 @@ describe("device status of a command", () => {
         await site.close();
     });
 
-    it("is reported as received from the device", async () => {
+    async function toggleError() {
         const invoke = site.handler.handleInvoke({
             nodeId: NODE_ID,
             endpointId: EndpointNumber(1),
@@ -166,6 +169,22 @@ describe("device status of a command", () => {
         if (!(error instanceof ReceivedStatusResponseError)) {
             throw new Error(`Expected a status received from the device, got ${String(error)}`);
         }
+        return error;
+    }
+
+    it("is reported as received from the device", async () => {
+        answer = new StatusResponseError("Refused", Status.Failure, 5);
+
+        const error = await toggleError();
+
         expect([error.code, error.clusterCode]).deep.equals([Status.Failure, 5]);
+    });
+
+    it("is reported as received from the device also for a status code matter.js does not know", async () => {
+        answer = new StatusResponseError("Odd", UNKNOWN_STATUS);
+
+        const error = await toggleError();
+
+        expect([error.code, error.message]).deep.equals([UNKNOWN_STATUS, "Unknown status response (code 2)"]);
     });
 });
