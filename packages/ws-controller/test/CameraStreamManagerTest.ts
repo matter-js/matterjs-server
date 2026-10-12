@@ -7,6 +7,7 @@
 import { EndpointNumber, Logger, NodeId } from "@matter/main";
 import { CameraAvStreamManagement } from "@matter/main/clusters/camera-av-stream-management";
 import { WebRtcTransportProvider } from "@matter/main/clusters/web-rtc-transport-provider";
+import { Invoke } from "@matter/main/protocol";
 import { Status, StatusResponseError, StreamUsage } from "@matter/main/types";
 import type { CameraDeviceIo, CameraState } from "../src/camera/CameraStreamManager.js";
 import {
@@ -2531,6 +2532,68 @@ describe("CameraStreamManager", () => {
             const offer = invokes.find(invoke => invoke.command === "provideOffer");
             expect(offer?.fields.videoStreams).to.equal(undefined);
             expect(offer?.fields.audioStreams).to.deep.equal([4]);
+        });
+
+        it("asks for a new session with a null WebRTCSessionID on ProvideOffer", async () => {
+            // §11.5.6.3.1: the field is mandatory; matter.js refuses to encode the command without it.
+            const { manager, invokes } = allocatingManager();
+            await manager.startStream({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                connectionId: "conn-1",
+                streamUsage: LIVE_VIEW,
+                sdp: VIDEO_OFFER,
+                audio: false,
+            });
+            const offer = invokes.find(invoke => invoke.command === "provideOffer");
+            expect(offer?.fields).to.have.property("webRtcSessionId", null);
+        });
+
+        it("builds offer commands matter.js accepts", async () => {
+            // The recorded fields never reach the encoder here; Invoke validates them as the real path does.
+            for (const sdp of [VIDEO_OFFER, undefined]) {
+                const { manager, invokes } = managerWith(STATE, async invoke => {
+                    if (invoke.command === "videoStreamAllocate") return { videoStreamId: 9 };
+                    if (invoke.command === "provideOffer" || invoke.command === "solicitOffer") {
+                        return { webRtcSessionId: 42 };
+                    }
+                    return undefined;
+                });
+                await manager.startStream({
+                    nodeId: NODE,
+                    endpointId: ENDPOINT,
+                    connectionId: "conn-1",
+                    streamUsage: LIVE_VIEW,
+                    ...(sdp === undefined ? {} : { sdp }),
+                    audio: false,
+                });
+                const offer = invokes.find(
+                    invoke => invoke.command === "provideOffer" || invoke.command === "solicitOffer",
+                );
+                if (offer?.command !== "provideOffer" && offer?.command !== "solicitOffer") {
+                    throw new Error("no offer was sent");
+                }
+                const fields = { ...offer.fields, originatingEndpointId: EndpointNumber(1) };
+                expect(() =>
+                    Invoke({
+                        commands: [
+                            offer.command === "provideOffer"
+                                ? {
+                                      endpoint: ENDPOINT,
+                                      cluster: WebRtcTransportProvider,
+                                      command: "provideOffer",
+                                      fields,
+                                  }
+                                : {
+                                      endpoint: ENDPOINT,
+                                      cluster: WebRtcTransportProvider,
+                                      command: "solicitOffer",
+                                      fields,
+                                  },
+                        ],
+                    }),
+                ).to.not.throw();
+            }
         });
 
         it("tells a caller that asked for video why a rejected video section left it none", async () => {

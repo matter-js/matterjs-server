@@ -1663,7 +1663,8 @@ export class CameraStreamManager {
                 // Must record the id before the local requestor can route an `End` for it.
                 sessionEstablishing: webRtcSessionId => this.#sessions.establishing(pending, webRtcSessionId),
                 fields: {
-                    ...(args.sdp === undefined ? {} : { sdp: args.sdp }),
+                    // §11.5.6.3.1: mandatory and nullable; null asks for a new session.
+                    ...(args.sdp === undefined ? {} : { webRtcSessionId: null, sdp: args.sdp }),
                     streamUsage,
                     ...(video === undefined ? {} : { videoStreams: [video.streamId] }),
                     ...(audio === undefined ? {} : { audioStreams: [audio.streamId] }),
