@@ -707,7 +707,7 @@ describe("streamPolicy", () => {
     });
 
     describe("findReusableVideoStream", () => {
-        const LIVE_VIEW_H265 = videoCallerBounds({ codec: H265 }, LIVE_VIEW, undefined);
+        const LIVE_VIEW_H265 = videoCallerBounds({ codec: H265 }, undefined);
 
         function planOf(envelope: VideoEnvelope, frameRateFloor = envelope.minFrameRate): VideoPlan {
             return {
@@ -862,19 +862,38 @@ describe("streamPolicy", () => {
             expect(reusable([stream({ videoCodec: H264 })], REQUEST, LIVE_VIEW_H265)).to.equal(undefined);
         });
 
-        it("refuses a stream with a different usage", () => {
-            expect(reusable([stream({ streamUsage: RECORDING_USAGE })], REQUEST, LIVE_VIEW_H265)).to.equal(undefined);
+        it("reuses a stream allocated for another usage", () => {
+            const recording = stream({ streamUsage: RECORDING_USAGE });
+            expect(reusable([recording], REQUEST, LIVE_VIEW_H265)).to.equal(recording);
+        });
+
+        it("reuses a stream the device allocated for its own use", () => {
+            const internal = stream({ streamUsage: StreamUsage.Internal });
+            expect(reusable([internal], REQUEST, LIVE_VIEW_H265)).to.equal(internal);
+        });
+
+        it("prefers a stream of the session's usage among equal candidates", () => {
+            const recording = stream({ videoStreamId: 1, streamUsage: RECORDING_USAGE });
+            const liveView = stream({ videoStreamId: 2 });
+            const found = findReusableVideoStream(
+                [recording, liveView],
+                planOf(REQUEST),
+                LIVE_VIEW_H265,
+                () => REQUEST.maxFrameRate,
+                LIVE_VIEW,
+            );
+            expect(found?.videoStreamId).to.equal(2);
         });
 
         it("refuses a stream whose bit-rate ceiling is above the one the caller stated", () => {
             // The envelope admits the stream, so only the caller's own bound refuses it.
             const wide = { ...REQUEST, maxBitRate: 8000000 };
-            const bounds = videoCallerBounds({ codec: H265 }, LIVE_VIEW, { maxBitRate: 500000 });
+            const bounds = videoCallerBounds({ codec: H265 }, { maxBitRate: 500000 });
             expect(reusable([stream({ maxBitRate: 8000000 })], wide, bounds)).to.equal(undefined);
         });
 
         it("refuses a stream below the bit-rate floor the caller stated", () => {
-            const bounds = videoCallerBounds({ codec: H265 }, LIVE_VIEW, { minBitRate: 1000000 });
+            const bounds = videoCallerBounds({ codec: H265 }, { minBitRate: 1000000 });
             expect(reusable([stream()], REQUEST, bounds)).to.equal(undefined);
         });
 
@@ -968,24 +987,24 @@ describe("streamPolicy", () => {
         };
 
         it("refuses a stream past the pixel budget the offer stated for the selected codec", () => {
-            const bounds = videoCallerBounds({ codec: H265, maxPixels: 1280 * 720 }, LIVE_VIEW, undefined);
+            const bounds = videoCallerBounds({ codec: H265, maxPixels: 1280 * 720 }, undefined);
             expect(satisfiesVideoCallerBounds(STREAM, bounds)).to.equal(false);
         });
 
         it("refuses a stream past the frame rate the offer stated", () => {
-            const bounds = videoCallerBounds({ codec: H265, maxFrameRate: 15 }, LIVE_VIEW, undefined);
+            const bounds = videoCallerBounds({ codec: H265, maxFrameRate: 15 }, undefined);
             expect(satisfiesVideoCallerBounds(STREAM, bounds)).to.equal(false);
         });
 
         it("refuses a stream whose size leaves the offer's pixel rate no whole frame per second", () => {
             // 2560x1440 at 380160 pixels a second is 0.10 frames a second; the stream runs at 1.
             const slowest = { ...STREAM, minFrameRate: 1, maxFrameRate: 1 };
-            const bounds = videoCallerBounds({ codec: H265, maxPixelsPerSecond: 380160 }, LIVE_VIEW, undefined);
+            const bounds = videoCallerBounds({ codec: H265, maxPixelsPerSecond: 380160 }, undefined);
             expect(satisfiesVideoCallerBounds(slowest, bounds)).to.equal(false);
         });
 
         it("refuses a stream past the bit rate the offer stated", () => {
-            const bounds = videoCallerBounds({ codec: H265, maxBitRate: 1000000 }, LIVE_VIEW, undefined);
+            const bounds = videoCallerBounds({ codec: H265, maxBitRate: 1000000 }, undefined);
             expect(satisfiesVideoCallerBounds(STREAM, bounds)).to.equal(false);
         });
 
@@ -994,25 +1013,22 @@ describe("streamPolicy", () => {
             expect(
                 satisfiesVideoCallerBounds(
                     watermarked,
-                    videoCallerBounds({ codec: H265 }, LIVE_VIEW, { watermarkEnabled: false }),
+                    videoCallerBounds({ codec: H265 }, { watermarkEnabled: false }),
                 ),
             ).to.equal(false);
             expect(
-                satisfiesVideoCallerBounds(STREAM, videoCallerBounds({ codec: H265 }, LIVE_VIEW, { osdEnabled: true })),
+                satisfiesVideoCallerBounds(STREAM, videoCallerBounds({ codec: H265 }, { osdEnabled: true })),
             ).to.equal(false);
         });
 
         it("accepts any overlays for a caller that stated none, which is the envelope's business", () => {
             const watermarked = { ...STREAM, overlays: { watermarkEnabled: true, osdEnabled: true } };
-            expect(satisfiesVideoCallerBounds(watermarked, videoCallerBounds({ codec: H265 }, LIVE_VIEW, {}))).to.equal(
-                true,
-            );
+            expect(satisfiesVideoCallerBounds(watermarked, videoCallerBounds({ codec: H265 }, {}))).to.equal(true);
         });
 
         it("accepts a stream inside every limit the offer stated", () => {
             const bounds = videoCallerBounds(
                 { codec: H265, maxPixels: 2560 * 1440, maxFrameRate: 30, maxBitRate: 4000000 },
-                LIVE_VIEW,
                 undefined,
             );
             expect(satisfiesVideoCallerBounds(STREAM, bounds)).to.equal(true);
@@ -1020,9 +1036,9 @@ describe("streamPolicy", () => {
     });
 
     describe("findDegradedVideoStream", () => {
-        /** The bounds of a caller that stated nothing beyond the two arguments every caller states. */
-        function bounds(hints?: Parameters<typeof videoCallerBounds>[2], codec = H265) {
-            return videoCallerBounds({ codec }, LIVE_VIEW, hints);
+        /** The bounds of a caller that stated nothing beyond the codec. */
+        function bounds(hints?: Parameters<typeof videoCallerBounds>[1], codec = H265) {
+            return videoCallerBounds({ codec }, hints);
         }
 
         const IN_USE_WIDE = {
@@ -1128,10 +1144,14 @@ describe("streamPolicy", () => {
             ).to.equal(4);
         });
 
-        it("refuses a stream whose usage is not the one the caller asked for", () => {
-            // stream_usage is the only mandatory argument, so no rung may substitute it.
+        it("hands out a stream allocated for another usage", () => {
             const recording = { ...IN_USE_WIDE, streamUsage: RECORDING_USAGE };
-            expect(findDegradedVideoStream([recording], bounds())).to.equal(undefined);
+            expect(findDegradedVideoStream([recording], bounds())).to.equal(recording);
+        });
+
+        it("prefers a stream of the session's usage among equally large ones", () => {
+            const recording = { ...IN_USE_WIDE, videoStreamId: 5, streamUsage: RECORDING_USAGE };
+            expect(findDegradedVideoStream([recording, IN_USE_WIDE], bounds(), LIVE_VIEW)?.videoStreamId).to.equal(4);
         });
 
         it("accepts a stream that matches pinned bounds exactly", () => {
@@ -1283,14 +1303,13 @@ describe("streamPolicy", () => {
             referenceCount: 1,
         };
 
-        it("accepts a stream carrying the usage the caller asked for", () => {
-            expect(satisfiesAudioCallerBounds(LIVE_VIEW_AUDIO, { streamUsage: LIVE_VIEW })).to.equal(true);
+        it("accepts a stream allocated for another usage", () => {
+            const recording = { ...LIVE_VIEW_AUDIO, streamUsage: RECORDING_USAGE };
+            expect(satisfiesAudioCallerBounds(recording, {})).to.equal(true);
         });
 
-        it("refuses a stream whose usage is not the one the caller asked for", () => {
-            // stream_usage is the only mandatory argument, so the audio rung may not substitute it either.
-            const recording = { ...LIVE_VIEW_AUDIO, streamUsage: RECORDING_USAGE };
-            expect(satisfiesAudioCallerBounds(recording, { streamUsage: LIVE_VIEW })).to.equal(false);
+        it("refuses a stream whose sample rate is not the one the caller stated", () => {
+            expect(satisfiesAudioCallerBounds(LIVE_VIEW_AUDIO, { sampleRate: 16000 })).to.equal(false);
         });
     });
 

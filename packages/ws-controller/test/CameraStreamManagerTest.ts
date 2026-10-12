@@ -648,24 +648,43 @@ describe("CameraStreamManager", () => {
             expect(invokes).to.have.length(1);
         });
 
-        it("never hands out a stream of another usage, however little capacity the camera has", async () => {
+        it("hands out a stream of another usage when it meets the caller's bounds", async () => {
             const otherUsage = { ...CONTAINED_STREAM, streamUsage: 1, referenceCount: 1 };
-            const { manager } = managerWith(withStreams([otherUsage]), async () => {
+            const { manager, invokes } = managerWith(withStreams([otherUsage]), async () => {
                 throw statusError(Status.ResourceExhausted);
             });
-            let thrown: unknown;
-            try {
-                await manager.resolveVideoStream({
-                    nodeId: NODE,
-                    endpointId: ENDPOINT,
-                    streamUsage: LIVE_VIEW,
-                    limits: { codec: H265 },
-                    hints: PINNED_1080P,
-                });
-            } catch (error) {
-                thrown = error;
-            }
-            expect((thrown as ServerError).code).to.equal(ServerErrorCode.CameraResourceExhausted);
+            const resolved = await manager.resolveVideoStream({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                streamUsage: LIVE_VIEW,
+                limits: { codec: H265 },
+                hints: PINNED_1080P,
+            });
+            expect(resolved.streamId).to.equal(7);
+            expect(invokes).to.have.length(0);
+        });
+
+        it("hands out an idle stream of another usage as degraded instead of evicting it", async () => {
+            // Below the computed bit rate range, so only the degraded rung can hand it out.
+            const idleRecording = {
+                ...CONTAINED_STREAM,
+                streamUsage: 1,
+                referenceCount: 0,
+                minBitRate: 100000,
+                maxBitRate: 200000,
+            };
+            const { manager, invokes } = managerWith(withStreams([idleRecording]), async () => {
+                throw statusError(Status.ResourceExhausted);
+            });
+            const resolved = await manager.resolveVideoStream({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                streamUsage: LIVE_VIEW,
+                limits: { codec: H265 },
+            });
+            expect(resolved.streamId).to.equal(7);
+            expect(resolved.degraded).to.equal(true);
+            expect(invokes.map(invoke => invoke.command)).to.not.include("videoStreamDeallocate");
         });
 
         it("hands out a stream outside the computed bit-rate range as degraded, not as a clean reuse", async () => {
@@ -2138,6 +2157,30 @@ describe("CameraStreamManager", () => {
             expect(resolved?.streamId).to.equal(4);
             expect(resolved?.provenance).to.equal("adopted");
             expect(invokes).to.deep.equal([]);
+        });
+
+        it("reuses an audio stream allocated for another usage without invoking anything", async () => {
+            const recording = { ...EXISTING_AUDIO_STREAM, streamUsage: StreamUsage.Recording };
+            const { manager, invokes } = managerWith(withAudioStreams([recording]));
+            const resolved = await manager.resolveAudioStream({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                streamUsage: LIVE_VIEW,
+            });
+            expect(resolved?.streamId).to.equal(4);
+            expect(invokes).to.deep.equal([]);
+        });
+
+        it("reuses the audio stream of the session's usage when another usage fits as well", async () => {
+            const recording = { ...EXISTING_AUDIO_STREAM, streamUsage: StreamUsage.Recording };
+            const liveView = { ...EXISTING_AUDIO_STREAM, audioStreamId: 5 };
+            const { manager } = managerWith(withAudioStreams([recording, liveView]));
+            const resolved = await manager.resolveAudioStream({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                streamUsage: LIVE_VIEW,
+            });
+            expect(resolved?.streamId).to.equal(5);
         });
 
         it("reports the reused audio stream's own bitRate, not the freshly computed default", async () => {
@@ -5424,9 +5467,9 @@ describe("CameraStreamManager", () => {
             expect(manager.endpointsWithLeases).to.equal(1);
         });
 
-        it("leases nothing when the only stream left has a usage the caller did not ask for", async () => {
-            const otherUsage = { ...FOREIGN_STREAM, ...CONTAINED_FOREIGN, streamUsage: 1, referenceCount: 1 };
-            const { manager } = probeWith({ ...STATE, allocatedVideoStreams: [otherUsage] }, async () => {
+        it("leases nothing when the only stream left fails the caller's bounds", async () => {
+            const otherCodec = { ...FOREIGN_STREAM, ...CONTAINED_FOREIGN, videoCodec: 2, referenceCount: 1 };
+            const { manager } = probeWith({ ...STATE, allocatedVideoStreams: [otherCodec] }, async () => {
                 throw statusError(Status.ResourceExhausted);
             });
             let thrown: unknown;
@@ -5996,21 +6039,14 @@ describe("CameraStreamManager reuse before the device has reported", () => {
         expect(second?.envelope).to.deep.equal(first?.envelope);
     });
 
-    it("refuses an unreported stream whose usage the caller did not ask for", async () => {
+    it("reuses an unreported stream allocated for another usage", async () => {
         const { manager, invokes } = allocatingManager({ ...STATE, allocatedVideoStreams: [] }, [9]);
         await liveView(manager);
 
-        // The unreported stream is LiveView and this caller wants another usage, so the refusal is the answer.
-        let thrown: unknown;
-        try {
-            await liveView(manager, { streamUsage: 1 });
-        } catch (error) {
-            thrown = error;
-        }
-        expect((thrown as ServerError).code).to.equal(ServerErrorCode.CameraResourceExhausted);
-        expect(
-            invokes.some(invoke => invoke.command === "videoStreamAllocate" && invoke.fields.streamUsage === 1),
-        ).to.equal(true);
+        const second = await liveView(manager, { streamUsage: 1 });
+        expect(second.streamId).to.equal(9);
+        expect(second.provenance).to.not.equal("allocated");
+        expect(invokes.filter(invoke => invoke.command === "videoStreamAllocate")).to.have.length(1);
     });
 
     it("hands out an unreported stream on the degraded rung when nothing else is left", async () => {
@@ -7807,13 +7843,13 @@ describe("CameraStreamManager allocate answered with an existing stream", () => 
         expect(requireVideoEnvelope(resolved.envelope).minResolution).to.deep.equal(narrowed.minResolution);
     });
 
-    it("adopts an audio stream another controller holds for another stream usage", async () => {
-        // The usage keeps it out of reuse; the camera matches it anyway, and ProvideOffer does not check usage.
+    it("adopts an audio stream another controller holds with more channels than the request", async () => {
+        // The channel count keeps it out of reuse; the camera matches it anyway, and the caller stated none.
         const existing = {
             audioStreamId: 4,
             streamUsage: LIVE_VIEW,
             audioCodec: 0,
-            channelCount: 1,
+            channelCount: 2,
             sampleRate: 48000,
             bitRate: 64000,
             bitDepth: 16,
@@ -7882,13 +7918,24 @@ describe("CameraStreamManager allocate answered with an existing stream", () => 
     });
 
     it("reports its own audio stream the camera has not reported yet as reused", async () => {
-        const { manager, invokes } = managerWith(STATE, async () => ({ audioStreamId: 9 }));
-        const first = await manager.resolveAudioStream({ nodeId: NODE, endpointId: ENDPOINT, streamUsage: LIVE_VIEW });
-        const second = await manager.resolveAudioStream({
+        // The first call pins one channel, so the second call's two-channel request misses it at reuse.
+        const stereo: CameraState = {
+            ...STATE,
+            microphoneCapabilities: {
+                supportedCodecs: [0],
+                maxNumberOfChannels: 2,
+                supportedSampleRates: [48000],
+                supportedBitDepths: [16],
+            },
+        };
+        const { manager, invokes } = managerWith(stereo, async () => ({ audioStreamId: 9 }));
+        const first = await manager.resolveAudioStream({
             nodeId: NODE,
             endpointId: ENDPOINT,
-            streamUsage: StreamUsage.Recording,
+            streamUsage: LIVE_VIEW,
+            audio: { channelCount: 1 },
         });
+        const second = await manager.resolveAudioStream({ nodeId: NODE, endpointId: ENDPOINT, streamUsage: LIVE_VIEW });
         expect(invokes.map(invoke => invoke.command)).to.deep.equal(["audioStreamAllocate", "audioStreamAllocate"]);
         expect(first?.provenance).to.equal("allocated");
         expect(second?.streamId).to.equal(9);
@@ -8154,11 +8201,14 @@ describe("CameraStreamManager allocate answered with an existing stream outside 
         expect(manager.endpointsWithLeases).to.equal(0);
     });
 
-    it("adopts a video stream another controller holds for another stream usage", async () => {
+    it("adopts a video stream another controller holds below the computed bit rate range", async () => {
+        // Below the computed bit rate range, so reuse passes it over and only the camera's answer picks it.
         const recording = {
             ...WIDER,
             streamUsage: StreamUsage.Recording,
             minResolution: { width: 1920, height: 1080 },
+            minBitRate: 100000,
+            maxBitRate: 200000,
         };
         const { manager, invokes } = managerWith({ ...STATE, allocatedVideoStreams: [recording] }, async () => ({
             videoStreamId: 7,
@@ -8167,6 +8217,7 @@ describe("CameraStreamManager allocate answered with an existing stream outside 
         expect(invokes.map(invoke => invoke.command)).to.deep.equal(["videoStreamAllocate"]);
         expect(resolved.streamId).to.equal(7);
         expect(resolved.provenance).to.equal("adopted");
+        expect(resolved.degraded).to.equal(true);
     });
 
     it("fails without a lease when the camera no longer lists the video stream it answered with", async () => {
@@ -8239,17 +8290,13 @@ describe("CameraStreamManager allocate answered with an existing stream outside 
     });
 
     it("fails without a lease when the camera no longer lists the audio stream it answered with", async () => {
-        const { manager, holder } = probeWith({ ...STATE, allocatedAudioStreams: [AUDIO_64K] }, async () => {
+        const stereo = { ...AUDIO_64K, channelCount: 2 };
+        const { manager, holder } = probeWith({ ...STATE, allocatedAudioStreams: [stereo] }, async () => {
             holder.state = { ...STATE, allocatedAudioStreams: [] };
             return { audioStreamId: 4 };
         });
         const error = await serverErrorOf(
-            manager.resolveAudioStream({
-                nodeId: NODE,
-                endpointId: ENDPOINT,
-                streamUsage: StreamUsage.Recording,
-                audio: {},
-            }),
+            manager.resolveAudioStream({ nodeId: NODE, endpointId: ENDPOINT, streamUsage: LIVE_VIEW, audio: {} }),
         );
         expect(error.code).to.equal(ServerErrorCode.SDKStackError);
         expect(manager.endpointsWithLeases).to.equal(0);
@@ -8440,7 +8487,7 @@ describe("CameraStreamManager eviction order", () => {
         hardwareEncoder: true,
     };
     const FOREIGN_SNAPSHOT = { ...SNAPSHOT_5, snapshotStreamId: 6 };
-    /** An idle recording stream; its usage keeps it out of reuse and the degraded rung for a live view. */
+    /** An idle recording stream; its size keeps it out of reuse and the degraded rung for a live view. */
     const RECORDING_STREAM = {
         videoStreamId: 9,
         overlays: NO_OVERLAYS,
@@ -8456,7 +8503,13 @@ describe("CameraStreamManager eviction order", () => {
         referenceCount: 0,
     };
     const FOREIGN_RECORDING_STREAM = { ...RECORDING_STREAM, videoStreamId: 21 };
-    const liveView = { nodeId: NODE, endpointId: ENDPOINT, streamUsage: LIVE_VIEW, limits: { codec: H265 } };
+    const liveView = {
+        nodeId: NODE,
+        endpointId: ENDPOINT,
+        streamUsage: LIVE_VIEW,
+        limits: { codec: H265 },
+        hints: { maxResolution: { width: 1280, height: 720 } },
+    };
 
     /**
      * A camera that answers this server's own snapshot (5) and recording (9) allocations, and refuses the
@@ -8493,7 +8546,7 @@ describe("CameraStreamManager eviction order", () => {
     it("frees its own snapshot stream before its own idle video stream", async () => {
         const { manager, holder, firstFreed } = cameraWithoutRoom();
         await manager.snapshot({ nodeId: NODE, endpointId: ENDPOINT });
-        await manager.resolveVideoStream({ ...liveView, streamUsage: StreamUsage.Recording });
+        await manager.resolveVideoStream({ ...liveView, streamUsage: StreamUsage.Recording, hints: undefined });
         holder.state = { ...STATE, allocatedVideoStreams: [RECORDING_STREAM], allocatedSnapshotStreams: [SNAPSHOT_5] };
 
         await manager.resolveVideoStream(liveView);
@@ -8503,7 +8556,7 @@ describe("CameraStreamManager eviction order", () => {
 
     it("frees its own idle video stream before another controller's snapshot stream", async () => {
         const { manager, holder, firstFreed } = cameraWithoutRoom();
-        await manager.resolveVideoStream({ ...liveView, streamUsage: StreamUsage.Recording });
+        await manager.resolveVideoStream({ ...liveView, streamUsage: StreamUsage.Recording, hints: undefined });
         holder.state = {
             ...STATE,
             allocatedVideoStreams: [RECORDING_STREAM],
@@ -8531,11 +8584,12 @@ describe("CameraStreamManager eviction order", () => {
 
 describe("CameraStreamManager stream list read after an allocate answered with an existing stream", () => {
     it("continues without audio when the camera's stream list cannot be read after it answered with an existing stream", async () => {
+        // More channels than the request, so only the camera's answer picks it.
         const existing = {
             audioStreamId: 4,
             streamUsage: LIVE_VIEW,
             audioCodec: 0,
-            channelCount: 1,
+            channelCount: 2,
             sampleRate: 48000,
             bitRate: 64000,
             bitDepth: 16,
@@ -8588,7 +8642,13 @@ describe("CameraStreamManager deallocate answered with NOT_FOUND while making ro
         keyFrameInterval: 4000,
         referenceCount: 0,
     };
-    const liveView = { nodeId: NODE, endpointId: ENDPOINT, streamUsage: LIVE_VIEW, limits: { codec: H265 } };
+    const liveView = {
+        nodeId: NODE,
+        endpointId: ENDPOINT,
+        streamUsage: LIVE_VIEW,
+        limits: { codec: H265 },
+        hints: { maxResolution: { width: 1280, height: 720 } },
+    };
 
     /**
      * A camera whose only other stream is already gone: deallocating it answers NOT_FOUND. `retriedAsked`

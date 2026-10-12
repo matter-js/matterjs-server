@@ -128,7 +128,8 @@ function fixedProfileCamera(allocatedProfiles: number[] = []): (invoke: Recorded
 
 /**
  * A stream another controller allocated on profile 3, which takes the camera's only encoder. At 640x480
- * and 30 fps it leaves most of the encoder budget free; at 1920x1080 and 120 fps it spends all of it.
+ * it leaves most of the encoder budget free; at 1920x1080 it spends all of it. Its 120 fps is above the
+ * offer's decode ceiling, so a live view is never handed it.
  */
 function recordingStream(referenceCount: number, spendsBudget = false): AllocatedVideoStream {
     return {
@@ -139,7 +140,7 @@ function recordingStream(referenceCount: number, spendsBudget = false): Allocate
         minResolution: { width: 640, height: 480 },
         maxResolution: spendsBudget ? { width: 1920, height: 1080 } : { width: 640, height: 480 },
         minFrameRate: 30,
-        maxFrameRate: spendsBudget ? 120 : 30,
+        maxFrameRate: 120,
         minBitRate: 10000,
         maxBitRate: 2000000,
         keyFrameInterval: 4000,
@@ -508,7 +509,7 @@ describe("VideoStreamAllocate against a camera with fixed stream profiles", () =
         expect(invokes.map(invoke => invoke.command)).to.deep.equal(["videoStreamAllocate"]);
     });
 
-    it("reuses a slower stream of its usage when no window fits the encoder budget", async () => {
+    it("reuses a slower stream when no window fits the encoder budget", async () => {
         const slow: AllocatedVideoStream = {
             ...recordingStream(1),
             videoStreamId: 4,

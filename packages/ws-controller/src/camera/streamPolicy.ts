@@ -62,18 +62,12 @@ export interface VideoHints extends VideoRangeBounds, OverlayBounds {
 /** `limits` is the offer's decode ceiling for the resolved codec, which no ladder rung may give up. */
 export interface VideoCallerBounds extends VideoRangeBounds {
     limits: SelectedVideoCodecLimits;
-    streamUsage: number;
     overlays: OverlayBounds;
 }
 
-export function videoCallerBounds(
-    limits: SelectedVideoCodecLimits,
-    streamUsage: number,
-    hints: VideoHints | undefined,
-): VideoCallerBounds {
+export function videoCallerBounds(limits: SelectedVideoCodecLimits, hints: VideoHints | undefined): VideoCallerBounds {
     return {
         limits,
-        streamUsage,
         minResolution: hints?.minResolution,
         maxResolution: hints?.maxResolution,
         minFrameRate: hints?.minFrameRate,
@@ -454,7 +448,6 @@ export function satisfiesVideoCallerBounds(candidate: AllocatedVideoStream, boun
     const limits = bounds.limits;
     if (candidate.videoCodec !== limits.codec) return false;
     if (!overlaysMatch(candidate.overlays, bounds.overlays)) return false;
-    if (candidate.streamUsage !== bounds.streamUsage) return false;
     if (limits.maxPixels !== undefined && pixels(candidate.maxResolution) > limits.maxPixels) return false;
     const offerCeiling = offerFrameRateCeiling(limits, candidate.maxResolution);
     if (offerCeiling !== undefined && candidate.maxFrameRate > offerCeiling) return false;
@@ -513,6 +506,7 @@ export function findReusableVideoStream(
     plan: VideoPlan,
     bounds: VideoCallerBounds,
     firstFrameRate: (candidate: AllocatedVideoStream) => number | undefined,
+    preferredUsage?: number,
 ): AllocatedVideoStream | undefined {
     const candidates = streams.filter(
         candidate =>
@@ -520,18 +514,33 @@ export function findReusableVideoStream(
     );
 
     // Starting an encoder is the expensive part, so a stream already running wins.
-    return candidates.sort((a, b) => b.referenceCount - a.referenceCount)[0];
+    return candidates.sort(
+        (a, b) => b.referenceCount - a.referenceCount || usageRank(a, preferredUsage) - usageRank(b, preferredUsage),
+    )[0];
 }
 
 /** For when nothing can be allocated (`degraded: true`). Ignores the envelope, keeps the caller's bounds. */
 export function findDegradedVideoStream(
     streams: AllocatedVideoStream[],
     bounds: VideoCallerBounds,
+    preferredUsage?: number,
 ): AllocatedVideoStream | undefined {
     const candidates = streams.filter(candidate => satisfiesVideoCallerBounds(candidate, bounds));
 
     // Prefer the most capable stream, since this rung is already a compromise.
-    return candidates.sort((a, b) => pixels(b.maxResolution) - pixels(a.maxResolution))[0];
+    return candidates.sort(
+        (a, b) =>
+            pixels(b.maxResolution) - pixels(a.maxResolution) ||
+            usageRank(a, preferredUsage) - usageRank(b, preferredUsage),
+    )[0];
+}
+
+/**
+ * 0 for a stream of `preferredUsage`, else 1. Among equal candidates the session's own usage wins
+ * (§11.2.1.2.1), since the camera arbitrates resources by the stream's usage (§11.2.1.2.2).
+ */
+export function usageRank(stream: { readonly streamUsage: number }, preferredUsage: number | undefined): number {
+    return stream.streamUsage === preferredUsage ? 0 : 1;
 }
 
 const DEFAULT_AUDIO_BIT_RATE = 64000;
@@ -552,12 +561,7 @@ export interface AudioHints {
     bitRate?: number;
 }
 
-export interface AudioCallerBounds extends AudioHints {
-    streamUsage: number;
-}
-
-export function satisfiesAudioCallerBounds(candidate: AllocatedAudioStream, bounds: AudioCallerBounds): boolean {
-    if (candidate.streamUsage !== bounds.streamUsage) return false;
+export function satisfiesAudioCallerBounds(candidate: AllocatedAudioStream, bounds: AudioHints): boolean {
     if (bounds.codecs !== undefined && !bounds.codecs.includes(audioCodecName(candidate.audioCodec))) return false;
     if (bounds.channelCount !== undefined && candidate.channelCount !== bounds.channelCount) return false;
     if (bounds.sampleRate !== undefined && candidate.sampleRate !== bounds.sampleRate) return false;

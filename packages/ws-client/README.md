@@ -297,7 +297,7 @@ An argument key a command does not know, including a key inside a hint object, i
 
 ### Values are names
 
-Codecs, stream usages and talkback support are strings, matched case-insensitively. Codecs are `H264`, `H265`, `H266`, `AV1` (video), `OPUS`, `AAC` (audio) and `JPEG`, `HEIC` (snapshot). `stream_usage` is `LiveView`, `Recording` or `Analysis`; `camera_get_capabilities` also reports `Internal`, which marks a stream the device keeps for itself and cannot be requested. A value the cluster's enum does not define is reported as its decimal digits.
+Codecs, stream usages and talkback support are strings, matched case-insensitively. Codecs are `H264`, `H265`, `H266`, `AV1` (video), `OPUS`, `AAC` (audio) and `JPEG`, `HEIC` (snapshot). `stream_usage` is `LiveView`, `Recording` or `Analysis`; `camera_get_capabilities` also reports `Internal`, which marks a stream allocated for the device's own use and cannot be requested. A value the cluster's enum does not define is reported as its decimal digits.
 
 These reported values are what a later request takes back:
 

@@ -72,9 +72,10 @@ import {
     satisfiesVideoCallerBounds,
     statedHints,
     trackRequest,
+    usageRank,
     videoCallerBounds,
 } from "./streamPolicy.js";
-import type { AudioCallerBounds, AudioHints, RateDistortionPoint, TrackRequest, VideoHints } from "./streamPolicy.js";
+import type { AudioHints, RateDistortionPoint, TrackRequest, VideoHints } from "./streamPolicy.js";
 import { firstVideoWindow, MAX_VIDEO_ASKS, VideoWindowSearch } from "./videoWindowSearch.js";
 import type { VideoRefusal } from "./videoWindowSearch.js";
 import {
@@ -1070,7 +1071,7 @@ export class CameraStreamManager {
         // Never freed or listed as occupying: only the device can state their reference counts.
         const unreported = this.unreportedVideoStreams(nodeId, endpointId, liveStreams);
 
-        const bounds = videoCallerBounds(args.limits, streamUsage, args.hints);
+        const bounds = videoCallerBounds(args.limits, args.hints);
         // Unreported allocations count, so the free budget is not overstated.
         const fitsBudget =
             (without?: AllocatedVideoStream) =>
@@ -1087,6 +1088,7 @@ export class CameraStreamManager {
             selection.plan,
             bounds,
             candidate => firstVideoWindow(selection.plan, fitsBudget(candidate))?.maxFrameRate,
+            streamUsage,
         );
         if (reused !== undefined) {
             return {
@@ -1225,9 +1227,7 @@ export class CameraStreamManager {
                         `VideoStreamAllocate answered with stream ${streamId}, which the camera no longer lists`,
                     );
                 }
-                // Another usage is accepted: the camera chose to share the stream, and ProvideOffer does not check it.
-                const sharedBounds = { ...bounds, streamUsage: current.streamUsage };
-                if (!satisfiesVideoCallerBounds(current, sharedBounds)) {
+                if (!satisfiesVideoCallerBounds(current, bounds)) {
                     // A smaller window would be answered with the same stream.
                     logger.notice(
                         `Node ${nodeId} endpoint ${endpointId}: the camera answered the video allocate with its stream ${streamId}, which is outside the bounds the caller stated`,
@@ -1236,7 +1236,7 @@ export class CameraStreamManager {
                     break;
                 }
                 const withinEnvelope =
-                    findReusableVideoStream([current], selection.plan, sharedBounds, () => envelope.maxFrameRate) !==
+                    findReusableVideoStream([current], selection.plan, bounds, () => envelope.maxFrameRate) !==
                     undefined;
                 return reporting({
                     streamId,
@@ -1266,6 +1266,7 @@ export class CameraStreamManager {
         const degraded = findDegradedVideoStream(
             [...liveStreams, ...unreported].filter(stream => stream.videoStreamId !== answeredOutsideBounds),
             bounds,
+            streamUsage,
         );
         if (degraded !== undefined) {
             return reporting({
@@ -1406,18 +1407,20 @@ export class CameraStreamManager {
             };
         }
 
-        const bounds: AudioCallerBounds = { ...args.hints, streamUsage };
+        const bounds: AudioHints = args.hints ?? {};
         const knownStreams = [
             ...state.allocatedAudioStreams,
             ...this.unreportedAudioStreams(nodeId, endpointId, state.allocatedAudioStreams),
         ];
-        const existing = knownStreams.find(
-            stream =>
-                satisfiesAudioCallerBounds(stream, bounds) &&
-                stream.audioCodec === envelope.codec &&
-                stream.channelCount === envelope.channelCount &&
-                stream.sampleRate === envelope.sampleRate,
-        );
+        const existing = knownStreams
+            .filter(
+                stream =>
+                    satisfiesAudioCallerBounds(stream, bounds) &&
+                    stream.audioCodec === envelope.codec &&
+                    stream.channelCount === envelope.channelCount &&
+                    stream.sampleRate === envelope.sampleRate,
+            )
+            .sort((a, b) => usageRank(a, streamUsage) - usageRank(b, streamUsage))[0];
         if (existing !== undefined) {
             return {
                 stream: {
@@ -1492,10 +1495,7 @@ export class CameraStreamManager {
                 };
             }
             // A reference camera matches a stream with more channels, a higher sample rate or any bit rate.
-            if (
-                current.audioCodec !== envelope.codec ||
-                !satisfiesAudioCallerBounds(current, { ...bounds, streamUsage: current.streamUsage })
-            ) {
+            if (current.audioCodec !== envelope.codec || !satisfiesAudioCallerBounds(current, bounds)) {
                 logger.notice(
                     `Node ${nodeId} endpoint ${endpointId}: the camera answered the audio allocate with its stream ${streamId}, which is outside the bounds the caller stated`,
                 );

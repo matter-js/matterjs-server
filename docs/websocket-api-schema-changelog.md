@@ -64,6 +64,8 @@ Behaviour worth knowing:
 - When the camera is out of capacity, the server first lowers its own default settings, then frees an
   idle stream: its own snapshot streams, its own video streams, then another controller's snapshot
   streams and video streams. `allow_eviction: false` stops it from freeing streams.
+- A stream already on the camera is reused whatever its stream usage, when it fits the request. The
+  session keeps the `stream_usage` the client asked for.
 - When the camera answers an allocate with a stream it already has, the server checks that stream
   against the bounds the caller stated. For video it then looks for another existing stream within
   the bounds and fails with error 102 only when there is none. A snapshot stream outside the bounds
