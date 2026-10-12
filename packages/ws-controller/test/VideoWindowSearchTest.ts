@@ -28,6 +28,7 @@ const PLAN: VideoPlan = {
     envelope: WINDOW,
     frameRateFloor: 1,
     frameRateCeiling: 30,
+    allowedFrameRate: 30,
     limits: {},
     certificationWindow: undefined,
 };

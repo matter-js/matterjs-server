@@ -104,7 +104,7 @@ describe("camera API helpers", () => {
             expect(videoResolutionOptions(caps)).to.deep.equal([]);
         });
 
-        it("lists every snapshot capability the Aqara G350 reports", () => {
+        it("lists every snapshot capability a tested camera reports", () => {
             const cap = {
                 max_frame_rate: 30,
                 image_codec: "JPEG",

@@ -72,8 +72,8 @@ const CAPABILITIES = {
     maxNetworkBandwidth: 8000000,
 };
 
-/** What the Aqara G350 reports, the reference camera app's values. */
-const AQARA = {
+/** What a camera running the reference camera app reports. */
+const REFERENCE_CAMERA = {
     sensor: { width: 1920, height: 1080 },
     maxFrameRate: 120,
     minViewport: { width: 640, height: 480 },
@@ -390,7 +390,11 @@ describe("streamPolicy", () => {
         });
 
         it("starts at the default when the offer's bit-rate ceiling is higher", () => {
-            const envelope = videoEnvelope({ capabilities: AQARA, limits: FIREFOX_LIMITS, hints: undefined });
+            const envelope = videoEnvelope({
+                capabilities: REFERENCE_CAMERA,
+                limits: FIREFOX_LIMITS,
+                hints: undefined,
+            });
             expect(envelope.maxBitRate).to.equal(8000000);
         });
 
@@ -539,7 +543,11 @@ describe("streamPolicy", () => {
         });
 
         it("asks first for one frame rate, the best the offer decodes, with a 4000 ms key frame interval", () => {
-            const envelope = videoEnvelope({ capabilities: AQARA, limits: FIREFOX_LIMITS, hints: undefined });
+            const envelope = videoEnvelope({
+                capabilities: REFERENCE_CAMERA,
+                limits: FIREFOX_LIMITS,
+                hints: undefined,
+            });
             expect(envelope).to.deep.include({
                 minResolution: { width: 640, height: 480 },
                 maxResolution: { width: 1280, height: 720 },
@@ -553,7 +561,7 @@ describe("streamPolicy", () => {
 
         it("asks for one frame rate inside a caller's range, the highest it allows", () => {
             const plan = videoPlan({
-                capabilities: AQARA,
+                capabilities: REFERENCE_CAMERA,
                 limits: FIREFOX_LIMITS,
                 hints: { minFrameRate: 15, maxFrameRate: 60 },
             });
@@ -571,6 +579,7 @@ describe("streamPolicy", () => {
                 envelope,
                 frameRateFloor,
                 frameRateCeiling: envelope.maxFrameRate,
+                allowedFrameRate: envelope.maxFrameRate,
                 limits: {},
                 certificationWindow: undefined,
             };
@@ -632,6 +641,13 @@ describe("streamPolicy", () => {
 
         it("reuses a stream whose envelope sits inside the request", () => {
             expect(reusable([stream()], REQUEST, LIVE_VIEW_H265)?.videoStreamId).to.equal(1);
+        });
+
+        it("reuses a stream above the default frame rate cap, up to the rate the plan allows", () => {
+            const fast = stream({ minFrameRate: 30, maxFrameRate: 120 });
+            const plan = (allowedFrameRate: number) => ({ ...planOf(REQUEST, 1), allowedFrameRate });
+            expect(findReusableVideoStream([fast], plan(120), LIVE_VIEW_H265, () => 30)?.videoStreamId).to.equal(1);
+            expect(findReusableVideoStream([fast], plan(60), LIVE_VIEW_H265, () => 30)).to.equal(undefined);
         });
 
         it("refuses a stream whose floor is below the requested floor", () => {

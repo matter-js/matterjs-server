@@ -30,7 +30,7 @@ export const MAX_VIDEO_ASKS = 32;
 
 /**
  * Bit rate steps down to the plan's floor, the rate-distortion trade-off point: profiles hide their bit
- * rate ceilings (the Aqara G350 caps at 2 Mbit/s), so no fixed count reaches them. Frame rate and frame
+ * rate ceilings (a tested camera caps at 2 Mbit/s), so no fixed count reaches them. Frame rate and frame
  * size are bounded, so a camera refusing everything fails after a known number of attempts.
  */
 export function retryLimits(plan: VideoPlan): VideoRetrySteps {
@@ -55,7 +55,7 @@ interface RetryDimension {
 
 /**
  * The order an unservable window is narrowed in: the quality given up first comes first. Bit rate
- * first, since no attribute publishes a profile's bit rate ceiling (the Aqara G350 refuses anything
+ * first, since no attribute publishes a profile's bit rate ceiling (a tested camera refuses anything
  * over 2 Mbit/s). Then frame rate, then frame size: a stream keeps its frame size longest, so a camera
  * serving 1080p only at 30 fps gets 1080p at 30 rather than 480p at 60.
  */

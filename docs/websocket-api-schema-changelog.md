@@ -59,6 +59,8 @@ Behaviour worth knowing:
 - The camera commands accept only a `node_id` that names a node (not a group or another special id),
   and refuse unknown arguments with error 8.
 - A failed `camera_start_stream` or `camera_snapshot` frees the streams it allocated.
+- A new video stream runs at 30 fps at most unless the client asks for more with `max_frame_rate` or
+  `min_frame_rate`. Some cameras accept higher rates they cannot deliver.
 - When the camera is out of capacity, the server first lowers its own default settings, then frees an
   idle stream: snapshot streams first (its own before another controller's), then its own video streams,
   then another controller's.

@@ -18,8 +18,8 @@ import type { RecordedInvoke } from "./CameraStreamManagerTest.js";
 const H264 = 0;
 const RECORDING = 1;
 
-/** What the Aqara Camera Hub G350 (AVSM revision 2) reports: the reference camera app's values. */
-const AQARA_STATE: CameraState = {
+/** What a camera running the reference camera app (AVSM revision 2) reports. */
+const FIXED_PROFILE_STATE: CameraState = {
     ...STATE,
     maxConcurrentEncoders: 1,
     maxEncodedPixelRate: 248832000,
@@ -46,11 +46,11 @@ interface Profile {
 const BIT_RATE = { min: 10000, max: 2000000 };
 
 /**
- * The Aqara's fixed stream profiles as raw `VideoStreamAllocate` probes found them: a 720p window at
+ * A tested camera.s fixed stream profiles as raw `VideoStreamAllocate` probes found them: a 720p window at
  * 30 fps got stream id 1, wider windows id 3. None of the frame rate floor, the bit rate ceiling or
  * the key frame rule is published in an attribute.
  */
-const AQARA_PROFILES: Profile[] = [
+const FIXED_PROFILES: Profile[] = [
     {
         id: 1,
         frameRate: { min: 30, max: 60 },
@@ -91,7 +91,7 @@ function compatibleProfiles(invoke: RecordedInvoke): Profile[] {
     if (invoke.fields.videoCodec !== H264 || invoke.fields.keyFrameInterval !== 4000) return [];
     const minResolution = resolutionField(invoke, "minResolution");
     const maxResolution = resolutionField(invoke, "maxResolution");
-    return AQARA_PROFILES.filter(
+    return FIXED_PROFILES.filter(
         profile =>
             numberField(invoke, "minFrameRate") >= profile.frameRate.min &&
             numberField(invoke, "maxFrameRate") <= profile.frameRate.max &&
@@ -109,7 +109,7 @@ function compatibleProfiles(invoke: RecordedInvoke): Profile[] {
  * outside every profile is DynamicConstraintError; then a taken encoder or no free compatible profile
  * is ResourceExhausted. `MaxConcurrentEncoders` is 1 and every allocated stream holds an encoder.
  */
-function aqara(allocatedProfiles: number[] = []): (invoke: RecordedInvoke) => Promise<unknown> {
+function fixedProfileCamera(allocatedProfiles: number[] = []): (invoke: RecordedInvoke) => Promise<unknown> {
     const allocated = new Set(allocatedProfiles);
     return async invoke => {
         if (invoke.command === "videoStreamDeallocate") {
@@ -242,7 +242,7 @@ describe("VideoStreamAllocate against a camera with fixed stream profiles", () =
                     nodeId: NODE,
                     endpointId: ENDPOINT,
                 };
-                const answer = await aqara()(invoke).catch(() => undefined);
+                const answer = await fixedProfileCamera()(invoke).catch(() => undefined);
                 expect(answer).to.deep.equal(
                     probe.streamId === undefined ? undefined : { videoStreamId: probe.streamId },
                 );
@@ -256,13 +256,13 @@ describe("VideoStreamAllocate against a camera with fixed stream profiles", () =
                 nodeId: NODE,
                 endpointId: ENDPOINT,
             };
-            const refused = await aqara([3])(invoke).catch(error => error);
+            const refused = await fixedProfileCamera([3])(invoke).catch(error => error);
             expect(refused).to.have.property("code", Status.ResourceExhausted);
         });
     });
 
     it("finds a window the camera accepts with no caller hints, lowering only the bit rate", async () => {
-        const { invokes, result } = await resolveOn(AQARA_STATE, aqara());
+        const { invokes, result } = await resolveOn(FIXED_PROFILE_STATE, fixedProfileCamera());
         expect(result).to.deep.include({ streamId: 1, provenance: "allocated" });
         const sent = allocates(invokes);
         expect(sent[0].fields).to.deep.include({
@@ -282,14 +282,37 @@ describe("VideoStreamAllocate against a camera with fixed stream profiles", () =
         ]);
     });
 
+    describe("default frame rate", () => {
+        const VGA = { width: 640, height: 480 };
+        const firstRate = async (hints: VideoHints) => {
+            const { invokes } = await resolveOn(FIXED_PROFILE_STATE, fixedProfileCamera(), hints);
+            const first = allocates(invokes)[0].fields;
+            return [first.minFrameRate, first.maxFrameRate];
+        };
+
+        it("asks for 30 fps without a caller frame rate, though the offer decodes 640x480 at 90", async () => {
+            expect(await firstRate({ maxResolution: VGA })).to.deep.equal([30, 30]);
+        });
+
+        it("raises the default to the caller's min_frame_rate", async () => {
+            expect(await firstRate({ maxResolution: VGA, minFrameRate: 60 })).to.deep.equal([60, 60]);
+        });
+
+        it("follows the caller's max_frame_rate above the default, up to the offer's decode ceiling", async () => {
+            expect(await firstRate({ maxResolution: VGA, maxFrameRate: 120 })).to.deep.equal([90, 90]);
+        });
+    });
+
     it("finds a window without an offer, starting at the default bit rate, not the network bandwidth", async () => {
-        // No offer: the sensor size at max_fps. MaxNetworkBandwidth (128 Mbit/s) does not raise the start.
-        const { invokes, result } = await resolveOn(AQARA_STATE, aqara(), undefined, { codec: H264 });
+        // No offer: the sensor size at the default frame rate. MaxNetworkBandwidth (128 Mbit/s) does not raise the start.
+        const { invokes, result } = await resolveOn(FIXED_PROFILE_STATE, fixedProfileCamera(), undefined, {
+            codec: H264,
+        });
         expect(result).to.deep.include({ streamId: 3 });
         expect(allocates(invokes).map(summary)).to.deep.equal([
-            "1920x1080@120-120 8000000",
-            "1920x1080@120-120 4000000",
-            "1920x1080@120-120 2000000",
+            "1920x1080@30-30 8000000",
+            "1920x1080@30-30 4000000",
+            "1920x1080@30-30 2000000",
         ]);
         expect(allocates(invokes).at(-1)?.fields).to.deep.include({ minResolution: { width: 640, height: 480 } });
     });
@@ -307,7 +330,7 @@ describe("VideoStreamAllocate against a camera with fixed stream profiles", () =
             keyFrameInterval: 4000,
         };
         const { invokes, result } = await resolveOn(
-            AQARA_STATE,
+            FIXED_PROFILE_STATE,
             async invoke => {
                 if (invoke.command !== "videoStreamAllocate") return undefined;
                 const { streamUsage, videoCodec, ...window } = invoke.fields;
@@ -331,7 +354,7 @@ describe("VideoStreamAllocate against a camera with fixed stream profiles", () =
 
     it("skips the certification window when the caller's bounds exclude it", async () => {
         const { invokes } = await resolveOn(
-            AQARA_STATE,
+            FIXED_PROFILE_STATE,
             async invoke => {
                 if (invoke.command === "videoStreamAllocate")
                     throw StatusResponseError.create(Status.DynamicConstraintError);
@@ -346,7 +369,7 @@ describe("VideoStreamAllocate against a camera with fixed stream profiles", () =
     });
 
     it("reaches a hidden bit rate ceiling far below the default", async () => {
-        const { invokes, result } = await resolveOn(AQARA_STATE, async invoke => {
+        const { invokes, result } = await resolveOn(FIXED_PROFILE_STATE, async invoke => {
             if (invoke.command !== "videoStreamAllocate") return undefined;
             if (numberField(invoke, "maxBitRate") > 500000)
                 throw StatusResponseError.create(Status.DynamicConstraintError);
@@ -359,7 +382,10 @@ describe("VideoStreamAllocate against a camera with fixed stream profiles", () =
     });
 
     it("asks for one frame rate inside a caller's range the camera's hidden floor lies in", async () => {
-        const { invokes, result } = await resolveOn(AQARA_STATE, aqara(), { minFrameRate: 15, maxFrameRate: 60 });
+        const { invokes, result } = await resolveOn(FIXED_PROFILE_STATE, fixedProfileCamera(), {
+            minFrameRate: 15,
+            maxFrameRate: 60,
+        });
         expect(result).to.deep.include({ streamId: 1 });
         expect(allocates(invokes).at(-1)?.fields).to.deep.include({ minFrameRate: 30, maxFrameRate: 30 });
     });
@@ -374,7 +400,7 @@ describe("VideoStreamAllocate against a camera with fixed stream profiles", () =
             maxResolution: { width: 1280, height: 720 },
         };
         // 25 fps at most is under the camera's hidden 30 fps floor, so every window is refused.
-        const { invokes, result } = await resolveOn(AQARA_STATE, aqara(), hints);
+        const { invokes, result } = await resolveOn(FIXED_PROFILE_STATE, fixedProfileCamera(), hints);
         expect(result).to.be.instanceOf(ServerError);
         expect(result).to.have.property("code", ServerErrorCode.CameraStreamIncompatible);
         const sent = allocates(invokes);
@@ -392,9 +418,13 @@ describe("VideoStreamAllocate against a camera with fixed stream profiles", () =
     });
 
     it("gives up bit rate, then frame rate, then frame size, at the size's own highest rate", async () => {
-        const { invokes } = await resolveOn(AQARA_STATE, async () => {
-            throw StatusResponseError.create(Status.DynamicConstraintError);
-        });
+        const { invokes } = await resolveOn(
+            FIXED_PROFILE_STATE,
+            async () => {
+                throw StatusResponseError.create(Status.DynamicConstraintError);
+            },
+            { maxFrameRate: 120 },
+        );
         // Level 3.1 decodes 640x480 at up to 90 fps, so the smaller size starts there.
         // Bit rate halves down to the trade-off point's 10000 bit/s before frame rate is touched.
         expect(allocates(invokes).map(summary)).to.deep.equal([
@@ -418,7 +448,7 @@ describe("VideoStreamAllocate against a camera with fixed stream profiles", () =
     });
 
     it("reaches a camera that serves only 7 fps", async () => {
-        const { invokes, result } = await resolveOn(AQARA_STATE, async invoke => {
+        const { invokes, result } = await resolveOn(FIXED_PROFILE_STATE, async invoke => {
             if (invoke.command !== "videoStreamAllocate") return undefined;
             if (numberField(invoke, "maxFrameRate") > 7)
                 throw StatusResponseError.create(Status.DynamicConstraintError);
@@ -429,8 +459,8 @@ describe("VideoStreamAllocate against a camera with fixed stream profiles", () =
     });
 
     it("evicts an idle stream that holds the encoder budget once the camera answers ResourceExhausted, and keeps 30 fps", async () => {
-        const state = { ...AQARA_STATE, allocatedVideoStreams: [recordingStream(0, true)] };
-        const { invokes, result } = await resolveOn(state, aqara([3]));
+        const state = { ...FIXED_PROFILE_STATE, allocatedVideoStreams: [recordingStream(0, true)] };
+        const { invokes, result } = await resolveOn(state, fixedProfileCamera([3]));
         expect(result).to.deep.include({ streamId: 1, evicted: [3] });
         const commands = invokes.map(invoke =>
             invoke.command === "videoStreamAllocate" ? summary(invoke) : invoke.command,
@@ -446,7 +476,7 @@ describe("VideoStreamAllocate against a camera with fixed stream profiles", () =
     });
 
     it("takes no stream while the camera accepts a window the budget predicted it could not carry", async () => {
-        const state = { ...AQARA_STATE, allocatedVideoStreams: [recordingStream(0, true)] };
+        const state = { ...FIXED_PROFILE_STATE, allocatedVideoStreams: [recordingStream(0, true)] };
         const { invokes, result } = await resolveOn(state, async invoke =>
             invoke.command === "videoStreamAllocate" ? { videoStreamId: 9 } : undefined,
         );
@@ -466,15 +496,15 @@ describe("VideoStreamAllocate against a camera with fixed stream profiles", () =
             minBitRate: 10000,
             maxBitRate: 1000000,
         };
-        const state = { ...AQARA_STATE, allocatedVideoStreams: [recordingStream(1, true), slow] };
-        const { invokes, result } = await resolveOn(state, aqara([3, 1]));
+        const state = { ...FIXED_PROFILE_STATE, allocatedVideoStreams: [recordingStream(1, true), slow] };
+        const { invokes, result } = await resolveOn(state, fixedProfileCamera([3, 1]));
         expect(result).to.deep.include({ streamId: 4 });
         expect(invokes.map(invoke => invoke.command)).to.deep.equal([]);
     });
 
     it("does not offer a stream the camera refused to deallocate for eviction again", async () => {
-        const state = { ...AQARA_STATE, allocatedVideoStreams: [recordingStream(0)] };
-        const camera = aqara([3]);
+        const state = { ...FIXED_PROFILE_STATE, allocatedVideoStreams: [recordingStream(0)] };
+        const camera = fixedProfileCamera([3]);
         const { invokes, result } = await resolveOn(state, async invoke => {
             if (invoke.command === "videoStreamDeallocate") throw StatusResponseError.create(Status.Failure);
             return camera(invoke);
@@ -484,8 +514,8 @@ describe("VideoStreamAllocate against a camera with fixed stream profiles", () =
     });
 
     it("evicts an idle stream after a capacity refusal and keeps the frame rate", async () => {
-        const state = { ...AQARA_STATE, allocatedVideoStreams: [recordingStream(0)] };
-        const { invokes, result } = await resolveOn(state, aqara([3]));
+        const state = { ...FIXED_PROFILE_STATE, allocatedVideoStreams: [recordingStream(0)] };
+        const { invokes, result } = await resolveOn(state, fixedProfileCamera([3]));
         expect(result).to.deep.include({ streamId: 1, evicted: [3] });
         const commands = invokes.map(invoke =>
             invoke.command === "videoStreamAllocate" ? summary(invoke) : invoke.command,
@@ -503,8 +533,8 @@ describe("VideoStreamAllocate against a camera with fixed stream profiles", () =
     });
 
     it("never turns a capacity refusal into an incompatibility when nothing can be taken", async () => {
-        const state = { ...AQARA_STATE, allocatedVideoStreams: [recordingStream(1)] };
-        const { invokes, result } = await resolveOn(state, aqara([3]));
+        const state = { ...FIXED_PROFILE_STATE, allocatedVideoStreams: [recordingStream(1)] };
+        const { invokes, result } = await resolveOn(state, fixedProfileCamera([3]));
         expect(result).to.have.property("code", ServerErrorCode.CameraResourceExhausted);
         const frameRates = allocates(invokes).map(invoke => numberField(invoke, "maxFrameRate"));
         // One frame rate step, refused below the hidden floor, and no second one.
@@ -512,7 +542,7 @@ describe("VideoStreamAllocate against a camera with fixed stream profiles", () =
     });
 
     it("steps only the resolution, then the frame rate, while the camera answers ResourceExhausted", async () => {
-        const { invokes } = await resolveOn(AQARA_STATE, async invoke => {
+        const { invokes } = await resolveOn(FIXED_PROFILE_STATE, async invoke => {
             if (invoke.command === "videoStreamAllocate") throw StatusResponseError.create(Status.ResourceExhausted);
             return undefined;
         });

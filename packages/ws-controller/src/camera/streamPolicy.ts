@@ -20,11 +20,16 @@ import { receivableCodecs } from "./sdpConstraints.js";
 import { audioCodecName } from "./wireNames.js";
 
 /**
- * The only value the Aqara G350 accepted in raw `VideoStreamAllocate` probes (2000, 3000, 3999, 5000 and
+ * The only value a tested camera accepted in raw `VideoStreamAllocate` probes (2000, 3000, 3999, 5000 and
  * 8000 were refused with DynamicConstraintError); the reference camera app uses it for every stream.
  */
 export const KEY_FRAME_INTERVAL_MS = 4000;
 const DEFAULT_MAX_BIT_RATE = 8000000;
+/**
+ * The frame rate ceiling when the caller states no `max_frame_rate`. Cameras accept rates their encoder
+ * cannot deliver: a tested camera accepted 640x480 at 90 fps and sent black video.
+ */
+const DEFAULT_MAX_FRAME_RATE = 30;
 
 export interface RateDistortionPoint {
     codec: number;
@@ -151,8 +156,14 @@ export interface VideoPlan {
     readonly envelope: VideoEnvelope;
     /** The caller's `min_frame_rate`, or 1: the lowest rate a later window may ask for. */
     readonly frameRateFloor: number;
-    /** `maxFps`, capped by the caller's `max_frame_rate`. */
+    /** `maxFps`, capped by the caller's `max_frame_rate`, or by {@link DEFAULT_MAX_FRAME_RATE} without one. */
     readonly frameRateCeiling: number;
+    /**
+     * The highest rate the camera, the caller and the offer allow at the envelope's size. The default cap
+     * limits only what is allocated: a stream the camera already runs above it is reused, not refused and
+     * then handed out as degraded.
+     */
+    readonly allowedFrameRate: number;
     /** The offer's decode ceiling, which sets a further frame rate ceiling per frame size. */
     readonly limits: VideoCodecLimits;
     /** See {@link certificationWindow}; undefined when the caller's bounds or the offer exclude it. */
@@ -202,8 +213,8 @@ function resolutionText(resolution: Resolution): string {
 
 /**
  * The best window both the camera and the offer allow. Resolution and bit rate are ranges, so the
- * camera can adapt (§11.2.1.2.2). Frame rate is one value, the highest the caller's bounds allow:
- * cameras refuse a range reaching below a frame rate floor they do not publish. A caller-stated floor
+ * camera can adapt (§11.2.1.2.2). Frame rate is one value, the highest the caller's bounds allow, or
+ * at most {@link DEFAULT_MAX_FRAME_RATE} without a caller ceiling: cameras refuse a range reaching below a frame rate floor they do not publish. A caller-stated floor
  * out of reach fails the request. Server-derived floors (viewport minimum, trade-off point bit rate)
  * are clamped down instead.
  */
@@ -212,10 +223,14 @@ export function computeVideoEnvelope(args: VideoEnvelopeArgs): VideoSelection {
     const codec = limits.codec;
 
     let maxResolution = capabilities.sensor;
-    const frameRateCeiling =
+    const allowedFrameRate =
         hints?.maxFrameRate === undefined
             ? capabilities.maxFrameRate
             : Math.min(capabilities.maxFrameRate, hints.maxFrameRate);
+    const frameRateCeiling =
+        hints?.maxFrameRate === undefined
+            ? Math.min(allowedFrameRate, Math.max(DEFAULT_MAX_FRAME_RATE, hints?.minFrameRate ?? 0))
+            : allowedFrameRate;
 
     // Apply the caller's ceiling before the offer's pixel budget, or the budget is spent on dimensions
     // the ceiling then cuts again.
@@ -230,7 +245,9 @@ export function computeVideoEnvelope(args: VideoEnvelopeArgs): VideoSelection {
         maxResolution = scaleToPixels(maxResolution, limits.maxPixelsPerSecond);
     }
     const offerCeiling = offerFrameRateCeiling(limits, maxResolution);
-    const maxFrameRate = offerCeiling === undefined ? frameRateCeiling : Math.min(frameRateCeiling, offerCeiling);
+    const underOffer = (rate: number) => (offerCeiling === undefined ? rate : Math.min(rate, offerCeiling));
+    const maxFrameRate = underOffer(frameRateCeiling);
+    const allowedFrameRateAtSize = underOffer(allowedFrameRate);
 
     if (hints?.minResolution !== undefined && !fitsUnder(hints.minResolution, maxResolution)) {
         return {
@@ -301,8 +318,14 @@ export function computeVideoEnvelope(args: VideoEnvelopeArgs): VideoSelection {
             envelope,
             frameRateFloor,
             frameRateCeiling,
+            allowedFrameRate: allowedFrameRateAtSize,
             limits,
-            certificationWindow: certificationWindow(envelope, frameRateFloor, codecPoints[0]),
+            // A range the camera chooses from, so it keeps the full allowed rate rather than the default.
+            certificationWindow: certificationWindow(
+                { ...envelope, maxFrameRate: allowedFrameRateAtSize },
+                frameRateFloor,
+                codecPoints[0],
+            ),
         },
     };
 }
@@ -415,7 +438,7 @@ function fitsPlan(candidate: AllocatedVideoStream, plan: VideoPlan, frameRate: n
             { min: candidate.minResolution, max: candidate.maxResolution },
         ) &&
         contains(
-            { min: plan.frameRateFloor, max: envelope.maxFrameRate },
+            { min: plan.frameRateFloor, max: plan.allowedFrameRate },
             { min: candidate.minFrameRate, max: candidate.maxFrameRate },
         ) &&
         contains(

@@ -1,0 +1,81 @@
+# Cameras: defaults, limits and known quirks
+
+The server chooses most settings when a client starts a camera stream or takes a snapshot (`camera_start_stream`, `camera_snapshot`). This page lists the fixed values it uses and the limits that come from cameras and browsers. It also explains what you will notice because of them.
+
+Every rule and argument is described in full in [the WebSocket API reference](websockets_api.md#camera_start_stream). This page gives the overview.
+
+## Video
+
+### Picture size: 1280x720 in a browser
+
+- **What you see:** a live view in a browser is at most 1280x720, even on a 1080p camera.
+- **Why:** every browser offers H.264 at level 3.1. That level decodes at most 1280x720 at 30 fps. The server never asks the camera for video the viewer cannot decode, because that gives no picture at all.
+- **What to do:** a client that can decode more must offer a higher H.264 level. `max_resolution` can lower the size, but it cannot raise it above what the offer decodes.
+
+### Frame rate: 30 fps by default
+
+- **What you see:** video runs at 30 fps, even when the camera reports that it can do more.
+- **Why:** cameras accept frame rates they cannot deliver. One tested camera reports 120 fps. It accepted 640x480 at 90 fps and then sent only black video. At 30 fps the same request works.
+- **What to do:** ask for more with `max_frame_rate`. The server then goes up to the camera's maximum, as far as the viewer can decode it. A `min_frame_rate` above 30 also raises the rate.
+
+### One frame rate per request
+
+The server asks for one exact frame rate, for example 30 to 30, never a range such as 15 to 30. Tested cameras refuse ranges that reach below a frame rate they do not publish, such as 30 fps. One exact rate works on every camera tested so far.
+
+There is one exception: the certification request described under [First start can take a moment](#first-start-can-take-a-moment).
+
+### Bit rate and key frames
+
+- The bit rate starts at 8 Mbit/s. If the camera refuses it, the server halves it until the camera accepts, down to the camera's own lowest bit rate. Cameras can have a bit rate limit that none of their attributes state, such as 2 Mbit/s.
+- The key frame interval is always 4000 ms. Tested cameras refused every other value.
+
+### First start can take a moment
+
+Cameras do not publish all their limits. The server therefore asks, and gives up quality step by step when the camera says no:
+
+1. lower bit rate;
+2. lower frame rate;
+3. smaller picture.
+
+Picture size is kept longest. Each step is one request to the camera, and a start makes at most 32 of them.
+
+If the camera refused every one, the last request is the one the Matter certification tests use, which a certified camera must accept. This request is a frame rate range from 30 up to the camera's maximum, so the camera picks the rate itself.
+
+## Camera capacity and other users
+
+A camera has a limited number of encoders and a limited encoding capacity. When the camera is full, the server does this, in order:
+
+1. It reuses a stream the camera already has, when that stream fits the request.
+2. It asks for a smaller stream.
+3. It frees a stream that nothing uses at the moment. It frees snapshot streams before video streams: a live view is more important than a still frame. Within each kind, it frees its own streams before those of another controller.
+
+Things to know:
+
+- **Another controller can lose a stream.** If Home Assistant, another hub or an app keeps a stream allocated but idle, the server may free it. That controller must allocate it again. The server sends a `camera_stream_evicted` event for every stream it frees.
+- **Stopping this:** `allow_eviction: false` on `camera_start_stream` stops the server from freeing streams. The request can then fail with error 103 when the camera is full.
+- **After a server restart,** the server no longer knows which streams it allocated itself. It treats the streams it allocated before the restart as another controller's. This only changes the order in which streams are freed.
+
+## Snapshots
+
+- **Size:** the largest snapshot size the camera offers, unless `max_resolution` limits it.
+- **Quality:** the server asks for image quality 90 (of 100).
+- **The snapshot stream stays.** A snapshot allocates a snapshot stream on the camera and leaves it there, so the next snapshot is fast. A later live view may free it to make room. The next snapshot then allocates it again.
+- **Snapshots can be worse while video runs.** When all of the camera's encoders are busy, for example with a live view, the server picks a snapshot size that needs no encoder of its own. The camera can then take the picture from the running video stream. The image can be smaller, and it can show the video's watermark or date banner even when the snapshot asked for none. The response says `degraded: true` when the picture is smaller than the best size the request allowed.
+
+## Audio
+
+- The server asks for the first microphone codec the viewer can play, normally Opus, at 64 kbit/s. The channel count, sample rate and bit depth are the highest the camera states.
+- A camera that states 8 channels therefore gets 8 channels, although a browser plays at most 2. Whether the server should ask for fewer channels is an open question to the Matter camera experts.
+- When the camera cannot serve audio, the live view still starts, without sound.
+
+## Overlays
+
+The server asks for no watermark and no date/time banner unless the client asks for one with `watermark_enabled` or `osd_enabled`. Asking for an overlay the camera does not support fails with error 102.
+
+## Known camera bugs
+
+Seen on tested cameras. The server works around them where it can.
+
+- **Accepting a frame rate the camera cannot deliver.** A camera accepted 640x480 at 90 fps and then sent black video. This is the reason for the 30 fps default.
+- **Wrong stream ids in `CurrentSessions`.** A camera reported random stream ids for each WebRTC session, not the streams the session uses. The server relies on the stream ids it sent itself, not on this list.
+- **Hidden limits.** Cameras refuse frame rate ranges below a floor, bit rates above a ceiling, or key frame intervals other than 4000 ms, without stating any of these in their attributes.
