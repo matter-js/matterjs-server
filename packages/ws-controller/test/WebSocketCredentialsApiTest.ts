@@ -1534,6 +1534,9 @@ describe("WebSocket camera lifecycle events", () => {
                         payload: { webRtcSessionId: null, sdp: "v=0" },
                     })
                     .catch(() => undefined);
+                await h
+                    .sendOn(rawRouteClient, "camera_get_capabilities", { node_id: 1, endpoint_id: 1 })
+                    .catch(() => undefined);
                 await h.sendOn(ender, "camera_get_capabilities", { node_id: 1, endpoint_id: 1 }).catch(() => undefined);
 
                 await endSessionThroughDeviceCommand(h, ender, 99);
@@ -1603,15 +1606,7 @@ describe("WebSocket camera lifecycle events", () => {
             try {
                 const seenByRaw = collectCameraEvents(raw);
                 const seenByBystander = collectCameraEvents(bystander);
-                // A raw-route client issues no camera_* command, so that route must opt it in.
-                await h
-                    .sendOn(raw, "send_webrtc_provider_command", {
-                        node_id: 1,
-                        endpoint_id: 1,
-                        command_name: "ProvideOffer",
-                        payload: { webRtcSessionId: null, sdp: "v=0" },
-                    })
-                    .catch(() => undefined);
+                await h.sendOn(raw, "camera_get_capabilities", { node_id: 1, endpoint_id: 1 }).catch(() => undefined);
 
                 sessionEnded.emit({
                     nodeId: NodeId(1n),
@@ -1639,6 +1634,47 @@ describe("WebSocket camera lifecycle events", () => {
             } finally {
                 raw.close();
                 bystander.close();
+            }
+        } finally {
+            await h.close();
+        }
+    });
+});
+
+describe("WebSocket camera event opt-in", () => {
+    it("does not send schema-14 camera events to a connection that only used send_webrtc_provider_command", async () => {
+        // A schema-12 client cannot parse these events.
+        const sessionEnded = new Observable<[CameraSessionEnded]>();
+        const streamEvicted = new Observable<[CameraStreamEvicted]>();
+        const h = await createHarness({ async releaseConnection() {}, events: { sessionEnded, streamEvicted } });
+        try {
+            const raw = await h.openClient();
+            try {
+                const events = new Array<string>();
+                raw.on("message", message => {
+                    const msg = JSON.parse(message.toString()) as { event?: string };
+                    if (msg.event !== undefined) events.push(msg.event);
+                });
+                await h
+                    .sendOn(raw, "send_webrtc_provider_command", {
+                        node_id: 1,
+                        endpoint_id: 1,
+                        command_name: "ProvideOffer",
+                        payload: { webRtcSessionId: null, sdp: "v=0" },
+                    })
+                    .catch(() => undefined);
+                sessionEnded.emit({
+                    nodeId: NodeId(1n),
+                    endpointId: EndpointNumber(1),
+                    webRtcSessionId: 4,
+                    requestedBy: "conn-elsewhere",
+                });
+                streamEvicted.emit({ nodeId: NodeId(1n), endpointId: EndpointNumber(1), kind: "video", streamId: 2 });
+                await new Promise(resolve => setTimeout(resolve, 100));
+                expect(events).to.not.include("camera_session_ended");
+                expect(events).to.not.include("camera_stream_evicted");
+            } finally {
+                raw.close();
             }
         } finally {
             await h.close();

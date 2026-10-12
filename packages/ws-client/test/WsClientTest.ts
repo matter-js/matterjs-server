@@ -9,6 +9,7 @@ import {
     CommandTimeoutError,
     ConnectionClosedError,
     DEFAULT_COMMAND_TIMEOUT,
+    InvalidServerVersion,
     MatterClient,
     otaUploadUrl,
     ServerCommandError,
@@ -641,6 +642,60 @@ describe("ws-client", () => {
                 }
 
                 expect(logged.some(line => line.includes('"data":"1/6/0"'))).to.be.true;
+            });
+        });
+
+        describe("sendWebRtcProviderCommand schema gate", () => {
+            async function connectWithSchema(schemaVersion: number): Promise<MatterClient> {
+                const gated = new MockMatterServer({ serverInfo: { schema_version: schemaVersion } });
+                await gated.start();
+                const gatedClient = new MatterClient(gated.url, createNodeWebSocket);
+                gated.onCommand("send_webrtc_provider_command", () => null);
+                await gatedClient.connect();
+                gatedClients.push({ gated, gatedClient });
+                return gatedClient;
+            }
+            async function expectRefused(pending: Promise<unknown>, message: RegExp): Promise<void> {
+                let refusal: unknown;
+                try {
+                    await pending;
+                } catch (error) {
+                    refusal = error;
+                }
+                expect(refusal).to.be.instanceOf(InvalidServerVersion);
+                expect(refusal).to.have.property("message").that.matches(message);
+            }
+            const gatedClients = new Array<{ gated: MockMatterServer; gatedClient: MatterClient }>();
+
+            afterEach(async () => {
+                for (const { gated, gatedClient } of gatedClients.splice(0)) {
+                    if (gatedClient.connection?.connected) gatedClient.disconnect();
+                    await gated.stop();
+                }
+            });
+
+            for (const commandName of ["ProvideAnswer", "ProvideIceCandidates"] as const) {
+                it(`refuses ${commandName} against a schema 13 server`, async () => {
+                    const old = await connectWithSchema(13);
+                    await expectRefused(old.sendWebRtcProviderCommand(1, 1, commandName, {}), /at least api schema 14/);
+                });
+            }
+
+            it("sends ProvideAnswer to a schema 14 server", async () => {
+                const current = await connectWithSchema(14);
+                await current.sendWebRtcProviderCommand(1, 1, "ProvideAnswer", {});
+            });
+
+            for (const commandName of ["ProvideOffer", "SolicitOffer"] as const) {
+                it(`sends ${commandName} to a schema 12 server`, async () => {
+                    const older = await connectWithSchema(12);
+                    await older.sendWebRtcProviderCommand(1, 1, commandName, {});
+                });
+            }
+
+            it("refuses ProvideOffer against a schema 11 server", async () => {
+                const old = await connectWithSchema(11);
+                await expectRefused(old.sendWebRtcProviderCommand(1, 1, "ProvideOffer", {}), /at least api schema 12/);
             });
         });
 

@@ -126,6 +126,29 @@ const OFFER_VIDEO_ONLY_REJECTED = [
     "",
 ].join("\r\n");
 
+/** Port 0 with `a=bundle-only` is live on the bundle transport (RFC 8843); without it port 0 refuses the section. */
+function bundledVideoOffer(bundleOnly: boolean): string {
+    return [
+        "v=0",
+        "o=- 1 1 IN IP4 127.0.0.1",
+        "s=-",
+        "t=0 0",
+        "a=group:BUNDLE 0 1",
+        "m=audio 9 UDP/TLS/RTP/SAVPF 111",
+        "c=IN IP4 0.0.0.0",
+        "a=mid:0",
+        "a=recvonly",
+        "a=rtpmap:111 opus/48000/2",
+        "m=video 0 UDP/TLS/RTP/SAVPF 102",
+        "c=IN IP4 0.0.0.0",
+        "a=mid:1",
+        ...(bundleOnly ? ["a=bundle-only"] : []),
+        "a=recvonly",
+        "a=rtpmap:102 H264/90000",
+        "",
+    ].join("\r\n");
+}
+
 const OFFER_REJECTED_SECTIONS = [
     "v=0",
     "o=- 1 1 IN IP4 127.0.0.1",
@@ -489,6 +512,16 @@ describe("sdpConstraints", () => {
             // Opposite statements: one peer declined video, the other left the track to the server.
             expect(parseSdpVideoConstraints(OFFER_VIDEO_ONLY_REJECTED).video.state).to.equal("refused");
             expect(parseSdpVideoConstraints(OFFER_AUDIO_SENDRECV).video.state).to.equal("absent");
+        });
+
+        it("counts a port 0 video section marked bundle-only as offered", () => {
+            const video = parseSdpVideoConstraints(bundledVideoOffer(true)).video;
+            expect(video.state).to.equal("receiving");
+            expect(receivableCodecs(video)).to.deep.equal(["H264"]);
+        });
+
+        it("still refuses a port 0 video section that is not bundle-only", () => {
+            expect(parseSdpVideoConstraints(bundledVideoOffer(false)).video.state).to.equal("refused");
         });
 
         it("ignores a rejected video section's codecs and limits while a live one stands", () => {

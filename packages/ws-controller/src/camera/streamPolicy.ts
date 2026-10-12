@@ -166,7 +166,16 @@ export interface VideoPlan {
     readonly allowedFrameRate: number;
     /** The offer's decode ceiling, which sets a further frame rate ceiling per frame size. */
     readonly limits: VideoCodecLimits;
-    /** See {@link certificationWindow}; undefined when the caller's bounds or the offer exclude it. */
+    /**
+     * The codec's trade-off points, which give each window its bit rate floor ({@link planBitRateFloor});
+     * empty when the caller states `min_bit_rate`, which is then every window's floor.
+     */
+    readonly bitRatePoints: readonly RateDistortionPoint[];
+    /**
+     * See {@link certificationWindow}; undefined without a trade-off point for the codec, when the
+     * caller's or the offer's bit rate bounds exclude that point's bit rate, or when the frame rate the
+     * camera, the caller and the offer allow is below 30 (or the caller's `min_frame_rate`).
+     */
     readonly certificationWindow: VideoEnvelope | undefined;
 }
 
@@ -177,15 +186,18 @@ const CERTIFICATION_MIN_FRAME_RATE = 30;
  * The window the CSA certification test scripts allocate (TC_AVSM, reference camera-controller): the
  * codec's first trade-off point's bit rate as both minimum and maximum, frame rate 30 up to the
  * maximum, and the full resolution range. A certified camera accepts it, so it is the search's last
- * try. Clamped into `envelope`, which carries the caller's bounds and the offer's decode ceiling.
+ * try. Clamped into `envelope`, which carries the caller's bounds and the offer's decode ceiling. Its
+ * bit rate is held only against `bitRateBounds`, the caller's and the offer's: the plan's own floor and
+ * start come from the server, and the scripts' point may lie outside them.
  */
 function certificationWindow(
     envelope: VideoEnvelope,
     frameRateFloor: number,
     point: RateDistortionPoint | undefined,
+    bitRateBounds: { readonly min: number; readonly max: number },
 ): VideoEnvelope | undefined {
     if (point === undefined) return undefined;
-    if (point.minBitRate < envelope.minBitRate || point.minBitRate > envelope.maxBitRate) return undefined;
+    if (point.minBitRate < bitRateBounds.min || point.minBitRate > bitRateBounds.max) return undefined;
     const minFrameRate = Math.max(CERTIFICATION_MIN_FRAME_RATE, frameRateFloor);
     if (minFrameRate > envelope.maxFrameRate) return undefined;
     return { ...envelope, minFrameRate, minBitRate: point.minBitRate, maxBitRate: point.minBitRate };
@@ -195,6 +207,38 @@ function certificationWindow(
 export function planFrameRate(plan: VideoPlan, resolution: Resolution): number {
     const offerCeiling = offerFrameRateCeiling(plan.limits, resolution);
     return offerCeiling === undefined ? plan.frameRateCeiling : Math.min(plan.frameRateCeiling, offerCeiling);
+}
+
+/**
+ * The trade-off point at or just below `resolution` states the bit rate that resolution needs
+ * (§11.2.6.8). Below every point, the lowest bit rate any point states: no point speaks for that size,
+ * and a larger size's floor would refuse what the camera serves. A floor above `maxBitRate` is dropped
+ * rather than pinning the minimum to the maximum.
+ */
+function bitRateFloor(
+    points: readonly RateDistortionPoint[],
+    resolution: Resolution,
+    maxBitRate: number,
+): number | undefined {
+    const applicable = points
+        .filter(point => fitsUnder(point.resolution, resolution))
+        .sort((a, b) => pixels(b.resolution) - pixels(a.resolution))[0];
+    const floor =
+        applicable?.minBitRate ??
+        points.reduce<number | undefined>(
+            (lowest, point) => (lowest === undefined ? point.minBitRate : Math.min(lowest, point.minBitRate)),
+            undefined,
+        );
+    return floor !== undefined && floor <= maxBitRate ? floor : undefined;
+}
+
+/**
+ * The lowest bit rate a window with this `maxResolution` asks for: the plan's own floor when no
+ * trade-off point gives one (the caller states `min_bit_rate`, the camera states no point, or the
+ * point's bit rate is above the plan's start).
+ */
+export function planBitRateFloor(plan: VideoPlan, resolution: Resolution): number {
+    return bitRateFloor(plan.bitRatePoints, resolution, plan.envelope.maxBitRate) ?? plan.envelope.minBitRate;
 }
 
 /** `limit` is the ceiling in force after every narrowing (sensor, offer or caller). */
@@ -277,10 +321,6 @@ export function computeVideoEnvelope(args: VideoEnvelopeArgs): VideoSelection {
     const minResolution =
         hints?.minResolution === undefined ? derivedFloor : clampUp(derivedFloor, hints.minResolution);
 
-    // The trade-off point at or just below the ceiling states the bitrate that resolution needs.
-    const applicable = codecPoints
-        .filter(point => fitsUnder(point.resolution, maxResolution))
-        .sort((a, b) => pixels(b.resolution) - pixels(a.resolution))[0];
     const ceilings = [hints?.maxBitRate, limits.maxBitRate, capabilities.maxNetworkBandwidth].filter(
         (value): value is number => value !== undefined,
     );
@@ -297,9 +337,7 @@ export function computeVideoEnvelope(args: VideoEnvelopeArgs): VideoSelection {
     // never raise it; only a caller-stated ceiling or floor sets the start above the default.
     const defaultCap = hints?.maxBitRate === undefined ? DEFAULT_MAX_BIT_RATE : Number.POSITIVE_INFINITY;
     const maxBitRate = Math.max(Math.min(bitRateCeiling ?? DEFAULT_MAX_BIT_RATE, defaultCap), hints?.minBitRate ?? 0);
-    // A trade-off point's floor can exceed the camera's bandwidth; drop it rather than pin min to max.
-    const derivedBitRateFloor = applicable?.minBitRate ?? 1;
-    const minBitRate = hints?.minBitRate ?? (derivedBitRateFloor <= maxBitRate ? derivedBitRateFloor : 1);
+    const minBitRate = hints?.minBitRate ?? bitRateFloor(codecPoints, maxResolution, maxBitRate) ?? 1;
 
     const envelope: VideoEnvelope = {
         overlays,
@@ -320,11 +358,19 @@ export function computeVideoEnvelope(args: VideoEnvelopeArgs): VideoSelection {
             frameRateCeiling,
             allowedFrameRate: allowedFrameRateAtSize,
             limits,
+            bitRatePoints: hints?.minBitRate === undefined ? codecPoints : [],
             // A range the camera chooses from, so it keeps the full allowed rate rather than the default.
             certificationWindow: certificationWindow(
                 { ...envelope, maxFrameRate: allowedFrameRateAtSize },
                 frameRateFloor,
                 codecPoints[0],
+                {
+                    min: hints?.minBitRate ?? 0,
+                    max: Math.min(
+                        hints?.maxBitRate ?? Number.POSITIVE_INFINITY,
+                        limits.maxBitRate ?? Number.POSITIVE_INFINITY,
+                    ),
+                },
             ),
         },
     };
@@ -441,10 +487,18 @@ function fitsPlan(candidate: AllocatedVideoStream, plan: VideoPlan, frameRate: n
             { min: plan.frameRateFloor, max: plan.allowedFrameRate },
             { min: candidate.minFrameRate, max: candidate.maxFrameRate },
         ) &&
-        contains(
-            { min: envelope.minBitRate, max: envelope.maxBitRate },
-            { min: candidate.minBitRate, max: candidate.maxBitRate },
-        )
+        fitsPlanBitRate(candidate, plan)
+    );
+}
+
+/** Inside the bit rate range a window of the candidate's size asks, or the certification window's. */
+function fitsPlanBitRate(candidate: AllocatedVideoStream, plan: VideoPlan): boolean {
+    const bitRate = { min: candidate.minBitRate, max: candidate.maxBitRate };
+    const certification = plan.certificationWindow;
+    return (
+        contains({ min: planBitRateFloor(plan, candidate.maxResolution), max: plan.envelope.maxBitRate }, bitRate) ||
+        (certification !== undefined &&
+            contains({ min: certification.minBitRate, max: certification.maxBitRate }, bitRate))
     );
 }
 

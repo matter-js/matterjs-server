@@ -566,9 +566,14 @@ export class ControllerCommandHandler {
                     command,
                     fields: invokeFields,
                 }),
-            upsertSession: async session => {
+            upsertSession: async (session, options) => {
                 await requestorEndpoint.act(agent => {
-                    agent.get(WebRtcTransportRequestorServer).upsertSession(session);
+                    const requestor = agent.get(WebRtcTransportRequestorServer);
+                    // Ids are per camera but the requestor keys by id alone, so any entry counts as present.
+                    if (options?.onlyIfAbsent && requestor.state.currentSessions.some(s => s.id === session.id)) {
+                        return;
+                    }
+                    requestor.upsertSession(session);
                 });
             },
         };

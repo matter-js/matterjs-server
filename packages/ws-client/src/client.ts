@@ -36,6 +36,12 @@ import { MatterNode } from "./models/node.js";
 /** Union type for all incoming WebSocket messages */
 type IncomingMessage = EventMessage | ErrorResultMessage | SuccessResultMessage;
 
+/** Schema 14 is when the server started relaying these two; the offer commands need only schema 12. */
+const SIGNALLING_PROVIDER_COMMANDS: ReadonlySet<WebRtcProviderCommandName> = new Set([
+    "ProvideAnswer",
+    "ProvideIceCandidates",
+]);
+
 /** Converts node_id to string for use as object key (works for both number and bigint without precision loss) */
 function toNodeKey(nodeId: number | bigint): string {
     return String(nodeId);
@@ -528,7 +534,7 @@ export class MatterClient {
     ): Promise<unknown> {
         return await this.sendCommand(
             "send_webrtc_provider_command",
-            0,
+            SIGNALLING_PROVIDER_COMMANDS.has(commandName) ? 14 : 12,
             { node_id: nodeId, endpoint_id: endpointId, command_name: commandName, payload },
             timeout,
         );

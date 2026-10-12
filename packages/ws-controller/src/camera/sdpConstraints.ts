@@ -268,7 +268,8 @@ export function parseSdpVideoConstraints(sdp: string): SdpVideoConstraints {
     for (const media of parsed.media ?? []) {
         const sections = media.type === "video" ? videoSections : media.type === "audio" ? audioSections : undefined;
         if (sections === undefined) continue;
-        if (media.port === 0) {
+        // Port 0 with a=bundle-only is a live section carried on the bundle transport (RFC 8843 §7.1.2).
+        if (media.port === 0 && media.bundleOnly === undefined) {
             sections.refused = true;
             continue;
         }

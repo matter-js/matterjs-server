@@ -152,7 +152,10 @@ export function tracksSessionOf(
 export interface WebRtcProviderSessionIo {
     invoke(command: "provideOffer" | "solicitOffer" | "endSession", fields: Record<string, unknown>): Promise<unknown>;
     /** Store the session in the local requestor so its Answer/ICECandidates are accepted, not NotFound. */
-    upsertSession(session: WebRtcTransportDefinitions.WebRtcSession): Promise<void>;
+    upsertSession(
+        session: WebRtcTransportDefinitions.WebRtcSession,
+        options?: { onlyIfAbsent: boolean },
+    ): Promise<void>;
 }
 
 export interface WebRtcProviderSessionArgs {
@@ -201,6 +204,13 @@ async function endSessionWithinBudget(
  * The session must be stored in the local requestor, which answers NotFound to Answer/ICECandidates
  * otherwise. A session that cannot be tracked (no stream usage, or no video/audio stream, e.g. a
  * deferred auto-select SolicitOffer) is ended on the device and the command fails.
+ *
+ * A ProvideOffer naming a session id is a re-offer for a session the camera already holds (§11.5.6.3.12).
+ * It never ends a session and never overwrites a local requestor entry, because a re-offer may omit
+ * StreamUsage and the streams and changes neither. The entry is only added when absent (the camera kept the
+ * session across a restart of this server) and the re-offer carries enough to track it. Such a session is not
+ * being established by a managed start, so `sessionEstablishing` is not called. An id the camera does not hold
+ * is answered NOT_FOUND by the camera.
  */
 export async function establishWebRtcProviderSession(
     io: WebRtcProviderSessionIo,
@@ -211,6 +221,7 @@ export async function establishWebRtcProviderSession(
 
     const fields: Record<string, unknown> = { ...args.fields, originatingEndpointId };
     selectWebRtcStreamFields(fields, clusterRevision);
+    const isReOffer = typeof fields.webRtcSessionId === "number";
 
     const response = await io.invoke(command, fields);
     if (
@@ -223,8 +234,12 @@ export async function establishWebRtcProviderSession(
             `${commandName} did not return a WebRTCSessionID for node ${formatNode(nodeId)}`,
         );
     }
+    // `in` narrowing gives no string index signature, so TS cannot express this shape without a cast.
+    const established = response as { webRtcSessionId: number } & Record<string, unknown>;
     const webRtcSessionId = response.webRtcSessionId;
-    args.sessionEstablishing?.(webRtcSessionId);
+    if (!isReOffer) {
+        args.sessionEstablishing?.(webRtcSessionId);
+    }
 
     const streamUsage = fields.streamUsage;
     const metadataEnabled = fields.metadataEnabled === true;
@@ -234,6 +249,9 @@ export async function establishWebRtcProviderSession(
     const audioStreams = resolveWebRtcSessionStreams(fields.audioStreams, fields.audioStreamId, responseAudioStreamId);
 
     if (!isTrackableWebRtcSession(streamUsage, videoStreams, audioStreams)) {
+        if (isReOffer) {
+            return established;
+        }
         logger.warn(
             `Tearing down untrackable WebRTC session id=${webRtcSessionId} for node ${formatNode(
                 nodeId,
@@ -260,6 +278,18 @@ export async function establishWebRtcProviderSession(
     logger.info(
         `upserting WebRTC session id=${session.id} peerNodeId=${nodeId} peerEndpointId=${endpointId} fabricIndex=${fabricIndex} streamUsage=${streamUsage} originatingEndpointId=${originatingEndpointId}`,
     );
+    if (isReOffer) {
+        try {
+            await io.upsertSession(session, { onlyIfAbsent: true });
+        } catch (error) {
+            logger.warn(
+                `Could not track re-offered WebRTC session id=${webRtcSessionId} for node ${formatNode(nodeId)}: ${
+                    error instanceof Error ? error.message : String(error)
+                }`,
+            );
+        }
+        return established;
+    }
     try {
         await io.upsertSession(session);
     } catch (error) {
@@ -273,6 +303,5 @@ export async function establishWebRtcProviderSession(
         throw error;
     }
 
-    // `in` narrowing gives no string index signature, so TS cannot express this shape without a cast.
-    return response as { webRtcSessionId: number } & Record<string, unknown>;
+    return established;
 }

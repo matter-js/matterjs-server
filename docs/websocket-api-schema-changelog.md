@@ -45,8 +45,8 @@ New commands:
 - **`camera_release_stream`** — deallocates a stream. The camera refuses while a session still uses
   it (error 104).
 
-New events, sent only to connections that have used a camera command or
-`send_webrtc_provider_command`:
+New events, sent only to connections that have used a `camera_*` command. `send_webrtc_provider_command`
+opts a connection in to `webrtc_callback` only:
 
 - **`camera_session_ended`** — another connection ended a session this connection opened.
 - **`camera_stream_evicted`** — the server deallocated an idle stream to make room for a new request.
@@ -62,8 +62,10 @@ Behaviour worth knowing:
 - A new video stream runs at 30 fps at most unless the client asks for more with `max_frame_rate` or
   `min_frame_rate`. Some cameras accept higher rates they cannot deliver.
 - When the camera is out of capacity, the server first lowers its own default settings, then frees an
-  idle stream: snapshot streams first (its own before another controller's), then its own video streams,
-  then another controller's.
+  idle stream: its own snapshot streams, its own video streams, then another controller's snapshot
+  streams and video streams.
+- When the camera answers an allocate with a stream it already has, the server checks that stream
+  against the bounds the caller stated and fails with error 102 if it breaks one.
   `allow_eviction: false` stops it from freeing streams.
 - Events can arrive before the `camera_start_stream` response: register the `webrtc_callback` handler
   first and buffer events by `webrtc_session_id`.
@@ -103,6 +105,12 @@ OHF extensions; python-matter-server codes stop at 11. Each carries JSON details
 - **`device_command` with `EndSession`** also produces `camera_session_ended`.
 - **`args`** — every command treats a missing or `null` `args` as no arguments, and refuses a
   non-object `args` with error 8.
+- **`node_id`** — every command that targets a node refuses a `node_id` that can never name one (a
+  CAT, PAKE, Unspecified or reserved id, and a Group id except on the two commands below) with error 8.
+  Before, it answered `NODE_NOT_EXISTS`.
+- **`write_attribute` and `device_command` to a Group Node ID** send a groupcast and answer `null`.
+  The attribute path takes a wildcard endpoint. Before, a group write answered status 0, a success no
+  device reported.
 
 ### Commissioning window
 
@@ -176,7 +184,8 @@ gated; schema 12 is where they're formally specified, so treat WebRTC as a schem
   to a camera endpoint's WebRTC provider.
 - **Event `webrtc_callback`** (server→client) — `offer` / `answer` / `ice_candidates` / `end` for an
   active session (payload `WebRtcCallbackData`). An `offer`'s `ice_servers` use the same
-  `{ urls, username?, credential?, caid? }` shape `camera_start_stream` takes, with `urls` a list. **Delivered only to connections that have issued a
+  `{ urls, username?, credential?, caid? }` shape `camera_start_stream` takes, with `urls` a list.
+  Servers built on matter.js before 0.18 sent the key as `urLs`; a client that supports them accepts both. **Delivered only to connections that have issued a
   `send_webrtc_provider_command`** during their lifetime — the callbacks reach the client driving that
   camera session, not every connection. (Schema 14 widens that opt-in to the camera commands and routes
   the event to the session's owning connection; see below.) **Outgoing events carry no `require_schema`**: that mechanism

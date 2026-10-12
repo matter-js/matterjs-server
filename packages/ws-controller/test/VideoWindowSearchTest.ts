@@ -30,6 +30,7 @@ const PLAN: VideoPlan = {
     frameRateCeiling: 30,
     allowedFrameRate: 30,
     limits: {},
+    bitRatePoints: [],
     certificationWindow: undefined,
 };
 
@@ -219,24 +220,181 @@ describe("VideoWindowSearch", () => {
         it("lowers the frame rate from the smallest size it already tried, after room ran out", () => {
             let rooms = 1;
             const { asked } = walk(PLAN, capacity, { room: () => rooms-- > 0 });
-            expect(asked.slice(0, 7)).to.deep.equal([
+            expect(asked.slice(0, 9)).to.deep.equal([
                 "2560x1440@30-30 8000000",
                 "1280x720@30-30 8000000",
                 "640x360@30-30 8000000",
                 "makeRoom",
                 "2560x1440@30-30 8000000",
+                "1280x720@30-30 8000000",
+                "640x360@30-30 8000000",
                 "makeRoom",
                 "640x360@15-15 8000000",
             ]);
         });
 
-        it("never asks for the same window twice, except the one it returns to after making room", () => {
+        it("asks a window again only after room was made since the camera refused it", () => {
             let rooms = 3;
-            const { asked } = walk(PLAN, capacity, { room: () => rooms-- > 0 });
-            const windows = asked.filter(entry => entry !== "makeRoom");
-            const repeats = windows.filter((window, index) => windows.indexOf(window) !== index);
-            expect(new Set(repeats)).to.deep.equal(new Set(["2560x1440@30-30 8000000"]));
+            const sinceRoom = [new Array<string>()];
+            const { asked } = walk(
+                PLAN,
+                window => {
+                    sinceRoom[sinceRoom.length - 1].push(summary(window));
+                    return "capacity";
+                },
+                {
+                    room: () => {
+                        if (rooms-- <= 0) return false;
+                        sinceRoom.push(new Array<string>());
+                        return true;
+                    },
+                },
+            );
+            expect(asked.filter(entry => entry === "makeRoom").length).to.be.greaterThan(3);
+            for (const windows of sinceRoom) expect(new Set(windows).size).to.equal(windows.length);
         });
+
+        it("tries the smaller sizes again after room was made, before it takes another stream", () => {
+            let rooms = 0;
+            const { asked, outcome } = walk(
+                PLAN,
+                window => (rooms > 0 && window.maxResolution.width <= 1280 ? "accepted" : "capacity"),
+                { room: () => ++rooms <= 2 },
+            );
+            expect(outcome).to.equal("accepted");
+            expect(asked).to.deep.equal([
+                "2560x1440@30-30 8000000",
+                "1280x720@30-30 8000000",
+                "640x360@30-30 8000000",
+                "makeRoom",
+                "2560x1440@30-30 8000000",
+                "1280x720@30-30 8000000",
+            ]);
+        });
+
+        it("does not return to a window the camera refused as unservable once room was made", () => {
+            // Another controller may allocate meanwhile, so the budget after room is made can be tighter.
+            let tight = false;
+            const { asked, outcome } = walk(
+                PLAN,
+                window => {
+                    if (window.maxResolution.width === 1280 && window.maxBitRate === 8000000) return "unservable";
+                    return tight ? "accepted" : "capacity";
+                },
+                {
+                    fits: window => !tight || window.maxResolution.width <= 1280,
+                    room: () => {
+                        tight = true;
+                        return true;
+                    },
+                },
+            );
+            expect(outcome).to.equal("accepted");
+            expect(asked).to.deep.equal([
+                "2560x1440@30-30 8000000",
+                "1280x720@30-30 8000000",
+                "1280x720@30-30 4000000",
+                "640x360@30-30 4000000",
+                "makeRoom",
+                "1280x720@30-30 4000000",
+            ]);
+        });
+        it("asks the window refused for capacity as it is after room was made, when no step is left", () => {
+            const fixed: VideoPlan = {
+                ...PLAN,
+                envelope: {
+                    ...WINDOW,
+                    minResolution: { width: 1280, height: 720 },
+                    maxResolution: { width: 1280, height: 720 },
+                    minBitRate: 2000000,
+                    maxBitRate: 2000000,
+                },
+            };
+            let roomMade = false;
+            const { asked, outcome } = walk(
+                fixed,
+                window => {
+                    if (window.maxFrameRate < 30) return "unservable";
+                    return roomMade ? "accepted" : "capacity";
+                },
+                {
+                    fits: window => window.maxFrameRate < 15,
+                    room: () => (roomMade = true),
+                },
+            );
+            expect(outcome).to.equal("accepted");
+            expect(asked).to.deep.equal([
+                "1280x720@7-7 2000000",
+                "1280x720@30-30 2000000",
+                "makeRoom",
+                "1280x720@30-30 2000000",
+            ]);
+        });
+    });
+
+    describe("the bit rate floor", () => {
+        const SMALL = { codec: H265, resolution: { width: 640, height: 360 }, minBitRate: 500000 };
+        const LARGE = { codec: H265, resolution: { width: 1920, height: 1080 }, minBitRate: 2000000 };
+        const OFF_CHAIN = { ...LARGE, minBitRate: 3000000 };
+        const pointsPlan = (points: (typeof SMALL)[]) =>
+            plan({
+                capabilities: {
+                    sensor: { width: 1920, height: 1080 },
+                    maxFrameRate: 30,
+                    minViewport: { width: 640, height: 360 },
+                    rateDistortionPoints: points,
+                },
+                limits: { codec: H265 },
+                hints: undefined,
+            });
+
+        for (const [order, reversed] of [
+            ["smallest first", false],
+            ["largest first", true],
+        ] as const) {
+            const listed = (points: (typeof SMALL)[]) => (reversed ? [...points].reverse() : points);
+
+            it(`is the trade-off point for each window's own size, with points listed ${order}`, () => {
+                let accepted: VideoEnvelope | undefined;
+                const { asked, outcome } = walk(pointsPlan(listed([SMALL, LARGE])), window => {
+                    if (window.maxResolution.width > 960 || window.maxBitRate >= 1500000) return "unservable";
+                    accepted = window;
+                    return "accepted";
+                });
+                expect(outcome).to.equal("accepted");
+                expect(asked).to.deep.equal([
+                    "1920x1080@30-30 8000000",
+                    "1920x1080@30-30 4000000",
+                    "1920x1080@30-30 2000000",
+                    "1920x1080@15-15 2000000",
+                    "1920x1080@7-7 2000000",
+                    "960x540@30-30 2000000",
+                    "960x540@30-30 1000000",
+                ]);
+                expect(accepted?.minBitRate).to.equal(500000);
+            });
+
+            it(`keeps the halvings taken across a size step, with points listed ${order}`, () => {
+                const { asked } = walk(pointsPlan(listed([SMALL, OFF_CHAIN])), unservable);
+                expect(asked).to.deep.equal([
+                    "1920x1080@30-30 8000000",
+                    "1920x1080@30-30 4000000",
+                    "1920x1080@30-30 3000000",
+                    "1920x1080@15-15 3000000",
+                    "1920x1080@7-7 3000000",
+                    "960x540@30-30 2000000",
+                    "960x540@30-30 1000000",
+                    "960x540@30-30 500000",
+                    "960x540@15-15 500000",
+                    "960x540@7-7 500000",
+                    "640x360@30-30 500000",
+                    "640x360@15-15 500000",
+                    "640x360@7-7 500000",
+                    // The certification window, unless it is the full-size window already refused.
+                    ...(reversed ? [] : ["1920x1080@30-30 500000"]),
+                ]);
+            });
+        }
     });
 
     describe("the encoder budget", () => {

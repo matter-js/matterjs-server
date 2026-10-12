@@ -120,10 +120,11 @@ const WEBRTC_OPT_IN_COMMANDS = new Set([
     "camera_provide_ice_candidates",
 ]);
 
-// Any camera command (schema 14) opts the connection in to camera_session_ended and
-// camera_stream_evicted. Evictions go to every opted-in connection: no record says who holds a stream.
+// Any schema-14 camera command opts the connection in to camera_session_ended and camera_stream_evicted.
+// `send_webrtc_provider_command` is schema 12 and stays out, so a schema-12 client never receives events it
+// predates (python client before v1.2.0 raises AttributeError from its listen loop on an unknown event type).
+// Evictions go to every opted-in connection: no record says who holds a stream.
 const CAMERA_OPT_IN_COMMANDS = new Set([
-    "send_webrtc_provider_command",
     "camera_get_capabilities",
     "camera_start_stream",
     "camera_stop_stream",

@@ -352,6 +352,30 @@ describe("VideoStreamAllocate against a camera with fixed stream profiles", () =
         );
     });
 
+    it("asks the first trade-off point's bit rate last when the points are listed smallest first", async () => {
+        const state: CameraState = {
+            ...FIXED_PROFILE_STATE,
+            rateDistortionTradeOffPoints: [
+                { codec: H264, resolution: { width: 640, height: 480 }, minBitRate: 10000 },
+                { codec: H264, resolution: { width: 1920, height: 1080 }, minBitRate: 2000000 },
+            ],
+        };
+        const { invokes, result } = await resolveOn(
+            state,
+            async invoke => {
+                if (invoke.command !== "videoStreamAllocate") return undefined;
+                if (invoke.fields.minFrameRate === invoke.fields.maxFrameRate) {
+                    throw StatusResponseError.create(Status.DynamicConstraintError);
+                }
+                return { videoStreamId: 7 };
+            },
+            undefined,
+            { codec: H264 },
+        );
+        expect(result).to.deep.include({ streamId: 7 });
+        expect(allocates(invokes).at(-1)?.fields).to.deep.include({ minBitRate: 10000, maxBitRate: 10000 });
+    });
+
     it("skips the certification window when the caller's bounds exclude it", async () => {
         const { invokes } = await resolveOn(
             FIXED_PROFILE_STATE,

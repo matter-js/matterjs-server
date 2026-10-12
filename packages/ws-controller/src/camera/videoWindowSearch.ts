@@ -6,7 +6,7 @@
 
 import type { Resolution, VideoBudgetNarrowing, VideoEnvelope } from "./cameraTypes.js";
 import type { VideoPlan } from "./streamPolicy.js";
-import { halveResolution, planFrameRate, sameVideoEnvelope, withFrameRate } from "./streamPolicy.js";
+import { halveResolution, planBitRateFloor, planFrameRate, sameVideoEnvelope, withFrameRate } from "./streamPolicy.js";
 
 export type VideoRetryDimension = "bitRate" | "frameRate" | "resolution";
 
@@ -23,27 +23,37 @@ export const NO_RETRY_STEPS: VideoRetrySteps = { bitRate: 0, frameRate: 0, resol
 
 /**
  * Windows asked per request, eviction retries included; bounds how long the endpoint lock is held. A
- * camera refusing everything with no trade-off point (bit rate floor 1) takes 31: 1 + 22 bit rate
- * halvings from 8 Mbit/s + 2 frame rate steps + 2 size steps with 2 frame rate steps each.
+ * camera refusing everything from a start of at most 8 Mbit/s takes at most 31: 1 + 22 bit rate
+ * halvings from 8 Mbit/s to a floor of 1 + 2 frame rate steps + 2 size steps with 2 frame rate steps
+ * each. A size step keeps the halvings taken, so all sizes together halve at most as often as the
+ * lowest floor needs.
  */
 export const MAX_VIDEO_ASKS = 32;
 
+type BoundedDimension = Exclude<VideoRetryDimension, "bitRate">;
+type BoundedLimits = Readonly<Record<BoundedDimension, number>>;
+
 /**
- * Bit rate steps down to the plan's floor, the rate-distortion trade-off point: profiles hide their bit
- * rate ceilings (a tested camera caps at 2 Mbit/s), so no fixed count reaches them. Frame rate and frame
- * size are bounded, so a camera refusing everything fails after a known number of attempts.
+ * Frame rate and frame size are bounded, so a camera refusing everything fails after a known number
+ * of attempts. Bit rate is not ({@link bitRateSteps}).
  */
-export function retryLimits(plan: VideoPlan): VideoRetrySteps {
-    const { minBitRate } = plan.envelope;
-    let bitRate = 0;
-    for (let rate = plan.envelope.maxBitRate; rate > minBitRate; rate = Math.max(minBitRate, Math.floor(rate / 2))) {
-        bitRate += 1;
+const BOUNDED_LIMITS: BoundedLimits = { frameRate: 2, resolution: 2 };
+
+/**
+ * The bit rate halvings that reach the floor of the frame size `resolutionSteps` size steps make: the
+ * trade-off point for that size. Profiles hide their bit rate ceilings (a tested camera caps at
+ * 2 Mbit/s), so no fixed count reaches them.
+ */
+function bitRateSteps(plan: VideoPlan, resolutionSteps: number): number {
+    const floor = planBitRateFloor(plan, retryResolution(plan, resolutionSteps));
+    let steps = 0;
+    for (let rate = plan.envelope.maxBitRate; rate > floor; rate = Math.max(floor, Math.floor(rate / 2))) {
+        steps += 1;
     }
-    return { bitRate, frameRate: 2, resolution: 2 };
+    return steps;
 }
 
-interface RetryDimension {
-    readonly name: VideoRetryDimension;
+interface RetryDimensionTraits {
     /**
      * No attribute states how low the camera goes, so a lower value can make a servable window
      * unservable. Resolution has `MinViewport`, bit rate the rate-distortion trade-off point.
@@ -52,6 +62,10 @@ interface RetryDimension {
     /** Lowering it charges the encoder budget less (`MaxEncodedPixelRate`, §11.2.7.2). */
     readonly chargesEncoder: boolean;
 }
+
+type RetryDimension =
+    | (RetryDimensionTraits & { readonly name: "bitRate"; readonly unpublishedFloor: false })
+    | (RetryDimensionTraits & { readonly name: BoundedDimension });
 
 /**
  * The order an unservable window is narrowed in: the quality given up first comes first. Bit rate
@@ -73,11 +87,12 @@ export function videoRetryWindow(plan: VideoPlan, steps: VideoRetrySteps): Video
     for (let taken = 0; taken < steps.frameRate; taken++) {
         frameRate = Math.max(frameRateFloor, Math.floor(frameRate / 2));
     }
+    const minBitRate = planBitRateFloor(plan, maxResolution);
     let maxBitRate = envelope.maxBitRate;
     for (let taken = 0; taken < steps.bitRate; taken++) {
-        maxBitRate = Math.max(envelope.minBitRate, Math.floor(maxBitRate / 2));
+        maxBitRate = Math.max(minBitRate, Math.floor(maxBitRate / 2));
     }
-    return { ...withFrameRate(envelope, frameRate), maxResolution, maxBitRate };
+    return { ...withFrameRate(envelope, frameRate), maxResolution, minBitRate, maxBitRate };
 }
 
 function retryResolution(plan: VideoPlan, steps: number): Resolution {
@@ -121,7 +136,7 @@ interface Fitted {
 function fitToBudget(
     plan: VideoPlan,
     wanted: VideoRetrySteps,
-    limits: VideoRetrySteps,
+    limits: BoundedLimits,
     fits: (window: VideoEnvelope) => boolean,
 ): Fitted {
     let steps = wanted;
@@ -149,9 +164,13 @@ function fitToBudget(
  * - `fits` is the encoder budget, and it only predicts: a window it rejects is replaced by the first
  *   one in the capacity order that fits ({@link fitToBudget}), which is then asked. Only the camera's
  *   answers count as refusals, so nothing is freed before the camera itself answers ResourceExhausted.
- * - A step never proposes a window the camera already refused, compared as the budget would fit it.
- *   Two other moves can ask one again: `roomMade` asks the best window refused for capacity (through
- *   the budget, now with the freed room), and the restore below asks the window at the higher rate.
+ * - A step never proposes a window the camera refused, compared as the budget would fit it. An
+ *   unservable refusal holds for the whole search; a capacity refusal only until room is made, since
+ *   the freed room may carry the window. `roomMade` returns to the best window refused for capacity
+ *   (through the budget, now with the freed room), and the restore below asks the window at the higher
+ *   rate even when the camera refused it.
+ * - Each window's bit rate floor is the trade-off point for its own frame size. A size step keeps the
+ *   bit rate halvings taken, so halving goes on from there down to the smaller size's floor.
  * - Unservable: lower the first dimension in {@link RETRY_DIMENSIONS} order that can still step. A
  *   frame size step starts frame rate again at the highest rate the smaller size allows.
  * - Capacity: lower a dimension that charges the encoder and has a published floor, keeping the frame
@@ -174,10 +193,12 @@ export class VideoWindowSearch {
     #asked = NO_RETRY_STEPS;
     #wanted = NO_RETRY_STEPS;
     #budgetBefore: VideoRetrySteps | undefined;
-    #limits: VideoRetrySteps;
+    #limits = BOUNDED_LIMITS;
     #lastStep: Step | undefined;
-    readonly #refused = new Array<{ readonly window: VideoEnvelope; readonly refusal: VideoRefusal }>();
+    #refused = new Array<{ readonly window: VideoEnvelope; readonly refusal: VideoRefusal }>();
     #bestServable: VideoRetrySteps | undefined;
+    /** The first steps the camera refused for capacity since room was last made: servable. */
+    #capacityRefused: VideoRetrySteps | undefined;
     #capacitySeen = false;
     #budgetMoved = false;
     readonly #askLimit: number;
@@ -190,7 +211,6 @@ export class VideoWindowSearch {
         this.#plan = plan;
         this.#fits = fits;
         this.#askLimit = askLimit;
-        this.#limits = retryLimits(plan);
         this.#askedWindow = plan.envelope;
         this.#move = this.#settle(this.#propose(NO_RETRY_STEPS, undefined));
     }
@@ -233,6 +253,7 @@ export class VideoWindowSearch {
     }
 
     roomMade(): void {
+        this.#refused = this.#refused.filter(entry => entry.refusal === "unservable");
         this.#move = this.#settle(this.#afterRoom());
     }
 
@@ -278,12 +299,24 @@ export class VideoWindowSearch {
     #afterRoom(): VideoSearchMove {
         if (this.#lastRungAsked) return { kind: "ask", window: this.#askedWindow };
         const best = this.#bestServable ?? this.#wanted;
+        const capacityRefused = this.#capacityRefused;
         this.#bestServable = undefined;
-        return this.#propose(best, undefined);
+        this.#capacityRefused = undefined;
+        const move = this.#propose(best, undefined);
+        if (move.kind === "ask" && this.#refused.some(entry => sameVideoEnvelope(entry.window, move.window))) {
+            const stepped = this.#after("unservable");
+            // A stream was freed for this search, so it asks at least once more.
+            if (stepped.kind === "giveUp" && capacityRefused !== undefined) return this.#askAsIs(capacityRefused);
+            return stepped;
+        }
+        return move;
     }
 
     #answered(refusal: VideoRefusal): VideoSearchMove {
-        if (refusal === "capacity") this.#capacitySeen = true;
+        if (refusal === "capacity") {
+            this.#capacitySeen = true;
+            this.#capacityRefused ??= this.#asked;
+        }
         this.#refused.push({ window: this.#askedWindow, refusal });
         if (this.#lastRungAsked) return refusal === "capacity" ? { kind: "makeRoom" } : { kind: "giveUp" };
         if (refusal === "unservable" && this.#budgetBefore !== undefined) {
@@ -321,7 +354,11 @@ export class VideoWindowSearch {
     #step(dimensions: readonly RetryDimension[], refusal: VideoRefusal): VideoSearchMove {
         let position = refusal === "unservable" ? this.#wanted : this.#asked;
         for (const dimension of dimensions) {
-            for (let count = position[dimension.name] + 1; count <= this.#limits[dimension.name]; count++) {
+            const limit =
+                dimension.name === "bitRate"
+                    ? bitRateSteps(this.#plan, position.resolution)
+                    : this.#limits[dimension.name];
+            for (let count = position[dimension.name] + 1; count <= limit; count++) {
                 const next =
                     dimension.name === "resolution" && refusal === "unservable"
                         ? {
@@ -390,6 +427,6 @@ function sameSteps(a: VideoRetrySteps, b: VideoRetrySteps): boolean {
  * budget said would not fit.
  */
 export function firstVideoWindow(plan: VideoPlan, fits: (window: VideoEnvelope) => boolean): VideoEnvelope | undefined {
-    const fitted = fitToBudget(plan, NO_RETRY_STEPS, retryLimits(plan), fits);
+    const fitted = fitToBudget(plan, NO_RETRY_STEPS, BOUNDED_LIMITS, fits);
     return fitted.fits ? videoRetryWindow(plan, fitted.steps) : undefined;
 }

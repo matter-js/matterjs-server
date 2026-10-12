@@ -13,6 +13,7 @@ import { Status } from "@matter/main/types";
 import { deviceForgotSession, invokeEndSession } from "../controller/webRtcSessionTracking.js";
 import {
     ServerError,
+    ServerErrorCode,
     type CameraOccupyingStreamDetail,
     type CameraPrivacyMode,
 } from "../types/WebSocketMessageTypes.js";
@@ -43,7 +44,7 @@ import {
     statedFeatureNames,
 } from "./devicePolicy.js";
 import { deviceStatusOf } from "./deviceStatus.js";
-import { resolveOverlays } from "./overlayPolicy.js";
+import { overlaysMatch, resolveOverlays } from "./overlayPolicy.js";
 import type { OverlayBounds } from "./overlayPolicy.js";
 import { decodableVideoCodecs, mediaRefusal, parseSdpVideoConstraints, videoCodecLimits } from "./sdpConstraints.js";
 import type { MediaRefusal, SdpVideoConstraints, SelectedVideoCodecLimits } from "./sdpConstraints.js";
@@ -492,6 +493,11 @@ export interface StartStreamArgs {
  */
 export type TrackOutcome = { readonly stream: ResolvedStream } | { readonly unavailable: unknown };
 
+/** `gone`: the camera answered NOT_FOUND, so the room is free although this request evicted nothing. */
+type FreedRoom =
+    | { readonly streamId: number; readonly outcome: "refused" | "gone" }
+    | { readonly streamId: number; readonly outcome: "evicted"; readonly spend: () => void };
+
 export interface StartStreamResult {
     webRtcSessionId: number;
     mode: "solicit_offer" | "provide_offer";
@@ -711,6 +717,48 @@ export class CameraStreamManager {
     }
 
     /**
+     * The stream as the camera lists it after an allocate it answered with that existing stream.
+     * `MatterCameraDeviceIo` re-reads the list after each allocate, so this sees what the allocate changed.
+     */
+    protected async videoStreamAfterAllocate(
+        nodeId: NodeId,
+        endpointId: EndpointNumber,
+        streamId: number,
+    ): Promise<AllocatedVideoStream | undefined> {
+        const reported = (await this.io.readCameraState(nodeId, endpointId))?.allocatedVideoStreams;
+        if (reported === undefined) return undefined;
+        return [...reported, ...this.unreportedVideoStreams(nodeId, endpointId, reported)].find(
+            stream => stream.videoStreamId === streamId,
+        );
+    }
+
+    /** {@link videoStreamAfterAllocate} for audio. */
+    protected async audioStreamAfterAllocate(
+        nodeId: NodeId,
+        endpointId: EndpointNumber,
+        streamId: number,
+    ): Promise<AllocatedAudioStream | undefined> {
+        const reported = (await this.io.readCameraState(nodeId, endpointId))?.allocatedAudioStreams;
+        if (reported === undefined) return undefined;
+        return [...reported, ...this.unreportedAudioStreams(nodeId, endpointId, reported)].find(
+            stream => stream.audioStreamId === streamId,
+        );
+    }
+
+    /** {@link videoStreamAfterAllocate} for snapshot streams. */
+    protected async snapshotStreamAfterAllocate(
+        nodeId: NodeId,
+        endpointId: EndpointNumber,
+        streamId: number,
+    ): Promise<AllocatedSnapshotStream | undefined> {
+        const reported = (await this.io.readCameraState(nodeId, endpointId))?.allocatedSnapshotStreams;
+        if (reported === undefined) return undefined;
+        return [...reported, ...this.unreportedSnapshotStreams(nodeId, endpointId, reported)].find(
+            stream => stream.snapshotStreamId === streamId,
+        );
+    }
+
+    /**
      * Drop this lease unless the id was re-leased since. A give-back abandoned by the cleanup budget can
      * land after the lock is gone, when the reissued id may belong to a later request's stream.
      */
@@ -894,8 +942,18 @@ export class CameraStreamManager {
     ): ResolvedStream | undefined {
         if ("stream" in outcome) return outcome.stream;
         if (request.state === "demanded") throw outcome.unavailable;
-        const reason = outcome.unavailable instanceof Error ? outcome.unavailable.message : String(outcome.unavailable);
-        logger.info(`No ${track} stream for node ${nodeId}; continuing without it: ${reason}`);
+        const reason = outcome.unavailable;
+        // A local encode error or a broken device answer is never only an info line.
+        const unexpected =
+            reason instanceof ServerError
+                ? reason.code === ServerErrorCode.SDKStackError
+                : deviceStatusOf(reason) === undefined;
+        if (unexpected) {
+            logger.warn(`No ${track} stream for node ${nodeId}; continuing without it:`, reason);
+        } else {
+            const text = reason instanceof Error ? reason.message : String(reason);
+            logger.info(`No ${track} stream for node ${nodeId}; continuing without it: ${text}`);
+        }
         return undefined;
     }
 
@@ -931,7 +989,8 @@ export class CameraStreamManager {
      *
      * Rungs, cheapest for everyone first: reuse, allocate within the remaining encoder budget, narrow,
      * evict an unused stream (only with `allowEviction`, default true), then hand out a stream that meets
-     * the caller's bounds but not the envelope, flagged `degraded`. No rung gives up the caller's bounds
+     * the caller's bounds but not the envelope, flagged `degraded`. A stream the camera answers an allocate
+     * with is flagged the same way when it misses the envelope. No rung gives up the caller's bounds
      * (`videoCallerBounds`).
      */
     protected async resolveVideoStreamLocked(
@@ -1045,50 +1104,60 @@ export class CameraStreamManager {
         let snapshotCandidates = liveSnapshotStreams;
 
         let lastStatus: number | undefined;
+        let answeredOutsideBounds: number | undefined;
         const freed = new Array<() => void>();
         const evicted = new Array<number>();
         const reporting = (resolved: ResolvedStream): ResolvedStream =>
             evicted.length === 0 ? resolved : { ...resolved, evicted };
-        /** Frees one stream this request may take; false when no candidate is left. */
-        const makeRoom = async (): Promise<boolean> => {
-            // Snapshot streams go before any video stream: StreamUsagePriorities ranks video usages only,
-            // and a live view outranks a still frame.
+        const freeSnapshot = async (ours: boolean): Promise<boolean> => {
             for (;;) {
                 const room = await this.freeSnapshotStream(
                     nodeId,
                     endpointId,
-                    snapshotCandidates,
+                    snapshotCandidates.filter(stream => this.ownsSnapshotStream(nodeId, endpointId, stream) === ours),
                     state.maxEncodedPixelRate,
                     scope,
                 );
-                if (room === undefined) break;
+                if (room === undefined) return false;
                 snapshotCandidates = snapshotCandidates.filter(stream => stream.snapshotStreamId !== room.streamId);
-                if (room.freed) {
-                    liveSnapshotStreams = liveSnapshotStreams.filter(
-                        stream => stream.snapshotStreamId !== room.streamId,
-                    );
-                    freed.push(room.spend);
-                    return true;
-                }
+                if (room.outcome === "refused") continue;
+                liveSnapshotStreams = liveSnapshotStreams.filter(stream => stream.snapshotStreamId !== room.streamId);
+                if (room.outcome === "evicted") freed.push(room.spend);
+                return true;
             }
+        };
+        const freeVideo = async (ours: boolean): Promise<boolean> => {
             for (;;) {
                 const room = await this.freeAnUnreferencedVideoStream(
                     nodeId,
                     endpointId,
-                    videoCandidates,
+                    videoCandidates.filter(
+                        stream => this.ownsStream(nodeId, endpointId, "video", stream.videoStreamId) === ours,
+                    ),
                     state.streamUsagePriorities,
                     scope,
                 );
                 if (room === undefined) return false;
                 videoCandidates = videoCandidates.filter(stream => stream.videoStreamId !== room.streamId);
-                if (room.freed) {
-                    liveStreams = liveStreams.filter(stream => stream.videoStreamId !== room.streamId);
+                if (room.outcome === "refused") continue;
+                liveStreams = liveStreams.filter(stream => stream.videoStreamId !== room.streamId);
+                if (room.outcome === "evicted") {
                     freed.push(room.spend);
                     evicted.push(room.streamId);
-                    return true;
                 }
+                return true;
             }
         };
+        /**
+         * Frees one stream this request may take; false when no candidate is left. This server's own
+         * streams cost only itself, so they go first. Another controller's snapshot stream goes before its
+         * video stream, although `CaptureSnapshot` does not raise `ReferenceCount` and it may be in use.
+         */
+        const makeRoom = async (): Promise<boolean> =>
+            (await freeSnapshot(true)) ||
+            (await freeVideo(true)) ||
+            (await freeSnapshot(false)) ||
+            (await freeVideo(false));
         for (;;) {
             const move = search.move;
             if (move.kind === "giveUp") break;
@@ -1102,8 +1171,9 @@ export class CameraStreamManager {
                 continue;
             }
             const envelope = move.window;
+            let response: unknown;
             try {
-                const response = await this.io.invoke({
+                response = await this.io.invoke({
                     nodeId,
                     endpointId,
                     cluster: "avsm",
@@ -1121,38 +1191,6 @@ export class CameraStreamManager {
                         ...envelope.overlays,
                     },
                 });
-                const streamId =
-                    typeof response === "object" && response !== null && "videoStreamId" in response
-                        ? response.videoStreamId
-                        : undefined;
-                if (typeof streamId !== "number") {
-                    // Without the id the stream cannot be given back.
-                    throw ServerError.sdkStackError("VideoStreamAllocate returned no VideoStreamID");
-                }
-                // §11.2.8.4: the camera answers a request matching one of its streams with that stream's id.
-                const matched = [...liveStreams, ...unreported].find(stream => stream.videoStreamId === streamId);
-                if (matched !== undefined) {
-                    return reporting({
-                        streamId,
-                        envelope: envelopeOfVideoStream(matched),
-                        provenance: existingStreamProvenance(this.leaseReusedVideoStream(nodeId, endpointId, matched)),
-                    });
-                }
-                const lease = this.recordAllocation(nodeId, endpointId, {
-                    kind: "video",
-                    streamId,
-                    allocatedByUs: true,
-                    allocation: allocatedVideoStream(streamId, streamUsage, envelope),
-                });
-                scope.returnOnFailure(() => this.#deallocate(nodeId, endpointId, lease));
-                for (const spend of freed) spend();
-                const budgetNarrowed = search.budgetNarrowing(envelope);
-                return reporting({
-                    streamId,
-                    envelope,
-                    provenance: "allocated",
-                    ...(budgetNarrowed === undefined ? {} : { budgetNarrowed }),
-                });
             } catch (error) {
                 if (error instanceof ServerError) throw error;
                 lastStatus = deviceStatusOf(error);
@@ -1168,11 +1206,67 @@ export class CameraStreamManager {
                     });
                 }
                 search.refused(reaction);
+                continue;
             }
+            const streamId =
+                typeof response === "object" && response !== null && "videoStreamId" in response
+                    ? response.videoStreamId
+                    : undefined;
+            if (typeof streamId !== "number") {
+                // Without the id the stream cannot be given back.
+                throw ServerError.sdkStackError("VideoStreamAllocate returned no VideoStreamID");
+            }
+            // §11.2.8.4: the camera answers a request matching one of its streams with that stream's id.
+            if ([...liveStreams, ...unreported].some(stream => stream.videoStreamId === streamId)) {
+                // A reference camera narrows the stream's range to the request (UpdateVideoStreamRangeParams).
+                const current = await this.videoStreamAfterAllocate(nodeId, endpointId, streamId);
+                if (current === undefined) {
+                    throw ServerError.sdkStackError(
+                        `VideoStreamAllocate answered with stream ${streamId}, which the camera no longer lists`,
+                    );
+                }
+                // Another usage is accepted: the camera chose to share the stream, and ProvideOffer does not check it.
+                const sharedBounds = { ...bounds, streamUsage: current.streamUsage };
+                if (!satisfiesVideoCallerBounds(current, sharedBounds)) {
+                    // A smaller window would be answered with the same stream.
+                    logger.notice(
+                        `Node ${nodeId} endpoint ${endpointId}: the camera answered the video allocate with its stream ${streamId}, which is outside the bounds the caller stated`,
+                    );
+                    answeredOutsideBounds = streamId;
+                    break;
+                }
+                const withinEnvelope =
+                    findReusableVideoStream([current], selection.plan, sharedBounds, () => envelope.maxFrameRate) !==
+                    undefined;
+                return reporting({
+                    streamId,
+                    envelope: envelopeOfVideoStream(current),
+                    ...(withinEnvelope ? {} : { degraded: true }),
+                    provenance: existingStreamProvenance(this.leaseReusedVideoStream(nodeId, endpointId, current)),
+                });
+            }
+            const lease = this.recordAllocation(nodeId, endpointId, {
+                kind: "video",
+                streamId,
+                allocatedByUs: true,
+                allocation: allocatedVideoStream(streamId, streamUsage, envelope),
+            });
+            scope.returnOnFailure(() => this.#deallocate(nodeId, endpointId, lease));
+            for (const spend of freed) spend();
+            const budgetNarrowed = search.budgetNarrowing(envelope);
+            return reporting({
+                streamId,
+                envelope,
+                provenance: "allocated",
+                ...(budgetNarrowed === undefined ? {} : { budgetNarrowed }),
+            });
         }
 
         // Last rung: gives up the computed envelope, never the caller's bounds.
-        const degraded = findDegradedVideoStream([...liveStreams, ...unreported], bounds);
+        const degraded = findDegradedVideoStream(
+            [...liveStreams, ...unreported].filter(stream => stream.videoStreamId !== answeredOutsideBounds),
+            bounds,
+        );
         if (degraded !== undefined) {
             return reporting({
                 streamId: degraded.videoStreamId,
@@ -1182,13 +1276,13 @@ export class CameraStreamManager {
             });
         }
 
-        if (search.outcome === "unservable") {
+        if (answeredOutsideBounds !== undefined || search.outcome === "unservable") {
             throw ServerError.cameraStreamIncompatible({
                 reason: "bounds",
                 track: "video",
                 device: deviceCodecs.map(videoCodecName),
                 requested: [videoCodecName(codec)],
-                deviceStatus: lastStatus,
+                deviceStatus: answeredOutsideBounds === undefined ? lastStatus : undefined,
             });
         }
         throw ServerError.cameraResourceExhausted({
@@ -1334,8 +1428,9 @@ export class CameraStreamManager {
             };
         }
 
+        let response: unknown;
         try {
-            const response = await this.io.invoke({
+            response = await this.io.invoke({
                 nodeId,
                 endpointId,
                 cluster: "avsm",
@@ -1349,32 +1444,6 @@ export class CameraStreamManager {
                     bitDepth: envelope.bitDepth,
                 },
             });
-            const streamId =
-                typeof response === "object" && response !== null && "audioStreamId" in response
-                    ? response.audioStreamId
-                    : undefined;
-            if (typeof streamId !== "number") {
-                return { unavailable: ServerError.sdkStackError("AudioStreamAllocate returned no AudioStreamID") };
-            }
-            // §11.2.8.1: the camera answers a request matching one of its streams with that stream's id.
-            const matched = knownStreams.find(stream => stream.audioStreamId === streamId);
-            if (matched !== undefined) {
-                return {
-                    stream: {
-                        streamId,
-                        envelope: envelopeOfAudioStream(matched),
-                        provenance: existingStreamProvenance(this.leaseReusedAudioStream(nodeId, endpointId, matched)),
-                    },
-                };
-            }
-            const lease = this.recordAllocation(nodeId, endpointId, {
-                kind: "audio",
-                streamId,
-                allocatedByUs: true,
-                allocation: allocatedAudioStream(streamId, streamUsage, envelope),
-            });
-            scope.returnOnFailure(() => this.#deallocate(nodeId, endpointId, lease));
-            return { stream: { streamId, envelope, provenance: "allocated" } };
         } catch (error) {
             if (error instanceof ServerError) throw error;
             const status = deviceStatusOf(error);
@@ -1400,11 +1469,66 @@ export class CameraStreamManager {
                 }),
             };
         }
+        const streamId =
+            typeof response === "object" && response !== null && "audioStreamId" in response
+                ? response.audioStreamId
+                : undefined;
+        if (typeof streamId !== "number") {
+            return { unavailable: ServerError.sdkStackError("AudioStreamAllocate returned no AudioStreamID") };
+        }
+        // §11.2.8.1: the camera answers a request matching one of its streams with that stream's id.
+        if (knownStreams.some(stream => stream.audioStreamId === streamId)) {
+            let current: AllocatedAudioStream | undefined;
+            try {
+                current = await this.audioStreamAfterAllocate(nodeId, endpointId, streamId);
+            } catch (error) {
+                return { unavailable: error };
+            }
+            if (current === undefined) {
+                return {
+                    unavailable: ServerError.sdkStackError(
+                        `AudioStreamAllocate answered with stream ${streamId}, which the camera no longer lists`,
+                    ),
+                };
+            }
+            // A reference camera matches a stream with more channels, a higher sample rate or any bit rate.
+            if (
+                current.audioCodec !== envelope.codec ||
+                !satisfiesAudioCallerBounds(current, { ...bounds, streamUsage: current.streamUsage })
+            ) {
+                logger.notice(
+                    `Node ${nodeId} endpoint ${endpointId}: the camera answered the audio allocate with its stream ${streamId}, which is outside the bounds the caller stated`,
+                );
+                return {
+                    unavailable: ServerError.cameraStreamIncompatible({
+                        reason: "bounds",
+                        track: "audio",
+                        device: deviceCodecs,
+                        requested: requestedCodecs,
+                    }),
+                };
+            }
+            return {
+                stream: {
+                    streamId,
+                    envelope: envelopeOfAudioStream(current),
+                    provenance: existingStreamProvenance(this.leaseReusedAudioStream(nodeId, endpointId, current)),
+                },
+            };
+        }
+        const lease = this.recordAllocation(nodeId, endpointId, {
+            kind: "audio",
+            streamId,
+            allocatedByUs: true,
+            allocation: allocatedAudioStream(streamId, streamUsage, envelope),
+        });
+        scope.returnOnFailure(() => this.#deallocate(nodeId, endpointId, lease));
+        return { stream: { streamId, envelope, provenance: "allocated" } };
     }
 
     /**
      * Deallocate one unreferenced video stream from `streams` (victim per {@link chooseEvictionVictim})
-     * and return its id, or `undefined` if nothing was freed.
+     * and return its id, or `undefined` if there was none to take.
      *
      * Registered with `scope` via `returnUnlessSpent`: unless the request spends the capacity and
      * succeeds, an equivalent stream is allocated back under a new id.
@@ -1415,7 +1539,7 @@ export class CameraStreamManager {
         streams: AllocatedVideoStream[],
         priorities: number[],
         scope: AllocationScope,
-    ): Promise<{ streamId: number; freed: boolean; spend: () => void } | undefined> {
+    ): Promise<FreedRoom | undefined> {
         const ours = (stream: AllocatedVideoStream): boolean =>
             this.ownsStream(nodeId, endpointId, "video", stream.videoStreamId);
         const victim = chooseEvictionVictim(streams, priorities, ours);
@@ -1435,8 +1559,7 @@ export class CameraStreamManager {
                 fields: { videoStreamId: victim.videoStreamId },
             });
         } catch (error) {
-            logger.info(`Could not deallocate video stream ${victim.videoStreamId}:`, error);
-            return { streamId: victim.videoStreamId, freed: false, spend: () => {} };
+            return this.#deallocateFailed(nodeId, endpointId, "video", victim.videoStreamId, error);
         }
         this.dropLease(nodeId, endpointId, "video", victim.videoStreamId);
         this.#announce(this.events.streamEvicted, {
@@ -1453,13 +1576,35 @@ export class CameraStreamManager {
                 );
             }),
         );
-        return { streamId: victim.videoStreamId, freed: true, spend };
+        return { streamId: victim.videoStreamId, outcome: "evicted", spend };
     }
 
     /**
-     * Deallocate one unreferenced snapshot stream, those {@link ownsSnapshotStream} claims before anyone
-     * else's (victim per {@link chooseSnapshotStreamToFree}). `undefined`: none worth taking;
-     * `freed: false`: the camera refused. Registered with `scope` like {@link freeAnUnreferencedVideoStream}.
+     * Only NOT_FOUND proves the stream is gone; any other status keeps the lease. A stream already gone was
+     * not evicted by this request, so nothing is announced or restored.
+     */
+    #deallocateFailed(
+        nodeId: NodeId,
+        endpointId: EndpointNumber,
+        kind: "video" | "snapshot",
+        streamId: number,
+        error: unknown,
+    ): FreedRoom {
+        if (deviceStatusOf(error) === Status.NotFound) {
+            this.dropLease(nodeId, endpointId, kind, streamId);
+            logger.info(
+                `The camera no longer had ${kind} stream ${streamId} on node ${nodeId} when asked to deallocate it`,
+            );
+            return { streamId, outcome: "gone" };
+        }
+        logger.info(`Could not deallocate ${kind} stream ${streamId}:`, error);
+        return { streamId, outcome: "refused" };
+    }
+
+    /**
+     * Deallocate one unreferenced snapshot stream from `streams` (victim per
+     * {@link chooseSnapshotStreamToFree}). `undefined`: none worth taking. Registered with `scope` like
+     * {@link freeAnUnreferencedVideoStream}.
      */
     protected async freeSnapshotStream(
         nodeId: NodeId,
@@ -1467,14 +1612,10 @@ export class CameraStreamManager {
         streams: AllocatedSnapshotStream[],
         maxEncodedPixelRate: number | undefined,
         scope: AllocationScope,
-    ): Promise<{ streamId: number; freed: boolean; spend: () => void } | undefined> {
-        const ours = streams.filter(stream => this.ownsSnapshotStream(nodeId, endpointId, stream));
-        const theirs = streams.filter(stream => !ours.includes(stream));
-        const victim =
-            chooseSnapshotStreamToFree(ours, { maxEncodedPixelRate }) ??
-            chooseSnapshotStreamToFree(theirs, { maxEncodedPixelRate });
+    ): Promise<FreedRoom | undefined> {
+        const victim = chooseSnapshotStreamToFree(streams, { maxEncodedPixelRate });
         if (victim === undefined) return undefined;
-        const allocatedByUs = ours.includes(victim);
+        const allocatedByUs = this.ownsSnapshotStream(nodeId, endpointId, victim);
         const { snapshotStreamId } = victim;
         try {
             await this.io.invoke({
@@ -1485,12 +1626,7 @@ export class CameraStreamManager {
                 fields: { snapshotStreamId },
             });
         } catch (error) {
-            // Only NotFound proves the stream is gone; any other status keeps the lease.
-            if (deviceStatusOf(error) === Status.NotFound) {
-                this.dropLease(nodeId, endpointId, "snapshot", snapshotStreamId);
-            }
-            logger.info(`Could not deallocate snapshot stream ${snapshotStreamId}:`, error);
-            return { streamId: snapshotStreamId, freed: false, spend: () => {} };
+            return this.#deallocateFailed(nodeId, endpointId, "snapshot", snapshotStreamId, error);
         }
         this.dropLease(nodeId, endpointId, "snapshot", snapshotStreamId);
         logger.notice(
@@ -1505,7 +1641,7 @@ export class CameraStreamManager {
                 );
             }),
         );
-        return { streamId: snapshotStreamId, freed: true, spend };
+        return { streamId: snapshotStreamId, outcome: "evicted", spend };
     }
 
     /**
@@ -2222,8 +2358,33 @@ export class CameraStreamManager {
                 }
                 const { capability, snapshotStreamId } = allocated;
                 // §11.2.8.8: the camera answers a request matching one of its streams with that stream's id.
-                const matched = knownStreams.find(stream => stream.snapshotStreamId === snapshotStreamId);
-                if (matched !== undefined) {
+                if (knownStreams.some(stream => stream.snapshotStreamId === snapshotStreamId)) {
+                    const current = await this.snapshotStreamAfterAllocate(nodeId, endpointId, snapshotStreamId);
+                    if (current === undefined) {
+                        throw ServerError.sdkStackError(
+                            `SnapshotStreamAllocate answered with stream ${snapshotStreamId}, which the camera no longer lists`,
+                        );
+                    }
+                    const outsideBounds = (what: string): ServerError => {
+                        logger.notice(
+                            `Node ${nodeId} endpoint ${endpointId}: the camera answered the snapshot allocate with its stream ${snapshotStreamId}, ${what} outside the bounds the caller stated`,
+                        );
+                        return ServerError.cameraStreamIncompatible({
+                            reason: "bounds",
+                            device: deviceCodecs,
+                            requested: requestedCodecs,
+                        });
+                    };
+                    // Stated overlays only: the camera matches a stream whatever its overlays.
+                    if (
+                        (args.codec !== undefined && current.imageCodec !== args.codec) ||
+                        !overlaysMatch(current.overlays, {
+                            watermarkEnabled: args.watermarkEnabled,
+                            osdEnabled: args.osdEnabled,
+                        })
+                    ) {
+                        throw outsideBounds("which is");
+                    }
                     const captured = await this.#captureSnapshot({
                         nodeId,
                         endpointId,
@@ -2233,6 +2394,14 @@ export class CameraStreamManager {
                         deviceCodecs,
                         requestedCodecs,
                     });
+                    // The stream's range may exceed the ceiling, so only the frame it returned decides (§11.2.8.13.3).
+                    const ceiling = args.maxResolution;
+                    if (
+                        ceiling !== undefined &&
+                        (captured.resolution.width > ceiling.width || captured.resolution.height > ceiling.height)
+                    ) {
+                        throw outsideBounds("whose frame is");
+                    }
                     return {
                         ...captured,
                         degraded: isDegradedFrom(captured.resolution, bestWithinCallerBounds),

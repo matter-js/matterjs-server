@@ -21,11 +21,18 @@ import {
     computeVideoEnvelope,
     findDegradedVideoStream,
     findReusableVideoStream,
+    planBitRateFloor,
     satisfiesAudioCallerBounds,
     satisfiesVideoCallerBounds,
     videoCallerBounds,
 } from "../src/camera/streamPolicy.js";
-import type { AudioSelection, VideoEnvelopeArgs, VideoPlan, VideoSelection } from "../src/camera/streamPolicy.js";
+import type {
+    AudioSelection,
+    VideoEnvelopeArgs,
+    VideoHints,
+    VideoPlan,
+    VideoSelection,
+} from "../src/camera/streamPolicy.js";
 import { NO_OVERLAYS } from "./cameraFixtures.js";
 
 /** `computeVideoEnvelope` with no overlay asked for, which is what most cases are about. */
@@ -571,6 +578,134 @@ describe("streamPolicy", () => {
         });
     });
 
+    describe("the bit rate floor of each window", () => {
+        const SMALL = { codec: H265, resolution: { width: 640, height: 360 }, minBitRate: 500000 };
+        const LARGE = { codec: H265, resolution: { width: 1920, height: 1080 }, minBitRate: 2000000 };
+        const capabilities = (points: (typeof SMALL)[]) => ({
+            sensor: { width: 1920, height: 1080 },
+            maxFrameRate: 30,
+            minViewport: { width: 640, height: 360 },
+            rateDistortionPoints: points,
+        });
+
+        for (const [order, points] of [
+            ["smallest first", [SMALL, LARGE]],
+            ["largest first", [LARGE, SMALL]],
+        ] as const) {
+            describe(`with trade-off points listed ${order}`, () => {
+                const plan = videoPlan({
+                    capabilities: capabilities([...points]),
+                    limits: { codec: H265 },
+                    hints: undefined,
+                });
+
+                it("is the trade-off point for the window's own frame size", () => {
+                    expect(planBitRateFloor(plan, { width: 1920, height: 1080 })).to.equal(2000000);
+                    expect(planBitRateFloor(plan, { width: 960, height: 540 })).to.equal(500000);
+                    expect(planBitRateFloor(plan, { width: 640, height: 360 })).to.equal(500000);
+                });
+
+                it("asks the first trade-off point's bit rate in the certification window", () => {
+                    expect(plan.certificationWindow).to.deep.include({
+                        minBitRate: points[0].minBitRate,
+                        maxBitRate: points[0].minBitRate,
+                    });
+                });
+            });
+        }
+
+        describe("with trade-off points at 1080p and 720p", () => {
+            const HD = { codec: H265, resolution: { width: 1280, height: 720 }, minBitRate: 1000000 };
+            const plan = videoPlan({
+                capabilities: capabilities([LARGE, HD]),
+                limits: { codec: H265 },
+                hints: undefined,
+            });
+
+            it("is the point just below a frame size between two points", () => {
+                expect(planBitRateFloor(plan, { width: 1600, height: 900 })).to.equal(1000000);
+            });
+
+            it("is the lowest point's bit rate for a frame size below every point", () => {
+                expect(planBitRateFloor(plan, { width: 960, height: 540 })).to.equal(1000000);
+            });
+
+            it("is the lowest point's bit rate for a plan whose size is below every point", () => {
+                const small = videoPlan({
+                    capabilities: capabilities([LARGE, HD]),
+                    limits: { codec: H265, maxPixels: 960 * 540 },
+                    hints: undefined,
+                });
+                expect(small.envelope.maxResolution).to.deep.equal({ width: 960, height: 540 });
+                expect(small.envelope.minBitRate).to.equal(1000000);
+            });
+        });
+
+        it("is 1 below every trade-off point when the lowest point's bit rate is above the start", () => {
+            const plan = videoPlan({
+                capabilities: capabilities([LARGE]),
+                limits: { codec: H265, maxBitRate: 1500000 },
+                hints: undefined,
+            });
+            expect(planBitRateFloor(plan, { width: 640, height: 360 })).to.equal(1);
+        });
+
+        it("is the caller's min_bit_rate at every frame size", () => {
+            const plan = videoPlan({
+                capabilities: capabilities([SMALL, LARGE]),
+                limits: { codec: H265 },
+                hints: { minBitRate: 3000000 },
+            });
+            expect(planBitRateFloor(plan, { width: 640, height: 360 })).to.equal(3000000);
+        });
+    });
+
+    describe("the certification window", () => {
+        const SMALL = { codec: H265, resolution: { width: 640, height: 360 }, minBitRate: 500000 };
+        const LARGE = { codec: H265, resolution: { width: 1920, height: 1080 }, minBitRate: 2000000 };
+        const certification = (
+            points: (typeof SMALL)[],
+            args: { hints?: VideoHints; maxBitRate?: number; maxNetworkBandwidth?: number } = {},
+        ) =>
+            videoPlan({
+                capabilities: {
+                    sensor: { width: 1920, height: 1080 },
+                    maxFrameRate: 30,
+                    minViewport: { width: 640, height: 360 },
+                    rateDistortionPoints: points,
+                    maxNetworkBandwidth: args.maxNetworkBandwidth,
+                },
+                limits: { codec: H265, maxBitRate: args.maxBitRate },
+                hints: args.hints,
+            }).certificationWindow;
+
+        it("is left out when the caller's min_bit_rate is above the first point", () => {
+            expect(certification([SMALL, LARGE], { hints: { minBitRate: 1000000 } })).to.equal(undefined);
+        });
+
+        it("is left out when the caller's max_bit_rate is below the first point", () => {
+            expect(certification([LARGE, SMALL], { hints: { maxBitRate: 1500000 } })).to.equal(undefined);
+        });
+
+        it("is left out when the offer's bit rate ceiling is below the first point", () => {
+            expect(certification([LARGE, SMALL], { maxBitRate: 1500000 })).to.equal(undefined);
+        });
+
+        it("is kept when the first point is above the default start", () => {
+            expect(certification([{ ...LARGE, minBitRate: 10000000 }])).to.deep.include({
+                minBitRate: 10000000,
+                maxBitRate: 10000000,
+            });
+        });
+
+        it("is kept when only the camera's network bandwidth is below the first point", () => {
+            expect(certification([LARGE, SMALL], { maxNetworkBandwidth: 1500000 })).to.deep.include({
+                minBitRate: 2000000,
+                maxBitRate: 2000000,
+            });
+        });
+    });
+
     describe("findReusableVideoStream", () => {
         const LIVE_VIEW_H265 = videoCallerBounds({ codec: H265 }, LIVE_VIEW, undefined);
 
@@ -581,6 +716,7 @@ describe("streamPolicy", () => {
                 frameRateCeiling: envelope.maxFrameRate,
                 allowedFrameRate: envelope.maxFrameRate,
                 limits: {},
+                bitRatePoints: [],
                 certificationWindow: undefined,
             };
         }
@@ -638,6 +774,67 @@ describe("streamPolicy", () => {
                 ...overrides,
             };
         }
+
+        describe("with a bit rate floor per frame size", () => {
+            const plan = videoPlan({
+                capabilities: {
+                    sensor: { width: 1920, height: 1080 },
+                    maxFrameRate: 30,
+                    minViewport: { width: 640, height: 360 },
+                    rateDistortionPoints: [
+                        { codec: H265, resolution: { width: 640, height: 360 }, minBitRate: 500000 },
+                        { codec: H265, resolution: { width: 1920, height: 1080 }, minBitRate: 2000000 },
+                    ],
+                },
+                limits: { codec: H265 },
+                hints: undefined,
+            });
+            const smaller = (minBitRate: number) =>
+                stream({
+                    minResolution: { width: 640, height: 360 },
+                    maxResolution: { width: 960, height: 540 },
+                    minFrameRate: 30,
+                    minBitRate,
+                    maxBitRate: 1000000,
+                });
+            const reused = (candidate: AllocatedVideoStream) =>
+                findReusableVideoStream([candidate], plan, LIVE_VIEW_H265, () => 30)?.videoStreamId;
+
+            it("reuses a smaller stream down to the floor of its own frame size", () => {
+                expect(reused(smaller(500000))).to.equal(1);
+                expect(reused(smaller(400000))).to.equal(undefined);
+            });
+
+            it("reuses a stream allocated with the certification window", () => {
+                const certified = stream({
+                    minResolution: { width: 640, height: 360 },
+                    minFrameRate: 30,
+                    minBitRate: 500000,
+                    maxBitRate: 500000,
+                });
+                expect(reused(certified)).to.equal(1);
+            });
+
+            it("reuses a stream below every trade-off point down to the lowest point's bit rate", () => {
+                const hdPlan = videoPlan({
+                    capabilities: {
+                        sensor: { width: 1920, height: 1080 },
+                        maxFrameRate: 30,
+                        minViewport: { width: 640, height: 360 },
+                        rateDistortionPoints: [
+                            { codec: H265, resolution: { width: 1920, height: 1080 }, minBitRate: 2000000 },
+                            { codec: H265, resolution: { width: 1280, height: 720 }, minBitRate: 1000000 },
+                        ],
+                    },
+                    limits: { codec: H265 },
+                    hints: undefined,
+                });
+                const reusedBy = (minBitRate: number) =>
+                    findReusableVideoStream([smaller(minBitRate)], hdPlan, LIVE_VIEW_H265, () => 30)?.videoStreamId;
+                expect(reusedBy(1000000)).to.equal(1);
+                expect(reusedBy(900000)).to.equal(undefined);
+            });
+        });
 
         it("reuses a stream whose envelope sits inside the request", () => {
             expect(reusable([stream()], REQUEST, LIVE_VIEW_H265)?.videoStreamId).to.equal(1);

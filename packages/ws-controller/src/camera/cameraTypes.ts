@@ -169,7 +169,7 @@ export interface ResolvedStream {
     streamId: number;
     envelope: VideoEnvelope | AudioEnvelope;
     provenance: CameraStreamProvenance;
-    /** The result does not fit the envelope the server would have allocated; set only by the last ladder rung. */
+    /** The result does not fit the envelope the server would have allocated: the last ladder rung, or an allocate answered with an existing stream. */
     degraded?: boolean;
     /** Video stream ids this request deallocated, whichever rung then answered; absent when it took nothing. */
     evicted?: number[];

@@ -422,6 +422,122 @@ describe("establishWebRtcProviderSession", () => {
         ]);
     });
 
+    it("tracks a ProvideOffer that asks for a new session with a null session id", async () => {
+        const upserted = new Array<unknown>();
+        const io: WebRtcProviderSessionIo = {
+            invoke: async () => ({ webRtcSessionId: 9 }),
+            upsertSession: async session => {
+                upserted.push(session);
+            },
+        };
+
+        await establishWebRtcProviderSession(
+            io,
+            baseArgs({ fields: { webRtcSessionId: null, sdp: "v=0", streamUsage: 3, videoStreams: [1] } }),
+        );
+
+        expect(upserted).to.have.length(1);
+    });
+
+    it("sends a re-offer without stream usage or streams and leaves the session it names alone", async () => {
+        const invokedCommands = new Array<string>();
+        const steps = new Array<string>();
+        const io: WebRtcProviderSessionIo = {
+            invoke: async command => {
+                invokedCommands.push(command);
+                return { webRtcSessionId: 7 };
+            },
+            upsertSession: async () => {
+                steps.push("upsert");
+            },
+        };
+
+        const response = await establishWebRtcProviderSession(
+            io,
+            baseArgs({
+                fields: { webRtcSessionId: 7, sdp: "v=0" },
+                sessionEstablishing: id => steps.push(`establishing:${id}`),
+            }),
+        );
+
+        expect(response).to.deep.equal({ webRtcSessionId: 7 });
+        expect(invokedCommands).to.deep.equal(["provideOffer"]);
+        expect(steps).to.deep.equal([]);
+    });
+
+    it("tracks a re-offer that restates usage and streams only when no entry exists, without announcing it", async () => {
+        const upserts = new Array<{ session: WebRtcTransportDefinitions.WebRtcSession; onlyIfAbsent?: boolean }>();
+        const announced = new Array<number>();
+        const invokedCommands = new Array<string>();
+        const io: WebRtcProviderSessionIo = {
+            invoke: async command => {
+                invokedCommands.push(command);
+                return { webRtcSessionId: 7 };
+            },
+            upsertSession: async (session, options) => {
+                upserts.push({ session, onlyIfAbsent: options?.onlyIfAbsent });
+            },
+        };
+
+        const response = await establishWebRtcProviderSession(
+            io,
+            baseArgs({
+                fields: { webRtcSessionId: 7, sdp: "v=0", streamUsage: 4, audioStreams: [2] },
+                sessionEstablishing: id => announced.push(id),
+            }),
+        );
+
+        expect(response).to.deep.equal({ webRtcSessionId: 7 });
+        expect(invokedCommands).to.deep.equal(["provideOffer"]);
+        expect(upserts).to.have.length(1);
+        expect(upserts[0].onlyIfAbsent).to.equal(true);
+        expect(upserts[0].session.id).to.equal(7);
+        expect(upserts[0].session.audioStreams).to.deep.equal([2]);
+        expect(announced).to.deep.equal([]);
+    });
+
+    it("returns a re-offer's response and ends nothing when the entry cannot be added", async () => {
+        const invokedCommands = new Array<string>();
+        const io: WebRtcProviderSessionIo = {
+            invoke: async command => {
+                invokedCommands.push(command);
+                return { webRtcSessionId: 7 };
+            },
+            upsertSession: async () => {
+                throw new Error("requestor unavailable");
+            },
+        };
+
+        const response = await establishWebRtcProviderSession(
+            io,
+            baseArgs({ fields: { webRtcSessionId: 7, sdp: "v=0", streamUsage: 4, audioStreams: [2] } }),
+        );
+
+        expect(response).to.deep.equal({ webRtcSessionId: 7 });
+        expect(invokedCommands).to.deep.equal(["provideOffer"]);
+    });
+
+    it("passes a re-offer's NOT_FOUND through without ending any session", async () => {
+        const invokedCommands = new Array<string>();
+        const io: WebRtcProviderSessionIo = {
+            invoke: async command => {
+                invokedCommands.push(command);
+                throw new Error("NOT_FOUND");
+            },
+            upsertSession: async () => {},
+        };
+
+        let thrown: unknown;
+        try {
+            await establishWebRtcProviderSession(io, baseArgs({ fields: { webRtcSessionId: 7, sdp: "v=0" } }));
+        } catch (error) {
+            thrown = error;
+        }
+
+        expect((thrown as Error).message).to.equal("NOT_FOUND");
+        expect(invokedCommands).to.deep.equal(["provideOffer"]);
+    });
+
     it("tears down the device session and throws when it cannot be tracked, without upserting it", async () => {
         const invokedCommands = new Array<string>();
         let upserted = false;
