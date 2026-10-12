@@ -434,22 +434,70 @@ class MatterNode:
     def _map_endpoint_parents(self) -> None:
         """Resolve each endpoint to its closest parent endpoint, split by parent kind.
 
+        The parents come from the server's `endpoint_parents` when it sends them, else they are
+        derived from the partsLists (see `_derive_endpoint_parents`). Only the endpoints of the
+        last snapshot take part.
+
+        A snapshot replaces the relation of an endpoint where it names a parent for it that decides
+        the relation: one that bridges or composes it, or with server parents any parent that
+        reports device types. Derived parents are a guess, so one that makes the endpoint neither
+        bridged nor a part only replaces the relation when it is the parent the endpoint already
+        had. Where a snapshot decides nothing - the endpoint unlisted or unreported, or its parent
+        without a Descriptor or device types - the endpoint keeps its relation until its own
+        removal or that of the parent is announced, so a consumer handling the announcement still
+        finds the device the endpoint is a part of. A kept relation that would close a cycle with a
+        named one is dropped.
+        """
+        snapshot_ids = self._snapshot_endpoint_ids & self.endpoints.keys()
+        server_parents = self.node_data.endpoint_parents
+        if server_parents is None:
+            parents = self._derive_endpoint_parents(snapshot_ids)
+        else:
+            parents = {
+                child_id: parent_id
+                for child_id, parent_id in server_parents.items()
+                if child_id in snapshot_ids and (parent_id == ROOT_ENDPOINT_ID or parent_id in snapshot_ids)
+            }
+
+        previous_composed = self._composed_endpoints
+        previous_bridge = self._bridge_parents
+        self._composed_endpoints = {}
+        self._bridge_parents = {}
+        decided = {
+            child_id for child_id, parent_id in parents.items() if self._map_endpoint_parent(child_id, parent_id)
+        }
+        related = self._composed_endpoints | self._bridge_parents
+        for relations, previous in (
+            (self._composed_endpoints, previous_composed),
+            (self._bridge_parents, previous_bridge),
+        ):
+            for child_id, parent_id in sorted(previous.items()):
+                if child_id in related or (
+                    child_id in decided and (server_parents is not None or parents[child_id] == parent_id)
+                ):
+                    continue
+                if _reaches(parent_id, child_id, related):
+                    LOGGER.warning(
+                        "Dropping parent relation that a snapshot made cyclic: Node %s, endpoint %s below %s",
+                        self.node_id,
+                        child_id,
+                        parent_id,
+                    )
+                    continue
+                relations[child_id] = parent_id
+                related[child_id] = parent_id
+
+        self._report_bridged_devices_without_info()
+
+    def _derive_endpoint_parents(self, snapshot_ids: set[int]) -> dict[int, int]:
+        """Derive the closest parent of each endpoint from the partsLists of the snapshot.
+
         An endpoint's partsList may enumerate its whole family - every descendant, not just
         the direct children - which is the pattern a bridge uses. Of the endpoints listing a
         given endpoint, the closest one is therefore the endpoint that lists none of the
         others - on contradictory lists the smaller family wins, then the lower endpoint
         number - and a parent is only accepted while the relations stay a tree.
-
-        Only the endpoints of the last snapshot take part. A snapshot replaces the relation of an
-        endpoint only where it names a parent for it: one that bridges or composes it, or the
-        parent it already had, whose classification then wins. Where it names none - the endpoint
-        unlisted or unreported, its parent without a Descriptor or device types, or listed only by
-        endpoints that make it neither bridged nor a part - the endpoint keeps its relation until
-        its own removal or that of the parent is announced, so a consumer handling the
-        announcement still finds the device the endpoint is a part of. A kept relation that would
-        close a cycle with a named one is dropped.
         """
-        snapshot_ids = self._snapshot_endpoint_ids & self.endpoints.keys()
         families: dict[int, set[int]] = {}
         for endpoint in self.endpoints.values():
             if endpoint.endpoint_id not in snapshot_ids:
@@ -494,34 +542,7 @@ class MatterNode:
                     continue
                 parents[child_id] = parent_id
                 break
-
-        previous_composed = self._composed_endpoints
-        previous_bridge = self._bridge_parents
-        self._composed_endpoints = {}
-        self._bridge_parents = {}
-        decided = {
-            child_id for child_id, parent_id in parents.items() if self._map_endpoint_parent(child_id, parent_id)
-        }
-        related = self._composed_endpoints | self._bridge_parents
-        for relations, previous in (
-            (self._composed_endpoints, previous_composed),
-            (self._bridge_parents, previous_bridge),
-        ):
-            for child_id, parent_id in sorted(previous.items()):
-                if child_id in related or (child_id in decided and parents[child_id] == parent_id):
-                    continue
-                if _reaches(parent_id, child_id, related):
-                    LOGGER.warning(
-                        "Dropping parent relation that a snapshot made cyclic: Node %s, endpoint %s below %s",
-                        self.node_id,
-                        child_id,
-                        parent_id,
-                    )
-                    continue
-                relations[child_id] = parent_id
-                related[child_id] = parent_id
-
-        self._report_bridged_devices_without_info()
+        return parents
 
     def _report_bridged_devices_without_info(self) -> None:
         """Warn about bridged devices the bridge does not describe, once per endpoint.
@@ -550,14 +571,13 @@ class MatterNode:
         bridged device; any other child stands alone, whether or not the Aggregator is itself a
         Bridged Node (so ids derived from the compose parent match older clients). Below any other endpoint, a child
         is a part of it - also when the device types of that endpoint are unknown to this client,
-        so only a parent that reports no device type at all decides nothing.
+        so only a parent without a Descriptor or device types decides nothing.
         """
         if parent_id == ROOT_ENDPOINT_ID:
             return True
         parent = self.endpoints[parent_id]
         descriptor = parent.get_cluster(Clusters.Descriptor)
-        assert descriptor is not None  # only endpoints with a Descriptor are parents
-        if not descriptor.deviceTypeList:
+        if descriptor is None or not descriptor.deviceTypeList:
             return False
         if RootNode in parent.device_types:
             return True

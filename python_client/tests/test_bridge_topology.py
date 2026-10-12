@@ -36,21 +36,24 @@ def _node_label(endpoint: MatterEndpoint) -> str | None:
     return None if info is None else info.nodeLabel
 
 
-def _node_data(attributes: dict[str, object]) -> MatterNodeData:
-    """Build MatterNodeData around a raw attribute map."""
-    return dataclass_from_dict(
-        MatterNodeData,
-        {
-            "node_id": 1,
-            "date_commissioned": "2026-01-01T00:00:00",
-            "last_interview": "2026-01-01T00:00:00",
-            "interview_version": 1,
-            "available": True,
-            "is_bridge": True,
-            "attributes": attributes,
-            "attribute_subscriptions": [],
-        },
-    )
+def _node_data(
+    attributes: dict[str, object], endpoint_parents: dict[int, int] | None = None
+) -> MatterNodeData:
+    """Build MatterNodeData around a raw attribute map, with the server's parents when given."""
+    data: dict[str, object] = {
+        "node_id": 1,
+        "date_commissioned": "2026-01-01T00:00:00",
+        "last_interview": "2026-01-01T00:00:00",
+        "interview_version": 1,
+        "available": True,
+        "is_bridge": True,
+        "attributes": attributes,
+        "attribute_subscriptions": [],
+    }
+    if endpoint_parents is not None:
+        # as on the wire, where JSON object keys are strings
+        data["endpoint_parents"] = {str(child): parent for child, parent in endpoint_parents.items()}
+    return dataclass_from_dict(MatterNodeData, data)
 
 
 def _descriptor_attributes(endpoints: dict[int, dict[int, object]]) -> dict[str, object]:
@@ -1305,3 +1308,136 @@ def test_kept_relations_never_close_a_cycle_with_a_named_one(
     assert node.get_compose_parent(4) is node.endpoints[5]
     assert node.get_compose_parent(5) is None
     assert [record for record in caplog.records if "made cyclic" in record.message]
+
+
+def test_server_parents_replace_the_derived_ones() -> None:
+    """A part two endpoints claim belongs to the parent the server names, not the derived one."""
+    endpoints: dict[int, dict[int, object]] = {
+        0: {_DEVICE_TYPE_LIST: [{"0": _ROOT_NODE, "1": 1}], _PARTS_LIST: [1, 2, 3]},
+        1: {_DEVICE_TYPE_LIST: [{"0": _ON_OFF_LIGHT, "1": 1}], _PARTS_LIST: [3]},
+        2: {_DEVICE_TYPE_LIST: [{"0": _ON_OFF_LIGHT, "1": 1}], _PARTS_LIST: [3]},
+        3: {_DEVICE_TYPE_LIST: [{"0": _TEMPERATURE_SENSOR, "1": 1}]},
+    }
+
+    derived = MatterNode(_node_data(_descriptor_attributes(endpoints)))
+    assert derived.get_closest_compose_parent(3) is derived.endpoints[1]
+
+    node = MatterNode(_node_data(_descriptor_attributes(endpoints), {1: 0, 2: 0, 3: 2}))
+    assert node.get_closest_compose_parent(3) is node.endpoints[2]
+    assert node.get_compose_child_ids(1) == ()
+    assert node.get_compose_child_ids(2) == (3,)
+
+
+def test_server_parents_clear_a_relation_the_snapshot_decides() -> None:
+    """A bridged device the server moves below the root stops being bridged at once."""
+    endpoints: dict[int, dict[int, object]] = {
+        0: {_DEVICE_TYPE_LIST: [{"0": _ROOT_NODE, "1": 1}], _PARTS_LIST: [1, 100]},
+        1: {_DEVICE_TYPE_LIST: [{"0": _AGGREGATOR, "1": 1}], _PARTS_LIST: [100]},
+        100: {_DEVICE_TYPE_LIST: [{"0": _ON_OFF_LIGHT, "1": 1}, {"0": _BRIDGED_NODE, "1": 1}]},
+    }
+    node = MatterNode(_node_data(_descriptor_attributes(endpoints), {1: 0, 100: 1}))
+    assert node.get_bridge_parent(100) is node.endpoints[1]
+
+    node.update(_node_data(_descriptor_attributes(endpoints), {1: 0, 100: 0}))
+
+    assert node.get_bridge_parent(100) is None
+    assert node.get_bridge_child_ids(1) == ()
+
+
+def test_server_parents_keep_an_endpoint_missing_from_a_snapshot_until_its_removal() -> None:
+    """An endpoint the snapshot no longer carries keeps its relation until its removal arrives."""
+    node = MatterNode(
+        _node_data(
+            _descriptor_attributes(
+                {
+                    0: {_DEVICE_TYPE_LIST: [{"0": _ROOT_NODE, "1": 1}], _PARTS_LIST: [1, 100]},
+                    1: {_DEVICE_TYPE_LIST: [{"0": _AGGREGATOR, "1": 1}], _PARTS_LIST: [100]},
+                    100: {
+                        _DEVICE_TYPE_LIST: [
+                            {"0": _ON_OFF_LIGHT, "1": 1},
+                            {"0": _BRIDGED_NODE, "1": 1},
+                        ]
+                    },
+                }
+            ),
+            {1: 0, 100: 1},
+        )
+    )
+    aggregator = node.endpoints[1]
+
+    node.update(
+        _node_data(
+            _descriptor_attributes(
+                {
+                    0: {_DEVICE_TYPE_LIST: [{"0": _ROOT_NODE, "1": 1}], _PARTS_LIST: [1]},
+                    1: {_DEVICE_TYPE_LIST: [{"0": _AGGREGATOR, "1": 1}], _PARTS_LIST: []},
+                }
+            ),
+            {1: 0},
+        )
+    )
+
+    assert node.get_bridge_parent(100) is aggregator
+
+    client = _client_with(node)
+    _announce_removal(client, 100)
+
+    assert 100 not in node.endpoints
+    assert node.get_bridge_child_ids(1) == ()
+
+
+def test_server_parent_without_a_descriptor_decides_nothing() -> None:
+    """A parent the server names but whose Descriptor is not reported classifies nothing."""
+    node = MatterNode(
+        _node_data(
+            {
+                **_descriptor_attributes(
+                    {
+                        0: {_DEVICE_TYPE_LIST: [{"0": _ROOT_NODE, "1": 1}], _PARTS_LIST: [1, 2]},
+                        2: {_DEVICE_TYPE_LIST: [{"0": _TEMPERATURE_SENSOR, "1": 1}]},
+                    }
+                ),
+                "1/6/0": True,
+            },
+            {1: 0, 2: 1},
+        )
+    )
+
+    assert node.get_compose_parent(2) is None
+    assert node.get_bridge_parent(2) is None
+
+
+def test_server_parents_naming_an_unreported_endpoint_are_ignored() -> None:
+    """A parent outside the snapshot does not place the endpoint."""
+    node = MatterNode(
+        _node_data(
+            _descriptor_attributes(
+                {
+                    0: {_DEVICE_TYPE_LIST: [{"0": _ROOT_NODE, "1": 1}], _PARTS_LIST: [100]},
+                    100: {_DEVICE_TYPE_LIST: [{"0": _ON_OFF_LIGHT, "1": 1}]},
+                }
+            ),
+            {100: 5},
+        )
+    )
+
+    assert node.get_compose_parent(100) is None
+    assert node.get_bridge_parent(100) is None
+
+
+def test_server_parents_of_an_unreported_endpoint_are_ignored() -> None:
+    """A parent for an endpoint outside the snapshot creates no relation for it."""
+    node = MatterNode(
+        _node_data(
+            _descriptor_attributes(
+                {
+                    0: {_DEVICE_TYPE_LIST: [{"0": _ROOT_NODE, "1": 1}], _PARTS_LIST: [1]},
+                    1: {_DEVICE_TYPE_LIST: [{"0": _AGGREGATOR, "1": 1}], _PARTS_LIST: []},
+                }
+            ),
+            {1: 0, 100: 1},
+        )
+    )
+
+    assert node.get_bridge_child_ids(1) == ()
+    assert node.get_compose_child_ids(1) == ()

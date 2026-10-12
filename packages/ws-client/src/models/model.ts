@@ -12,6 +12,8 @@ export type { BorderRouterEntry } from "@matter/thread-br-client";
 
 /** Attribute data stored as path -> value mapping */
 export type AttributesData = { [key: string]: unknown };
+/** The direct parent endpoint of each endpoint other than 0, keyed by endpoint number. */
+export type EndpointParentsData = { [endpoint: string]: number };
 
 /*
  * The interfaces below decode the Thread Network Diagnostic TLVs a Border Router / router

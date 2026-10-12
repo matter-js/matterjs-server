@@ -1544,6 +1544,24 @@ describe("Integration Test", function () {
             expect(deviceTypesOf(bridgeNode, 5)).to.deep.equal([TEMPERATURE_SENSOR_DEVICE_TYPE]);
         });
 
+        it("reports the direct parent of every endpoint", function () {
+            expect(bridgeNode.endpoint_parents).to.deep.equal({
+                1: 0,
+                2: 0,
+                12: 0,
+                3: 2,
+                4: 2,
+                7: 2,
+                5: 4,
+                6: 4,
+                8: 7,
+                9: 7,
+                10: 7,
+                11: 7,
+                13: 12,
+            });
+        });
+
         it("controls a device behind the bridge and reports its attribute update", async function () {
             client.clearEvents();
             await client.deviceCommand(bridgeNode.node_id, BRIDGED_LIGHT_ENDPOINT, 6, "on", {});
@@ -1595,6 +1613,7 @@ describe("Integration Test", function () {
 
             const updated = await client.getNode(bridgeNode.node_id);
             expect(updated.attributes[`${RUNTIME_LIGHT_ENDPOINT}/57/5`]).to.equal("Runtime Light");
+            expect(updated.endpoint_parents?.[RUNTIME_LIGHT_ENDPOINT]).to.equal(2);
             expect(deviceTypesOf(updated, RUNTIME_LIGHT_ENDPOINT)).to.deep.equal([
                 ON_OFF_LIGHT_DEVICE_TYPE,
                 BRIDGED_NODE_DEVICE_TYPE,
@@ -1613,6 +1632,7 @@ describe("Integration Test", function () {
 
             const updated = await client.getNode(bridgeNode.node_id);
             expect(updated.attributes[`${UNTAGGED_LIGHT_2_ENDPOINT}/29/0`]).to.be.undefined;
+            expect(updated.endpoint_parents).not.to.have.property(String(UNTAGGED_LIGHT_2_ENDPOINT));
         });
 
         it("reports the bridged device info of each bridged endpoint", function () {

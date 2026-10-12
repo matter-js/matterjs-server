@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import type { MatterNode } from "@matter-server/ws-client";
+import type { EndpointParentsData, MatterNode } from "@matter-server/ws-client";
 import { type DeviceType, device_types } from "../client/models/descriptions.js";
 
 export function getEndpointDeviceTypes(node: MatterNode, endpoint: number): DeviceType[] {
@@ -22,16 +22,63 @@ export interface EndpointTreeNode {
 }
 
 /**
- * Orders endpoints into parent-first tree order, resolving each endpoint to its closest parent.
+ * Orders endpoints into parent-first tree order, placing each endpoint below the parent the server
+ * reports in `endpoint_parents`, or the parent derived from the PartsLists when the server does not
+ * send them.
+ */
+export function getEndpointTree(node: MatterNode, endpointIds: number[]): EndpointTreeNode[] {
+    const parents =
+        node.endpoint_parents === undefined
+            ? deriveEndpointParents(node, endpointIds)
+            : serverEndpointParents(node.endpoint_parents, endpointIds);
+
+    const children = new Map<number, number[]>(endpointIds.map(id => [id, []]));
+    for (const [childId, parentId] of parents) {
+        children.get(parentId)!.push(childId);
+    }
+    for (const list of children.values()) {
+        list.sort((a, b) => a - b);
+    }
+
+    const ordered = new Array<EndpointTreeNode>();
+    const visited = new Set<number>();
+    const visit = (id: number, depth: number) => {
+        if (visited.has(id)) return;
+        visited.add(id);
+        ordered.push({ endpointId: id, depth });
+        for (const child of children.get(id)!) visit(child, depth + 1);
+    };
+    for (const id of [...endpointIds].sort((a, b) => a - b)) {
+        if (!parents.has(id)) visit(id, 0);
+    }
+    for (const id of [...endpointIds].sort((a, b) => a - b)) visit(id, 0);
+    return ordered;
+}
+
+/** The server's parents for the given endpoints, keeping only parents among them. */
+function serverEndpointParents(endpointParents: EndpointParentsData, endpointIds: number[]): Map<number, number> {
+    const idSet = new Set(endpointIds);
+    const parents = new Map<number, number>();
+    for (const [child, parentId] of Object.entries(endpointParents)) {
+        const childId = Number(child);
+        if (idSet.has(childId) && idSet.has(parentId)) {
+            parents.set(childId, parentId);
+        }
+    }
+    return parents;
+}
+
+/**
+ * Resolves each endpoint to its closest parent from the PartsLists.
  *
  * An endpoint's PartsList may enumerate its whole family - every descendant, not just the direct
  * children - which is the pattern a bridge uses. Of the endpoints listing a given endpoint, the
  * closest one is therefore the endpoint that lists none of the others; on contradictory lists the
  * smaller family wins, then the lower endpoint number, and a parent is only accepted while the
  * relations stay a tree. The Python client resolves the structure of a node by the same rule
- * (`MatterNode._map_endpoint_parents`), so both show the same hierarchy for the same node.
+ * (`MatterNode._derive_endpoint_parents`), so both show the same hierarchy for the same node.
  */
-export function getEndpointTree(node: MatterNode, endpointIds: number[]): EndpointTreeNode[] {
+function deriveEndpointParents(node: MatterNode, endpointIds: number[]): Map<number, number> {
     const idSet = new Set(endpointIds);
     const families = new Map<number, Set<number>>(
         endpointIds.map(id => {
@@ -68,28 +115,7 @@ export function getEndpointTree(node: MatterNode, endpointIds: number[]): Endpoi
             }
         }
     }
-
-    const children = new Map<number, number[]>(endpointIds.map(id => [id, []]));
-    for (const [childId, parentId] of parents) {
-        children.get(parentId)!.push(childId);
-    }
-    for (const list of children.values()) {
-        list.sort((a, b) => a - b);
-    }
-
-    const ordered = new Array<EndpointTreeNode>();
-    const visited = new Set<number>();
-    const visit = (id: number, depth: number) => {
-        if (visited.has(id)) return;
-        visited.add(id);
-        ordered.push({ endpointId: id, depth });
-        for (const child of children.get(id)!) visit(child, depth + 1);
-    };
-    for (const id of [...endpointIds].sort((a, b) => a - b)) {
-        if (!parents.has(id)) visit(id, 0);
-    }
-    for (const id of [...endpointIds].sort((a, b) => a - b)) visit(id, 0);
-    return ordered;
+    return parents;
 }
 
 /** Whether walking up the parent chain from an endpoint arrives at another. */

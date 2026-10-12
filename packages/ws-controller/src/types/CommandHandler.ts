@@ -95,9 +95,9 @@ export type OpenCommissioningWindowResponse = {
     commissioningTimeout: number;
 };
 
-import type { AttributesData, MatterNodeData } from "@matter-server/ws-client";
+import type { AttributesData, EndpointParentsData, MatterNodeData } from "@matter-server/ws-client";
 
-export type { AttributesData, MatterNodeData };
+export type { AttributesData, EndpointParentsData, MatterNodeData };
 
 /**
  * Interface for node command handlers.

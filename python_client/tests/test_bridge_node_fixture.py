@@ -3,7 +3,8 @@
 The snapshot in `fixtures/bridge_node.json` is the `get_node` payload the server returns for
 `packages/matter-server/test/fixtures/TestBridgeDevice.ts`, captured after commissioning it. It
 carries the endpoint structure a matter.js bridge really reports, including the Full-Family
-PartsList of an aggregator.
+PartsList of an aggregator. It predates `endpoint_parents`; tests that need the server's parents add
+them.
 
 It keeps only the Descriptor, Basic Information and Bridged Device Basic Information clusters the
 tests read. The rest of a capture describes the host that ran it - network interfaces, addresses
@@ -14,6 +15,8 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+
+import pytest
 
 from matter_server.client.models.node import MatterNode
 from matter_server.common.helpers.util import dataclass_from_dict
@@ -39,9 +42,29 @@ _NESTED_UNTAGGED_LIGHT_2 = 11
 _SECONDARY_AGGREGATOR = 12
 _SECONDARY_LIGHT = 13
 
+# the `endpoint_parents` the server sends for the device, asserted by the server integration test
+_SERVER_ENDPOINT_PARENTS = {
+    "1": 0,
+    "2": 0,
+    "12": 0,
+    "3": 2,
+    "4": 2,
+    "7": 2,
+    "5": 4,
+    "6": 4,
+    "8": 7,
+    "9": 7,
+    "10": 7,
+    "11": 7,
+    "13": 12,
+}
 
-def _bridge_node() -> MatterNode:
-    return MatterNode(dataclass_from_dict(MatterNodeData, json.loads(_FIXTURE.read_text())))
+
+def _bridge_node(endpoint_parents: dict[str, int] | None = None) -> MatterNode:
+    data = json.loads(_FIXTURE.read_text())
+    if endpoint_parents is not None:
+        data["endpoint_parents"] = endpoint_parents
+    return MatterNode(dataclass_from_dict(MatterNodeData, data))
 
 
 def test_the_bridge_reports_a_full_family_parts_list() -> None:
@@ -77,9 +100,12 @@ def test_the_bridge_reports_a_full_family_parts_list() -> None:
     assert untagged_types == {_ON_OFF_LIGHT_DEVICE_TYPE}
 
 
-def test_every_endpoint_resolves_to_the_device_it_belongs_to() -> None:
+@pytest.mark.parametrize(
+    "endpoint_parents", [None, _SERVER_ENDPOINT_PARENTS], ids=["derived", "server"]
+)
+def test_every_endpoint_resolves_to_the_device_it_belongs_to(endpoint_parents: dict[str, int] | None) -> None:
     """Each endpoint of the real bridge resolves to the parent a user would name."""
-    node = _bridge_node()
+    node = _bridge_node(endpoint_parents)
 
     expected_bridge_parents = {
         _BRIDGED_LIGHT: _PRIMARY_AGGREGATOR,

@@ -113,6 +113,8 @@ class MatterNodeData:
     # a set of tuples in format (endpoint_id, cluster_id, attribute_id)
     # where each value can also be a None for wildcard
     attribute_subscriptions: set[tuple[int | None, int | None, int | None]] = field(default_factory=set)
+    # direct parent endpoint of each endpoint other than 0, None when the server does not send it
+    endpoint_parents: dict[int, int] | None = None
 
 
 @dataclass

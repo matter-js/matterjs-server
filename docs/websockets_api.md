@@ -1579,10 +1579,13 @@ Events are sent to clients that have called `start_listening`. Events have this 
     "available": true,
     "is_bridge": false,
     "attributes": { ... },
-    "attribute_subscriptions": []
+    "attribute_subscriptions": [],
+    "endpoint_parents": { "1": 0, "2": 1 }
   }
 }
 ```
+
+`endpoint_parents` maps each endpoint in `attributes` other than 0 to its direct parent endpoint; a top-level endpoint has parent `0`. It covers the same endpoints as the `attributes` of the same message and is `{}` when `attributes` is empty. Every message that carries node data carries it. The PartsList of the Descriptor cluster does not say this by itself: Root Node, Aggregator and Bridged Node endpoints may list every descendant, not only their children. The field states only where an endpoint sits; whether it is a bridged device or a part of a composed device is for the client to decide from the device types.
 
 **node_updated** - A node's structure or availability changed
 
@@ -1986,6 +1989,7 @@ These commands are available only in the Matter.js server and not in the Python 
 |-------|--------|-----------|
 | `MatterNode.attribute_subscriptions` | Tracks per-node subscriptions | Always empty array |
 | Test node IDs | `>= 900000` | `>= 0xFFFF_FFFE_0000_0000` |
+| `MatterNode.endpoint_parents` | Not sent | Direct parent endpoint of each endpoint |
 
 ### Behavioral Differences
 

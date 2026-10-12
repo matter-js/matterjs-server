@@ -1045,6 +1045,7 @@ export class ControllerCommandHandler {
             attributes,
             attribute_subscriptions: [],
             matter_version: determineMatterVersion(attributes),
+            endpoint_parents: attributeCache.endpointParents(nodeId, node),
         };
     }
 

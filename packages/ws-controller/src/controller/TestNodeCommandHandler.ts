@@ -163,6 +163,8 @@ export class TestNodeCommandHandler implements NodeCommandHandler {
                 is_bridge: nodeDict.is_bridge,
                 attributes: nodeDict.attributes,
                 attribute_subscriptions: [],
+                // A Python client writes `null` for a server that does not send the field
+                endpoint_parents: nodeDict.endpoint_parents ?? undefined,
             };
 
             // Store the test node
