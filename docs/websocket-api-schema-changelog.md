@@ -133,7 +133,7 @@ Minimum supported: 11 (older clients keep working with the pre-13 command shapes
 
 ### Node data
 
-- **`endpoint_parents` in node data** (every message that carries node data, for example `get_node`, `start_listening` and `node_updated`; added after 1.4.0 shipped schema 13, so there is **no version signal** for it — treat it as presence-detectable only). Maps each endpoint in `attributes` other than 0 to its direct parent endpoint (JSON keys are strings), `0` for a top-level endpoint, for the same endpoints as the `attributes` of the same message. When the field is absent (older server, imported dump without it), derive the parents from the Descriptor PartsLists as before.
+- **`endpoint_parents` in node data** (every message that carries node data, for example `get_node`, `start_listening` and `node_updated`; added after 1.4.0 shipped schema 13, so there is **no version signal** for it — treat it as presence-detectable only). Maps endpoints in `attributes` other than 0 to their direct parent endpoint (JSON keys are strings), `0` for a top-level endpoint. An endpoint whose parent the server does not know has no entry. When the field is absent (older server, imported dump without it), derive the parents from the Descriptor PartsLists as before.
 
 See `packages/ws-client/src/models/model.ts` for the exact `NetworkTopology` / `NetworkTopologyNode` /
 `NetworkTopologyConnection` wire shapes (each field documented inline).

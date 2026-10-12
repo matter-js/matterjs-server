@@ -25,9 +25,9 @@ export interface MatterNodeData {
      */
     matter_version?: string;
     /**
-     * The direct parent endpoint of each endpoint in `attributes` other than 0; a top-level endpoint has
-     * parent 0. Not available in Python Matter Server and older servers: derive the parents from the
-     * Descriptor PartsLists then.
+     * The direct parent endpoint of endpoints in `attributes` other than 0; a top-level endpoint has
+     * parent 0, and an endpoint whose parent is not known has no entry. Not available in Python Matter
+     * Server and older servers: derive the parents from the Descriptor PartsLists then.
      */
     endpoint_parents?: EndpointParentsData;
 }
@@ -48,9 +48,9 @@ export class MatterNode {
      */
     matter_version?: string;
     /**
-     * The direct parent endpoint of each endpoint in `attributes` other than 0; a top-level endpoint has
-     * parent 0. Not available in Python Matter Server and older servers: derive the parents from the
-     * Descriptor PartsLists then.
+     * The direct parent endpoint of endpoints in `attributes` other than 0; a top-level endpoint has
+     * parent 0, and an endpoint whose parent is not known has no entry. Not available in Python Matter
+     * Server and older servers: derive the parents from the Descriptor PartsLists then.
      */
     endpoint_parents?: EndpointParentsData;
 

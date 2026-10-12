@@ -17,6 +17,8 @@ type NodeShape = {
     owners?: Record<number, number>;
     /** Endpoints whose state cannot be read. */
     unreadable?: number[];
+    /** Called when an endpoint's state is read; `remove` takes an endpoint off the node. */
+    onRead?: (number: number, remove: (number: number) => void) => void;
 };
 
 /** A peer as the model presents it: endpoints with one readable OnOff cluster each. */
@@ -28,6 +30,7 @@ function clientNode(nodeId: NodeId, shape: NodeShape = {}): ClientNode {
         endpointNumbers = [0, 1],
         owners = {},
         unreadable = [],
+        onRead,
     } = shape;
     const onOff = { cluster: { id: 6, schema: { attributes: [{ id: 0, propertyName: "onOff" }] } } };
     const endpoints = endpointNumbers.map(number => ({
@@ -35,6 +38,12 @@ function clientNode(nodeId: NodeId, shape: NodeShape = {}): ClientNode {
         owner: owners[number] === undefined ? undefined : { maybeNumber: owners[number] },
         behaviors: { active: [onOff] },
         stateOf: () => {
+            onRead?.(number, removed =>
+                endpoints.splice(
+                    endpoints.findIndex(endpoint => endpoint.number === removed),
+                    1,
+                ),
+            );
             if (unreadable.includes(number)) {
                 throw new MatterError(`Endpoint ${number} cannot be read`);
             }
@@ -163,6 +172,35 @@ describe("AttributeDataCache", () => {
 
             expect(cache.get(NODE_ID)?.["2/6/0"]).to.equal(undefined);
             expect(cache.endpointParents(NODE_ID, node)).to.deep.equal({ 1: 0 });
+        });
+
+        it("keeps a running populate from restoring an endpoint it collected or got a report for before the removal", async function () {
+            const cache = new AttributeDataCache();
+            let removed = false;
+            const node = clientNode(NODE_ID, {
+                endpointNumbers: [0, 1, 2, 3],
+                owners: { 1: 0, 2: 1, 3: 1 },
+                onRead: (number, remove) => {
+                    if (number === 3 && !removed) {
+                        removed = true;
+                        cache.updateAttribute(NODE_ID, {
+                            path: {
+                                endpointId: EndpointNumber(2),
+                                clusterId: ClusterId(6),
+                                attributeId: AttributeId(0),
+                            },
+                            value: false,
+                        });
+                        remove(2);
+                        cache.deleteEndpoint(NODE_ID, EndpointNumber(2));
+                    }
+                },
+            });
+
+            await cache.add(node);
+
+            expect(cache.get(NODE_ID)?.["2/6/0"]).to.equal(undefined);
+            expect(cache.endpointParents(NODE_ID, node)).to.deep.equal({ 1: 0, 3: 1 });
         });
     });
 });

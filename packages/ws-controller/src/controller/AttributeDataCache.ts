@@ -131,8 +131,7 @@ export class AttributeDataCache {
     /**
      * Drop the attributes of one endpoint, for a node that no longer has it.
      *
-     * The snapshot a populate is building reads live state, so it cannot contain the endpoint; a
-     * report that arrived for it before it went away still can, so the replay is filtered as well.
+     * A running populate may already have collected the endpoint, so it is restarted from live state.
      */
     deleteEndpoint(nodeId: NodeId, endpointId: EndpointNumber): void {
         const prefix = `${endpointId}/`;
@@ -147,7 +146,7 @@ export class AttributeDataCache {
         }
         const inFlight = this.#inFlight.get(nodeId);
         if (inFlight !== undefined) {
-            inFlight.pending = inFlight.pending.filter(([path]) => !path.startsWith(prefix));
+            inFlight.rerun = true;
         }
     }
 
