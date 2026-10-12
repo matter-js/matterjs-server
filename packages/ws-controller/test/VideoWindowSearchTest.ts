@@ -395,6 +395,27 @@ describe("VideoWindowSearch", () => {
                 ]);
             });
         }
+
+        it("halves to the floor of the size the budget fits, not of the size the search wanted", () => {
+            let accepted: VideoEnvelope | undefined;
+            const { asked, outcome } = walk(
+                pointsPlan([SMALL, LARGE]),
+                window => {
+                    if (window.maxBitRate > 1000000) return "unservable";
+                    accepted = window;
+                    return "accepted";
+                },
+                { fits: window => encodedPixelRate(window) <= 960 * 540 * 30 },
+            );
+            expect(outcome).to.equal("accepted");
+            expect(asked).to.deep.equal([
+                "960x540@30-30 8000000",
+                "960x540@30-30 4000000",
+                "960x540@30-30 2000000",
+                "960x540@30-30 1000000",
+            ]);
+            expect(accepted?.minBitRate).to.equal(500000);
+        });
     });
 
     describe("the encoder budget", () => {

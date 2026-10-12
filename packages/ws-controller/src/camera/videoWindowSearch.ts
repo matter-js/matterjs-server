@@ -356,7 +356,7 @@ export class VideoWindowSearch {
         for (const dimension of dimensions) {
             const limit =
                 dimension.name === "bitRate"
-                    ? bitRateSteps(this.#plan, position.resolution)
+                    ? bitRateSteps(this.#plan, this.#fitted(position).resolution)
                     : this.#limits[dimension.name];
             for (let count = position[dimension.name] + 1; count <= limit; count++) {
                 const next =
@@ -399,9 +399,14 @@ export class VideoWindowSearch {
         return { kind: "ask", window: videoRetryWindow(this.#plan, steps) };
     }
 
+    /** The steps `steps` would be asked as. */
+    #fitted(steps: VideoRetrySteps): VideoRetrySteps {
+        return fitToBudget(this.#plan, steps, this.#limits, this.#fits).steps;
+    }
+
     /** Whether the camera refused the window `steps` would be asked as. */
     #isRefused(steps: VideoRetrySteps): boolean {
-        const window = videoRetryWindow(this.#plan, fitToBudget(this.#plan, steps, this.#limits, this.#fits).steps);
+        const window = videoRetryWindow(this.#plan, this.#fitted(steps));
         return this.#refused.some(entry => sameVideoEnvelope(entry.window, window));
     }
 

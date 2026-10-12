@@ -63,10 +63,11 @@ Behaviour worth knowing:
   `min_frame_rate`. Some cameras accept higher rates they cannot deliver.
 - When the camera is out of capacity, the server first lowers its own default settings, then frees an
   idle stream: its own snapshot streams, its own video streams, then another controller's snapshot
-  streams and video streams.
+  streams and video streams. `allow_eviction: false` stops it from freeing streams.
 - When the camera answers an allocate with a stream it already has, the server checks that stream
-  against the bounds the caller stated and fails with error 102 if it breaks one.
-  `allow_eviction: false` stops it from freeing streams.
+  against the bounds the caller stated. For video it then looks for another existing stream within
+  the bounds and fails with error 102 only when there is none. A snapshot stream outside the bounds
+  fails with error 102; an audio stream outside them is dropped unless the caller demanded audio.
 - Events can arrive before the `camera_start_stream` response: register the `webrtc_callback` handler
   first and buffer events by `webrtc_session_id`.
 - Changing a running session (ICE restart, other tracks) needs a new `ProvideOffer` on the raw
