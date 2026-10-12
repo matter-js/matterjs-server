@@ -2971,6 +2971,29 @@ describe("CameraStreamManager", () => {
             ]);
         });
 
+        it("names the establishing connection once the camera's answer gave the session id", async () => {
+            let ownersOnceIdKnown: ReadonlySet<string> | undefined;
+            const { manager } = managerWith(STATE, async invoke => {
+                if (invoke.command === "videoStreamAllocate") return { videoStreamId: 9 };
+                if (invoke.command === "solicitOffer") {
+                    invoke.sessionEstablishing?.(42);
+                    ownersOnceIdKnown = manager.signallingOwners(NODE, ENDPOINT, 42);
+                    return { webRtcSessionId: 42 };
+                }
+                return undefined;
+            });
+            await manager.startStream({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                connectionId: "conn-8",
+                streamUsage: LIVE_VIEW,
+                video: {},
+                audio: false,
+            });
+            expect([...(ownersOnceIdKnown ?? [])]).to.deep.equal(["conn-8"]);
+            expect(manager.signallingOwners(NODE, ENDPOINT, 43)).to.equal(undefined);
+        });
+
         it("references the resolved stream ids in the provider offer", async () => {
             const { manager, invokes } = allocatingManager();
             const session = await manager.startStream({

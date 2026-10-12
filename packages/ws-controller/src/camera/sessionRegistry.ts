@@ -79,8 +79,9 @@ export class CameraSessionRegistry {
     }
 
     /**
-     * `undefined` when no entry names the session (raw provider route, or already dropped). In-flight
-     * registrations are not consulted.
+     * `undefined` when no entry names the session (raw provider route, or already dropped). An in-flight
+     * registration counts once {@link establishing} gave it the id: the local requestor accepts the camera's
+     * signalling from then on, before {@link track} runs.
      */
     signallingOwners(
         nodeId: NodeId,
@@ -88,7 +89,17 @@ export class CameraSessionRegistry {
         webRtcSessionId: number,
     ): ReadonlySet<string> | undefined {
         const session = this.get(nodeId, endpointId, webRtcSessionId);
-        return session === undefined ? undefined : new Set([session.connectionId]);
+        if (session !== undefined) return new Set([session.connectionId]);
+        for (const [pending, record] of this.#pending) {
+            if (
+                pending.nodeId === nodeId &&
+                pending.endpointId === endpointId &&
+                record.webRtcSessionId === webRtcSessionId
+            ) {
+                return new Set([pending.connectionId]);
+            }
+        }
+        return undefined;
     }
 
     get(nodeId: NodeId, endpointId: EndpointNumber, webRtcSessionId: number): ManagedSession | undefined {
