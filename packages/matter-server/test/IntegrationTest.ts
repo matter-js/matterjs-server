@@ -1505,6 +1505,7 @@ describe("Integration Test", function () {
             // An aggregator reports the Full-Family Pattern: the parts of its bridged devices are
             // listed again below the aggregator itself.
             expect(partsListOf(bridgeNode, 2)).to.deep.equal([3, 4, 5, 6, 7, 8, 9, 10, 11]);
+            expect(deviceTypesOf(bridgeNode, 4)).to.deep.equal([BRIDGED_NODE_DEVICE_TYPE]);
             expect(partsListOf(bridgeNode, 4)).to.deep.equal([5, 6]);
             expect(deviceTypesOf(bridgeNode, 5)).to.deep.equal([TEMPERATURE_SENSOR_DEVICE_TYPE]);
         });

@@ -23,6 +23,7 @@ import { HumiditySensorDevice } from "@matter/main/devices/humidity-sensor";
 import { OnOffLightDevice } from "@matter/main/devices/on-off-light";
 import { TemperatureSensorDevice } from "@matter/main/devices/temperature-sensor";
 import { AggregatorEndpoint } from "@matter/main/endpoints/aggregator";
+import { BridgedNodeEndpoint } from "@matter/main/endpoints/bridged-node";
 import { VendorId } from "@matter/main/types";
 import { mkdir, readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
@@ -99,7 +100,8 @@ await primaryAggregator.add(BridgedLight, {
     },
 });
 
-const composedDevice = await primaryAggregator.add(BridgedTemperatureSensor, {
+// Device Library §2.5.6: a Bridged Node with parts hosts no application device type itself
+const composedDevice = await primaryAggregator.add(BridgedNodeEndpoint, {
     id: "composed-sensor",
     number: 4,
     bridgedDeviceBasicInformation: {
