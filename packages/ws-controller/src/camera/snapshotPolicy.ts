@@ -65,8 +65,8 @@ export function isDegradedFrom(chosen: Resolution, best: SnapshotCapability | un
 }
 
 /**
- * `candidates` must be only streams this server allocated in this process run: `CaptureSnapshot` does
- * not raise `ReferenceCount`, so a foreign stream in use can read 0 (§11.2.8.10.2).
+ * `CaptureSnapshot` does not raise `ReferenceCount`, so a stream another controller polls can read 0
+ * (§11.2.8.10.2); the caller decides whose streams are candidates.
  * `frameRate × maxResolution` is the reference server's measure of pixel rate.
  */
 export function chooseSnapshotStreamToFree(

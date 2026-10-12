@@ -1051,9 +1051,10 @@ export class CameraStreamManager {
             evicted.length === 0 ? resolved : { ...resolved, evicted };
         /** Frees one stream this request may take; false when no candidate is left. */
         const makeRoom = async (): Promise<boolean> => {
-            // Our own snapshot streams go first: StreamUsagePriorities ranks video usages only.
+            // Snapshot streams go before any video stream: StreamUsagePriorities ranks video usages only,
+            // and a live view outranks a still frame.
             for (;;) {
-                const room = await this.freeOwnSnapshotStream(
+                const room = await this.freeSnapshotStream(
                     nodeId,
                     endpointId,
                     snapshotCandidates,
@@ -1456,11 +1457,11 @@ export class CameraStreamManager {
     }
 
     /**
-     * Deallocate one snapshot stream {@link ownsSnapshotStream} claims (victim per
-     * {@link chooseSnapshotStreamToFree}). `undefined`: none worth taking; `freed: false`: the camera
-     * refused. Registered with `scope` like {@link freeAnUnreferencedVideoStream}.
+     * Deallocate one unreferenced snapshot stream, those {@link ownsSnapshotStream} claims before anyone
+     * else's (victim per {@link chooseSnapshotStreamToFree}). `undefined`: none worth taking;
+     * `freed: false`: the camera refused. Registered with `scope` like {@link freeAnUnreferencedVideoStream}.
      */
-    protected async freeOwnSnapshotStream(
+    protected async freeSnapshotStream(
         nodeId: NodeId,
         endpointId: EndpointNumber,
         streams: AllocatedSnapshotStream[],
@@ -1468,8 +1469,12 @@ export class CameraStreamManager {
         scope: AllocationScope,
     ): Promise<{ streamId: number; freed: boolean; spend: () => void } | undefined> {
         const ours = streams.filter(stream => this.ownsSnapshotStream(nodeId, endpointId, stream));
-        const victim = chooseSnapshotStreamToFree(ours, { maxEncodedPixelRate });
+        const theirs = streams.filter(stream => !ours.includes(stream));
+        const victim =
+            chooseSnapshotStreamToFree(ours, { maxEncodedPixelRate }) ??
+            chooseSnapshotStreamToFree(theirs, { maxEncodedPixelRate });
         if (victim === undefined) return undefined;
+        const allocatedByUs = ours.includes(victim);
         const { snapshotStreamId } = victim;
         try {
             await this.io.invoke({
@@ -1489,7 +1494,7 @@ export class CameraStreamManager {
         }
         this.dropLease(nodeId, endpointId, "snapshot", snapshotStreamId);
         logger.notice(
-            `Deallocated snapshot stream ${snapshotStreamId} on node ${nodeId}, which this server allocated and nothing references, to make room for a video stream`,
+            `Deallocated snapshot stream ${snapshotStreamId} on node ${nodeId}, which ${allocatedByUs ? "this server" : "another controller or an earlier run of this server"} allocated and nothing references, to make room for a video stream`,
         );
         this.#announce(this.events.streamEvicted, { nodeId, endpointId, kind: "snapshot", streamId: snapshotStreamId });
         const spend = scope.returnUnlessSpent(() =>

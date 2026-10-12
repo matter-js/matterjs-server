@@ -1037,23 +1037,43 @@ describe("CameraStreamManager", () => {
             expect(invokes.filter(invoke => invoke.command === "snapshotStreamAllocate")).to.have.length(2);
         });
 
-        it("leaves the id alone when the camera reports it with parameters this server never asked for", async () => {
+        it("frees its own snapshot stream before another controller's", async () => {
+            // The lower id is foreign, so only ownership puts stream 5 first.
+            const foreign = { ...SNAPSHOT_HOLDER, snapshotStreamId: 2 };
+            const { manager, invokes, holder } = cameraShortOfEncoders();
+            await manager.snapshot({ nodeId: NODE, endpointId: ENDPOINT });
+            holder.state = { ...STATE, allocatedSnapshotStreams: [foreign, SNAPSHOT_HOLDER] };
+
+            await manager.resolveVideoStream(videoRequest).catch(() => undefined);
+
+            expect(
+                invokes
+                    .filter(invoke => invoke.command === "snapshotStreamDeallocate")
+                    .map(invoke => invoke.fields.snapshotStreamId),
+            ).to.deep.equal([5]);
+        });
+
+        it("counts a stream reported with parameters this server never asked for as another controller's", async () => {
             // The camera reissues freed ids, so an id match alone can name another controller's stream.
             const reissued = {
                 ...SNAPSHOT_HOLDER,
                 minResolution: { width: 640, height: 480 },
                 maxResolution: { width: 640, height: 480 },
             };
+            const foreign = { ...SNAPSHOT_HOLDER, snapshotStreamId: 2 };
             const { manager, invokes, holder } = cameraShortOfEncoders(invoke => {
                 if (invoke.command === "videoStreamAllocate") throw statusError(Status.ResourceExhausted);
                 return undefined;
             });
             await manager.snapshot({ nodeId: NODE, endpointId: ENDPOINT });
-            holder.state = { ...STATE, allocatedSnapshotStreams: [reissued] };
+            holder.state = { ...STATE, allocatedSnapshotStreams: [foreign, reissued] };
 
             await manager.resolveVideoStream(videoRequest).catch(() => undefined);
 
-            expect(invokes.map(invoke => invoke.command)).to.not.include("snapshotStreamDeallocate");
+            const freed = invokes
+                .filter(invoke => invoke.command === "snapshotStreamDeallocate")
+                .map(invoke => invoke.fields.snapshotStreamId);
+            expect(freed[0]).to.equal(2);
         });
 
         it("stops claiming a snapshot stream the camera answers NotFound for", async () => {
@@ -1066,14 +1086,13 @@ describe("CameraStreamManager", () => {
             holder.state = { ...STATE, allocatedSnapshotStreams: [SNAPSHOT_HOLDER] };
 
             await manager.resolveVideoStream(videoRequest).catch(() => undefined);
-            const afterFirst = invokes.filter(invoke => invoke.command === "snapshotStreamDeallocate").length;
-            await manager.resolveVideoStream(videoRequest).catch(() => undefined);
 
-            expect(afterFirst).to.equal(1);
             expect(invokes.filter(invoke => invoke.command === "snapshotStreamDeallocate")).to.have.length(1);
+            const capabilities = await manager.getCapabilities(NODE, ENDPOINT);
+            expect(capabilities.allocated.snapshot.map(stream => stream.allocatedByServer)).to.deep.equal([false]);
         });
 
-        it("leaves a snapshot stream another controller allocated alone", async () => {
+        it("frees an unreferenced snapshot stream another controller allocated, and announces it", async () => {
             const foreign = {
                 snapshotStreamId: 6,
                 overlays: NO_OVERLAYS,
@@ -1086,26 +1105,35 @@ describe("CameraStreamManager", () => {
                 encodedPixels: true,
                 hardwareEncoder: true,
             };
+            let freed = false;
             const { manager, invokes } = managerWith(
                 { ...STATE, allocatedSnapshotStreams: [foreign] },
                 async invoke => {
-                    if (invoke.command === "videoStreamAllocate") throw statusError(Status.ResourceExhausted);
+                    if (invoke.command === "snapshotStreamDeallocate") freed = true;
+                    if (invoke.command === "videoStreamAllocate") {
+                        if (!freed) throw statusError(Status.ResourceExhausted);
+                        return { videoStreamId: 11 };
+                    }
                     return undefined;
                 },
             );
-            let thrown: unknown;
-            try {
-                await manager.resolveVideoStream({
-                    nodeId: NODE,
-                    endpointId: ENDPOINT,
-                    streamUsage: LIVE_VIEW,
-                    limits: { codec: H265 },
-                });
-            } catch (error) {
-                thrown = error;
-            }
-            expect((thrown as ServerError).code).to.equal(ServerErrorCode.CameraResourceExhausted);
-            expect(invokes.map(invoke => invoke.command)).to.not.include("snapshotStreamDeallocate");
+            const evictions = new Array<CameraStreamEvicted>();
+            manager.events.streamEvicted.on(evicted => {
+                evictions.push(evicted);
+            });
+            const resolved = await manager.resolveVideoStream({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                streamUsage: LIVE_VIEW,
+                limits: { codec: H265 },
+            });
+            expect(resolved.streamId).to.equal(11);
+            expect(
+                invokes
+                    .filter(invoke => invoke.command === "snapshotStreamDeallocate")
+                    .map(invoke => invoke.fields.snapshotStreamId),
+            ).to.deep.equal([6]);
+            expect(evictions).to.deep.equal([{ nodeId: NODE, endpointId: ENDPOINT, kind: "snapshot", streamId: 6 }]);
         });
 
         it("takes no snapshot stream of its own when the caller forbade eviction", async () => {

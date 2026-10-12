@@ -60,7 +60,8 @@ Behaviour worth knowing:
   and refuse unknown arguments with error 8.
 - A failed `camera_start_stream` or `camera_snapshot` frees the streams it allocated.
 - When the camera is out of capacity, the server first lowers its own default settings, then frees an
-  idle stream: its own snapshot streams first, then its own video streams, then another controller's.
+  idle stream: snapshot streams first (its own before another controller's), then its own video streams,
+  then another controller's.
   `allow_eviction: false` stops it from freeing streams.
 - Events can arrive before the `camera_start_stream` response: register the `webrtc_callback` handler
   first and buffer events by `webrtc_session_id`.
