@@ -931,6 +931,32 @@ describe("CameraStreamManager", () => {
             ).to.deep.equal([5]);
         });
 
+        it("leases no replacement snapshot stream when the camera answers the restore with one it already held", async () => {
+            const foreignSnapshot = {
+                ...SNAPSHOT_HOLDER,
+                snapshotStreamId: 8,
+                minResolution: { width: 640, height: 480 },
+                maxResolution: { width: 640, height: 480 },
+                encodedPixels: false,
+                hardwareEncoder: false,
+            };
+            let restored = false;
+            const { manager, holder } = cameraShortOfEncoders(invoke => {
+                if (invoke.command === "videoStreamAllocate") throw statusError(Status.ResourceExhausted);
+                if (invoke.command === "snapshotStreamAllocate" && restored) return { snapshotStreamId: 8 };
+                return undefined;
+            });
+            await manager.snapshot({ nodeId: NODE, endpointId: ENDPOINT });
+            restored = true;
+            holder.state = { ...STATE, allocatedSnapshotStreams: [SNAPSHOT_HOLDER, foreignSnapshot] };
+
+            await manager.resolveVideoStream(videoRequest).catch(() => undefined);
+
+            holder.state = { ...STATE, allocatedSnapshotStreams: [foreignSnapshot] };
+            const capabilities = await manager.getCapabilities(NODE, ENDPOINT);
+            expect(capabilities.allocated.snapshot.map(stream => stream.allocatedByServer)).to.deep.equal([false]);
+        });
+
         it("sends one deallocate for a snapshot stream the camera refuses to free, and moves on", async () => {
             const foreignIdle = { ...CONTAINED_STREAM, videoStreamId: 21, videoCodec: 2, referenceCount: 0 };
             const { manager, invokes, holder } = cameraShortOfEncoders(invoke => {
@@ -5658,6 +5684,70 @@ describe("CameraStreamManager", () => {
             await manager.releaseStream({ nodeId: NODE, endpointId: ENDPOINT, kind: "video", streamId: 20 });
             expect(manager.endpointsWithLeases).to.equal(0);
         });
+
+        it("puts back a stream it freed to make room when the camera answers with a stream it already held", async () => {
+            // An existing stream uses no capacity (§11.2.8.4), so the room the eviction made is not spent.
+            const held = {
+                ...FOREIGN_STREAM,
+                ...CONTAINED_FOREIGN,
+                videoStreamId: 11,
+                overlays: NO_OVERLAYS,
+                referenceCount: 1,
+                minResolution: { width: 1280, height: 720 },
+            };
+            let freed = 0;
+            const { manager, invokes } = probeWith(
+                { ...STATE, allocatedVideoStreams: [FOREIGN_STREAM, held] },
+                async invoke => {
+                    if (invoke.command === "videoStreamDeallocate") freed += 1;
+                    if (invoke.command !== "videoStreamAllocate") return undefined;
+                    if (invoke.fields.streamUsage !== LIVE_VIEW) return { videoStreamId: 20 };
+                    if (freed === 0) throw statusError(Status.ResourceExhausted);
+                    return { videoStreamId: 11 };
+                },
+            );
+
+            const resolved = await manager.resolveVideoStream({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                streamUsage: LIVE_VIEW,
+                limits: { codec: H265 },
+                hints: { minResolution: { width: 1920, height: 1080 }, maxResolution: { width: 1920, height: 1080 } },
+            });
+            expect(resolved.streamId).to.equal(11);
+            expect(resolved.provenance).to.equal("adopted");
+            expect(resolved.evicted).to.deep.equal([FOREIGN_STREAM.videoStreamId]);
+            const restore = invokes.find(
+                invoke =>
+                    invoke.command === "videoStreamAllocate" &&
+                    invoke.fields.streamUsage === FOREIGN_STREAM.streamUsage,
+            );
+            expect(restore?.fields.maxResolution).to.deep.equal(FOREIGN_STREAM.maxResolution);
+        });
+
+        it("leases no replacement when the camera answers the restore with a stream it already held", async () => {
+            // A different codec keeps the held stream out of reuse and the degraded rung.
+            const held = { ...FOREIGN_STREAM, videoStreamId: 11, videoCodec: 2, referenceCount: 1 };
+            const { manager } = probeWith({ ...STATE, allocatedVideoStreams: [FOREIGN_STREAM, held] }, async invoke => {
+                if (invoke.command !== "videoStreamAllocate") return undefined;
+                if (invoke.fields.streamUsage === LIVE_VIEW) throw statusError(Status.ResourceExhausted);
+                return { videoStreamId: 11 };
+            });
+
+            let thrown: unknown;
+            try {
+                await manager.resolveVideoStream({
+                    nodeId: NODE,
+                    endpointId: ENDPOINT,
+                    streamUsage: LIVE_VIEW,
+                    limits: { codec: H265 },
+                });
+            } catch (error) {
+                thrown = error;
+            }
+            expect(thrown).to.be.instanceOf(ServerError);
+            expect(manager.endpointsWithLeases).to.equal(0);
+        });
     });
 });
 
@@ -7534,5 +7624,271 @@ describe("CameraStreamManager overlays", () => {
         const allocate = invokes.find(invoke => invoke.command === "videoStreamAllocate");
         expect(allocate?.fields.osdEnabled).to.equal(true);
         expect(allocate?.fields).to.not.have.property("watermarkEnabled");
+    });
+});
+
+describe("CameraStreamManager allocate answered with an existing stream", () => {
+    const JPEG_640 = {
+        snapshotStreamId: 5,
+        overlays: NO_OVERLAYS,
+        imageCodec: 0,
+        minResolution: { width: 640, height: 480 },
+        maxResolution: { width: 640, height: 480 },
+        quality: 75,
+        referenceCount: 0,
+        frameRate: 1,
+        encodedPixels: false,
+        hardwareEncoder: false,
+    };
+
+    const FRAME = { data: new Uint8Array([1]), imageCodec: 0, resolution: { width: 640, height: 480 } };
+
+    /** The camera refuses the 1080p capability and matches the 640x480 request to stream 5. */
+    function refuse1080pThenAnswer5(invoke: RecordedInvoke): { snapshotStreamId: number } {
+        const max = invoke.fields.maxResolution;
+        if (typeof max === "object" && max !== null && "width" in max && max.width === 1920) {
+            throw statusError(Status.DynamicConstraintError);
+        }
+        return { snapshotStreamId: 5 };
+    }
+
+    it("reports a video stream another controller holds as adopted, with that stream's bounds", async () => {
+        // The camera's match is its own: a 720p..1080p stream the server would not reuse for a 1080p floor.
+        const wider = {
+            videoStreamId: 7,
+            overlays: NO_OVERLAYS,
+            streamUsage: LIVE_VIEW,
+            videoCodec: H265,
+            minResolution: { width: 1280, height: 720 },
+            maxResolution: { width: 1920, height: 1080 },
+            minFrameRate: 1,
+            maxFrameRate: 30,
+            minBitRate: 800000,
+            maxBitRate: 4000000,
+            keyFrameInterval: 3000,
+            referenceCount: 1,
+        };
+        const { manager, invokes } = managerWith({ ...STATE, allocatedVideoStreams: [wider] }, async () => ({
+            videoStreamId: 7,
+        }));
+        const resolved = await manager.resolveVideoStream({
+            nodeId: NODE,
+            endpointId: ENDPOINT,
+            streamUsage: LIVE_VIEW,
+            limits: { codec: H265 },
+            hints: { minResolution: { width: 1920, height: 1080 }, maxResolution: { width: 1920, height: 1080 } },
+        });
+        expect(invokes.map(invoke => invoke.command)).to.deep.equal(["videoStreamAllocate"]);
+        expect(resolved.streamId).to.equal(7);
+        expect(resolved.provenance).to.equal("adopted");
+        expect(requireVideoEnvelope(resolved.envelope).minResolution).to.deep.equal(wider.minResolution);
+    });
+
+    it("reports an audio stream another controller holds as adopted, with that stream's bit rate", async () => {
+        const existing = {
+            audioStreamId: 4,
+            streamUsage: LIVE_VIEW,
+            audioCodec: 0,
+            channelCount: 1,
+            sampleRate: 48000,
+            bitRate: 64000,
+            bitDepth: 16,
+            referenceCount: 1,
+        };
+        const { manager, invokes } = managerWith({ ...STATE, allocatedAudioStreams: [existing] }, async () => ({
+            audioStreamId: 4,
+        }));
+        const resolved = await manager.resolveAudioStream({
+            nodeId: NODE,
+            endpointId: ENDPOINT,
+            streamUsage: LIVE_VIEW,
+            audio: { bitRate: 32000 },
+        });
+        expect(invokes.map(invoke => invoke.command)).to.deep.equal(["audioStreamAllocate"]);
+        expect(resolved?.streamId).to.equal(4);
+        expect(resolved?.provenance).to.equal("adopted");
+        expect(requireAudioEnvelope(resolved!.envelope).bitRate).to.equal(64000);
+    });
+
+    it("reports its own video stream the camera has not reported yet as reused", async () => {
+        // The camera answers the second, pinned request with the first call's wider stream.
+        const { manager, invokes } = managerWith(STATE, async () => ({ videoStreamId: 9 }));
+        const first = await manager.resolveVideoStream({
+            nodeId: NODE,
+            endpointId: ENDPOINT,
+            streamUsage: LIVE_VIEW,
+            limits: { codec: H265 },
+        });
+        const second = await manager.resolveVideoStream({
+            nodeId: NODE,
+            endpointId: ENDPOINT,
+            streamUsage: LIVE_VIEW,
+            limits: { codec: H265 },
+            hints: { minResolution: { width: 1920, height: 1080 }, maxResolution: { width: 1920, height: 1080 } },
+        });
+        expect(invokes.map(invoke => invoke.command)).to.deep.equal(["videoStreamAllocate", "videoStreamAllocate"]);
+        expect(first.provenance).to.equal("allocated");
+        expect(second.streamId).to.equal(9);
+        expect(second.provenance).to.equal("reused");
+    });
+
+    it("reports its own audio stream the camera has not reported yet as reused", async () => {
+        const { manager, invokes } = managerWith(STATE, async () => ({ audioStreamId: 9 }));
+        const first = await manager.resolveAudioStream({ nodeId: NODE, endpointId: ENDPOINT, streamUsage: LIVE_VIEW });
+        const second = await manager.resolveAudioStream({
+            nodeId: NODE,
+            endpointId: ENDPOINT,
+            streamUsage: LIVE_VIEW,
+            audio: { bitRate: 32000 },
+        });
+        expect(invokes.map(invoke => invoke.command)).to.deep.equal(["audioStreamAllocate", "audioStreamAllocate"]);
+        expect(first?.provenance).to.equal("allocated");
+        expect(second?.streamId).to.equal(9);
+        expect(second?.provenance).to.equal("reused");
+    });
+
+    it("reports a snapshot stream another controller holds as adopted", async () => {
+        const { manager } = managerWith({ ...STATE, allocatedSnapshotStreams: [JPEG_640] }, async invoke => {
+            if (invoke.command === "snapshotStreamAllocate") return refuse1080pThenAnswer5(invoke);
+            if (invoke.command === "captureSnapshot") return FRAME;
+            return undefined;
+        });
+        const result = await manager.snapshot({ nodeId: NODE, endpointId: ENDPOINT });
+        expect(result.snapshotStreamId).to.equal(5);
+        expect(result.provenance).to.equal("adopted");
+    });
+
+    it("leaves a video stream another controller holds on the camera when the session fails", async () => {
+        const wider = {
+            videoStreamId: 7,
+            overlays: NO_OVERLAYS,
+            streamUsage: LIVE_VIEW,
+            videoCodec: H265,
+            minResolution: { width: 1280, height: 720 },
+            maxResolution: { width: 1920, height: 1080 },
+            minFrameRate: 1,
+            maxFrameRate: 30,
+            minBitRate: 800000,
+            maxBitRate: 4000000,
+            keyFrameInterval: 3000,
+            referenceCount: 1,
+        };
+        const { manager, invokes } = managerWith({ ...STATE, allocatedVideoStreams: [wider] }, async invoke => {
+            if (invoke.command === "videoStreamAllocate") return { videoStreamId: 7 };
+            if (invoke.command === "provideOffer") throw statusError(Status.Failure);
+            return undefined;
+        });
+        let thrown: unknown;
+        try {
+            await manager.startStream({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                connectionId: "conn-1",
+                streamUsage: LIVE_VIEW,
+                sdp: VIDEO_OFFER,
+                video: {
+                    minResolution: { width: 1920, height: 1080 },
+                    maxResolution: { width: 1920, height: 1080 },
+                },
+                audio: false,
+            });
+        } catch (error) {
+            thrown = error;
+        }
+        expect(thrown).to.exist;
+        expect(invokes.map(invoke => invoke.command)).to.include("videoStreamAllocate");
+        expect(invokes.map(invoke => invoke.command)).to.not.include("videoStreamDeallocate");
+    });
+
+    it("leaves an audio stream another controller holds on the camera when the session fails", async () => {
+        const existing = {
+            audioStreamId: 4,
+            streamUsage: LIVE_VIEW,
+            audioCodec: 0,
+            channelCount: 1,
+            sampleRate: 48000,
+            bitRate: 64000,
+            bitDepth: 16,
+            referenceCount: 1,
+        };
+        const { manager, invokes } = managerWith({ ...STATE, allocatedAudioStreams: [existing] }, async invoke => {
+            if (invoke.command === "videoStreamAllocate") return { videoStreamId: 9 };
+            if (invoke.command === "audioStreamAllocate") return { audioStreamId: 4 };
+            if (invoke.command === "provideOffer") throw statusError(Status.Failure);
+            return undefined;
+        });
+        let thrown: unknown;
+        try {
+            await manager.startStream({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                connectionId: "conn-1",
+                streamUsage: LIVE_VIEW,
+                sdp: VIDEO_AND_AUDIO_OFFER,
+                video: {},
+                audio: { bitRate: 32000 },
+            });
+        } catch (error) {
+            thrown = error;
+        }
+        expect(thrown).to.exist;
+        expect(invokes.map(invoke => invoke.command)).to.include("audioStreamAllocate");
+        expect(invokes.map(invoke => invoke.command)).to.not.include("audioStreamDeallocate");
+        expect(invokes.map(invoke => invoke.command)).to.include("videoStreamDeallocate");
+    });
+
+    it("leaves a snapshot stream another controller holds on the camera when the capture fails", async () => {
+        const { manager, invokes } = managerWith({ ...STATE, allocatedSnapshotStreams: [JPEG_640] }, async invoke => {
+            if (invoke.command === "snapshotStreamAllocate") return refuse1080pThenAnswer5(invoke);
+            if (invoke.command === "captureSnapshot") throw statusError(Status.Failure);
+            return undefined;
+        });
+        let thrown: unknown;
+        try {
+            await manager.snapshot({ nodeId: NODE, endpointId: ENDPOINT });
+        } catch (error) {
+            thrown = error;
+        }
+        expect(thrown).to.exist;
+        expect(invokes.map(invoke => invoke.command)).to.not.include("snapshotStreamDeallocate");
+    });
+
+    it("reports its own snapshot stream the camera has not reported yet as reused", async () => {
+        // The first call allocates 1080p stream 1 and takes the one encoder; the camera answers the second
+        // call's 640x480 request with that same stream.
+        const { manager } = managerWith(STATE, async invoke => {
+            if (invoke.command === "snapshotStreamAllocate") return { snapshotStreamId: 1 };
+            if (invoke.command === "captureSnapshot") return FRAME;
+            return undefined;
+        });
+        const first = await manager.snapshot({ nodeId: NODE, endpointId: ENDPOINT });
+        const second = await manager.snapshot({ nodeId: NODE, endpointId: ENDPOINT });
+        expect(first.provenance).to.equal("allocated");
+        expect(second.snapshotStreamId).to.equal(1);
+        expect(second.provenance).to.equal("reused");
+    });
+
+    it("reports an id the camera reissued after it lost the listed stream as allocated", async () => {
+        const listed = {
+            ...JPEG_640,
+            minResolution: { width: 1920, height: 1080 },
+            maxResolution: { width: 1920, height: 1080 },
+            encodedPixels: true,
+            hardwareEncoder: true,
+        };
+        let captures = 0;
+        const { manager } = managerWith({ ...STATE, allocatedSnapshotStreams: [listed] }, async invoke => {
+            if (invoke.command === "snapshotStreamAllocate") return { snapshotStreamId: 5 };
+            if (invoke.command === "captureSnapshot") {
+                captures++;
+                if (captures === 1) throw statusError(Status.NotFound);
+                return FRAME;
+            }
+            return undefined;
+        });
+        const result = await manager.snapshot({ nodeId: NODE, endpointId: ENDPOINT });
+        expect(captures).to.equal(2);
+        expect(result.snapshotStreamId).to.equal(5);
+        expect(result.provenance).to.equal("allocated");
     });
 });

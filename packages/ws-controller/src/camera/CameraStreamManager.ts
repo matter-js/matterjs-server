@@ -1128,6 +1128,15 @@ export class CameraStreamManager {
                     // Without the id the stream cannot be given back.
                     throw ServerError.sdkStackError("VideoStreamAllocate returned no VideoStreamID");
                 }
+                // §11.2.8.4: the camera answers a request matching one of its streams with that stream's id.
+                const matched = [...liveStreams, ...unreported].find(stream => stream.videoStreamId === streamId);
+                if (matched !== undefined) {
+                    return reporting({
+                        streamId,
+                        envelope: envelopeOfVideoStream(matched),
+                        provenance: existingStreamProvenance(this.leaseReusedVideoStream(nodeId, endpointId, matched)),
+                    });
+                }
                 const lease = this.recordAllocation(nodeId, endpointId, {
                     kind: "video",
                     streamId,
@@ -1303,10 +1312,11 @@ export class CameraStreamManager {
         }
 
         const bounds: AudioCallerBounds = { ...args.hints, streamUsage };
-        const existing = [
+        const knownStreams = [
             ...state.allocatedAudioStreams,
             ...this.unreportedAudioStreams(nodeId, endpointId, state.allocatedAudioStreams),
-        ].find(
+        ];
+        const existing = knownStreams.find(
             stream =>
                 satisfiesAudioCallerBounds(stream, bounds) &&
                 stream.audioCodec === envelope.codec &&
@@ -1344,6 +1354,17 @@ export class CameraStreamManager {
                     : undefined;
             if (typeof streamId !== "number") {
                 return { unavailable: ServerError.sdkStackError("AudioStreamAllocate returned no AudioStreamID") };
+            }
+            // §11.2.8.1: the camera answers a request matching one of its streams with that stream's id.
+            const matched = knownStreams.find(stream => stream.audioStreamId === streamId);
+            if (matched !== undefined) {
+                return {
+                    stream: {
+                        streamId,
+                        envelope: envelopeOfAudioStream(matched),
+                        provenance: existingStreamProvenance(this.leaseReusedAudioStream(nodeId, endpointId, matched)),
+                    },
+                };
             }
             const lease = this.recordAllocation(nodeId, endpointId, {
                 kind: "audio",
@@ -1505,6 +1526,24 @@ export class CameraStreamManager {
     }
 
     /**
+     * Ids the camera reports now. Read before an allocate: the camera answers a request matching one of
+     * them with its id (§11.2.8.4, §11.2.8.8).
+     */
+    async #reportedStreamIds(
+        nodeId: NodeId,
+        endpointId: EndpointNumber,
+        kind: "video" | "snapshot",
+    ): Promise<Set<number>> {
+        const state = await this.io.readCameraState(nodeId, endpointId);
+        if (state === undefined) return new Set<number>();
+        return new Set(
+            kind === "video"
+                ? state.allocatedVideoStreams.map(stream => stream.videoStreamId)
+                : state.allocatedSnapshotStreams.map(stream => stream.snapshotStreamId),
+        );
+    }
+
+    /**
      * The snapshot counterpart of {@link #restoreFreedVideoStream}. The struct's `frameRate`
      * (§11.2.6.13.3) is what the allocate takes as `MaxFrameRate`.
      */
@@ -1513,6 +1552,7 @@ export class CameraStreamManager {
         endpointId: EndpointNumber,
         freed: AllocatedSnapshotStream,
     ): Promise<void> {
+        const known = await this.#reportedStreamIds(nodeId, endpointId, "snapshot");
         const response = await this.io.invoke({
             nodeId,
             endpointId,
@@ -1534,6 +1574,12 @@ export class CameraStreamManager {
         if (typeof snapshotStreamId !== "number") {
             throw ServerError.sdkStackError("SnapshotStreamAllocate returned no SnapshotStreamID");
         }
+        if (known.has(snapshotStreamId)) {
+            logger.info(
+                `Node ${nodeId} answered the replacement for snapshot stream ${freed.snapshotStreamId} with its existing stream ${snapshotStreamId}`,
+            );
+            return;
+        }
         this.recordAllocation(nodeId, endpointId, {
             kind: "snapshot",
             streamId: snapshotStreamId,
@@ -1548,7 +1594,8 @@ export class CameraStreamManager {
     /**
      * Allocate a stream with the parameters of one the make-room rung took, when the request did not use
      * the capacity. Not an undo: the camera issues a new id, and the old one stays forgotten. The
-     * replacement is leased as ours whoever allocated the original.
+     * replacement is leased as ours whoever allocated the original, unless the camera answers with a
+     * stream it already held.
      */
     async #restoreFreedVideoStream(
         nodeId: NodeId,
@@ -1556,6 +1603,7 @@ export class CameraStreamManager {
         freed: AllocatedVideoStream,
     ): Promise<void> {
         const envelope = envelopeOfVideoStream(freed);
+        const known = await this.#reportedStreamIds(nodeId, endpointId, "video");
         const response = await this.io.invoke({
             nodeId,
             endpointId,
@@ -1580,6 +1628,12 @@ export class CameraStreamManager {
                 : undefined;
         if (typeof streamId !== "number") {
             throw ServerError.sdkStackError("VideoStreamAllocate returned no VideoStreamID");
+        }
+        if (known.has(streamId)) {
+            logger.info(
+                `Node ${nodeId} answered the replacement for video stream ${freed.videoStreamId} with its existing stream ${streamId}`,
+            );
+            return;
         }
         this.recordAllocation(nodeId, endpointId, {
             kind: "video",
@@ -2077,6 +2131,10 @@ export class CameraStreamManager {
                     });
                 }
 
+                let knownStreams = [
+                    ...state.allocatedSnapshotStreams,
+                    ...this.unreportedSnapshotStreams(nodeId, endpointId, state.allocatedSnapshotStreams),
+                ];
                 const adopted = findAdoptableSnapshotStream(state.allocatedSnapshotStreams, best, {
                     ...args,
                     overlays,
@@ -2104,6 +2162,7 @@ export class CameraStreamManager {
                     logger.info(
                         `Node ${nodeId} no longer has snapshot stream ${adopted.snapshotStreamId} its reported state still lists; allocating one instead`,
                     );
+                    knownStreams = knownStreams.filter(stream => stream !== adopted);
                 }
 
                 // The device answers DynamicConstraintError when no SnapshotCapabilities entry matches,
@@ -2156,6 +2215,27 @@ export class CameraStreamManager {
                     throw this.snapshotFailure(state, lastStatus, deviceCodecs, requestedCodecs);
                 }
                 const { capability, snapshotStreamId } = allocated;
+                // §11.2.8.8: the camera answers a request matching one of its streams with that stream's id.
+                const matched = knownStreams.find(stream => stream.snapshotStreamId === snapshotStreamId);
+                if (matched !== undefined) {
+                    const captured = await this.#captureSnapshot({
+                        nodeId,
+                        endpointId,
+                        state,
+                        snapshotStreamId,
+                        requestedResolution: capability.resolution,
+                        deviceCodecs,
+                        requestedCodecs,
+                    });
+                    return {
+                        ...captured,
+                        degraded: isDegradedFrom(captured.resolution, bestWithinCallerBounds),
+                        snapshotStreamId,
+                        provenance: existingStreamProvenance(
+                            this.ownsStream(nodeId, endpointId, "snapshot", snapshotStreamId),
+                        ),
+                    };
+                }
                 if (Object.keys(overlays).length > 0 && !capability.requiresHardwareEncoder) {
                     // §11.2.8.8.6 keys the may-ignore on RequiresHardwareEncoder alone, not on `usesHardwareEncoder`.
                     logger.info(
