@@ -1053,14 +1053,19 @@ describe("WebSocket Credentials API", () => {
             expect(onNetwork?.discoveryTimeout).to.equal(Seconds(90));
         });
 
-        it("leaves the matter.js default when not given", async () => {
-            const [request] = await requestsFor("commission_with_code", { code: "MT:Y.K90AFN00KA0648G00" });
+        for (const value of [undefined, null]) {
+            it(`leaves the matter.js default for ${String(value)}`, async () => {
+                const [request] = await requestsFor("commission_with_code", {
+                    code: "MT:Y.K90AFN00KA0648G00",
+                    discovery_timeout_s: value,
+                });
 
-            expect(request).to.not.equal(undefined);
-            expect(request?.discoveryTimeout).to.equal(undefined);
-        });
+                expect(request).to.not.equal(undefined);
+                expect(request?.discoveryTimeout).to.equal(undefined);
+            });
+        }
 
-        for (const value of [0, -5, "90", null]) {
+        for (const value of [0, -5, "90", 172_801]) {
             it(`refuses ${JSON.stringify(value)} before commissioning`, async () => {
                 for (const [command, args] of [
                     ["commission_with_code", { code: "MT:Y.K90AFN00KA0648G00" }],
@@ -1078,7 +1083,7 @@ describe("WebSocket Credentials API", () => {
                 } catch (e) {
                     err = e;
                 }
-                expect(String(err)).to.contain("discovery_timeout_s must be a positive number");
+                expect(String(err)).to.contain("discovery_timeout_s must be a number of seconds above 0");
             });
         }
     });

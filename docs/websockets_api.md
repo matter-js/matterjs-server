@@ -329,9 +329,11 @@ Using manual pairing code (network only):
 }
 ```
 
-`discovery_timeout_s` (optional, schema 14) limits how long the server searches for the device, in seconds (a positive
-number). Without it matter.js searches for 3 minutes. It does not limit the commissioning steps after the device is
-found. A device not found in time fails with `NodeCommissionFailed` and `reason` `not-discovered`.
+`discovery_timeout_s` (optional, schema 14) limits, in seconds, how long the server has to find the device and to set
+up the PASE session with it. Allowed are numbers above 0 up to 172800 (48 hours, the longest a device announces);
+`null` counts as not given. Without it matter.js searches for 3 minutes. The commissioning steps after PASE are not
+limited. A device found too late to finish PASE is reported the same way as one never found: `NodeCommissionFailed`
+with `reason` `not-discovered`.
 
 **commission_on_network** - Commission a device already on the network
 
@@ -356,7 +358,8 @@ Filter types:
 - `2` - Long discriminator
 - `3` - Vendor ID
 
-`discovery_timeout_s` works as for `commission_with_code`.
+`discovery_timeout_s` works as for `commission_with_code`. The attempt at `ip_addr` keeps the PASE limit of matter.js;
+the timeout applies to the discovery that follows when that attempt fails.
 
 **open_commissioning_window** - Open commissioning window to share a device
 

@@ -961,7 +961,10 @@ export interface APICommands {
             network_only?: boolean;
             wifi_credentials_id?: string;
             thread_dataset_id?: string;
-            /** Schema 14. How long to search for the device, in seconds; matter.js searches 3 minutes without it. */
+            /**
+             * Schema 14. Seconds to find the device and establish PASE with it, at most 172800 (48 hours); matter.js searches 3 minutes
+             * without it.
+             */
             discovery_timeout_s?: number;
         };
         response: MatterNodeData;
@@ -975,7 +978,7 @@ export interface APICommands {
             filter?: number;
             /** Direct IP address for commissioning */
             ip_addr?: string;
-            /** Schema 14. @see commission_with_code */
+            /** Schema 14. Same as `discovery_timeout_s` of `commission_with_code`. */
             discovery_timeout_s?: number;
         };
         response: MatterNodeData;

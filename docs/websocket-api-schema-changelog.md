@@ -135,7 +135,7 @@ OHF extensions; python-matter-server codes stop at 11. Each carries JSON details
 
 ### Commissioning
 
-- **Optional `discovery_timeout_s` on `commission_with_code` and `commission_on_network`**: how long to search for the device, in seconds. Without it matter.js searches for 3 minutes. The commissioning steps after the device is found are not limited.
+- **Optional `discovery_timeout_s` on `commission_with_code` and `commission_on_network`**: how long, in seconds, to find the device and set up PASE with it (above 0, at most 172800; `null` counts as not given). Without it matter.js searches for 3 minutes. The commissioning steps after PASE are not limited, and on `commission_on_network` the attempt at `ip_addr` keeps the matter.js PASE limit.
 
 ### Subscriptions and generic read
 

@@ -43,7 +43,7 @@ export type CommissioningRequest = {
     nodeId?: NodeId;
     knownAddress?: { ip: string; port: number };
     onNetworkOnly?: boolean;
-    /** Bounds the search for the device, not the commissioning that follows. */
+    /** Bounds discovery and PASE; the attempt at `knownAddress` keeps the matter.js PASE limit. */
     discoveryTimeout?: Duration;
     wifiCredentials?: ControllerCommissioningFlowOptions["wifiNetwork"];
     threadCredentials?: ControllerCommissioningFlowOptions["threadNetwork"];

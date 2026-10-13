@@ -1807,12 +1807,7 @@ export class ControllerCommandHandler {
             throw ServerError.invalidArguments("No passcode provided");
         }
 
-        const {
-            onNetworkOnly,
-            discoveryTimeout,
-            wifiCredentials: wifiNetwork,
-            threadCredentials: threadNetwork,
-        } = data;
+        const { onNetworkOnly, wifiCredentials: wifiNetwork, threadCredentials: threadNetwork } = data;
         return {
             passcode,
             ...(longDiscriminator !== undefined
@@ -1826,7 +1821,6 @@ export class ControllerCommandHandler {
                 ble: this.bleEnabled && !onNetworkOnly,
                 onIpNetwork: true,
             },
-            ...(discoveryTimeout !== undefined ? { timeout: discoveryTimeout } : {}),
             nodeId: data.nodeId,
             autoSubscribe: !this.#autoSubscriptionDisabled,
             regulatoryLocation: GeneralCommissioning.RegulatoryLocationType.IndoorOutdoor,
@@ -1906,7 +1900,9 @@ export class ControllerCommandHandler {
                     );
                 }
             }
-            peer ??= await this.#node.peers.commission(options);
+            peer ??= await this.#node.peers.commission(
+                data.discoveryTimeout === undefined ? options : { ...options, timeout: data.discoveryTimeout },
+            );
             await awaitSeeded(peer, this.#shutdown);
             nodeId = nodeIdOf(peer);
 

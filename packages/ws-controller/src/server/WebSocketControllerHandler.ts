@@ -214,13 +214,16 @@ function statusResponseOf(error: unknown): ReceivedStatusResponseError | undefin
     return error instanceof Error ? statusResponseOf(error.cause) : undefined;
 }
 
+/** A device announces for at most 48 hours (Extended Announcement, Matter Core spec 5.4.2.3.3). */
+const MAX_DISCOVERY_TIMEOUT_S = 48 * 60 * 60;
+
 function discoveryTimeoutOf(seconds: unknown): Duration | undefined {
-    if (seconds === undefined) {
+    if (seconds === undefined || seconds === null) {
         return undefined;
     }
-    if (typeof seconds !== "number" || !Number.isFinite(seconds) || seconds <= 0) {
+    if (typeof seconds !== "number" || !(seconds > 0 && seconds <= MAX_DISCOVERY_TIMEOUT_S)) {
         throw ServerError.invalidArguments(
-            `discovery_timeout_s must be a positive number of seconds, got ${String(seconds)}`,
+            `discovery_timeout_s must be a number of seconds above 0 and at most ${MAX_DISCOVERY_TIMEOUT_S}, got ${String(seconds)}`,
         );
     }
     return Seconds(seconds);

@@ -209,6 +209,18 @@ describe("commissionNode", () => {
         expect(nodeId).equals(NODE_ID);
         expect(handler.isNodeIdInUse(NODE_ID)).equals(true);
     });
+
+    it("keeps the PASE limit of the attempt at the supplied address when a discovery timeout is set", async () => {
+        const startedAt = MockTime.nowMs;
+
+        const { nodeId } = await commissioning(() =>
+            handler.commissionNode({ ...request({ ip: "10.10.10.99", port: 5540 }), discoveryTimeout: Seconds(1) }),
+        );
+
+        expect(nodeId).equals(NODE_ID);
+        // Bounded by the 1 s discovery timeout, the stale address would be given up almost at once.
+        expect(MockTime.nowMs - startedAt).at.least(10_000);
+    });
 });
 
 describe("commissionFailureOf", () => {
