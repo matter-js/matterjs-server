@@ -467,9 +467,6 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 // Shared Observable: an uncaught throw here aborts the emit and starves other connections.
                 try {
                     connection.sendCoalescable(`attr:${nodeId}/${pathStr}`, () => {
-                        // A removal reaches clients in the node_updated the controller schedules for it; it still
-                        // claims this path's coalescing slot so a value queued earlier is not sent after that snapshot.
-                        if (rawValue === undefined) return undefined;
                         const clusterData = ClusterMap[clusterId];
                         const value = convertMatterToWebSocketTagBased(
                             rawValue,

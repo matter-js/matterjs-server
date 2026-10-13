@@ -1624,7 +1624,7 @@ Events are sent to clients that have called `start_listening`. Events have this 
 
 Format: `[node_id, "endpoint/cluster/attribute", value]`
 
-A removed attribute is not sent as `attribute_updated`; the next `node_updated` no longer contains it.
+A removed attribute is sent with the value `null`, the same as a `null` value of a nullable attribute; the next `node_updated` no longer contains it.
 
 ### Endpoint Events
 

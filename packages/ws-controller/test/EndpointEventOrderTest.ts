@@ -153,22 +153,19 @@ describe("node events on the wire", () => {
         expect(Object.keys(snapshot!.data.attributes)).to.include(`${NEW_ENDPOINT}/29/0`);
     });
 
-    it("does not send a removed attribute as attribute_updated", async () => {
+    it("sends a removed attribute as attribute_updated with null", async () => {
         const frames = await listen();
-        const change = (attributeId: number, value: unknown) => ({
-            path: { endpointId: EndpointNumber(1), clusterId: ClusterId(6), attributeId: AttributeId(attributeId) },
-            value,
+        fakeCommandHandler.events.attributeChanged.emit(NODE_ID, {
+            path: { endpointId: EndpointNumber(1), clusterId: ClusterId(6), attributeId: AttributeId(0) },
+            value: undefined,
         });
-
-        fakeCommandHandler.events.attributeChanged.emit(NODE_ID, change(0, undefined));
-        fakeCommandHandler.events.attributeChanged.emit(NODE_ID, change(16384, true));
         await waitFor(() => frames.some(frame => frame.event === "attribute_updated"));
 
-        const updates = frames.filter(frame => frame.event === "attribute_updated").map(frame => frame.data[1]);
-        expect(updates).to.deep.equal(["1/6/16384"]);
+        const updates = frames.filter(frame => frame.event === "attribute_updated").map(frame => frame.data.slice(1));
+        expect(updates).to.deep.equal([["1/6/0", null]]);
     });
 
-    it("does not send a value queued before a removal of the same attribute", async () => {
+    it("replaces a value queued before a removal of the same attribute", async () => {
         const frames = await listen();
         const change = (clusterId: number, attributeId: number, value: unknown) => ({
             path: {
@@ -189,8 +186,8 @@ describe("node events on the wire", () => {
         fakeCommandHandler.events.attributeChanged.emit(NODE_ID, change(6, 16384, true));
 
         await waitFor(() => frames.some(frame => frame.event === "attribute_updated" && frame.data[1] === "1/6/16384"));
-        const updates = frames.filter(frame => frame.event === "attribute_updated").map(frame => frame.data[1]);
-        expect(updates).not.to.include("1/6/0");
-        expect(updates).to.include(`1/${VENDOR_CLUSTER}/39`);
+        const updates = frames.filter(frame => frame.event === "attribute_updated").map(frame => frame.data.slice(1));
+        expect(updates.filter(([path]) => path === "1/6/0")).to.deep.equal([["1/6/0", null]]);
+        expect(updates.map(([path]) => path)).to.include(`1/${VENDOR_CLUSTER}/39`);
     });
 });
