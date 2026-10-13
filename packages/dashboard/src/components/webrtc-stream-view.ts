@@ -139,7 +139,7 @@ export class WebRtcStreamView extends LitElement {
         this._applyPlaybackMute();
     }
 
-    /** Changes are announced with a `talkchange` event as well as with `streamstate`. */
+    /** On a live stream, changes of this and of {@link talking} are announced with `talkchange`; teardown with `streamstate`. */
     get talkAvailable(): boolean {
         return this._attempt !== null && this._talkNegotiated(this._attempt);
     }
@@ -158,6 +158,7 @@ export class WebRtcStreamView extends LitElement {
         const sender = attempt?.talkTransceiver?.sender;
         if (!talking) {
             if (!attempt || !sender || !this._releaseMicrophone(attempt)) return;
+            this._fireTalkChange();
             await sender.replaceTrack(null);
             return;
         }
@@ -178,10 +179,11 @@ export class WebRtcStreamView extends LitElement {
         }
         attempt.micTrack = track;
         this._applyPlaybackMute();
+        this._fireTalkChange();
         try {
             await sender.replaceTrack(track);
         } catch (err) {
-            if (attempt.micTrack === track) this._releaseMicrophone(attempt);
+            if (attempt.micTrack === track && this._releaseMicrophone(attempt)) this._fireTalkChange();
             track.stop();
             throw err;
         }
@@ -189,8 +191,11 @@ export class WebRtcStreamView extends LitElement {
 
     private _talkNegotiated(attempt: StreamAttempt): boolean {
         const direction = attempt.talkTransceiver?.currentDirection;
-        const result = attempt.session?.result;
-        return (direction === "sendrecv" || direction === "sendonly") && result?.audio != null && result.talkback;
+        return (direction === "sendrecv" || direction === "sendonly") && attempt.session?.result.talkback === true;
+    }
+
+    private _fireTalkChange(): void {
+        this.dispatchEvent(new CustomEvent("talkchange", { bubbles: false, composed: false }));
     }
 
     /** Returns whether a microphone track was live. */
@@ -591,7 +596,7 @@ export class WebRtcStreamView extends LitElement {
             const answer = await pc.createAnswer();
             await pc.setLocalDescription(answer);
             if (!this._talkNegotiated(attempt)) this._releaseMicrophone(attempt);
-            this.dispatchEvent(new CustomEvent("talkchange", { bubbles: false, composed: false }));
+            if (this._attempt === attempt) this._fireTalkChange();
             const sdp = pc.localDescription?.sdp;
             if (!sdp) throw new Error("Failed to create local SDP answer");
             await client.sendCommand("camera_provide_answer", CAMERA_API_SCHEMA, {

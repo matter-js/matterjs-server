@@ -3196,13 +3196,19 @@ describe("CameraStreamManager", () => {
             function talkingManager(twoWayTalkSupport?: number) {
                 return managerWith({ ...STATE, twoWayTalkSupport }, async invoke => {
                     if (invoke.command === "videoStreamAllocate") return { videoStreamId: 9 };
+                    if (invoke.command === "audioStreamAllocate") return { audioStreamId: 4 };
                     if (invoke.command === "provideOffer") return { webRtcSessionId: 42 };
                     if (invoke.command === "solicitOffer") return { webRtcSessionId: 43 };
                     return undefined;
                 });
             }
 
-            async function start(args: { sdp?: string; talkback?: boolean; twoWayTalkSupport?: number }) {
+            async function start(args: {
+                sdp?: string;
+                talkback?: boolean;
+                twoWayTalkSupport?: number;
+                audio?: false;
+            }) {
                 const { manager, invokes } = talkingManager(args.twoWayTalkSupport);
                 const result = await manager.startStream({
                     nodeId: NODE,
@@ -3212,7 +3218,7 @@ describe("CameraStreamManager", () => {
                     ...(args.sdp === undefined ? {} : { sdp: args.sdp }),
                     ...(args.talkback === undefined ? {} : { talkback: args.talkback }),
                     video: {},
-                    audio: false,
+                    audio: args.audio ?? {},
                 });
                 const offer = invokes.find(
                     invoke => invoke.command === "provideOffer" || invoke.command === "solicitOffer",
@@ -3229,7 +3235,7 @@ describe("CameraStreamManager", () => {
             });
 
             it("sends the offer with a sendonly audio section made inactive when talkback is false", async () => {
-                const { sent } = await start({ sdp: AUDIO_SENDONLY_OFFER, talkback: false });
+                const { sent } = await start({ sdp: AUDIO_SENDONLY_OFFER, talkback: false, audio: false });
                 expect(sent).to.equal(AUDIO_SENDONLY_OFFER.replace("a=sendonly", "a=inactive"));
             });
 
@@ -3297,6 +3303,18 @@ describe("CameraStreamManager", () => {
                 const offer = invokes.find(invoke => invoke.command === "provideOffer");
                 expect(offer?.fields.sdp).to.equal(TALKBACK_OFFER);
                 expect(offer?.fields.audioStreams).to.deep.equal([4]);
+            });
+
+            it("reports no talkback when the session carries no audio stream", async () => {
+                const { result, sent } = await start({
+                    sdp: TALKBACK_OFFER,
+                    talkback: true,
+                    twoWayTalkSupport: FullDuplex,
+                    audio: false,
+                });
+                expect(sent).to.equal(TALKBACK_OFFER);
+                expect(result.audio).to.equal(undefined);
+                expect(result.talkback).to.equal(false);
             });
 
             it("reports no talkback when the offer's audio cannot send", async () => {

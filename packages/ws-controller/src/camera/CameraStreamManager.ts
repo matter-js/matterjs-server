@@ -520,7 +520,11 @@ export interface StartStreamResult {
     mode: "solicit_offer" | "provide_offer";
     video?: ResolvedStream;
     audio?: ResolvedStream;
-    /** Talkback was asked for, the offer's audio can send, and the camera states half or full duplex. */
+    /**
+     * Talkback was asked for, the offer's audio can send, the camera states half or full duplex, and the
+     * session carries an audio stream: the Matter SDK example camera plays the client's audio only while that
+     * stream runs.
+     */
     talkback: boolean;
 }
 
@@ -1990,6 +1994,12 @@ export class CameraStreamManager {
             audio = this.resolveTrack("audio", nodeId, audioRequest, outcome);
         }
 
+        if (talkbackOffered && cameraTalks && audio === undefined) {
+            logger.notice(
+                `Node ${nodeId} endpoint ${endpointId}: talkback asked for, but the session carries no audio stream to play it on`,
+            );
+        }
+
         if (video === undefined && audio === undefined) {
             throw ServerError.cameraStreamIncompatible({
                 reason: "no_media",
@@ -2035,7 +2045,7 @@ export class CameraStreamManager {
             mode: args.sdp === undefined ? "solicit_offer" : "provide_offer",
             video,
             audio,
-            talkback: talkbackOffered && cameraTalks,
+            talkback: talkbackOffered && cameraTalks && audio !== undefined,
         };
     }
 

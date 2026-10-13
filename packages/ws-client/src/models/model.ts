@@ -716,8 +716,8 @@ export interface CameraStartStreamResult {
     video: CameraStartStreamVideoResult | null;
     audio: CameraStartStreamAudioResult | null;
     /**
-     * True when `talkback` was asked for, the offer's audio can send and the camera states `HalfDuplex` or
-     * `FullDuplex`. The audio direction in the camera's answer is the final word.
+     * True when `talkback` was asked for, the offer's audio can send, the camera states `HalfDuplex` or
+     * `FullDuplex` and `audio` is not null. The audio direction in the camera's answer is the final word.
      */
     talkback: boolean;
 }

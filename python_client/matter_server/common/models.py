@@ -721,8 +721,8 @@ class CameraStartStreamAudioResult:
 class CameraStartStreamResult:
     """Result of `camera_start_stream`; `mode` is `solicit_offer` or `provide_offer`.
 
-    `talkback` is true when talkback was asked for, the offer's audio can send and the camera states
-    half or full duplex. The audio direction in the camera's answer is the final word.
+    `talkback` is true when talkback was asked for, the offer's audio can send, the camera states
+    half or full duplex and `audio` is not None. The audio direction in the camera's answer is the final word.
     """
 
     webrtc_session_id: int

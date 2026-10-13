@@ -141,7 +141,7 @@ export class CameraOverlay extends LitElement {
         this._activeVideoStreamId = streaming ? (view?.videoStreamId ?? null) : null;
         this._qualityBadges = streaming ? (view?.qualityBadges ?? []) : [];
         this._talkAvailable = streaming && (view?.talkAvailable ?? false);
-        this._talking = view?.talking ?? false;
+        this._talking = streaming && (view?.talking ?? false);
         if (!streaming) this._talkError = null;
 
         // Audio-only "Listen" sessions have no video; starting muted would defeat the feature, so

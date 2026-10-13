@@ -1320,6 +1320,8 @@ describe("WebRtcStreamView", () => {
         it("sends the microphone track and stops it again without renegotiating", async () => {
             const { view, fake } = await startTalkView();
             const offer = lastPeer().localDescription;
+            const talkChanges = new Array<boolean>();
+            view.addEventListener("talkchange", () => talkChanges.push(view.talking));
 
             await view.setTalking(true);
             expect(getUserMediaCalls).to.deep.equal([{ audio: true }]);
@@ -1331,17 +1333,9 @@ describe("WebRtcStreamView", () => {
             expect(lastPeer().replacedTracks).to.deep.equal([track, null]);
             expect(track.stopped).to.equal(true);
             expect(view.talking).to.equal(false);
+            expect(talkChanges).to.deep.equal([true, false]);
             expect(lastPeer().localDescription).to.equal(offer);
             expect(fake.commands()).to.deep.equal(["camera_start_stream"]);
-        });
-
-        it("offers no talk when the camera serves the session without audio", async () => {
-            const { view } = await startTalkView("FullDuplex", {
-                result: startResult({ audio: null, talkback: true }),
-            });
-
-            expect(lastPeer().directions).to.deep.equal(["recvonly", "sendrecv"]);
-            expect(view.talkAvailable).to.equal(false);
         });
 
         it("applies the user's mute choice to the playback", async () => {
@@ -1415,9 +1409,12 @@ describe("WebRtcStreamView", () => {
             const { view, video } = await startTalkView("HalfDuplex");
             view.setMuted(false);
             lastPeer().replaceTrackError = new Error("InvalidModificationError");
+            const talkChanges = new Array<boolean>();
+            view.addEventListener("talkchange", () => talkChanges.push(view.talking));
 
             await expectRejection(view.setTalking(true), "InvalidModificationError");
 
+            expect(talkChanges).to.deep.equal([true, false]);
             expect(track.stopped).to.equal(true);
             expect(view.talking).to.equal(false);
             expect(video.muted).to.equal(false);
