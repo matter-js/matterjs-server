@@ -4,7 +4,17 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { ClientNode, ClusterBehavior, Diagnostic, Logger, MatterError, Millis, NodeId, Time } from "@matter/main";
+import {
+    ClientNode,
+    ClusterBehavior,
+    Diagnostic,
+    Logger,
+    MatterError,
+    Millis,
+    NodeId,
+    Observable,
+    Time,
+} from "@matter/main";
 import { EndpointNumber } from "@matter/main/types";
 import { ClusterMap } from "../model/ModelMapper.js";
 import { buildAttributePath, convertMatterToWebSocketTagBased } from "../server/Converters.js";
@@ -42,6 +52,12 @@ type PopulateContext = {
 export class AttributeDataCache {
     #cache = new Map<NodeId, NodeSnapshot>();
     #inFlight = new Map<NodeId, PopulateContext>();
+
+    /**
+     * Paths a rebuild dropped from a node's previous snapshot, emitted once per swap before the rebuild
+     * resolves. Paths of an endpoint the new snapshot no longer has are not included.
+     */
+    readonly attributesRemoved = new Observable<[nodeId: NodeId, paths: string[]]>();
 
     /**
      * Whether the node's model carries something to snapshot.
@@ -262,8 +278,15 @@ export class AttributeDataCache {
                 for (const [path, value] of context.pending) {
                     snapshot.attributes[path] = value;
                 }
+                const previous = this.#cache.get(nodeId)?.attributes;
                 this.#cache.set(nodeId, snapshot);
                 attributeCount = Object.keys(snapshot.attributes).length;
+                if (previous !== undefined) {
+                    const removed = removedPaths(previous, snapshot.attributes);
+                    if (removed.length > 0) {
+                        this.attributesRemoved.emit(nodeId, removed);
+                    }
+                }
             } while (context.rerun);
 
             logger.debug(
@@ -339,4 +362,9 @@ export class AttributeDataCache {
             }
         }
     }
+}
+
+function removedPaths(previous: AttributesData, current: AttributesData) {
+    const endpoints = new Set(Object.keys(current).map(path => path.slice(0, path.indexOf("/"))));
+    return Object.keys(previous).filter(path => !(path in current) && endpoints.has(path.slice(0, path.indexOf("/"))));
 }

@@ -1613,7 +1613,7 @@ Events are sent to clients that have called `start_listening`. Events have this 
 
 ### Attribute Events
 
-**attribute_updated** - An attribute value changed. Changes from a node's first report, after a server restart or after commissioning, are not sent this way
+**attribute_updated** - An attribute value changed. Values from a node's first report, after a server restart or after commissioning, are not sent this way. An attribute the device no longer has when the server rebuilds the node data (after its first report, a reconnect or a structure change) is sent once with the value `null`, and later `node_updated` events no longer contain it. A reconnect only rebuilds the node data when the node was unavailable. Attributes of an endpoint the device no longer has are not sent this way
 
 ```json
 {

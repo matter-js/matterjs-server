@@ -465,6 +465,23 @@ export class ControllerCommandHandler {
             });
         });
 
+        // Clients that merge `node_updated` into their node model keep a value the snapshot only omits.
+        this.#busObservers.on(this.#nodes.attributeCache.attributesRemoved, (nodeId, paths) => {
+            this.#guard(nodeId, "attribute removal", () => {
+                for (const path of paths) {
+                    const [endpointId, clusterId, attributeId] = path.split("/").map(Number);
+                    this.events.attributeChanged.emit(nodeId, {
+                        path: {
+                            endpointId: EndpointNumber(endpointId),
+                            clusterId: ClusterId(clusterId),
+                            attributeId: AttributeId(attributeId),
+                        },
+                        value: undefined,
+                    });
+                }
+            });
+        });
+
         this.#busObservers.on(bus.events.reportingStarted, nodeId => {
             this.#guard(nodeId, "first report", () => {
                 this.#refreshAfterFirstReport(this.#nodes.get(nodeId)).catch(error =>
@@ -495,18 +512,18 @@ export class ControllerCommandHandler {
         const nodeId = nodeIdOf(node);
         const attributeCache = this.#nodes.attributeCache;
         const stale = attributeCache.get(nodeId);
-        // Also restarts a populate already running, which may have collected endpoints before the report.
-        await attributeCache.update(node);
-        const attributes = attributeCache.get(nodeId);
-        // A populate that failed or was cancelled leaves the old snapshot, which must not go out as fresh.
-        const rebuilt = attributes !== undefined && attributes !== stale;
-        const waiting = this.#nodes.isAwaitingFirstReport(nodeId);
+        let rebuilt = false;
         try {
-            if (rebuilt) {
+            // Also restarts a populate already running, which may have collected endpoints before the report.
+            await attributeCache.update(node);
+            const attributes = attributeCache.get(nodeId);
+            // A populate that failed or was cancelled leaves the old snapshot, which must not go out as fresh.
+            if (attributes !== undefined && attributes !== stale) {
+                rebuilt = true;
                 this.#registerWithProcessors(nodeId, attributes);
             }
         } finally {
-            if (waiting) {
+            if (this.#nodes.isAwaitingFirstReport(nodeId)) {
                 this.#endFirstReportWait(nodeId);
             } else if (rebuilt && stale !== undefined) {
                 this.events.nodeStructureChanged.emit(nodeId);
@@ -861,9 +878,14 @@ export class ControllerCommandHandler {
 
     #registerWithProcessors(nodeId: NodeId, attributes: AttributesData) {
         const peer = this.#peerOf(nodeId);
+        this.#registerWithPollers(peer, attributes);
+        this.#timeSyncManager?.registerNode(peer, attributes);
+    }
+
+    /** Leaves out the time sync, whose registration can push the time to the node. */
+    #registerWithPollers(peer: PeerAddress, attributes: AttributesData) {
         this.#customClusterPoller.registerNode(peer, attributes);
         this.#threadDetailsPoller?.registerNode(peer, attributes);
-        this.#timeSyncManager?.registerNode(peer, attributes);
     }
 
     /**
@@ -955,13 +977,19 @@ export class ControllerCommandHandler {
         this.#nodeUpdateTimers.get(nodeId)?.stop();
         this.#nodeUpdateTimers.delete(nodeId);
 
-        if (this.#isConnected(nodeId)) {
+        const connected = this.#isConnected(nodeId);
+        if (connected) {
             await this.#nodes.attributeCache.update(node);
         }
         this.events.nodeStructureChanged.emit(nodeId);
 
         for (const endpointId of this.#nodes.drainPendingEndpointAdds(nodeId)) {
             this.events.nodeEndpointAdded.emit(nodeId, endpointId);
+        }
+
+        const attributes = this.#nodes.attributeCache.get(nodeId);
+        if (connected && attributes !== undefined) {
+            this.#registerWithPollers(this.#peerOf(nodeId), attributes);
         }
     }
 

@@ -132,6 +132,41 @@ describe("AttributeDataCache", () => {
         });
     });
 
+    describe("attributesRemoved", () => {
+        function record(cache: AttributeDataCache) {
+            const removals = new Array<string[]>();
+            cache.attributesRemoved.on((_nodeId, paths) => {
+                removals.push(paths);
+            });
+            return removals;
+        }
+
+        it("reports the paths a rebuild dropped, except those of an endpoint the node no longer has", async () => {
+            const cache = new AttributeDataCache();
+            const node = clientNode(NODE_ID);
+            await cache.add(node);
+            const stored = cache.get(NODE_ID)!;
+            stored["1/6/99"] = 1;
+            stored["9/6/0"] = true;
+            const removals = record(cache);
+
+            await cache.update(node);
+
+            expect(removals).to.deep.equal([["1/6/99"]]);
+        });
+
+        it("reports nothing for a first snapshot or a rebuild that dropped nothing", async () => {
+            const cache = new AttributeDataCache();
+            const removals = record(cache);
+            const node = clientNode(NODE_ID);
+
+            await cache.add(node);
+            await cache.update(node);
+
+            expect(removals).to.deep.equal([]);
+        });
+    });
+
     describe("endpointParents", () => {
         it("is empty for a node without a snapshot", function () {
             const cache = new AttributeDataCache();

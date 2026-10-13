@@ -7,6 +7,7 @@
 import {
     ClientNode,
     FabricId,
+    MatterError,
     NetworkClient,
     NodeConnectionState,
     NodeId,
@@ -15,6 +16,7 @@ import {
 } from "@matter/main";
 import { OnOff } from "@matter/main/clusters";
 import { Endpoint } from "@matter/node";
+import { OnOffLightDevice } from "@matter/node/devices/on-off-light";
 import { FabricAuthority, FabricManager, SustainedSubscription } from "@matter/protocol";
 import { AttributeDataCache } from "../src/controller/AttributeDataCache.js";
 import { CameraControllerEndpoint, ControllerCommandHandler } from "../src/controller/ControllerCommandHandler.js";
@@ -63,15 +65,15 @@ function recordClientView(handler: ControllerCommandHandler) {
     return { nodeUpdates, attributeChanges };
 }
 
-async function connectionOf(peer: ClientNode) {
-    if (peer.lifecycle.isConnected) {
+async function stateOf(peer: ClientNode, target: NodeConnectionState) {
+    if (peer.lifecycle.connectionState === target) {
         return;
     }
     const observers = new ObserverGroup();
     try {
         await new Promise<void>(resolve =>
             observers.on(peer.lifecycle.connectionStateChanged, state => {
-                if (state === NodeConnectionState.Connected) {
+                if (state === target) {
                     resolve();
                 }
             }),
@@ -79,6 +81,10 @@ async function connectionOf(peer: ClientNode) {
     } finally {
         observers.close();
     }
+}
+
+function connectionOf(peer: ClientNode) {
+    return stateOf(peer, NodeConnectionState.Connected);
 }
 
 async function awaitConnected(peer: ClientNode) {
@@ -252,6 +258,90 @@ describe("restored node cache", () => {
         expect(view.nodeUpdates).deep.equals([{ available: true, onOff: false }]);
     });
 
+    it("makes a restored node available even when its rebuild fails", async () => {
+        const device = await changeWhileControllerIsDown();
+        await MockTime.resolve(device.cancel(), { macrotasks: true });
+        restore = replaceCacheUpdate(async () => {
+            throw new MatterError("rebuild failure");
+        });
+
+        const { controller, handler, view } = await restartController();
+        await MockTime.resolve(handler.initializeNodes(), { macrotasks: true });
+        await MockTime.resolve(device.start(), { macrotasks: true });
+        await awaitConnected(onlyPeer(controller));
+        await settle();
+
+        expect(view.nodeUpdates).deep.equals([{ available: true, onOff: false }]);
+    });
+
+    it("keeps a restored node unavailable when it goes offline while its first report is being applied", async () => {
+        const device = await changeWhileControllerIsDown();
+        let offline: Promise<void> | undefined;
+        restore = replaceCacheUpdate(async (original, cache, node) => {
+            offline ??= device.cancel().then(() => stateOf(node, NodeConnectionState.WaitingForDeviceDiscovery));
+            await offline;
+            return original.call(cache, node);
+        });
+
+        const { controller, handler, view } = await restartController();
+        await MockTime.resolve(handler.initializeNodes(), { macrotasks: true });
+        const peer = onlyPeer(controller);
+        await awaitConnected(peer);
+        for (
+            let i = 0;
+            i < 20 && peer.lifecycle.connectionState !== NodeConnectionState.WaitingForDeviceDiscovery;
+            i++
+        ) {
+            await settle();
+        }
+        await settle();
+
+        expect(peer.lifecycle.connectionState).equals(NodeConnectionState.WaitingForDeviceDiscovery);
+        expect(viewOf(handler, nodeIdOf(peer)).available).equals(false);
+        expect(view.nodeUpdates).deep.equals([]);
+
+        await MockTime.resolve(device.start(), { macrotasks: true });
+        await awaitConnected(peer);
+        await settle();
+
+        expect(view.nodeUpdates).deep.equals([{ available: true, onOff: true }]);
+    });
+
+    it("sends an attribute the first report no longer carries as a removal before the node becomes available", async () => {
+        await changeWhileControllerIsDown();
+        const removedPath = `1/${OnOff.Cluster.id}/65000`;
+        const add = AttributeDataCache.prototype.add;
+        AttributeDataCache.prototype.add = async function (node: ClientNode) {
+            await add.call(this, node);
+            const stored = this.get(nodeIdOf(node));
+            if (stored !== undefined) {
+                stored[removedPath] = 5;
+                stored[`9/${OnOff.Cluster.id}/0`] = true;
+            }
+        };
+        restore = () => {
+            AttributeDataCache.prototype.add = add;
+        };
+
+        const { controller, handler } = await restartController();
+        const events = new Array<string>();
+        handler.events.attributeChanged.on((_nodeId, { path, value }) => {
+            events.push(`${path.endpointId}/${path.clusterId}/${path.attributeId}=${value}`);
+        });
+        handler.events.nodeAvailabilityChanged.on((_nodeId, available) => {
+            events.push(`available=${available}`);
+        });
+        await MockTime.resolve(handler.initializeNodes(), { macrotasks: true });
+        await awaitConnected(onlyPeer(controller));
+        await settle();
+
+        const removedAt = events.indexOf(`${removedPath}=undefined`);
+        expect(removedAt, events.join(", ")).greaterThan(-1);
+        expect(removedAt).lessThan(events.indexOf("available=true"));
+        expect(events.filter(event => event.endsWith("=undefined"))).deep.equals([`${removedPath}=undefined`]);
+        expect(handler.getNodeDetails(nodeIdOf(onlyPeer(controller))).attributes).not.have.property(removedPath);
+    });
+
     it("makes a restored node available even when handing its snapshot to the pollers throws", async () => {
         await changeWhileControllerIsDown();
         const registerNode = CustomClusterPoller.prototype.registerNode;
@@ -284,7 +374,7 @@ describe("restored node cache", () => {
         const availableWhenAdded = commandHandler.getNodeDetails(nodeId).available;
         await awaitConnected(onlyPeer(controller));
         await settle();
-        return { view, availableWhenAdded };
+        return { view, availableWhenAdded, device };
     }
 
     it("never serves a freshly commissioned node as unavailable, and sends it once more after its first report", async () => {
@@ -293,6 +383,27 @@ describe("restored node cache", () => {
         expect(availableWhenAdded).equals(true);
         expect(view.nodeUpdates).deep.equals([{ available: true, onOff: false }]);
         expect(view.attributeChanges).not.include(ON_OFF_PATH);
+    });
+
+    it("hands the rebuilt snapshot to the pollers after a structure change", async () => {
+        const registered = new Array<string[]>();
+        const registerNode = CustomClusterPoller.prototype.registerNode;
+        CustomClusterPoller.prototype.registerNode = function (peer, attributes) {
+            registered.push(Object.keys(attributes));
+            return registerNode.call(this, peer, attributes);
+        };
+        restore = () => {
+            CustomClusterPoller.prototype.registerNode = registerNode;
+        };
+        const { device } = await commissionThroughHandler();
+        registered.length = 0;
+
+        await device.add(OnOffLightDevice, { id: "second-light", number: 2 });
+        for (let i = 0; i < 5 && !registered.some(paths => paths.includes(`2/${OnOff.Cluster.id}/0`)); i++) {
+            await settle();
+        }
+
+        expect(registered.some(paths => paths.includes(`2/${OnOff.Cluster.id}/0`))).equals(true);
     });
 
     it("does not send a freshly commissioned node again when its rebuild produces no new snapshot", async () => {
