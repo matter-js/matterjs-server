@@ -93,6 +93,37 @@ export function isAudioOnlyCamera(caps: CameraCapabilitiesResult | null): boolea
     return features !== undefined && !features.includes("Video");
 }
 
+export type CameraTalkbackMode = "HalfDuplex" | "FullDuplex";
+
+/** How the camera plays back audio sent to it; null when it has no speaker or no two-way talk. */
+export function cameraTalkbackMode(caps: CameraCapabilitiesResult | null): CameraTalkbackMode | null {
+    if (!hasCameraFeature(caps, "Speaker")) return null;
+    const support = caps?.audio.two_way_talk_support;
+    return support === "HalfDuplex" || support === "FullDuplex" ? support : null;
+}
+
+export const MICROPHONE_NEEDS_SECURE_CONTEXT = "Talking needs the dashboard opened over HTTPS or on localhost";
+
+export function microphoneCaptureAvailable(): boolean {
+    return (
+        globalThis.isSecureContext === true && typeof globalThis.navigator?.mediaDevices?.getUserMedia === "function"
+    );
+}
+
+export function microphoneErrorText(error: unknown): string {
+    if (error instanceof DOMException) {
+        switch (error.name) {
+            case "NotAllowedError":
+                return "Microphone access was denied";
+            case "NotFoundError":
+                return "No microphone found";
+            case "NotReadableError":
+                return "Microphone is in use by another application";
+        }
+    }
+    return errorText(error);
+}
+
 /**
  * The `video` argument for `camera_start_stream`; undefined means leave the key out. A camera with the
  * `Video` feature always gets an object, which requires video; an audio-only camera gets `false`. While
