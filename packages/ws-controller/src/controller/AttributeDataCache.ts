@@ -38,6 +38,7 @@ type NodeSnapshot = {
 type PopulateContext = {
     rerun: boolean;
     cancelled: boolean;
+    /** An `undefined` value records a removed attribute. */
     pending: Array<[path: string, value: unknown]>;
     promise: Promise<void>;
 };
@@ -101,9 +102,12 @@ export class AttributeDataCache {
 
     /**
      * Update a single attribute in the cache.
-     * Use this for incremental updates when an attribute value changes.
+     * Use this for incremental updates when an attribute value changes. An `undefined` value removes the attribute,
+     * which matter.js reports when the device's AttributeList no longer contains it.
+     *
+     * @returns whether a removal dropped an attribute from the cached node data
      */
-    updateAttribute(nodeId: NodeId, data: AttributeChange): void {
+    updateAttribute(nodeId: NodeId, data: AttributeChange): boolean {
         const { endpointId, clusterId, attributeId } = data.path;
 
         const clusterData = ClusterMap[clusterId];
@@ -112,9 +116,6 @@ export class AttributeDataCache {
             clusterData?.attributes[attributeId],
             clusterData?.model,
         );
-        if (convertedValue === undefined) {
-            return;
-        }
         const path = buildAttributePath(endpointId, clusterId, attributeId);
         const inFlight = this.#inFlight.get(nodeId);
         const attributes = this.#cache.get(nodeId)?.attributes;
@@ -124,13 +125,17 @@ export class AttributeDataCache {
         // getNodeDetails would serve a truncated snapshot and skip the real populate. With no snapshot
         // yet, the value is captured by the in-flight populate's pending replay, or by the next full
         // populate (which reads live state) when none is running.
+        let removed = false;
         if (attributes !== undefined) {
-            attributes[path] = convertedValue;
+            removed = convertedValue === undefined && path in attributes;
+            setAttribute(attributes, path, convertedValue);
         }
 
         // A full populate builds into a detached snapshot and swaps it in at the end, so a write
         // landing mid-run would be lost. Record it for replay onto that snapshot.
         inFlight?.pending.push([path, convertedValue]);
+
+        return removed;
     }
 
     /** Whether the cached snapshot of the node carries any attribute of the endpoint. */
@@ -276,7 +281,7 @@ export class AttributeDataCache {
                     continue;
                 }
                 for (const [path, value] of context.pending) {
-                    snapshot.attributes[path] = value;
+                    setAttribute(snapshot.attributes, path, value);
                 }
                 const previous = this.#cache.get(nodeId)?.attributes;
                 this.#cache.set(nodeId, snapshot);
@@ -361,6 +366,14 @@ export class AttributeDataCache {
                 return;
             }
         }
+    }
+}
+
+function setAttribute(attributes: AttributesData, path: string, value: unknown) {
+    if (value === undefined) {
+        delete attributes[path];
+    } else {
+        attributes[path] = value;
     }
 }
 

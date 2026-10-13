@@ -167,6 +167,87 @@ describe("AttributeDataCache", () => {
         });
     });
 
+    describe("updateAttribute", () => {
+        const onOff = (endpointId: number, value: unknown) => ({
+            path: { endpointId: EndpointNumber(endpointId), clusterId: ClusterId(6), attributeId: AttributeId(0) },
+            value,
+        });
+
+        it("removes an attribute reported as undefined", async function () {
+            const cache = new AttributeDataCache();
+            await cache.add(clientNode(NODE_ID));
+            expect(cache.get(NODE_ID)?.["1/6/0"]).to.equal(true);
+
+            expect(cache.updateAttribute(NODE_ID, onOff(1, undefined))).to.equal(true);
+
+            expect(cache.get(NODE_ID)).not.to.have.property("1/6/0");
+        });
+
+        it("reports no removal for an attribute the snapshot does not hold", async function () {
+            const cache = new AttributeDataCache();
+            await cache.add(clientNode(NODE_ID));
+
+            expect(cache.updateAttribute(NODE_ID, onOff(2, undefined))).to.equal(false);
+        });
+
+        it("stores a value without reporting a removal", async function () {
+            const cache = new AttributeDataCache();
+            await cache.add(clientNode(NODE_ID));
+
+            expect(cache.updateAttribute(NODE_ID, onOff(1, false))).to.equal(false);
+
+            expect(cache.get(NODE_ID)?.["1/6/0"]).to.equal(false);
+        });
+
+        it("does not create a cache entry without a snapshot", function () {
+            const cache = new AttributeDataCache();
+
+            expect(cache.updateAttribute(NODE_ID, onOff(1, false))).to.equal(false);
+            expect(cache.updateAttribute(NODE_ID, onOff(1, undefined))).to.equal(false);
+
+            expect(cache.has(NODE_ID)).to.equal(false);
+        });
+
+        it("replays a removal that arrives during a populate", async function () {
+            const cache = new AttributeDataCache();
+            const node = clientNode(NODE_ID, {
+                onRead: number => {
+                    if (number === 1) {
+                        cache.updateAttribute(NODE_ID, onOff(0, undefined));
+                    }
+                },
+            });
+
+            await cache.add(node);
+
+            expect(cache.get(NODE_ID)).not.to.have.property("0/6/0");
+            expect(cache.get(NODE_ID)?.["1/6/0"]).to.equal(true);
+        });
+
+        it("drops a removal from the current snapshot and from a rebuild that is running", async function () {
+            const cache = new AttributeDataCache();
+            let removed: boolean | undefined;
+            let keptInCurrentSnapshot: boolean | undefined;
+            let rebuilding = false;
+            const node = clientNode(NODE_ID, {
+                onRead: number => {
+                    if (rebuilding && number === 1 && removed === undefined) {
+                        removed = cache.updateAttribute(NODE_ID, onOff(0, undefined));
+                        keptInCurrentSnapshot = "0/6/0" in (cache.get(NODE_ID) ?? {});
+                    }
+                },
+            });
+            await cache.add(node);
+
+            rebuilding = true;
+            await cache.update(node);
+
+            expect(removed).to.equal(true);
+            expect(keptInCurrentSnapshot).to.equal(false);
+            expect(cache.get(NODE_ID)).not.to.have.property("0/6/0");
+        });
+    });
+
     describe("endpointParents", () => {
         it("is empty for a node without a snapshot", function () {
             const cache = new AttributeDataCache();

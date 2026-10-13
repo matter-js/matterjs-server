@@ -5,13 +5,14 @@
  */
 
 /**
- * The wire contract of the python-matter-server API orders the node snapshot before the
- * announcement of a new endpoint: a client resolves the endpoint against the node model it builds
- * from node_updated, so an endpoint_added that arrives first names an endpoint it does not know.
+ * Order and content of node events on the wire. The python-matter-server API orders the node
+ * snapshot before the announcement of a new endpoint: a client resolves the endpoint against the
+ * node model it builds from node_updated, so an endpoint_added that arrives first names an endpoint
+ * it does not know.
  */
 
 import { Environment, MockStorageService, NodeId, Observable } from "@matter/main";
-import { EndpointNumber } from "@matter/main/types";
+import { AttributeId, ClusterId, EndpointNumber } from "@matter/main/types";
 import { createServer, type Server } from "node:http";
 import { WebSocket } from "ws";
 import { MatterController } from "../src/controller/MatterController.js";
@@ -20,6 +21,7 @@ import { WebSocketControllerHandler } from "../src/server/WebSocketControllerHan
 
 const NODE_ID = NodeId(1);
 const NEW_ENDPOINT = EndpointNumber(7);
+const VENDOR_CLUSTER = 0xfff1fc00;
 
 function createFakeCommandHandler() {
     const events = {
@@ -74,7 +76,7 @@ async function waitFor(condition: () => boolean, required = true, timeoutMs = 5_
     }
 }
 
-describe("endpoint event order", () => {
+describe("node events on the wire", () => {
     let httpServer: Server;
     let handler: WebSocketControllerHandler;
     let client: WebSocket;
@@ -105,7 +107,8 @@ describe("endpoint event order", () => {
         await new Promise<void>(resolve => httpServer.close(() => resolve()));
     });
 
-    it("sends the node snapshot carrying a new endpoint before announcing it", async () => {
+    /** Connects a client that finished `start_listening` and returns the frames it receives from then on. */
+    async function listen() {
         const address = httpServer.address();
         if (address === null || typeof address === "string") {
             throw new Error("HTTP server is not listening on a port");
@@ -119,9 +122,14 @@ describe("endpoint event order", () => {
         });
         client.send(JSON.stringify({ message_id: "1", command: "start_listening", args: {} }));
         // Events are only sent to a connection that finished start_listening, so its response is
-        // what makes the emits below observable.
+        // what makes the caller's emits observable.
         await waitFor(() => frames.some(frame => frame.message_id === "1"));
         frames.length = 0;
+        return frames;
+    }
+
+    it("sends the node snapshot carrying a new endpoint before announcing it", async () => {
+        const frames = await listen();
 
         // The controller updates the cache, announces the new structure and drains the queued
         // endpoint adds in one go - the sequence #handleNodeStructureChange produces.
@@ -143,5 +151,43 @@ describe("endpoint event order", () => {
 
         const snapshot = frames.find(frame => frame.event === "node_updated");
         expect(Object.keys(snapshot!.data.attributes)).to.include(`${NEW_ENDPOINT}/29/0`);
+    });
+
+    it("sends a removed attribute as attribute_updated with null", async () => {
+        const frames = await listen();
+        fakeCommandHandler.events.attributeChanged.emit(NODE_ID, {
+            path: { endpointId: EndpointNumber(1), clusterId: ClusterId(6), attributeId: AttributeId(0) },
+            value: undefined,
+        });
+        await waitFor(() => frames.some(frame => frame.event === "attribute_updated"));
+
+        const updates = frames.filter(frame => frame.event === "attribute_updated").map(frame => frame.data.slice(1));
+        expect(updates).to.deep.equal([["1/6/0", null]]);
+    });
+
+    it("replaces a value queued before a removal of the same attribute", async () => {
+        const frames = await listen();
+        const change = (clusterId: number, attributeId: number, value: unknown) => ({
+            path: {
+                endpointId: EndpointNumber(1),
+                clusterId: ClusterId(clusterId),
+                attributeId: AttributeId(attributeId),
+            },
+            value,
+        });
+
+        // Writing far beyond the high-water mark puts the connection into queued mode, where same-path sends coalesce.
+        const filler = "x".repeat(256 * 1024);
+        for (let attributeId = 0; attributeId < 40; attributeId++) {
+            fakeCommandHandler.events.attributeChanged.emit(NODE_ID, change(VENDOR_CLUSTER, attributeId, filler));
+        }
+        fakeCommandHandler.events.attributeChanged.emit(NODE_ID, change(6, 0, true));
+        fakeCommandHandler.events.attributeChanged.emit(NODE_ID, change(6, 0, undefined));
+        fakeCommandHandler.events.attributeChanged.emit(NODE_ID, change(6, 16384, true));
+
+        await waitFor(() => frames.some(frame => frame.event === "attribute_updated" && frame.data[1] === "1/6/16384"));
+        const updates = frames.filter(frame => frame.event === "attribute_updated").map(frame => frame.data.slice(1));
+        expect(updates.filter(([path]) => path === "1/6/0")).to.deep.equal([["1/6/0", null]]);
+        expect(updates.map(([path]) => path)).to.include(`1/${VENDOR_CLUSTER}/39`);
     });
 });

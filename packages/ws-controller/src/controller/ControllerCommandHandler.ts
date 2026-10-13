@@ -38,17 +38,13 @@ import {
 import { IcdManagementClient, OperationalCredentialsClient } from "@matter/main/behaviors";
 import {
     AccessControl,
-    BasicInformation,
     Binding,
-    Descriptor,
-    BridgedDeviceBasicInformation,
     GeneralCommissioning,
     IcdManagement,
     OperationalCredentials,
     TimeSynchronization,
 } from "@matter/main/clusters";
 import { WebRtcTransportProvider } from "@matter/main/clusters/web-rtc-transport-provider";
-import { AcceptedCommandList, AttributeList, ClusterRevision, FeatureMap } from "@matter/main/model";
 import {
     AttestationFinding,
     DeviceAttestationCheck,
@@ -119,6 +115,7 @@ import { isBridgeNode } from "../util/bridgeDetection.js";
 import { formatNodeId } from "../util/formatNodeId.js";
 import { pingIp } from "../util/network.js";
 import { nodeIdOf } from "../util/nodeIdOf.js";
+import { applyAttributeChange } from "./applyAttributeChange.js";
 import type { ControllerResources } from "./ControllerNode.js";
 import { CustomClusterPoller } from "./CustomClusterPoller.js";
 import { NodeAttributeReader } from "./NodeProcessor.js";
@@ -179,42 +176,6 @@ function determineMatterVersion(attributes: AttributesData): string | undefined 
         } else if (dataModelRevision === 17) {
             return "1.2.0";
         }
-    }
-
-    return undefined;
-}
-
-/**
- * Attributes whose change alters the shape of a node rather than a value within it, so consumers need
- * a full refresh rather than a single attribute update. Mirrors what the legacy bus raised
- * `structureChanged` for.
- */
-function describesNodeStructure(path: AttributeChange["path"]): string | undefined {
-    const { clusterId, attributeId } = path;
-
-    if (
-        (clusterId === BasicInformation.id || clusterId === BridgedDeviceBasicInformation.id) &&
-        attributeId !== BasicInformation.attributes.nodeLabel.id
-    ) {
-        return "basic information changed";
-    }
-
-    if (clusterId === Descriptor.Cluster.id) {
-        switch (attributeId) {
-            case Descriptor.Cluster.attributes.partsList.id:
-            case Descriptor.Cluster.attributes.serverList.id:
-            case Descriptor.Cluster.attributes.clientList.id:
-            case Descriptor.Cluster.attributes.deviceTypeList.id:
-                return "endpoint composition changed";
-        }
-    }
-
-    switch (attributeId) {
-        case ClusterRevision.id:
-        case FeatureMap.id:
-        case AttributeList.id:
-        case AcceptedCommandList.id:
-            return "cluster capabilities changed";
     }
 
     return undefined;
@@ -317,6 +278,7 @@ export class ControllerCommandHandler {
     readonly #inFlightInvokes = new Map<string, Promise<unknown>>();
     events = {
         started: new AsyncObservable(),
+        /** A removed attribute is reported with an `undefined` value. */
         attributeChanged: new Observable<[nodeId: NodeId, data: AttributeChange]>(),
         eventChanged: new Observable<[nodeId: NodeId, data: EventChange]>(),
         nodeAdded: new Observable<[nodeId: NodeId]>(),
@@ -441,14 +403,13 @@ export class ControllerCommandHandler {
         // These run on one Observable shared by every peer; an uncaught throw would abort the emit and
         // starve the remaining listeners, so each body is contained.
         this.#busObservers.on(bus.events.attributeChanged, (nodeId, data) => {
-            this.#guard(nodeId, "attribute change", () => {
-                this.#nodes.attributeCache.updateAttribute(nodeId, data);
-                this.events.attributeChanged.emit(nodeId, data);
-                const reason = describesNodeStructure(data.path);
-                if (reason !== undefined) {
-                    this.#markNodeUpdatePending(this.#nodes.get(nodeId), reason);
-                }
-            });
+            this.#guard(nodeId, "attribute change", () =>
+                applyAttributeChange(nodeId, data, {
+                    cache: this.#nodes.attributeCache,
+                    emit: (id, change) => this.events.attributeChanged.emit(id, change),
+                    markNodeUpdatePending: reason => this.#markNodeUpdatePending(this.#nodes.get(nodeId), reason),
+                }),
+            );
         });
 
         this.#busObservers.on(bus.events.eventTriggered, (nodeId, data) => {
