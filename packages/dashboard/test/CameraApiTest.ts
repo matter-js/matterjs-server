@@ -21,7 +21,9 @@ import {
     cameraErrorText,
     cameraTalkbackMode,
     isAudioOnlyCamera,
-    microphoneCaptureAvailable,
+    MICROPHONE_NEEDS_SECURE_CONTEXT,
+    MICROPHONE_NOT_SUPPORTED,
+    microphoneUnavailableReason,
     microphoneErrorText,
     parseResolutionOption,
     resolutionOption,
@@ -558,10 +560,12 @@ describe("camera API helpers", () => {
         }
         const withMicrophone = { mediaDevices: { getUserMedia: async () => ({}) } };
 
-        it("is available only in a secure context that exposes getUserMedia", () => {
-            withGlobals(true, withMicrophone, () => expect(microphoneCaptureAvailable()).to.equal(true));
-            withGlobals(false, withMicrophone, () => expect(microphoneCaptureAvailable()).to.equal(false));
-            withGlobals(true, {}, () => expect(microphoneCaptureAvailable()).to.equal(false));
+        it("names why the microphone cannot be captured, or null when it can", () => {
+            withGlobals(true, withMicrophone, () => expect(microphoneUnavailableReason()).to.equal(null));
+            withGlobals(false, withMicrophone, () =>
+                expect(microphoneUnavailableReason()).to.equal(MICROPHONE_NEEDS_SECURE_CONTEXT),
+            );
+            withGlobals(true, {}, () => expect(microphoneUnavailableReason()).to.equal(MICROPHONE_NOT_SUPPORTED));
         });
 
         it("explains a refused or missing microphone in short text", () => {

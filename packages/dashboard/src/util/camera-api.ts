@@ -103,11 +103,13 @@ export function cameraTalkbackMode(caps: CameraCapabilitiesResult | null): Camer
 }
 
 export const MICROPHONE_NEEDS_SECURE_CONTEXT = "Talking needs the dashboard opened over HTTPS or on localhost";
+export const MICROPHONE_NOT_SUPPORTED = "This browser does not offer microphone capture";
 
-export function microphoneCaptureAvailable(): boolean {
-    return (
-        globalThis.isSecureContext === true && typeof globalThis.navigator?.mediaDevices?.getUserMedia === "function"
-    );
+/** Why the microphone cannot be captured here, or null when it can. */
+export function microphoneUnavailableReason(): string | null {
+    if (globalThis.isSecureContext !== true) return MICROPHONE_NEEDS_SECURE_CONTEXT;
+    if (typeof globalThis.navigator?.mediaDevices?.getUserMedia !== "function") return MICROPHONE_NOT_SUPPORTED;
+    return null;
 }
 
 export function microphoneErrorText(error: unknown): string {

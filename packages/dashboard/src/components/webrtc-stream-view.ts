@@ -32,8 +32,7 @@ import {
     type CameraStreamRef,
     type CameraTalkbackMode,
     cameraTalkbackMode,
-    MICROPHONE_NEEDS_SECURE_CONTEXT,
-    microphoneCaptureAvailable,
+    microphoneUnavailableReason,
     snapshotMimeType,
     streamQualityBadges,
     streamsToRelease,
@@ -167,7 +166,8 @@ export class WebRtcStreamView extends LitElement {
             throw new Error("Talking is not available for this stream");
         }
         if (attempt.micTrack) return;
-        if (!microphoneCaptureAvailable()) throw new Error(MICROPHONE_NEEDS_SECURE_CONTEXT);
+        const unavailable = microphoneUnavailableReason();
+        if (unavailable !== null) throw new Error(unavailable);
         const request = ++attempt.talkRequest;
 
         let media: MediaStream;

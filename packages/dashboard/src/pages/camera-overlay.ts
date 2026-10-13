@@ -25,8 +25,7 @@ import {
     cameraErrorText,
     type CameraQualityBadge,
     hasCameraFeature,
-    MICROPHONE_NEEDS_SECURE_CONTEXT,
-    microphoneCaptureAvailable,
+    microphoneUnavailableReason,
     microphoneErrorText,
     parseResolutionOption,
     resolutionOption,
@@ -204,16 +203,14 @@ export class CameraOverlay extends LitElement {
 
     private _renderTalkButton() {
         const view = this._streamViewRef.value;
-        const microphoneAvailable = microphoneCaptureAvailable();
-        const title = !microphoneAvailable
-            ? MICROPHONE_NEEDS_SECURE_CONTEXT
-            : view?.talkMutesPlayback
-              ? "The camera's audio is muted while talking (half duplex)"
-              : "";
+        const microphoneUnavailable = microphoneUnavailableReason();
+        const title =
+            microphoneUnavailable ??
+            (view?.talkMutesPlayback ? "The camera's audio is muted while talking (half duplex)" : "");
         return html`<span title=${title}>
             <md-text-button
                 @click=${this._toggleTalk}
-                ?disabled=${!microphoneAvailable || this._talkBusy}
+                ?disabled=${microphoneUnavailable !== null || this._talkBusy}
                 aria-label=${this._talking ? "Stop talking" : "Talk"}
             >
                 <ha-svg-icon slot="icon" .path=${this._talking ? mdiMicrophone : mdiMicrophoneOff}></ha-svg-icon>
