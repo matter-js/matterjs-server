@@ -1053,6 +1053,17 @@ describe("WebSocket Credentials API", () => {
             expect(onNetwork?.discoveryTimeout).to.equal(Seconds(90));
         });
 
+        it("searches commission_on_network filter_type 3 by vendor without naming a product", async () => {
+            const [request] = await requestsFor("commission_on_network", {
+                setup_pin_code: 20202021,
+                filter_type: 3,
+                filter: 0xfff1,
+            });
+
+            expect(request).to.deep.include({ passcode: 20202021, vendorId: 0xfff1 });
+            expect(request).to.not.have.property("productId");
+        });
+
         for (const value of [undefined, null]) {
             it(`leaves the matter.js default for ${String(value)}`, async () => {
                 const [request] = await requestsFor("commission_with_code", {

@@ -4,7 +4,13 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Crypto, FabricId, MockCrypto, NodeId, Seconds, ServerNode } from "@matter/main";
+import { Crypto, FabricId, MockCrypto, NodeId, Seconds, ServerNode, VendorId } from "@matter/main";
+import {
+    CommissioningFlowType,
+    DiscoveryCapabilitiesSchema,
+    ManualPairingCodeCodec,
+    QrPairingCodeCodec,
+} from "@matter/main/types";
 import { Endpoint } from "@matter/node";
 import {
     CommissioningError,
@@ -155,6 +161,128 @@ describe("commissionNode", () => {
         );
 
         expect([error.code, error.reason]).deep.equals([ServerErrorCode.NodeCommissionFailed, "not-discovered"]);
+    });
+
+    describe("vendor and product named by the pairing code", () => {
+        function qrCode(vendorId: number, productId: number) {
+            const { passcode, discriminator } = device.state.commissioning;
+            return QrPairingCodeCodec.encode([
+                {
+                    version: 0,
+                    vendorId,
+                    productId,
+                    flowType: CommissioningFlowType.Standard,
+                    discoveryCapabilities: DiscoveryCapabilitiesSchema.encode({ onIpNetwork: true }),
+                    discriminator,
+                    passcode,
+                },
+            ]);
+        }
+
+        function manualCode(vendorId: VendorId, productId: number) {
+            const { passcode, discriminator } = device.state.commissioning;
+            return ManualPairingCodeCodec.encode({ discriminator, passcode, vendorId, productId });
+        }
+
+        // Characterization: also passes without the vendor and product check.
+        it("commissions a device whose advertisement matches them", async () => {
+            const { vendorId, productId } = device.state.basicInformation;
+
+            const { nodeId } = await commissioning(() =>
+                handler.commissionNode({ nodeId: NODE_ID, manualCode: manualCode(vendorId, productId) }),
+            );
+
+            expect(nodeId).equals(NODE_ID);
+        });
+
+        it("passes over a device of another vendor", async () => {
+            const { vendorId, productId } = device.state.basicInformation;
+
+            const error = await failureOf(() =>
+                commissioning(() =>
+                    handler.commissionNode({
+                        nodeId: NODE_ID,
+                        manualCode: manualCode(VendorId(vendorId + 1), productId),
+                        discoveryTimeout: Seconds(10),
+                    }),
+                ),
+            );
+
+            expect([error.code, error.reason]).deep.equals([ServerErrorCode.NodeCommissionFailed, "not-discovered"]);
+            expect(handler.isNodeIdInUse(NODE_ID)).equals(false);
+        });
+
+        it("passes over a device of another vendor named in a QR code", async () => {
+            const { vendorId, productId } = device.state.basicInformation;
+
+            const error = await failureOf(() =>
+                commissioning(() =>
+                    handler.commissionNode({
+                        nodeId: NODE_ID,
+                        qrCode: qrCode(vendorId + 1, productId),
+                        discoveryTimeout: Seconds(10),
+                    }),
+                ),
+            );
+
+            expect([error.code, error.reason]).deep.equals([ServerErrorCode.NodeCommissionFailed, "not-discovered"]);
+        });
+
+        it("passes over a device of another product", async () => {
+            const { vendorId, productId } = device.state.basicInformation;
+
+            const error = await failureOf(() =>
+                commissioning(() =>
+                    handler.commissionNode({
+                        nodeId: NODE_ID,
+                        manualCode: manualCode(vendorId, productId + 1),
+                        discoveryTimeout: Seconds(10),
+                    }),
+                ),
+            );
+
+            expect([error.code, error.reason]).deep.equals([ServerErrorCode.NodeCommissionFailed, "not-discovered"]);
+        });
+
+        it("commissions a device that matches the vendor and product named in a QR code", async () => {
+            const { vendorId, productId } = device.state.basicInformation;
+
+            const { nodeId } = await commissioning(() =>
+                handler.commissionNode({ nodeId: NODE_ID, qrCode: qrCode(vendorId, productId) }),
+            );
+
+            expect(nodeId).equals(NODE_ID);
+        });
+
+        it("searches by vendor alone for a device of that vendor", async () => {
+            const { passcode } = device.state.commissioning;
+            const { vendorId } = device.state.basicInformation;
+
+            const error = await failureOf(() =>
+                commissioning(() =>
+                    handler.commissionNode({
+                        nodeId: NODE_ID,
+                        passcode,
+                        vendorId: VendorId(vendorId + 1),
+                        discoveryTimeout: Seconds(10),
+                    }),
+                ),
+            );
+
+            expect([error.code, error.reason]).deep.equals([ServerErrorCode.NodeCommissionFailed, "not-discovered"]);
+        });
+
+        // Characterization: also passes without the vendor filter.
+        it("commissions by vendor alone, whatever product the device advertises", async () => {
+            const { passcode } = device.state.commissioning;
+            const { vendorId } = device.state.basicInformation;
+
+            const { nodeId } = await commissioning(() =>
+                handler.commissionNode({ nodeId: NODE_ID, passcode, vendorId }),
+            );
+
+            expect(nodeId).equals(NODE_ID);
+        });
     });
 
     it("gives up the search after the requested discovery timeout", async () => {

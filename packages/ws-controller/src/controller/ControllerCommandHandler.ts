@@ -1781,12 +1781,16 @@ export class ControllerCommandHandler {
             shortDiscriminator = pairingCodeCodec.shortDiscriminator;
             longDiscriminator = undefined;
             passcode = pairingCodeCodec.passcode;
+            ({ vendorId, productId } = pairingCodeCodec);
         } else if ("qrCode" in data && data.qrCode.length > 0) {
             const pairingCodeCodec = decodePairingCode(() => QrPairingCodeCodec.decode(data.qrCode));
             // TODO handle the case where multiple devices are included
             longDiscriminator = pairingCodeCodec[0].discriminator;
             shortDiscriminator = undefined;
             passcode = pairingCodeCodec[0].passcode;
+            const stated = pairingCodeCodec[0];
+            vendorId = stated.vendorId === undefined ? undefined : VendorId(stated.vendorId);
+            productId = stated.productId;
         } else if ("passcode" in data) {
             passcode = data.passcode;
             // Check for discriminator-based discovery
@@ -1794,7 +1798,7 @@ export class ControllerCommandHandler {
                 shortDiscriminator = data.shortDiscriminator;
             } else if ("longDiscriminator" in data) {
                 longDiscriminator = data.longDiscriminator;
-            } else if ("vendorId" in data && "productId" in data) {
+            } else if ("vendorId" in data) {
                 vendorId = VendorId(data.vendorId);
                 productId = data.productId;
             }
@@ -1814,9 +1818,10 @@ export class ControllerCommandHandler {
                 ? { longDiscriminator }
                 : shortDiscriminator !== undefined
                   ? { shortDiscriminator }
-                  : vendorId !== undefined
-                    ? { vendorId, productId }
-                    : {}),
+                  : {}),
+            // Discovery searches by discriminator; matter.js uses vendor and product to pass over a device advertising others.
+            ...(vendorId !== undefined ? { vendorId } : {}),
+            ...(vendorId !== undefined && productId !== undefined ? { productId } : {}),
             discoveryCapabilities: {
                 ble: this.bleEnabled && !onNetworkOnly,
                 onIpNetwork: true,

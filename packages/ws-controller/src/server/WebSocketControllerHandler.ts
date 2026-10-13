@@ -1303,10 +1303,10 @@ export class WebSocketControllerHandler implements WebServerHandler {
                     throw ServerError.invalidArguments("filter required for filter_type 2 (long discriminator)");
                 commissionRequest = { ...baseRequest, passcode: setup_pin_code, longDiscriminator: filter };
                 break;
-            case 3: // Vendor ID - not optimal but working
+            case 3: // Vendor ID
                 if (filter === undefined)
                     throw ServerError.invalidArguments("filter required for filter_type 3 (vendor ID)");
-                commissionRequest = { ...baseRequest, passcode: setup_pin_code, vendorId: filter, productId: 0 };
+                commissionRequest = { ...baseRequest, passcode: setup_pin_code, vendorId: filter };
                 break;
             case 4: // Device type - not directly supported, fall back to no filter
             case 0: // No filter

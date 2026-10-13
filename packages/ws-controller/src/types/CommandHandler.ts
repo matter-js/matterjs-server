@@ -50,7 +50,7 @@ export type CommissioningRequest = {
 } & (
     | { qrCode: string }
     | { manualCode: string }
-    | { passcode: number; vendorId: number; productId: number }
+    | { passcode: number; vendorId: number; productId?: number }
     | { passcode: number; shortDiscriminator: number }
     | { passcode: number; longDiscriminator: number }
     | { passcode: number } // Discover any commissionable device
