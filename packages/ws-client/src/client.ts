@@ -12,7 +12,6 @@ import {
     AllCredentialsSummary,
     APICommands,
     BindingTarget,
-    ClientEventDetail,
     CommissionableNodeData,
     CommissioningParameters,
     ErrorResultMessage,
@@ -83,6 +82,30 @@ export interface CredentialCommandOptions {
     timeout?: number;
 }
 
+/**
+ * Says which node a `nodes_changed` event concerns and why it fired. `nodeId` is a bigint for large ids, so compare
+ * it via `String()`.
+ */
+export type NodesChangedDetail =
+    | { reason: "node_added" | "node_removed" | "node_updated"; nodeId: number | bigint }
+    | {
+          reason: "attribute_updated";
+          nodeId: number | bigint;
+          /** `endpoint/cluster/attribute` of the changed attribute. */
+          attributeKey: string;
+      };
+
+/** Listener arguments for each event name that {@link MatterClient.addEventListener} accepts. */
+export interface ClientEventMap {
+    nodes_changed: [detail: NodesChangedDetail];
+    server_info_updated: [];
+    server_shutdown: [];
+    connection_lost: [];
+    thread_diagnostics_updated: [];
+}
+
+type ClientEventListeners = { [E in keyof ClientEventMap]: Array<(...args: ClientEventMap[E]) => void> };
+
 export class MatterClient {
     public connection: Connection;
     public nodes: Record<string, MatterNode> = {};
@@ -108,7 +131,13 @@ export class MatterClient {
     > = {};
     // Start with random offset for defense-in-depth and easier debugging across sessions
     private msgId = Math.floor(Math.random() * 0x7fffffff);
-    private eventListeners: Record<string, Array<(detail?: ClientEventDetail) => void>> = {};
+    private eventListeners: ClientEventListeners = {
+        nodes_changed: [],
+        server_info_updated: [],
+        server_shutdown: [],
+        connection_lost: [],
+        thread_diagnostics_updated: [],
+    };
     private webrtcCallbackListeners: Array<(data: WebRtcCallbackData) => void> = [];
     private cameraSessionEndedListeners: Array<(data: CameraSessionEndedData) => void> = [];
     private cameraStreamEvictedListeners: Array<(data: CameraStreamEvictedData) => void> = [];
@@ -138,14 +167,18 @@ export class MatterClient {
     /**
      * Listen for a client event. `nodes_changed` passes a {@link NodesChangedDetail} naming the node it
      * concerns, so a listener interested in one node can ignore the rest; other events pass nothing.
+     * Returns an unsubscribe function.
      */
-    addEventListener(event: string, listener: (detail?: ClientEventDetail) => void) {
-        if (!this.eventListeners[event]) {
-            this.eventListeners[event] = [];
-        }
-        this.eventListeners[event].push(listener);
+    addEventListener<E extends keyof ClientEventMap>(event: E, listener: (...args: ClientEventMap[E]) => void) {
+        const listeners = this.eventListeners[event];
+        // Wrapper per registration: the same listener added twice must unsubscribe separately
+        const entry = (...args: ClientEventMap[E]) => listener(...args);
+        listeners.push(entry);
         return () => {
-            this.eventListeners[event] = this.eventListeners[event].filter(l => l !== listener);
+            const index = listeners.indexOf(entry);
+            if (index !== -1) {
+                listeners.splice(index, 1);
+            }
         };
     }
 
@@ -867,12 +900,10 @@ export class MatterClient {
         }
     }
 
-    private fireEvent(event: string, detail?: ClientEventDetail) {
-        const listeners = this.eventListeners[event];
-        if (listeners) {
-            for (const listener of listeners) {
-                listener(detail);
-            }
+    private fireEvent<E extends keyof ClientEventMap>(event: E, ...args: ClientEventMap[E]) {
+        // Copy: a listener unsubscribing mid-loop must not make the loop skip the next one
+        for (const listener of [...this.eventListeners[event]]) {
+            listener(...args);
         }
     }
 

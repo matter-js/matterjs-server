@@ -104,14 +104,15 @@ new MatterClient(url: string, wsFactory?: WebSocketFactory)
 | `checkNodeUpdate(nodeId)`                                     | Check for firmware updates                                     |
 | `updateNode(nodeId, version)`                                 | Start firmware update                                          |
 | `uploadOtaFile(file)`                                         | Store a local `.ota` firmware image on the server (schema 13+) |
-| `addEventListener(event, callback)`                           | Listen for events                                              |
-| `removeEventListener(event, callback)`                        | Remove event listener                                          |
+| `addEventListener(event, callback)`                           | Listen for events; returns an unsubscribe function             |
 
 #### Events
 
-- `nodes_changed`: Fired when any node is added, updated, or removed
+- `nodes_changed`: Fired when a node is added, updated, or removed, or an attribute of a known node changes. The listener receives a `NodesChangedDetail` with `reason`, `nodeId`, and `attributeKey` (`endpoint/cluster/attribute`) for attribute changes
 - `server_info_updated`: Fired when server info changes
+- `server_shutdown`: Fired when the server announces its shutdown
 - `connection_lost`: Fired when connection is lost
+- `thread_diagnostics_updated`: Fired when Thread diagnostics change
 
 ### Server Info
 
