@@ -406,6 +406,29 @@ describe("LegacyDataLoader", () => {
             await retireLegacyFiles(env, legacyDir, fabricConfig);
             expect(await retireLegacyFiles(env, legacyDir, fabricConfig)).to.deep.equal([]);
         });
+
+        it("keeps chip.json while another fabric still has to be imported from it", async () => {
+            const { legacyDir, fabricConfig, serverFileName } = await seedLegacyDir("retire-multi-fabric", false);
+            // chip.json carries every fabric, and the one left behind imports its credentials from it.
+            const chipConfig = {
+                getFabricIndices: () => [1, 2],
+                getFabricConfig: (index: number) =>
+                    index === 1 ? fabricConfig : { ...fabricConfig, fabricId: BigInt(fabricConfig.fabricId) + 1n },
+            } as unknown as ChipConfigData;
+
+            const retired = await retireLegacyFiles(env, legacyDir, fabricConfig, chipConfig);
+
+            expect(retired).to.deep.equal([serverFileName]);
+            expect(await exists(join(legacyDir, "chip.json"))).to.be.true;
+        });
+
+        it("reports a file it could not rename, so the caller keeps the imported storage", async () => {
+            const { legacyDir, fabricConfig, serverFileName } = await seedLegacyDir("retire-blocked", false);
+            // A directory under the target name makes rename fail the way a read-only mount would.
+            await mkdir(join(legacyDir, `${serverFileName}.migrated`), { recursive: true });
+
+            await expect(retireLegacyFiles(env, legacyDir, fabricConfig)).rejectedWith(/Could not retire/);
+        });
     });
 });
 

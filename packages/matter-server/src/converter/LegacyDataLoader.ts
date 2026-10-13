@@ -17,6 +17,7 @@ import {
     parseBigIntAwareJson,
     toBigIntAwareJson,
 } from "@matter-server/ws-controller";
+import { MatterError } from "@matter/main";
 import { access, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { DEFAULT_FABRIC_ID, DEFAULT_VENDOR_ID } from "../cli.js";
@@ -463,6 +464,7 @@ export async function retireLegacyFiles(
     }
 
     const retired = new Array<string>();
+    const failed = new Array<string>();
     for (const name of names) {
         const from = join(storagePath, name);
         try {
@@ -475,7 +477,13 @@ export async function retireLegacyFiles(
             retired.push(name);
         } catch (error) {
             logger.warn(`Could not retire legacy file ${name}: ${error}`);
+            failed.push(name);
         }
+    }
+    // A file still under its original name is one the next start imports again, so the retirement is not
+    // done and the caller must not drop the storage the import is recognised by.
+    if (failed.length > 0) {
+        throw new MatterError(`Could not retire legacy data file(s): ${failed.join(", ")}`);
     }
     return retired;
 }

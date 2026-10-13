@@ -233,7 +233,7 @@ async function start() {
         finishLegacyRetirement(legacyData.fabricConfig).catch(error =>
             logger.warn("Could not finish retiring legacy python-matter-server data:", error),
         );
-    } else if (legacyData.hasData && legacyData.fabricConfig !== undefined) {
+    } else if (legacyData.hasData && legacyData.fabricConfig !== undefined && legacyData.serverFile !== undefined) {
         retireLegacyData(legacyData.fabricConfig).catch(error =>
             logger.warn("Could not retire legacy python-matter-server data:", error),
         );
