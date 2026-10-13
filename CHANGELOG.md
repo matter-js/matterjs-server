@@ -17,7 +17,6 @@ This page shows a detailed overview of the changes between versions without the 
 - Enhancement: Update matter.js to the latest 0.18.0 nightly
     - Adds support for Matter 1.6.1 (including Python client)
 - Enhancement: Finishes the migration to the new matter.js controller API
-- Fix: An endpoint removed while the server rebuilds its node data no longer comes back in the rebuilt node data
 - Enhancement: `send_webrtc_provider_command` also relays `ProvideAnswer` and `ProvideIceCandidates`
 - Enhancement: (@RaHehl) `open_commissioning_window` also returns `discriminator`, `vendor_id`, `product_id` and `commissioning_timeout` (seconds) as reported by matter.js, so clients can hand the data to another ecosystem without decoding the QR code.
 - Enhancement: Dashboard network view uses the Thread 1.4 role names: a Thread Router is shown as "Mesh Extender" and a REED as "Standby Mesh Extender". External (non-fabric) neighbors, whose role is only inferred from rx-on-when-idle, are now labeled "Always-on device" instead of a routing role. Wire values and the `ThreadRoutingRole` enum keep the Matter spec names
@@ -41,6 +40,7 @@ This page shows a detailed overview of the changes between versions without the 
 - Enhancement: Adds the IKEA thermostat ValveCalibration vendor cluster (0x117cfc01) to the custom cluster and a Dashboard panel
 - Enhancement: (@lboue) Allows creating temporary/expiring PIN users (UserType=ExpiringUser) and configuring the lock's ExpiringUserTimeout to the Dashboard DoorLock cluster panel
 - Enhancement: (@RAR) Adds the vendor clusters of the Aqara Spatial Multi-Sensor FP400 (AmbientSensingConfiguration 0x115ffc0a with detection zones, RadarSensingUnion 0x115ffc0b, OccupantLocation 0x115ffc0c with the target position event) to the custom cluster definitions and the Python client
+- Enhancement: Node data carries `endpoint_parents`, the direct parent of each endpoint as matter.js resolves it. The Python client and the Dashboard use it instead of deriving the parents from the Descriptor PartsLists, and keep deriving them for servers that do not send it
 - Adjustment: Commands that target a node refuse a `node_id` that can never name one (CAT, PAKE, Unspecified, reserved ranges) with error 8 instead of `NODE_NOT_EXISTS`, and only the Temporary Local range is routed to imported test nodes
 - Adjustment: Every command treats a missing or `null` `args` as no arguments and refuses a non-object with error 8
 - Adjustment: `send_webrtc_provider_command` checks `node_id`, `endpoint_id` and every payload field against the cluster definition and refuses a bad one with error 8 instead of failing later or silently dropping data. It accepts the documented `ice_servers` shape and the key spellings `webrtc_callback` uses, and no longer drops streams before the camera's first report
@@ -64,12 +64,12 @@ This page shows a detailed overview of the changes between versions without the 
 - Fix: BLE proxy connections are pinged every 15 seconds and terminated after 45 to 60 seconds of silence, so a proxy client that loses power is detected instead of staying registered indefinitely
 - Fix: The node snapshot that carries a new endpoint is sent before the `endpoint_added` event, so a client that looks the new endpoint up in its node model finds it; an endpoint removed again before that snapshot is built is not announced
 - Fix: A removed endpoint leaves the attribute cache when its removal is announced, and `get_node` waits for a cache rebuild that is already running, so a read after a structure change returns the current structure
+- Fix: An endpoint removed while the server rebuilds its node data no longer comes back in the rebuilt node data
 - Fix: A node is reported as a bridge when any endpoint carries the Aggregator device type, not only endpoint 1
 - Fix: (reported by @lboue) Python client resolves each endpoint to its closest parent endpoint, available as `MatterNode.get_closest_compose_parent()`; `get_compose_parent()` keeps returning the composed device an endpoint belongs to, now at any depth and independent of the endpoint order. A Bridged Node below a nested Aggregator is reachable through the new `MatterNode.get_bridge_parent()` and `get_bridge_child_ids()`. Children of an Aggregator that do not carry the Bridged Node device type are not treated as bridged devices
 - Fix: Python client keeps an endpoint, its device types and its parent until `endpoint_removed` arrives, also when a node snapshot no longer reports them, so a subscriber handling the removal still resolves the endpoint to its device. Removing a device also removes its parts. Before, Home Assistant could fail with `KeyError` or remove the bridge's own device when the parts of a bridged device were removed
 - Fix: Python client does not signal `endpoint_added` for an endpoint its node model does not contain yet, so a subscriber that looks the endpoint up does not fail
 - Fix: Dashboard resolves the endpoint tree by the same closest-parent rule as the Python client
-- Enhancement: Node data carries `endpoint_parents`, the direct parent of each endpoint as matter.js resolves it. The Python client and the Dashboard use it instead of deriving the parents from the Descriptor PartsLists, and keep deriving them for servers that do not send it
 - Fix: Python client logs once when a Bridged Node reports no `BridgedDeviceBasicInformation`, and `MatterEndpoint.device_info` is now typed as optional, which it already was at runtime. `MatterNode.get_cluster()` returns `None` for an unknown endpoint instead of raising `KeyError`
 - Fix: (@colin-kiegel) Python client ignores a command result whose future is already done, so a result arriving after a disconnect no longer kills the read loop with `InvalidStateError`
 - Fix: Python client removes the pending command future when the send itself fails or is cancelled, so the entry no longer leaks and a late result can no longer settle a future nobody awaits

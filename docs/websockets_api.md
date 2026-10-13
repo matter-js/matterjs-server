@@ -1585,7 +1585,7 @@ Events are sent to clients that have called `start_listening`. Events have this 
 }
 ```
 
-`endpoint_parents` maps endpoints in `attributes` other than 0 to their direct parent endpoint; a top-level endpoint has parent `0`. An endpoint whose parent the server does not know has no entry, and the map is `{}` when `attributes` is empty. A server that sends the field sends it with every message that carries node data; a test node imported from a dump without the field has none. The PartsList of the Descriptor cluster does not say this by itself: Root Node, Aggregator and Bridged Node endpoints may list every descendant, not only their children. The field states only where an endpoint sits; whether it is a bridged device or a part of a composed device is for the client to decide from the device types.
+`endpoint_parents` *(schema 14+)* maps endpoints in `attributes` other than 0 to their direct parent endpoint; a top-level endpoint has parent `0`. An endpoint whose parent the server does not know has no entry, and the map is `{}` when `attributes` is empty. A server that sends the field sends it with every message that carries node data; a test node imported from a dump without the field has none. The PartsList of the Descriptor cluster does not say this by itself: Root Node, Aggregator and Bridged Node endpoints may list every descendant, not only their children. The field states only where an endpoint sits; whether it is a bridged device or a part of a composed device is for the client to decide from the device types.
 
 **node_updated** - A node's structure or availability changed
 
