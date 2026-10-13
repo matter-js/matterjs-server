@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Crypto, FabricId, MockCrypto, NodeId, ServerNode } from "@matter/main";
+import { Crypto, FabricId, MockCrypto, NodeId, Seconds, ServerNode } from "@matter/main";
 import { Endpoint } from "@matter/node";
 import {
     CommissioningError,
@@ -155,6 +155,26 @@ describe("commissionNode", () => {
         );
 
         expect([error.code, error.reason]).deep.equals([ServerErrorCode.NodeCommissionFailed, "not-discovered"]);
+    });
+
+    it("gives up the search after the requested discovery timeout", async () => {
+        const { passcode } = device.state.commissioning;
+        const startedAt = MockTime.nowMs;
+
+        const error = await failureOf(() =>
+            commissioning(() =>
+                handler.commissionNode({
+                    nodeId: NODE_ID,
+                    passcode,
+                    longDiscriminator: 0xfff,
+                    discoveryTimeout: Seconds(10),
+                }),
+            ),
+        );
+
+        expect([error.code, error.reason]).deep.equals([ServerErrorCode.NodeCommissionFailed, "not-discovered"]);
+        // matter.js searches 3 minutes by default.
+        expect(MockTime.nowMs - startedAt).within(10_000, 60_000);
     });
 
     for (const request of [{ manualCode: "12345" }, { qrCode: "MT:not-a-code" }]) {

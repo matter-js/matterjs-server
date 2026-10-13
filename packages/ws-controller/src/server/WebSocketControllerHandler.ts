@@ -11,6 +11,7 @@ import {
     Bytes,
     camelize,
     ClusterId,
+    Duration,
     FabricIndex,
     Logger,
     LogLevel,
@@ -18,6 +19,7 @@ import {
     NodeConnectionState,
     NodeId,
     ObserverGroup,
+    Seconds,
 } from "@matter/main";
 import { WebRtcTransportProvider } from "@matter/main/clusters";
 import { ControllerCommissioningFlowOptions, OperationalDataset } from "@matter/main/protocol";
@@ -210,6 +212,18 @@ function statusResponseOf(error: unknown): ReceivedStatusResponseError | undefin
         }
     }
     return error instanceof Error ? statusResponseOf(error.cause) : undefined;
+}
+
+function discoveryTimeoutOf(seconds: unknown): Duration | undefined {
+    if (seconds === undefined) {
+        return undefined;
+    }
+    if (typeof seconds !== "number" || !Number.isFinite(seconds) || seconds <= 0) {
+        throw ServerError.invalidArguments(
+            `discovery_timeout_s must be a positive number of seconds, got ${String(seconds)}`,
+        );
+    }
+    return Seconds(seconds);
 }
 
 /** WebSocket Server with the Python Matter Server compatible API, see {@link SCHEMA_VERSION}. */
@@ -1206,6 +1220,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
 
     async #handleCommissionWithCode(args: ArgsOf<"commission_with_code">): Promise<ResponseOf<"commission_with_code">> {
         const { code, network_only, wifi_credentials_id, thread_dataset_id } = args;
+        const discoveryTimeout = discoveryTimeoutOf(args.discovery_timeout_s);
         const isQrCode = code.startsWith("MT:");
 
         const wifiId = wifi_credentials_id ?? ConfigStorage.DEFAULT_CREDENTIAL_ID;
@@ -1244,6 +1259,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
         const nodeId = await this.#commissionWithRetry(nodeId => ({
             nodeId,
             onNetworkOnly: network_only,
+            discoveryTimeout,
             ...(isQrCode ? { qrCode: code } : { manualCode: code }),
             wifiCredentials,
             threadCredentials,
@@ -1263,6 +1279,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
 
         const baseRequest = {
             onNetworkOnly: true, // commission_on_network is always network-only
+            discoveryTimeout: discoveryTimeoutOf(args.discovery_timeout_s),
             // Ignore fe80 addresses and better do generic discovery because could be from mobile devices
             knownAddress: ip_addr && !ip_addr.startsWith("fe80") ? { ip: ip_addr, port: 5540 } : undefined,
         };

@@ -956,7 +956,14 @@ export interface APICommands {
         response: MatterNodeData;
     };
     commission_with_code: {
-        requestArgs: { code: string; network_only?: boolean; wifi_credentials_id?: string; thread_dataset_id?: string };
+        requestArgs: {
+            code: string;
+            network_only?: boolean;
+            wifi_credentials_id?: string;
+            thread_dataset_id?: string;
+            /** Schema 14. How long to search for the device, in seconds; matter.js searches 3 minutes without it. */
+            discovery_timeout_s?: number;
+        };
         response: MatterNodeData;
     };
     commission_on_network: {
@@ -968,6 +975,8 @@ export interface APICommands {
             filter?: number;
             /** Direct IP address for commissioning */
             ip_addr?: string;
+            /** Schema 14. @see commission_with_code */
+            discovery_timeout_s?: number;
         };
         response: MatterNodeData;
     };

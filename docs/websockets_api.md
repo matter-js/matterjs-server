@@ -329,6 +329,10 @@ Using manual pairing code (network only):
 }
 ```
 
+`discovery_timeout_s` (optional, schema 14) limits how long the server searches for the device, in seconds (a positive
+number). Without it matter.js searches for 3 minutes. It does not limit the commissioning steps after the device is
+found. A device not found in time fails with `NodeCommissionFailed` and `reason` `not-discovered`.
+
 **commission_on_network** - Commission a device already on the network
 
 Commission using setup PIN code with optional filtering by discriminator or vendor ID.
@@ -351,6 +355,8 @@ Filter types:
 - `1` - Short discriminator
 - `2` - Long discriminator
 - `3` - Vendor ID
+
+`discovery_timeout_s` works as for `commission_with_code`.
 
 **open_commissioning_window** - Open commissioning window to share a device
 

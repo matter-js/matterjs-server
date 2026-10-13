@@ -6,7 +6,7 @@
 
 import { toBigIntAwareJson } from "@matter-server/ws-client";
 import { AsyncObservable, Environment, Millis, MockStorageService, Observable } from "@matter/general";
-import { CaseAuthenticatedTag, EndpointNumber, NodeId } from "@matter/main";
+import { CaseAuthenticatedTag, EndpointNumber, NodeId, Seconds } from "@matter/main";
 import { WebRtcTransportProvider } from "@matter/main/clusters/web-rtc-transport-provider";
 import { Status, StatusResponseError } from "@matter/main/types";
 import { ThreadCredentialsRegistry } from "@matter/thread-br-client";
@@ -15,6 +15,7 @@ import WebSocket from "ws";
 import type { CameraSessionEnded, CameraStreamEvicted } from "../src/camera/cameraTypes.js";
 import { ConfigStorage } from "../src/server/ConfigStorage.js";
 import { WebSocketControllerHandler } from "../src/server/WebSocketControllerHandler.js";
+import type { CommissioningRequest } from "../src/types/CommandHandler.js";
 
 // Minimal dataset: extPanId = DE:AD:BE:EF:CA:FE:11:22 (a-f bytes exercise the UPPERCASE invariant), network = "OpenThread".
 const DATASET_HEX =
@@ -57,6 +58,7 @@ interface StubCommandHandlerOverrides {
     removeTrackedWebRtcSession?(webRtcSessionId: number, nodeId: bigint, endpointId: number): Promise<void>;
     invokeWebRtcProviderCommand?(args: { commandName: string; fields: Record<string, unknown> }): Promise<unknown>;
     invokeWebRtcSignallingCommand?(args: { commandName: string; fields: Record<string, unknown> }): Promise<void>;
+    commissionNode?(request: CommissioningRequest): Promise<{ nodeId: NodeId }>;
 }
 
 /** Well under the 2000 ms per-test timeout, so a frame that never comes fails as this error. */
@@ -178,6 +180,14 @@ function makeStubController(
             (async () => {
                 throw new Error("no WebRTC provider stubbed");
             }),
+        commissionNode:
+            commandHandler?.commissionNode ??
+            (async () => {
+                throw new Error("no commissioning stubbed");
+            }),
+        isNodeIdInUse() {
+            return false;
+        },
         bleEnabled: false,
         bleProxyEnabled: false,
         async start() {},
@@ -242,6 +252,7 @@ function makeStubController(
             return this.startsBorderRouterDiscovery;
         },
         diagnosticsFetches: () => stubDiagnostics.fetches,
+        async certificateService() {},
         async getAllVendors() {
             return stubVendors;
         },
@@ -1015,6 +1026,64 @@ describe("WebSocket Credentials API", () => {
             err = e;
         }
         expect(String(err)).to.contain("unknown");
+    });
+
+    describe("discovery_timeout_s", () => {
+        async function requestsFor(command: string, args: object) {
+            const requests = new Array<CommissioningRequest>();
+            await h.close();
+            h = await createHarness(undefined, {
+                async commissionNode(request) {
+                    requests.push(request);
+                    throw new Error("stop after the request");
+                },
+            });
+            await h.handle(command, args).catch(() => {});
+            return requests;
+        }
+
+        it("bounds the discovery of commission_with_code and commission_on_network", async () => {
+            const [withCode] = await requestsFor("commission_with_code", {
+                code: "MT:Y.K90AFN00KA0648G00",
+                discovery_timeout_s: 90,
+            });
+            const [onNetwork] = await requestsFor("commission_on_network", {
+                setup_pin_code: 20202021,
+                discovery_timeout_s: 90,
+            });
+
+            expect(withCode?.discoveryTimeout).to.equal(Seconds(90));
+            expect(onNetwork?.discoveryTimeout).to.equal(Seconds(90));
+        });
+
+        it("leaves the matter.js default when not given", async () => {
+            const [request] = await requestsFor("commission_with_code", { code: "MT:Y.K90AFN00KA0648G00" });
+
+            expect(request).to.not.equal(undefined);
+            expect(request?.discoveryTimeout).to.equal(undefined);
+        });
+
+        for (const value of [0, -5, "90", null]) {
+            it(`refuses ${JSON.stringify(value)} before commissioning`, async () => {
+                for (const [command, args] of [
+                    ["commission_with_code", { code: "MT:Y.K90AFN00KA0648G00" }],
+                    ["commission_on_network", { setup_pin_code: 20202021 }],
+                ] as const) {
+                    const requests = await requestsFor(command, { ...args, discovery_timeout_s: value });
+                    expect(requests, command).to.deep.equal([]);
+                }
+                let err: unknown;
+                try {
+                    await h.handle("commission_with_code", {
+                        code: "MT:Y.K90AFN00KA0648G00",
+                        discovery_timeout_s: value,
+                    });
+                } catch (e) {
+                    err = e;
+                }
+                expect(String(err)).to.contain("discovery_timeout_s must be a positive number");
+            });
+        }
     });
 
     it("remove_wifi_credentials with id removes that specific entry", async () => {

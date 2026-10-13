@@ -1807,7 +1807,12 @@ export class ControllerCommandHandler {
             throw ServerError.invalidArguments("No passcode provided");
         }
 
-        const { onNetworkOnly, wifiCredentials: wifiNetwork, threadCredentials: threadNetwork } = data;
+        const {
+            onNetworkOnly,
+            discoveryTimeout,
+            wifiCredentials: wifiNetwork,
+            threadCredentials: threadNetwork,
+        } = data;
         return {
             passcode,
             ...(longDiscriminator !== undefined
@@ -1821,6 +1826,7 @@ export class ControllerCommandHandler {
                 ble: this.bleEnabled && !onNetworkOnly,
                 onIpNetwork: true,
             },
+            ...(discoveryTimeout !== undefined ? { timeout: discoveryTimeout } : {}),
             nodeId: data.nodeId,
             autoSubscribe: !this.#autoSubscriptionDisabled,
             regulatoryLocation: GeneralCommissioning.RegulatoryLocationType.IndoorOutdoor,

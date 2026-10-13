@@ -133,6 +133,10 @@ OHF extensions; python-matter-server codes stop at 11. Each carries JSON details
 - **Optional `reason` on `NodeCommissionFailed` errors of `commission_with_code` / `commission_on_network`, and on an undecodable pairing code**: `not-discovered`, `passcode-mismatch`, `invalid-payload`, `attestation-rejected`, `timeout` or `other`. A pairing code that cannot be decoded now fails with `InvalidArguments` and `reason: "invalid-payload"` instead of `UnknownError`.
 - **Optional `ClusterStatus` in the `write_attribute` result**, next to `Status`, when the device sent a cluster-specific status.
 
+### Commissioning
+
+- **Optional `discovery_timeout_s` on `commission_with_code` and `commission_on_network`**: how long to search for the device, in seconds. Without it matter.js searches for 3 minutes. The commissioning steps after the device is found are not limited.
+
 ### Subscriptions and generic read
 
 - **New command `read`** → `{ attributes, events, attribute_status?, event_status? }`. One Matter Read request with `attribute_paths`, `event_paths` (`[{ path }]`, `path` is `endpoint/cluster/event`), `event_min`, `fabric_filtered` (default `true`) and `data_version_filters` (`[{ path: "endpoint/cluster", data_version }]`). Without `event_min` the request has no event filter and returns all events the device holds. `attributes` uses the `read_attribute` shape, `events` the `node_event` shape. `attribute_status` / `event_status` map each path the device answered with a status to `{ status, cluster_status? }` (numeric Matter status codes) and are left out when there is none.
