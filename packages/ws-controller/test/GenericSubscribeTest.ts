@@ -356,6 +356,21 @@ describe("generic subscribe", () => {
             expect(drained).greaterThan(0);
         });
 
+        it("rejects a malformed path, no paths, an out-of-range eventMin and eventMin without event paths without contacting the device", async () => {
+            const captured = captureSubscribes(site.peer);
+
+            for (const [request, message] of [
+                [{ ...LIGHT_ON_OFF, attributePaths: ["1/OnOff/0"] }, "Malformed attribute_paths path"],
+                [{ ...LIGHT_ON_OFF, attributePaths: [], eventPaths: [] }, "At least one attribute or event path"],
+                [{ ...LIGHT_ON_OFF, eventMin: -1 }, "event_min must be an event number"],
+                [{ ...LIGHT_ON_OFF, eventPaths: undefined, eventMin: 1 }, "event_min requires event_paths"],
+            ] satisfies [InteractionSubscribeRequest, string][]) {
+                await expectInvalidArguments(site.handler.subscribe(request, recorder().listener), message);
+            }
+
+            expect(captured).deep.equals([]);
+        });
+
         it("rejects a data version filter without a concrete endpoint or cluster", async () => {
             for (const path of ["1/*", "*/6"]) {
                 await expectInvalidArguments(

@@ -13,7 +13,7 @@ import { ServerError, ServerErrorCode, TEST_NODE_START } from "../src/types/WebS
 import { HandlerSite, NODE_ID } from "./support/HandlerSite.js";
 import { InteractionWsHarness } from "./support/InteractionWsHarness.js";
 
-async function expectInvalidArguments(promise: Promise<unknown>) {
+async function expectInvalidArguments(promise: Promise<unknown>, message?: string) {
     const error = await promise.then(
         () => undefined,
         (error: unknown) => error,
@@ -21,6 +21,9 @@ async function expectInvalidArguments(promise: Promise<unknown>) {
     expect(error).instanceOf(ServerError);
     if (error instanceof ServerError) {
         expect(error.code).equals(ServerErrorCode.InvalidArguments);
+        if (message !== undefined) {
+            expect(error.message).contains(message);
+        }
     }
 }
 
@@ -183,11 +186,66 @@ describe("generic read", () => {
         await read({
             nodeId: NODE_ID,
             attributePaths: ["1/6/0"],
+            eventPaths: [{ path: "1/69/*" }],
             eventMin: 0xffff_ffff_ffff_ffffn,
             dataVersionFilters: [{ path: "1/6", dataVersion: 0xffff_ffff }],
         });
 
         expect(captured[0].eventFilters).deep.equals([{ eventMin: 0xffff_ffff_ffff_ffffn }]);
+    });
+
+    it("rejects a malformed path without contacting the device", async () => {
+        const captured = captureReads(site.peer);
+
+        await expectInvalidArguments(
+            site.handler.read({ nodeId: NODE_ID, attributePaths: ["1/OnOff/0"] }),
+            "Malformed attribute_paths path",
+        );
+
+        expect(captured).deep.equals([]);
+    });
+
+    it("rejects a request without paths without contacting the device", async () => {
+        const captured = captureReads(site.peer);
+
+        await expectInvalidArguments(
+            site.handler.read({ nodeId: NODE_ID, attributePaths: [], eventPaths: [] }),
+            "At least one attribute or event path",
+        );
+
+        expect(captured).deep.equals([]);
+    });
+
+    it("rejects an out-of-range eventMin without contacting the device", async () => {
+        const captured = captureReads(site.peer);
+
+        for (const eventMin of [-1, 1.5, 0x1_0000_0000_0000_0000n]) {
+            await expectInvalidArguments(
+                site.handler.read({ nodeId: NODE_ID, eventPaths: [{ path: "1/69/*" }], eventMin }),
+                "event_min must be an event number",
+            );
+        }
+
+        expect(captured).deep.equals([]);
+    });
+
+    it("rejects eventMin without event paths and data version filters without attribute paths", async () => {
+        const captured = captureReads(site.peer);
+
+        await expectInvalidArguments(
+            site.handler.read({ nodeId: NODE_ID, attributePaths: ["1/6/0"], eventMin: 1 }),
+            "event_min requires event_paths",
+        );
+        await expectInvalidArguments(
+            site.handler.read({
+                nodeId: NODE_ID,
+                eventPaths: [{ path: "1/69/*" }],
+                dataVersionFilters: [{ path: "1/6", dataVersion: 1 }],
+            }),
+            "data_version_filters requires attribute_paths",
+        );
+
+        expect(captured).deep.equals([]);
     });
 
     it("rejects a data version filter without a concrete endpoint", async () => {

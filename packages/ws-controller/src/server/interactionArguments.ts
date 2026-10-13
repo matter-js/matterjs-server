@@ -49,79 +49,107 @@ function entryOf(value: unknown, field: string): Record<string, unknown> {
     return value;
 }
 
-function pathOf(value: unknown, field: string, segments: 2 | 3): string {
-    if (typeof value !== "string" || !isWellFormedPath(value, segments)) {
-        throw ServerError.invalidArguments(
-            `Malformed ${field} path ${JSON.stringify(value)}: expected ${segments} parts separated by "/", each a number or "*"`,
-        );
+function malformedPath(value: unknown, field: string, segments: 2 | 3) {
+    return ServerError.invalidArguments(
+        `Malformed ${field} path ${JSON.stringify(value)}: expected ${segments} parts separated by "/", each a number or "*"`,
+    );
+}
+
+function wirePathOf(value: unknown, field: string, segments: 2 | 3): string {
+    if (typeof value !== "string") {
+        throw malformedPath(value, field, segments);
     }
     return value;
 }
 
-function attributePathOf(value: unknown): string {
-    const path = pathOf(value, "attribute_paths", 3);
-    splitAttributePath(path);
-    return path;
-}
-
-function eventPathOf(value: unknown): string {
-    const path = pathOf(value, "event_paths", 3);
-    splitEventPath(path);
-    return path;
-}
-
-function dataVersionFilterOf(value: unknown): { path: string; dataVersion: number } {
-    const entry = entryOf(value, "data_version_filters");
-    const path = pathOf(entry.path, "data_version_filters", 2);
-    const { endpointId, clusterId } = splitAttributePath(path);
-    if (endpointId === undefined || clusterId === undefined) {
-        throw ServerError.invalidArguments(`Data version filter path "${path}" must name an endpoint and a cluster`);
+function checkPath(path: string, field: string, segments: 2 | 3) {
+    if (!isWellFormedPath(path, segments)) {
+        throw malformedPath(path, field, segments);
     }
-    if (!isUnsignedInteger(entry.data_version, UINT32_MAX)) {
-        throw ServerError.invalidArguments(`data_version must be an integer from 0 to 2^32-1`);
+}
+
+const DATA_VERSION_RANGE = "data_version must be an integer from 0 to 2^32-1";
+const EVENT_MIN_RANGE = "event_min must be an event number, an integer from 0 to 2^64-1";
+const INTERVAL_RANGE = "min_interval and max_interval must be integers from 0 to 65535 seconds";
+
+function wireDataVersionFilterOf(value: unknown): { path: string; dataVersion: number } {
+    const entry = entryOf(value, "data_version_filters");
+    const path = wirePathOf(entry.path, "data_version_filters", 2);
+    if (typeof entry.data_version !== "number") {
+        throw ServerError.invalidArguments(DATA_VERSION_RANGE);
     }
     return { path, dataVersion: entry.data_version };
 }
 
-function eventMinOf(value: unknown): number | bigint | undefined {
+function wireEventMinOf(value: unknown): number | bigint | undefined {
     if (isAbsent(value)) {
         return undefined;
     }
-    if (typeof value === "bigint" && value >= 0n && value <= UINT64_MAX) {
-        return value;
+    if (typeof value !== "number" && typeof value !== "bigint") {
+        throw ServerError.invalidArguments(EVENT_MIN_RANGE);
     }
-    if (typeof value === "number" && Number.isSafeInteger(value) && value >= 0) {
-        return value;
-    }
-    throw ServerError.invalidArguments("event_min must be an event number, an integer from 0 to 2^64-1");
+    return value;
 }
 
-/** Refuses intervals outside the Matter range of a uint16 or with the ceiling below the floor. */
-export function subscribeIntervalsOf(
-    minInterval: unknown,
-    maxInterval: unknown,
-): { minInterval: number; maxInterval: number } {
-    if (!isUnsignedInteger(minInterval, UINT16_MAX) || !isUnsignedInteger(maxInterval, UINT16_MAX)) {
-        throw ServerError.invalidArguments("min_interval and max_interval must be integers from 0 to 65535 seconds");
+function wireIntervalOf(value: unknown): number {
+    if (typeof value !== "number") {
+        throw ServerError.invalidArguments(INTERVAL_RANGE);
     }
-    if (maxInterval < minInterval) {
-        throw ServerError.invalidArguments("max_interval must not be less than min_interval");
-    }
-    return { minInterval, maxInterval };
+    return value;
 }
 
-function readFieldsOf(args: Record<string, unknown>, urgentFlags: boolean) {
-    const attributePaths = optionalList(args.attribute_paths, "attribute_paths")?.map(attributePathOf);
+function wireReadFieldsOf(args: Record<string, unknown>, urgentFlags: boolean) {
+    const attributePaths = optionalList(args.attribute_paths, "attribute_paths")?.map(value =>
+        wirePathOf(value, "attribute_paths", 3),
+    );
     const eventPaths = optionalList(args.event_paths, "event_paths")?.map(value => {
         const entry = entryOf(value, "event_paths");
-        const path = eventPathOf(entry.path);
+        const path = wirePathOf(entry.path, "event_paths", 3);
         return urgentFlags ? { path, isUrgent: optionalBoolean(entry.is_urgent, "is_urgent") } : { path };
     });
-    const eventMin = eventMinOf(args.event_min);
+    const eventMin = wireEventMinOf(args.event_min);
     const fabricFiltered = optionalBoolean(args.fabric_filtered, "fabric_filtered");
     const dataVersionFilters = optionalList(args.data_version_filters, "data_version_filters")?.map(
-        dataVersionFilterOf,
+        wireDataVersionFilterOf,
     );
+    return { attributePaths, eventPaths, eventMin, fabricFiltered, dataVersionFilters };
+}
+
+/**
+ * Refuses a request whose paths are malformed or name invalid ids, that has no path, whose `eventMin`, data versions
+ * or intervals are out of range, or that has filters without the paths they apply to.
+ * @throws {ServerError} with code InvalidArguments for the first refused value.
+ */
+export function checkInteractionRequest(request: InteractionReadRequest | InteractionSubscribeRequest) {
+    const { attributePaths, eventPaths, eventMin, dataVersionFilters } = request;
+    for (const path of attributePaths ?? []) {
+        checkPath(path, "attribute_paths", 3);
+        splitAttributePath(path);
+    }
+    for (const { path } of eventPaths ?? []) {
+        checkPath(path, "event_paths", 3);
+        splitEventPath(path);
+    }
+    for (const { path, dataVersion } of dataVersionFilters ?? []) {
+        checkPath(path, "data_version_filters", 2);
+        const { endpointId, clusterId } = splitAttributePath(path);
+        if (endpointId === undefined || clusterId === undefined) {
+            throw ServerError.invalidArguments(
+                `Data version filter path "${path}" must name an endpoint and a cluster`,
+            );
+        }
+        if (!isUnsignedInteger(dataVersion, UINT32_MAX)) {
+            throw ServerError.invalidArguments(DATA_VERSION_RANGE);
+        }
+    }
+    if (
+        eventMin !== undefined &&
+        !(typeof eventMin === "bigint"
+            ? eventMin >= 0n && eventMin <= UINT64_MAX
+            : Number.isSafeInteger(eventMin) && eventMin >= 0)
+    ) {
+        throw ServerError.invalidArguments(EVENT_MIN_RANGE);
+    }
 
     if (!attributePaths?.length && !eventPaths?.length) {
         throw ServerError.invalidArguments("At least one attribute or event path is required");
@@ -133,23 +161,36 @@ function readFieldsOf(args: Record<string, unknown>, urgentFlags: boolean) {
     if (dataVersionFilters?.length && !attributePaths?.length) {
         throw ServerError.invalidArguments("data_version_filters requires attribute_paths");
     }
-    return { attributePaths, eventPaths, eventMin, fabricFiltered, dataVersionFilters };
+
+    if ("minInterval" in request) {
+        const { minInterval, maxInterval } = request;
+        if (!isUnsignedInteger(minInterval, UINT16_MAX) || !isUnsignedInteger(maxInterval, UINT16_MAX)) {
+            throw ServerError.invalidArguments(INTERVAL_RANGE);
+        }
+        if (maxInterval < minInterval) {
+            throw ServerError.invalidArguments("max_interval must not be less than min_interval");
+        }
+    }
 }
 
 /** The `read` request of the WebSocket arguments, or an InvalidArguments error for the first malformed one. */
 export function readRequestOf(nodeId: NodeId, args: Record<string, unknown>): InteractionReadRequest {
-    return { nodeId, ...readFieldsOf(args, false) };
+    const request = { nodeId, ...wireReadFieldsOf(args, false) };
+    checkInteractionRequest(request);
+    return request;
 }
 
 /** The `subscribe` request of the WebSocket arguments, or an InvalidArguments error for the first malformed one. */
 export function subscribeRequestOf(nodeId: NodeId, args: Record<string, unknown>): InteractionSubscribeRequest {
-    const fields = readFieldsOf(args, true);
-    return {
+    const request = {
         nodeId,
-        ...fields,
-        ...subscribeIntervalsOf(args.min_interval, args.max_interval),
+        ...wireReadFieldsOf(args, true),
+        minInterval: wireIntervalOf(args.min_interval),
+        maxInterval: wireIntervalOf(args.max_interval),
         keepSubscriptions: optionalBoolean(args.keep_subscriptions, "keep_subscriptions"),
     };
+    checkInteractionRequest(request);
+    return request;
 }
 
 /** The SubscriptionId of an `unsubscribe` request, a uint32. */

@@ -106,7 +106,7 @@ import {
     statusPathOf,
     toBigIntAwareJson,
 } from "../server/Converters.js";
-import { readRequestOf, subscribeIntervalsOf } from "../server/interactionArguments.js";
+import { checkInteractionRequest } from "../server/interactionArguments.js";
 import {
     AttributeResponseStatus,
     AttributesData,
@@ -1259,12 +1259,15 @@ export class ControllerCommandHandler {
 
     /**
      * Read with full control over the Matter request. Unlike {@link handleReadAttributes} the paths go out as one
-     * request, and only the data version filters the caller gives are sent. Path format and value ranges are not checked
-     * here; the WebSocket handler checks its arguments with {@link readRequestOf} first.
+     * request, and only the data version filters the caller gives are sent.
+     * @throws {ServerError} with code InvalidArguments, before anything is sent, for a malformed path or invalid id, a
+     *   request without paths, an `eventMin` or data version out of range, or `eventMin` without event paths and data
+     *   version filters without attribute paths.
      */
     async read(request: InteractionReadRequest): Promise<InteractionReport> {
+        checkInteractionRequest(request);
         const node = this.#nodes.get(request.nodeId);
-        const read = { ...this.#readRequestOf(request), includeKnownVersions: true };
+        const read = { ...this.#readOf(request), includeKnownVersions: true };
         return this.#collectReport(request.nodeId, node.interaction.read(read));
     }
 
@@ -1273,6 +1276,8 @@ export class ControllerCommandHandler {
      * whose auto subscription was not enabled with {@link setAutoSubscription}. Reports reach
      * {@link InteractionSubscriptionListener.report} except the priming report, which the result carries. matter.js ends
      * the subscription when the node is removed or the controller goes offline.
+     * @throws {ServerError} with code InvalidArguments, before anything is sent, for the arguments {@link read} refuses
+     *   and for intervals outside 0 to 65535 seconds or a `maxInterval` below `minInterval`.
      */
     async subscribe(
         request: InteractionSubscribeRequest,
@@ -1282,8 +1287,7 @@ export class ControllerCommandHandler {
         if (!this.#autoSubscriptionDisabled) {
             throw ServerError.invalidArguments("subscribe requires the server to run with --disable-auto-subscription");
         }
-        // Guards library callers, which bypass the WebSocket parser; the number type cannot express the range.
-        subscribeIntervalsOf(minInterval, maxInterval);
+        checkInteractionRequest(request);
         const node = this.#nodes.get(nodeId);
         if (this.#autoSubscribes(node)) {
             throw ServerError.invalidArguments(
@@ -1293,7 +1297,7 @@ export class ControllerCommandHandler {
 
         let priming: InteractionReport | undefined;
         const subscribe: Subscribe = {
-            ...this.#readRequestOf(request),
+            ...this.#readOf(request),
             keepSubscriptions: request.keepSubscriptions ?? false,
             minIntervalFloor: Seconds(minInterval),
             maxIntervalCeiling: Seconds(maxInterval),
@@ -1332,9 +1336,7 @@ export class ControllerCommandHandler {
         };
     }
 
-    #readRequestOf(
-        request: Omit<InteractionSubscribeRequest, "minInterval" | "maxInterval" | "keepSubscriptions">,
-    ): Read {
+    #readOf(request: Omit<InteractionSubscribeRequest, "minInterval" | "maxInterval" | "keepSubscriptions">): Read {
         const { attributePaths, eventPaths, eventMin, fabricFiltered = true, dataVersionFilters } = request;
         return Read({
             fabricFilter: fabricFiltered,
