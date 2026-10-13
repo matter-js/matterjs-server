@@ -105,6 +105,15 @@ describe("generic read", () => {
         expect(report.event_status).deep.equals({ "1/69/5": { status: Status.UnsupportedEvent } });
     });
 
+    it("keeps the status of every unsupported event path", async () => {
+        const report = await read({ nodeId: NODE_ID, eventPaths: [{ path: "1/69/5" }, { path: "1/69/6" }] });
+
+        expect(report.event_status).deep.equals({
+            "1/69/5": { status: Status.UnsupportedEvent },
+            "1/69/6": { status: Status.UnsupportedEvent },
+        });
+    });
+
     it("has no status fields when every path succeeds", async () => {
         const report = await read({ nodeId: NODE_ID, attributePaths: ["1/6/0"], eventPaths: [{ path: "1/69/0" }] });
 

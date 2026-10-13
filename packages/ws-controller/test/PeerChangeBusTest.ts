@@ -297,6 +297,17 @@ describe("repairRestoredPeers", () => {
         expect(peer().stateOf(NetworkClient).isDisabled).equals(true);
     });
 
+    it("leaves a peer that is not commissioned alone", async () => {
+        const uncommissioned = await controller.peers.forDescriptor({
+            addresses: [{ type: "udp", ip: "10.10.10.99", port: 5540 }],
+        });
+        await uncommissioned.set({ network: { autoSubscribe: false } });
+
+        expect(await repairRestoredPeers(controller, "scope", marker)).equals(0);
+
+        expect(uncommissioned.stateOf(NetworkClient).autoSubscribe).equals(false);
+    });
+
     it("does not run again for a scope it already repaired", async () => {
         await peer().set({ network: { autoSubscribe: false, isDisabled: true } });
         marker.repaired.push("scope");
@@ -335,5 +346,16 @@ describe("applyAutoSubscribe", () => {
         expect(await applyAutoSubscribe(controller, false)).equals(0);
         expect(await applyAutoSubscribe(controller, true)).equals(1);
         expect(peer.stateOf(NetworkClient).autoSubscribe).equals(true);
+    });
+
+    it("leaves a peer that is not commissioned alone", async () => {
+        const uncommissioned = await controller.peers.forDescriptor({
+            addresses: [{ type: "udp", ip: "10.10.10.99", port: 5540 }],
+        });
+        await uncommissioned.set({ network: { autoSubscribe: true } });
+
+        expect(await applyAutoSubscribe(controller, false)).equals(1);
+
+        expect(uncommissioned.stateOf(NetworkClient).autoSubscribe).equals(true);
     });
 });

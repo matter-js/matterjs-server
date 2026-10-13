@@ -407,6 +407,73 @@ describe("ws-client", () => {
                 expect(own.ended()).equals(1);
             });
 
+            it("gives a listener no report from before a lost connection after reconnecting", async () => {
+                server.onCommand("subscribe", () => ({ subscription_id: 7, ...EMPTY_REPORT }));
+                await client.connect();
+                const own = recorder();
+                const lost = new Promise<void>(resolve => client.addEventListener("connection_lost", resolve));
+                await client.subscribe(LIGHT_ON_OFF, own.listener);
+                const port = server.actualPort;
+
+                await server.stop();
+                await lost;
+                server = new MockMatterServer({ port, serverInfo: { schema_version: 14 } });
+                await server.start();
+                await client.connect();
+                server.sendEvent("subscription_report", { node_id: 1, subscription_id: 7, ...EMPTY_REPORT });
+                await eventsArrived();
+
+                expect([own.reports, own.ended()]).deep.equals([[], 1]);
+            });
+
+            it("clears its timeout once the subscription is answered", async () => {
+                server.onCommand("subscribe", () => ({ subscription_id: 7, ...EMPTY_REPORT }));
+                await client.connect();
+                const timeout = 54_321;
+                const started = new Array<unknown>();
+                const cleared = new Array<unknown>();
+                const { setTimeout: realSetTimeout, clearTimeout: realClearTimeout } = globalThis;
+                const replace = (name: "setTimeout" | "clearTimeout", value: unknown) =>
+                    Object.defineProperty(globalThis, name, { value, configurable: true, writable: true });
+                replace("setTimeout", (handler: () => void, delay?: number) => {
+                    const timer = realSetTimeout(handler, delay);
+                    if (delay === timeout) {
+                        started.push(timer);
+                    }
+                    return timer;
+                });
+                replace("clearTimeout", (timer?: ReturnType<typeof realSetTimeout>) => {
+                    cleared.push(timer);
+                    realClearTimeout(timer);
+                });
+                try {
+                    await client.subscribe(LIGHT_ON_OFF, recorder().listener, timeout);
+                } finally {
+                    replace("setTimeout", realSetTimeout);
+                    replace("clearTimeout", realClearTimeout);
+                }
+
+                expect(started.length).equals(1);
+                expect(cleared).includes(started[0]);
+            });
+
+            for (const timeout of [0, -1]) {
+                it(`waits for the answer without a timeout when the timeout is ${timeout}`, async () => {
+                    server.onCommand(
+                        "subscribe",
+                        () =>
+                            new Promise(resolve =>
+                                setTimeout(() => resolve({ subscription_id: 7, ...EMPTY_REPORT }), 30),
+                            ),
+                    );
+                    await client.connect();
+
+                    const result = await client.subscribe(LIGHT_ON_OFF, recorder().listener, timeout);
+
+                    expect(result.subscription_id).equals(7);
+                });
+            }
+
             it("ends the other subscriptions and disconnects when a listener fails on end", async () => {
                 let id = 7;
                 server.onCommand("subscribe", () => ({ subscription_id: id++, ...EMPTY_REPORT }));

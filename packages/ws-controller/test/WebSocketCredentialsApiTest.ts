@@ -1064,6 +1064,15 @@ describe("WebSocket Credentials API", () => {
             expect(request).to.not.have.property("productId");
         });
 
+        it("accepts 172800 seconds, the longest a device announces for commissioning", async () => {
+            const [request] = await requestsFor("commission_with_code", {
+                code: "MT:Y.K90AFN00KA0648G00",
+                discovery_timeout_s: 172_800,
+            });
+
+            expect(request?.discoveryTimeout).to.equal(Seconds(172_800));
+        });
+
         for (const value of [undefined, null]) {
             it(`leaves the matter.js default for ${String(value)}`, async () => {
                 const [request] = await requestsFor("commission_with_code", {

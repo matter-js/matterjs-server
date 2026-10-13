@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { ClientNode, NodeId, Seconds, SessionsBehavior } from "@matter/main";
+import { ClientNode, InternalError, NodeId, Seconds, SessionsBehavior } from "@matter/main";
 import { Subscribe } from "@matter/main/protocol";
 import { Status } from "@matter/main/types";
 import { BooleanStateServer } from "@matter/node/behaviors/boolean-state";
@@ -320,6 +320,40 @@ describe("generic subscribe", () => {
             );
 
             expect(record.closed).equals(1);
+        });
+
+        it("closes and rejects a subscription that became active without a priming report", async () => {
+            const record = recorder();
+            const interaction = site.peer.interaction;
+            const subscribeOriginal = interaction.subscribe.bind(interaction);
+            let drained = 0;
+            // The report must still be read, or matter.js fails the subscribe; only the handler must not see it.
+            interaction.subscribe = (request, session) =>
+                subscribeOriginal(
+                    {
+                        ...request,
+                        updated: async data => {
+                            for await (const chunk of data) {
+                                for await (const _entry of chunk) {
+                                    drained++;
+                                }
+                            }
+                        },
+                    },
+                    session,
+                );
+
+            const error = await MockTime.resolve(site.handler.subscribe(LIGHT_ON_OFF, record.listener), {
+                macrotasks: true,
+            }).then(
+                () => undefined,
+                (error: unknown) => error,
+            );
+
+            expect(error).instanceOf(InternalError);
+            expect(String(error)).contains("without a priming report");
+            expect(record.closed).equals(1);
+            expect(drained).greaterThan(0);
         });
 
         it("rejects a data version filter without a concrete endpoint or cluster", async () => {

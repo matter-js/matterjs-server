@@ -15,9 +15,11 @@ import { Endpoint } from "@matter/node";
 import {
     CommissioningError,
     CommissioningTimeoutError,
+    DclCertificateService,
     FabricAuthority,
     PairRetransmissionLimitReachedError,
     PasscodeMismatchError,
+    TestCert_PAA_NoVID_Cert,
 } from "@matter/protocol";
 import {
     CameraControllerEndpoint,
@@ -161,6 +163,50 @@ describe("commissionNode", () => {
         );
 
         expect([error.code, error.reason]).deep.equals([ServerErrorCode.NodeCommissionFailed, "not-discovered"]);
+    });
+
+    describe("attestation", () => {
+        let trustStore: DclCertificateService | undefined;
+
+        afterEach(async () => {
+            await trustStore?.close();
+            trustStore = undefined;
+        });
+
+        /** An offline trust store that rejects test certificates; `testPaa` adds the PAA the simulated device chains to. */
+        async function useTrustStore(testPaa: boolean) {
+            const service = new DclCertificateService(controller.env, { offline: true, acceptTestCertificates: false });
+            trustStore = service;
+            await service.construction;
+            if (testPaa) {
+                await service.addCertificate(TestCert_PAA_NoVID_Cert, "PAA", { isProduction: false });
+            }
+            controller.env.set(DclCertificateService, service);
+        }
+
+        it("reports a device with a test certificate as attestation-rejected", async () => {
+            await useTrustStore(true);
+
+            const error = await failureOf(() => commissioning(() => handler.commissionNode(request())));
+
+            expect([error.code, error.reason]).deep.equals([
+                ServerErrorCode.NodeCommissionFailed,
+                "attestation-rejected",
+            ]);
+            expect(handler.isNodeIdInUse(NODE_ID)).equals(false);
+        });
+
+        it("reports a device whose PAA is not trusted as attestation-rejected", async () => {
+            await useTrustStore(false);
+
+            const error = await failureOf(() => commissioning(() => handler.commissionNode(request())));
+
+            expect([error.code, error.reason]).deep.equals([
+                ServerErrorCode.NodeCommissionFailed,
+                "attestation-rejected",
+            ]);
+            expect(handler.isNodeIdInUse(NODE_ID)).equals(false);
+        });
     });
 
     describe("vendor and product named by the pairing code", () => {

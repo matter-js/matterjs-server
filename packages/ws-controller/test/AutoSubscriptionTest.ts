@@ -471,6 +471,27 @@ describe("auto subscription setting", () => {
             expect(controller.handler.events.nodeDecommissioned.isObserved).equals(false);
         });
 
+        it("fails after 4 minutes 15 seconds, not before", async () => {
+            const controller = await commissioned(true);
+            refuseSubscriptions();
+            let outcome: unknown = "pending";
+            const pending = controller.handler.setAutoSubscription(NODE_ID, true).then(
+                () => {
+                    outcome = undefined;
+                },
+                (error: unknown) => {
+                    outcome = error;
+                },
+            );
+
+            await MockTime.resolve(Time.sleep("before timeout", Seconds(254)), { macrotasks: true });
+            expect(outcome).equals("pending");
+
+            await MockTime.resolve(Time.sleep("after timeout", Seconds(2)), { macrotasks: true });
+            expectServerError(outcome, ServerErrorCode.NodeNotReady);
+            await pending;
+        });
+
         it("fails when the node is removed while waiting", async () => {
             const controller = await commissioned(true);
             refuseSubscriptions();
