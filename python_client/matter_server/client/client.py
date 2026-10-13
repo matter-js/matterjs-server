@@ -781,7 +781,7 @@ class MatterClient:
         )
         return dataclass_from_dict(CameraCapabilities, data)
 
-    async def camera_start_stream(
+    async def camera_start_stream(  # noqa: PLR0913
         self,
         node_id: int,
         endpoint_id: int,
@@ -793,13 +793,17 @@ class MatterClient:
         ice_transport_policy: str | None = None,
         metadata_enabled: bool | None = None,
         allow_eviction: bool | None = None,
+        talkback: bool | None = None,
     ) -> CameraStartStreamResult:
         """Open a WebRTC session, allocating or reusing the streams it needs.
 
         Sends ``ProvideOffer`` when ``sdp`` is given, ``SolicitOffer`` otherwise; then the camera's
         offer arrives as a ``webrtc_callback`` ``offer`` event. For ``video`` and ``audio``, ``None``
         lets the server decide, a hints dict sets hard requirements, and ``False`` leaves the track
-        out. Arguments left ``None`` are not sent.
+        out. ``talkback=True`` (requires ``sdp``) forwards the offer unchanged so the camera can play
+        the caller's audio; otherwise the server makes the offer's audio sections not send. That only
+        asks the camera: it may still answer ``sendrecv``, so a caller that must not send audio keeps
+        the track off its audio sender. Arguments left ``None`` are not sent.
 
         Requires schema 14.
         """
@@ -811,6 +815,7 @@ class MatterClient:
             "ice_transport_policy": ice_transport_policy,
             "metadata_enabled": metadata_enabled,
             "allow_eviction": allow_eviction,
+            "talkback": talkback,
         }
         data = await self.send_command(
             APICommand.CAMERA_START_STREAM,

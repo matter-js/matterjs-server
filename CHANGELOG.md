@@ -11,9 +11,11 @@ This page shows a detailed overview of the changes between versions without the 
 
 - Feature: Introduces Websocket Schema version 14 (backward compatible), detectable with `server_info.schema_version >= 14`. Details are in [docs/websockets_api.md](docs/websockets_api.md#camera-streaming-schema-14) and [docs/websocket-api-schema-changelog.md](docs/websocket-api-schema-changelog.md)
     - Adds a camera API that handles stream management and WebRTC sessions for the client, see[docs/CAMERA_LIMITATIONS.md](docs/CAMERA_LIMITATIONS.md) for information on defaults and known camera quirks. The Matter commands through `send_webrtc_provider_command` and `device_command` stay available
+    - `camera_start_stream` asks the camera to play the client's audio only with `talkback: true`; otherwise the server makes the offer's audio sections not send
     - Adds error codes 102 to 106 for camera failures in the server and both clients
     - The TypeScript client's `ServerCommandError` carries typed error details (`details`, `hasDetails(code)`); the Python client has typed camera methods, results, events and errors
     - The dashboard's camera view uses the new camera API
+        - Talks back to cameras that support two-way audio (needs HTTPS or localhost for the microphone)
 - Enhancement: Update matter.js to the latest 0.18.0 nightly
     - Adds support for Matter 1.6.1 (including Python client)
 - Enhancement: Finishes the migration to the new matter.js controller API

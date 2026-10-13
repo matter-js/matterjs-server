@@ -11,7 +11,7 @@ import "@material/web/iconbutton/icon-button.js";
 import "@material/web/select/outlined-select.js";
 import "@material/web/select/select-option.js";
 import type { CameraCapabilitiesResult, CameraResolution, MatterClient } from "@matter-server/ws-client";
-import { mdiCamera, mdiClose, mdiVolumeHigh, mdiVolumeOff } from "@mdi/js";
+import { mdiCamera, mdiClose, mdiMicrophone, mdiMicrophoneOff, mdiVolumeHigh, mdiVolumeOff } from "@mdi/js";
 import { LitElement, css, html, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { createRef, ref } from "lit/directives/ref.js";
@@ -25,6 +25,8 @@ import {
     cameraErrorText,
     type CameraQualityBadge,
     hasCameraFeature,
+    microphoneUnavailableReason,
+    microphoneErrorText,
     parseResolutionOption,
     resolutionOption,
     snapshotResolutionOptions,
@@ -65,6 +67,12 @@ export class CameraOverlay extends LitElement {
     @state() private _activeVideoStreamId: number | null = null;
     @state() private _qualityBadges = new Array<CameraQualityBadge>();
     @state() private _muted = true;
+    @state() private _talkAvailable = false;
+    @state() private _talking = false;
+    @state() private _talkBusy = false;
+    /** Bumped when a stream ends, so a talk toggle still pending from it leaves the next stream's state alone. */
+    private _talkGeneration = 0;
+    @state() private _talkError: string | null = null;
     @state() private _watermarkEnabled = false;
     @state() private _osdEnabled = false;
 
@@ -133,6 +141,13 @@ export class CameraOverlay extends LitElement {
         const streaming = ev.detail.state === "streaming";
         this._activeVideoStreamId = streaming ? (view?.videoStreamId ?? null) : null;
         this._qualityBadges = streaming ? (view?.qualityBadges ?? []) : [];
+        this._talkAvailable = streaming && (view?.talkAvailable ?? false);
+        this._talking = streaming && (view?.talking ?? false);
+        if (!streaming) {
+            this._talkError = null;
+            this._talkBusy = false;
+            this._talkGeneration++;
+        }
 
         // Audio-only "Listen" sessions have no video; starting muted would defeat the feature, so
         // unmute on stream start. Started from the user's Start click, so autoplay policy allows it.
@@ -160,6 +175,48 @@ export class CameraOverlay extends LitElement {
         const next = !this._muted;
         view.setMuted(next);
         this._muted = next;
+    }
+
+    private _onTalkChange(): void {
+        const view = this._streamViewRef.value;
+        this._talkAvailable = this._state === "streaming" && (view?.talkAvailable ?? false);
+        this._talking = view?.talking ?? false;
+    }
+
+    private async _toggleTalk(): Promise<void> {
+        const view = this._streamViewRef.value;
+        if (!view) return;
+        const generation = this._talkGeneration;
+        this._talkBusy = true;
+        this._talkError = null;
+        try {
+            await view.setTalking(!view.talking);
+        } catch (err) {
+            if (generation === this._talkGeneration) this._talkError = microphoneErrorText(err);
+        } finally {
+            if (generation === this._talkGeneration) {
+                this._talkBusy = false;
+                this._talking = view.talking;
+            }
+        }
+    }
+
+    private _renderTalkButton() {
+        const view = this._streamViewRef.value;
+        const microphoneUnavailable = microphoneUnavailableReason();
+        const title =
+            microphoneUnavailable ??
+            (view?.talkMutesPlayback ? "The camera's audio is muted while talking (half duplex)" : "");
+        return html`<span title=${title}>
+            <md-text-button
+                @click=${this._toggleTalk}
+                ?disabled=${microphoneUnavailable !== null || this._talkBusy}
+                aria-label=${this._talking ? "Stop talking" : "Talk"}
+            >
+                <ha-svg-icon slot="icon" .path=${this._talking ? mdiMicrophone : mdiMicrophoneOff}></ha-svg-icon>
+                ${this._talking ? "Stop talking" : "Talk"}
+            </md-text-button>
+        </span>`;
     }
 
     private async _onSnapshot(): Promise<void> {
@@ -284,6 +341,7 @@ export class CameraOverlay extends LitElement {
                                   .osdEnabled=${this._osdEnabled}
                                   .snapshotResolution=${this._selectedSnapshotResolution}
                                   @streamstate=${this._onStreamState}
+                                  @talkchange=${this._onTalkChange}
                               ></webrtc-stream-view>`
                             : html`<div class="status error">No Matter client available.</div>`
                     }
@@ -341,6 +399,11 @@ export class CameraOverlay extends LitElement {
                             ? html`<span class="footer-status error"
                                   >Camera capabilities unavailable: ${this._capabilitiesError}</span
                               >`
+                            : nothing
+                    }
+                    ${
+                        !this._closing && this._state === "streaming" && this._talkError
+                            ? html`<span class="footer-status error">${this._talkError}</span>`
                             : nothing
                     }
                     ${
@@ -408,6 +471,7 @@ export class CameraOverlay extends LitElement {
                                   </md-text-button>`
                             : nothing
                     }
+                    ${this._talkAvailable ? this._renderTalkButton() : nothing}
                     ${
                         this._snapshotSupported
                             ? html`<md-text-button

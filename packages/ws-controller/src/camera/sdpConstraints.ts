@@ -47,11 +47,19 @@ export type MediaDisposition =
 
 export type MediaRefusal = Extract<MediaDisposition, { state: "refused" | "notReceiving" | "absent" }>;
 
+/** A live audio section whose direction lets the peer send, i.e. asks the camera for talkback. */
+export interface SendingAudioSection {
+    /** Position among all of the offer's m-sections, counted from 0. */
+    readonly index: number;
+    /** The direction in effect, stated by the section, by the session, or the `sendrecv` default. */
+    readonly direction: "sendrecv" | "sendonly";
+}
+
 export interface SdpVideoConstraints {
     video: MediaDisposition;
     audio: MediaDisposition;
-    /** True when a live audio m-line asks to send, i.e. the caller wants talkback. */
-    wantsTalkback: boolean;
+    /** Empty when the offer does not ask for talkback. */
+    sendingAudioSections: readonly SendingAudioSection[];
     /** Per-codec fmtp limits, keyed by upper-cased codec name. A codec absent here stated none. */
     limitsByCodec: ReadonlyMap<string, VideoCodecLimits>;
     /**
@@ -249,7 +257,7 @@ export function parseSdpVideoConstraints(sdp: string): SdpVideoConstraints {
     const unreadableCeilingCodecs = new Set<string>();
     const videoSections: MediaSections = { receiving: false, refused: false, codecs: new Array<string>() };
     const audioSections: MediaSections = { receiving: false, refused: false, codecs: new Array<string>() };
-    let wantsTalkback = false;
+    const sendingAudioSections = new Array<SendingAudioSection>();
 
     let parsed;
     try {
@@ -259,13 +267,13 @@ export function parseSdpVideoConstraints(sdp: string): SdpVideoConstraints {
         return {
             video: { state: "absent" },
             audio: { state: "absent" },
-            wantsTalkback: false,
+            sendingAudioSections,
             limitsByCodec,
             unreadableCeilingCodecs,
         };
     }
 
-    for (const media of parsed.media ?? []) {
+    for (const [index, media] of (parsed.media ?? []).entries()) {
         const sections = media.type === "video" ? videoSections : media.type === "audio" ? audioSections : undefined;
         if (sections === undefined) continue;
         // Port 0 with a=bundle-only is a live section carried on the bundle transport (RFC 8843 §7.1.2).
@@ -273,10 +281,10 @@ export function parseSdpVideoConstraints(sdp: string): SdpVideoConstraints {
             sections.refused = true;
             continue;
         }
-        // Session-level direction applies where a section states none (RFC 4566 §5.13); default sendrecv (§6).
+        // Session-level direction applies where a section states none (RFC 4566 §5); default sendrecv (§6).
         const direction = media.direction ?? parsed.direction ?? "sendrecv";
         if (media.type === "audio" && (direction === "sendonly" || direction === "sendrecv")) {
-            wantsTalkback = true;
+            sendingAudioSections.push({ index, direction });
         }
         if (direction === "sendonly" || direction === "inactive") {
             sections.notReceiving ??= direction;
@@ -344,8 +352,58 @@ export function parseSdpVideoConstraints(sdp: string): SdpVideoConstraints {
     return {
         video: disposition(videoSections),
         audio: disposition(audioSections),
-        wantsTalkback,
+        sendingAudioSections,
         limitsByCodec,
         unreadableCeilingCodecs,
     };
+}
+
+// Same prefix match as sdp-transform's `direction` grammar, so the rewrite hits exactly the lines the parser read.
+const DIRECTION_LINE = /^a=(?:sendrecv|sendonly|recvonly|inactive)/;
+const TALKBACK_REFUSED: Record<SendingAudioSection["direction"], string> = {
+    sendrecv: "a=recvonly",
+    sendonly: "a=inactive",
+};
+
+/**
+ * The offer with each of `sections` set to a direction that does not send: `sendrecv` becomes `recvonly`,
+ * `sendonly` becomes `inactive`. A section that states no direction gets one, which overrides a
+ * session-level direction for that section only (RFC 4566 §5). Every other line is kept.
+ * `sections` must come from {@link parseSdpVideoConstraints} on the same `sdp`, which counts m-lines the
+ * same way: every line starting with `m=`.
+ */
+export function withoutTalkback(sdp: string, sections: readonly SendingAudioSection[]): string {
+    if (sections.length === 0) return sdp;
+    const parts = sdp.split(/(\r\n|\r|\n)/);
+    const lines = new Array<{ text: string; eol: string }>();
+    for (let i = 0; i < parts.length; i += 2) lines.push({ text: parts[i], eol: parts[i + 1] ?? "" });
+
+    const sectionStarts = new Array<number>();
+    lines.forEach((line, lineIndex) => {
+        if (line.text.startsWith("m=")) sectionStarts.push(lineIndex);
+    });
+
+    // Back to front, so an inserted line does not move a section still to be rewritten.
+    for (const { index, direction } of [...sections].sort((a, b) => b.index - a.index)) {
+        const start = sectionStarts[index];
+        if (start === undefined) continue;
+        const end = sectionStarts[index + 1] ?? lines.length;
+        const target = TALKBACK_REFUSED[direction];
+        let stated = false;
+        let last = start;
+        for (let lineIndex = start; lineIndex < end; lineIndex++) {
+            const line = lines[lineIndex];
+            if (line.text.length > 0) last = lineIndex;
+            if (DIRECTION_LINE.test(line.text)) {
+                line.text = target;
+                stated = true;
+            }
+        }
+        if (stated) continue;
+        const after = lines[last];
+        const eol = after.eol === "" ? lines[start].eol || "\r\n" : after.eol;
+        lines.splice(last + 1, 0, { text: target, eol: after.eol });
+        after.eol = eol;
+    }
+    return lines.map(line => line.text + line.eol).join("");
 }

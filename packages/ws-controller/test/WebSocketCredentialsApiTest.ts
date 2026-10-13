@@ -28,7 +28,7 @@ function freshEnv(): Environment {
 
 interface StubCameraStreams {
     releaseConnection(connectionId: string): Promise<void>;
-    startStream?(args: { connectionId: string; allowEviction?: boolean }): Promise<unknown>;
+    startStream?(args: { connectionId: string; allowEviction?: boolean; talkback?: boolean }): Promise<unknown>;
     stopStream?(nodeId: bigint, endpointId: number, webRtcSessionId: number, requestedBy?: string): Promise<boolean>;
     /** What the manager reports on nobody's request: a session that ended, a stream that was taken. */
     events?: {
@@ -637,7 +637,7 @@ describe("WebSocket Credentials API", () => {
                     async startStream() {
                         reached();
                         await answered;
-                        return { webRtcSessionId: 1, mode: "provide_offer" };
+                        return { webRtcSessionId: 1, mode: "provide_offer", talkback: false };
                     },
                 }),
         );
@@ -1191,7 +1191,7 @@ describe("WebSocket camera_start_stream arguments", () => {
             async releaseConnection() {},
             async startStream(args: { connectionId: string; allowEviction?: boolean }) {
                 stated.push(args.allowEviction);
-                return { webRtcSessionId: 1, mode: "solicit_offer" };
+                return { webRtcSessionId: 1, mode: "solicit_offer", talkback: false };
             },
         });
         try {
@@ -1201,6 +1201,37 @@ describe("WebSocket camera_start_stream arguments", () => {
                 await h.sendOn(client, "camera_start_stream", { ...base, allow_eviction: false });
                 await h.sendOn(client, "camera_start_stream", base);
                 expect(stated).to.deep.equal([false, undefined]);
+            } finally {
+                client.close();
+            }
+        } finally {
+            await h.close();
+        }
+    });
+});
+
+describe("WebSocket camera_start_stream talkback", () => {
+    it("forwards talkback to the stream manager and reports the manager's verdict", async () => {
+        const stated = new Array<boolean | undefined>();
+        const h = await createHarness({
+            async releaseConnection() {},
+            async startStream(args: { connectionId: string; talkback?: boolean }) {
+                stated.push(args.talkback);
+                return { webRtcSessionId: 1, mode: "provide_offer", talkback: args.talkback === true };
+            },
+        });
+        try {
+            const client = await h.openClient();
+            try {
+                const base = { node_id: 1, endpoint_id: 1, stream_usage: "LiveView", sdp: "v=0" };
+                const asked = await h.sendOn<{ talkback: boolean }>(client, "camera_start_stream", {
+                    ...base,
+                    talkback: true,
+                });
+                const unasked = await h.sendOn<{ talkback: boolean }>(client, "camera_start_stream", base);
+                expect(stated).to.deep.equal([true, undefined]);
+                expect(asked.talkback).to.equal(true);
+                expect(unasked.talkback).to.equal(false);
             } finally {
                 client.close();
             }
@@ -1279,7 +1310,7 @@ describe("WebSocket camera session cleanup on disconnect", () => {
             },
             async startStream(args: { connectionId: string }) {
                 owners.push(args.connectionId);
-                return { webRtcSessionId: 1, mode: "solicit_offer" };
+                return { webRtcSessionId: 1, mode: "solicit_offer", talkback: false };
             },
         });
         try {
@@ -1350,7 +1381,7 @@ describe("WebSocket camera lifecycle events", () => {
             async startStream(args: { connectionId: string }) {
                 const webRtcSessionId = nextSessionId++;
                 ownerBySession.set(webRtcSessionId, args.connectionId);
-                return { webRtcSessionId, mode: "solicit_offer" };
+                return { webRtcSessionId, mode: "solicit_offer", talkback: false };
             },
             // The registry announces every release, naming the session's owner and the connection that
             // asked; an id it holds no record of names only the asking connection.
@@ -1449,7 +1480,7 @@ describe("WebSocket camera lifecycle events", () => {
                 async startStream(args: { connectionId: string }) {
                     const webRtcSessionId = nextSessionId++;
                     ownerBySession.set(webRtcSessionId, args.connectionId);
-                    return { webRtcSessionId, mode: "solicit_offer" };
+                    return { webRtcSessionId, mode: "solicit_offer", talkback: false };
                 },
                 // What the manager does for a client's own EndSession: an entry it holds is announced to
                 // that session's owner, and an id no entry names is announced with no owner unless the
@@ -1691,7 +1722,7 @@ describe("WebSocket camera signalling routing", () => {
             async startStream(args: { connectionId: string }) {
                 const webRtcSessionId = nextSessionId++;
                 ownerBySession.set(webRtcSessionId, args.connectionId);
-                return { webRtcSessionId, mode: "solicit_offer" };
+                return { webRtcSessionId, mode: "solicit_offer", talkback: false };
             },
             // What the real manager answers: the connection whose camera_start_stream established the
             // session, and nothing for a session it holds no record of.

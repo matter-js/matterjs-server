@@ -1432,7 +1432,7 @@ describe("streamPolicy", () => {
                     sdp: {
                         video: { state: "absent" as const },
                         audio: { state: "receiving" as const, codecs: ["OPUS"] },
-                        wantsTalkback: false,
+                        sendingAudioSections: [],
                         limitsByCodec: new Map(),
                         unreadableCeilingCodecs: new Set<string>(),
                     },
@@ -1449,7 +1449,7 @@ describe("streamPolicy", () => {
                     sdp: {
                         video: { state: "absent" as const },
                         audio: { state: "receiving" as const },
-                        wantsTalkback: false,
+                        sendingAudioSections: [],
                         limitsByCodec: new Map(),
                         unreadableCeilingCodecs: new Set<string>(),
                     },
@@ -1499,7 +1499,7 @@ describe("streamPolicy", () => {
                     sdp: {
                         video: { state: "absent" as const },
                         audio: { state: "receiving" as const, codecs: ["AAC"] },
-                        wantsTalkback: false,
+                        sendingAudioSections: [],
                         limitsByCodec: new Map(),
                         unreadableCeilingCodecs: new Set<string>(),
                     },
@@ -1516,7 +1516,7 @@ describe("streamPolicy", () => {
                     sdp: {
                         video: { state: "absent" as const },
                         audio: { state: "receiving" as const, codecs: ["AAC"] },
-                        wantsTalkback: false,
+                        sendingAudioSections: [],
                         limitsByCodec: new Map(),
                         unreadableCeilingCodecs: new Set<string>(),
                     },
@@ -1537,7 +1537,7 @@ describe("streamPolicy", () => {
                     sdp: {
                         video: { state: "receiving" as const },
                         audio: { state: "absent" as const },
-                        wantsTalkback: false,
+                        sendingAudioSections: [],
                         limitsByCodec: new Map(),
                         unreadableCeilingCodecs: new Set<string>(),
                     },

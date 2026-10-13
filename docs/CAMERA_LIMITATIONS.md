@@ -69,6 +69,8 @@ Things to know:
 - The server asks for the first microphone codec the viewer can play, normally Opus, at 64 kbit/s. The channel count, sample rate and bit depth are the highest the camera states.
 - A camera that states 8 channels therefore gets 8 channels, although a browser plays at most 2. Whether the server should ask for fewer channels is an open question to the Matter camera experts.
 - When the camera cannot serve audio, the live view still starts, without sound.
+- **Talkback needs an audio stream.** The response's `talkback` is `true` only when `camera_start_stream` gets `talkback: true` and the session carries an audio stream, because the Matter SDK example camera (with its audio playback option on) plays the client's audio only while that stream runs.
+- **Leaving talkback off only asks the camera.** Some cameras answer `a=sendrecv` whatever the offer says, so the client can still send. A client that must not send audio keeps the track off its audio sender.
 
 ## Overlays
 

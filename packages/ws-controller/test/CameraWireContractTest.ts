@@ -163,6 +163,7 @@ const CAPABILITIES: CameraCapabilities = {
 const START_STREAM: StartStreamResult = {
     webRtcSessionId: 7,
     mode: "provide_offer",
+    talkback: true,
     video: {
         streamId: 1,
         envelope: {
@@ -520,6 +521,7 @@ describe("camera wire contract", () => {
                         "ice_transport_policy",
                         "metadata_enabled",
                         "allow_eviction",
+                        "talkback",
                     ],
                 },
                 {

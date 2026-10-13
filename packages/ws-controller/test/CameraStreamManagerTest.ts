@@ -2291,7 +2291,7 @@ describe("CameraStreamManager", () => {
                     sdp: {
                         video: { state: "absent" as const },
                         audio: { state: "receiving" as const, codecs: ["AAC"] },
-                        wantsTalkback: false,
+                        sendingAudioSections: [],
                         limitsByCodec: new Map(),
                         unreadableCeilingCodecs: new Set<string>(),
                     },
@@ -2316,7 +2316,7 @@ describe("CameraStreamManager", () => {
                 sdp: {
                     video: { state: "absent" as const },
                     audio: { state: "receiving" as const, codecs: ["AAC"] },
-                    wantsTalkback: false,
+                    sendingAudioSections: [],
                     limitsByCodec: new Map(),
                     unreadableCeilingCodecs: new Set<string>(),
                 },
@@ -2334,7 +2334,7 @@ describe("CameraStreamManager", () => {
                 sdp: {
                     video: { state: "absent" as const },
                     audio: { state: "receiving" as const },
-                    wantsTalkback: false,
+                    sendingAudioSections: [],
                     limitsByCodec: new Map(),
                     unreadableCeilingCodecs: new Set<string>(),
                 },
@@ -3073,7 +3073,6 @@ describe("CameraStreamManager", () => {
         }
 
         it("reports an offer asking for talkback on a camera that does not support it", async () => {
-            // Nothing in the response says so; the log is the only place the mismatch shows.
             const { manager } = allocatingManager();
             const messages = await logged(() =>
                 manager.startStream({
@@ -3082,6 +3081,28 @@ describe("CameraStreamManager", () => {
                     connectionId: "conn-1",
                     streamUsage: LIVE_VIEW,
                     sdp: TALKBACK_OFFER,
+                    talkback: true,
+                    video: {},
+                    audio: false,
+                }),
+            );
+            expect(messages.some(message => message.includes("TwoWayTalkSupport"))).to.equal(true);
+        });
+
+        it("reports an offer asking for talkback on a camera stating an unknown TwoWayTalkSupport", async () => {
+            const { manager } = managerWith({ ...STATE, twoWayTalkSupport: 3 }, async invoke => {
+                if (invoke.command === "videoStreamAllocate") return { videoStreamId: 9 };
+                if (invoke.command === "provideOffer") return { webRtcSessionId: 42 };
+                return undefined;
+            });
+            const messages = await logged(() =>
+                manager.startStream({
+                    nodeId: NODE,
+                    endpointId: ENDPOINT,
+                    connectionId: "conn-1",
+                    streamUsage: LIVE_VIEW,
+                    sdp: TALKBACK_OFFER,
+                    talkback: true,
                     video: {},
                     audio: false,
                 }),
@@ -3103,6 +3124,7 @@ describe("CameraStreamManager", () => {
                     connectionId: "conn-1",
                     streamUsage: LIVE_VIEW,
                     sdp: TALKBACK_OFFER,
+                    talkback: true,
                     video: {},
                 }),
             );
@@ -3142,6 +3164,7 @@ describe("CameraStreamManager", () => {
                     connectionId: "conn-1",
                     streamUsage: LIVE_VIEW,
                     sdp: TALKBACK_OFFER,
+                    talkback: true,
                     video: {},
                     audio: false,
                 }),
@@ -3165,11 +3188,193 @@ describe("CameraStreamManager", () => {
                     connectionId: "conn-1",
                     streamUsage: LIVE_VIEW,
                     sdp: TALKBACK_OFFER,
+                    talkback: true,
                     video: {},
                     audio: false,
                 }),
             );
             expect(messages.some(message => message.includes("TwoWayTalkSupport"))).to.equal(false);
+        });
+
+        it("says nothing about talkback when the offer can send but talkback is not asked for", async () => {
+            const { manager } = allocatingManager();
+            const messages = await logged(() =>
+                manager.startStream({
+                    nodeId: NODE,
+                    endpointId: ENDPOINT,
+                    connectionId: "conn-1",
+                    streamUsage: LIVE_VIEW,
+                    sdp: TALKBACK_OFFER,
+                    video: {},
+                    audio: false,
+                }),
+            );
+            expect(messages.some(message => message.includes("TwoWayTalkSupport"))).to.equal(false);
+        });
+
+        describe("talkback", () => {
+            function talkingManager(twoWayTalkSupport?: number) {
+                return managerWith({ ...STATE, twoWayTalkSupport }, async invoke => {
+                    if (invoke.command === "videoStreamAllocate") return { videoStreamId: 9 };
+                    if (invoke.command === "audioStreamAllocate") return { audioStreamId: 4 };
+                    if (invoke.command === "provideOffer") return { webRtcSessionId: 42 };
+                    if (invoke.command === "solicitOffer") return { webRtcSessionId: 43 };
+                    return undefined;
+                });
+            }
+
+            async function start(args: {
+                sdp?: string;
+                talkback?: boolean;
+                twoWayTalkSupport?: number;
+                audio?: false;
+            }) {
+                const { manager, invokes } = talkingManager(args.twoWayTalkSupport);
+                const result = await manager.startStream({
+                    nodeId: NODE,
+                    endpointId: ENDPOINT,
+                    connectionId: "conn-1",
+                    streamUsage: LIVE_VIEW,
+                    ...(args.sdp === undefined ? {} : { sdp: args.sdp }),
+                    ...(args.talkback === undefined ? {} : { talkback: args.talkback }),
+                    video: {},
+                    audio: args.audio ?? {},
+                });
+                const offer = invokes.find(
+                    invoke => invoke.command === "provideOffer" || invoke.command === "solicitOffer",
+                );
+                return { result, sent: offer?.fields.sdp };
+            }
+
+            const { FullDuplex, HalfDuplex, NotSupported } = CameraAvStreamManagement.TwoWayTalkSupportType;
+
+            it("sends the offer with its sending audio section made recvonly when talkback is not asked for", async () => {
+                const { result, sent } = await start({ sdp: TALKBACK_OFFER, twoWayTalkSupport: FullDuplex });
+                expect(sent).to.equal(TALKBACK_OFFER.replace("a=sendrecv", "a=recvonly"));
+                expect(result.talkback).to.equal(false);
+            });
+
+            it("reports no talkback when talkback is false, even for a camera and offer that could talk", async () => {
+                const { result, sent } = await start({
+                    sdp: TALKBACK_OFFER,
+                    talkback: false,
+                    twoWayTalkSupport: FullDuplex,
+                });
+                expect(sent).to.equal(TALKBACK_OFFER.replace("a=sendrecv", "a=recvonly"));
+                expect(result.audio?.streamId).to.equal(4);
+                expect(result.talkback).to.equal(false);
+            });
+
+            it("sends the offer with a sendonly audio section made inactive when talkback is false", async () => {
+                const { sent } = await start({ sdp: AUDIO_SENDONLY_OFFER, talkback: false, audio: false });
+                expect(sent).to.equal(AUDIO_SENDONLY_OFFER.replace("a=sendonly", "a=inactive"));
+            });
+
+            it("forwards the offer unchanged when talkback is asked for", async () => {
+                const { result, sent } = await start({
+                    sdp: TALKBACK_OFFER,
+                    talkback: true,
+                    twoWayTalkSupport: FullDuplex,
+                });
+                expect(sent).to.equal(TALKBACK_OFFER);
+                expect(result.talkback).to.equal(true);
+            });
+
+            it("forwards an offer whose audio cannot send unchanged", async () => {
+                const { sent } = await start({ sdp: VIDEO_AND_AUDIO_OFFER });
+                expect(sent).to.equal(VIDEO_AND_AUDIO_OFFER);
+            });
+
+            for (const [support, name] of [
+                [FullDuplex, "FullDuplex"],
+                [HalfDuplex, "HalfDuplex"],
+            ] as const) {
+                it(`reports talkback for a ${name} camera asked with an offer that can send`, async () => {
+                    const { result } = await start({ sdp: TALKBACK_OFFER, talkback: true, twoWayTalkSupport: support });
+                    expect(result.talkback).to.equal(true);
+                });
+            }
+
+            for (const [support, name] of [
+                [NotSupported, "NotSupported"],
+                [undefined, "no TwoWayTalkSupport"],
+                [3, "an unknown TwoWayTalkSupport"],
+            ] as const) {
+                it(`reports no talkback and still opens the session for a camera stating ${name}`, async () => {
+                    const { result, sent } = await start({
+                        sdp: TALKBACK_OFFER,
+                        talkback: true,
+                        twoWayTalkSupport: support,
+                    });
+                    expect(sent).to.equal(TALKBACK_OFFER);
+                    expect(result.webRtcSessionId).to.equal(42);
+                    expect(result.talkback).to.equal(false);
+                });
+            }
+
+            it("reports talkback beside the audio stream the session carries", async () => {
+                const { manager, invokes } = managerWith({ ...STATE, twoWayTalkSupport: FullDuplex }, async invoke => {
+                    if (invoke.command === "videoStreamAllocate") return { videoStreamId: 9 };
+                    if (invoke.command === "audioStreamAllocate") return { audioStreamId: 4 };
+                    if (invoke.command === "provideOffer") return { webRtcSessionId: 42 };
+                    return undefined;
+                });
+                const result = await manager.startStream({
+                    nodeId: NODE,
+                    endpointId: ENDPOINT,
+                    connectionId: "conn-1",
+                    streamUsage: LIVE_VIEW,
+                    sdp: TALKBACK_OFFER,
+                    talkback: true,
+                    video: {},
+                    audio: {},
+                });
+                expect(result.audio?.streamId).to.equal(4);
+                expect(result.talkback).to.equal(true);
+                const offer = invokes.find(invoke => invoke.command === "provideOffer");
+                expect(offer?.fields.sdp).to.equal(TALKBACK_OFFER);
+                expect(offer?.fields.audioStreams).to.deep.equal([4]);
+            });
+
+            it("reports and logs no talkback when the session carries no audio stream", async () => {
+                let started: Awaited<ReturnType<typeof start>> | undefined;
+                const messages = await logged(async () => {
+                    started = await start({
+                        sdp: TALKBACK_OFFER,
+                        talkback: true,
+                        twoWayTalkSupport: FullDuplex,
+                        audio: false,
+                    });
+                });
+                expect(started?.sent).to.equal(TALKBACK_OFFER);
+                expect(started?.result.audio).to.equal(undefined);
+                expect(started?.result.talkback).to.equal(false);
+                expect(messages.some(message => message.includes("no audio stream"))).to.equal(true);
+            });
+
+            it("does not log a missing audio stream when talkback is not asked for", async () => {
+                const messages = await logged(() =>
+                    start({ sdp: TALKBACK_OFFER, twoWayTalkSupport: FullDuplex, audio: false }),
+                );
+                expect(messages.some(message => message.includes("no audio stream"))).to.equal(false);
+            });
+
+            it("reports no talkback when the offer's audio cannot send", async () => {
+                const { result } = await start({
+                    sdp: VIDEO_AND_AUDIO_OFFER,
+                    talkback: true,
+                    twoWayTalkSupport: FullDuplex,
+                });
+                expect(result.webRtcSessionId).to.equal(42);
+                expect(result.talkback).to.equal(false);
+            });
+
+            it("reports no talkback for a solicited offer", async () => {
+                const { result, sent } = await start({ twoWayTalkSupport: FullDuplex });
+                expect(sent).to.equal(undefined);
+                expect(result.mode).to.equal("solicit_offer");
+                expect(result.talkback).to.equal(false);
+            });
         });
 
         it("ends the session without deallocating the stream", async () => {
@@ -6072,7 +6277,7 @@ describe("CameraStreamManager reuse before the device has reported", () => {
                 sdp: {
                     video: { state: "receiving" as const },
                     audio: { state: "absent" as const },
-                    wantsTalkback: false,
+                    sendingAudioSections: [],
                     limitsByCodec: new Map([["H265", { maxPixels: 1280 * 720 }]]),
                     unreadableCeilingCodecs: new Set<string>(),
                 },
@@ -6435,7 +6640,7 @@ describe("preferredVideoCodec", () => {
         const offer = {
             video: { state: "receiving" as const, codecs: ["H264"] },
             audio: { state: "absent" as const },
-            wantsTalkback: false,
+            sendingAudioSections: [],
             limitsByCodec: new Map(),
             unreadableCeilingCodecs: new Set<string>(),
         };
@@ -6451,7 +6656,7 @@ describe("preferredVideoCodec", () => {
         const offer = {
             video: { state: "receiving" as const, codecs: ["H264"] },
             audio: { state: "absent" as const },
-            wantsTalkback: false,
+            sendingAudioSections: [],
             limitsByCodec: new Map(),
             unreadableCeilingCodecs: new Set(["H264"]),
         };
@@ -6467,7 +6672,7 @@ describe("preferredVideoCodec", () => {
         const offer = {
             video: { state: "receiving" as const, codecs: ["H264", "H265"] },
             audio: { state: "absent" as const },
-            wantsTalkback: false,
+            sendingAudioSections: [],
             limitsByCodec: new Map(),
             unreadableCeilingCodecs: new Set(["H264"]),
         };
@@ -6479,7 +6684,7 @@ describe("preferredVideoCodec", () => {
         const offer = {
             video: { state: "receiving" as const, codecs: ["H264"] },
             audio: { state: "absent" as const },
-            wantsTalkback: false,
+            sendingAudioSections: [],
             limitsByCodec: new Map(),
             unreadableCeilingCodecs: new Set(["H264"]),
         };
@@ -6492,7 +6697,7 @@ describe("preferredVideoCodec", () => {
         const offer = {
             video: { state: "receiving" as const, codecs: ["H264"] },
             audio: { state: "absent" as const },
-            wantsTalkback: false,
+            sendingAudioSections: [],
             limitsByCodec: new Map(),
             unreadableCeilingCodecs: new Set<string>(),
         };
@@ -6504,7 +6709,7 @@ describe("preferredVideoCodec", () => {
         const offer = {
             video: { state: "receiving" as const, codecs: ["H264"] },
             audio: { state: "absent" as const },
-            wantsTalkback: false,
+            sendingAudioSections: [],
             limitsByCodec: new Map(),
             unreadableCeilingCodecs: new Set<string>(),
         };
@@ -6525,7 +6730,7 @@ describe("preferredVideoCodec", () => {
         const offer = {
             video: { state: "receiving" as const },
             audio: { state: "absent" as const },
-            wantsTalkback: false,
+            sendingAudioSections: [],
             limitsByCodec: new Map(),
             unreadableCeilingCodecs: new Set<string>(),
         };

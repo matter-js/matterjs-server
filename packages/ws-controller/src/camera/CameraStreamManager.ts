@@ -46,7 +46,13 @@ import {
 import { deviceStatusOf } from "./deviceStatus.js";
 import { overlaysMatch, resolveOverlays } from "./overlayPolicy.js";
 import type { OverlayBounds } from "./overlayPolicy.js";
-import { decodableVideoCodecs, mediaRefusal, parseSdpVideoConstraints, videoCodecLimits } from "./sdpConstraints.js";
+import {
+    decodableVideoCodecs,
+    mediaRefusal,
+    parseSdpVideoConstraints,
+    videoCodecLimits,
+    withoutTalkback,
+} from "./sdpConstraints.js";
 import type { MediaRefusal, SdpVideoConstraints, SelectedVideoCodecLimits } from "./sdpConstraints.js";
 import { CameraSessionRegistry } from "./sessionRegistry.js";
 import type { PendingSession, SessionScope } from "./sessionRegistry.js";
@@ -486,6 +492,8 @@ export interface StartStreamArgs {
     metadataEnabled?: boolean;
     /** Defaults to true. @see CameraStreamManager.resolveVideoStreamLocked */
     allowEviction?: boolean;
+    /** Defaults to false, which rewrites the offer's sending audio sections so they do not send. */
+    talkback?: boolean;
 }
 
 /**
@@ -512,6 +520,12 @@ export interface StartStreamResult {
     mode: "solicit_offer" | "provide_offer";
     video?: ResolvedStream;
     audio?: ResolvedStream;
+    /**
+     * Talkback was asked for, the offer's audio can send, the camera states half or full duplex, and the
+     * session carries an audio stream: the Matter SDK example camera (with its audio playback option on) plays
+     * the client's audio only while that stream runs.
+     */
+    talkback: boolean;
 }
 
 interface CaptureSnapshotArgs {
@@ -1828,6 +1842,7 @@ export class CameraStreamManager {
     async #invokeEstablishingOffer(
         pending: PendingSession,
         args: StartStreamArgs,
+        offer: string | undefined,
         video: ResolvedStream | undefined,
         audio: ResolvedStream | undefined,
     ): Promise<unknown> {
@@ -1837,12 +1852,12 @@ export class CameraStreamManager {
                 nodeId,
                 endpointId,
                 cluster: "webrtcProvider",
-                command: args.sdp === undefined ? "solicitOffer" : "provideOffer",
+                command: offer === undefined ? "solicitOffer" : "provideOffer",
                 // Must record the id before the local requestor can route an `End` for it.
                 sessionEstablishing: webRtcSessionId => this.#sessions.establishing(pending, webRtcSessionId),
                 fields: {
                     // §11.5.6.3.1: mandatory and nullable; null asks for a new session.
-                    ...(args.sdp === undefined ? {} : { webRtcSessionId: null, sdp: args.sdp }),
+                    ...(offer === undefined ? {} : { webRtcSessionId: null, sdp: offer }),
                     streamUsage,
                     ...(video === undefined ? {} : { videoStreams: [video.streamId] }),
                     ...(audio === undefined ? {} : { audioStreams: [audio.streamId] }),
@@ -1861,6 +1876,15 @@ export class CameraStreamManager {
     async startStream(args: StartStreamArgs): Promise<StartStreamResult> {
         const { nodeId, endpointId } = args;
         const sdp = args.sdp === undefined ? undefined : parseSdpVideoConstraints(args.sdp);
+        const offer =
+            args.sdp === undefined || sdp === undefined || args.talkback === true
+                ? args.sdp
+                : withoutTalkback(args.sdp, sdp.sendingAudioSections);
+        if (offer !== args.sdp) {
+            logger.debug(
+                `Node ${nodeId} endpoint ${endpointId}: talkback not asked for; offer audio m-sections ${sdp?.sendingAudioSections.map(section => section.index).join(", ")} rewritten so they do not send`,
+            );
+        }
         // Before the first await, so a connection closing from here on claims this registration.
         const pending = this.#sessions.begin(nodeId, endpointId, args.connectionId);
         try {
@@ -1868,7 +1892,9 @@ export class CameraStreamManager {
             // then another request could evict the stream this call resolved.
             return await this.withEndpointLock(nodeId, endpointId, async () => {
                 const state = await this.requireStreamingState(nodeId, endpointId);
-                return this.withAllocationScope(scope => this.#establishSession(pending, args, state, sdp, scope));
+                return this.withAllocationScope(scope =>
+                    this.#establishSession(pending, args, offer, state, sdp, scope),
+                );
             });
         } finally {
             this.#sessions.finish(pending);
@@ -1882,18 +1908,19 @@ export class CameraStreamManager {
     async #establishSession(
         pending: PendingSession,
         args: StartStreamArgs,
+        offer: string | undefined,
         state: CameraState,
         sdp: SdpVideoConstraints | undefined,
         scope: AllocationScope,
     ): Promise<StartStreamResult> {
         const { nodeId, endpointId, streamUsage } = args;
-        if (
-            sdp?.wantsTalkback === true &&
-            (state.twoWayTalkSupport ?? CameraAvStreamManagement.TwoWayTalkSupportType.NotSupported) ===
-                CameraAvStreamManagement.TwoWayTalkSupportType.NotSupported
-        ) {
+        const talkbackOffered = args.talkback === true && (sdp?.sendingAudioSections.length ?? 0) > 0;
+        const cameraTalks =
+            state.twoWayTalkSupport === CameraAvStreamManagement.TwoWayTalkSupportType.HalfDuplex ||
+            state.twoWayTalkSupport === CameraAvStreamManagement.TwoWayTalkSupportType.FullDuplex;
+        if (talkbackOffered && !cameraTalks) {
             logger.notice(
-                `Node ${nodeId} endpoint ${endpointId} states no TwoWayTalkSupport; the audio the offer asks to send will not reach the camera`,
+                `Node ${nodeId} endpoint ${endpointId} states no HalfDuplex or FullDuplex TwoWayTalkSupport; the audio the offer asks to send will not reach the camera`,
             );
         }
         const videoRequest = trackRequest(args.video);
@@ -1963,6 +1990,12 @@ export class CameraStreamManager {
             audio = this.resolveTrack("audio", nodeId, audioRequest, outcome);
         }
 
+        if (talkbackOffered && cameraTalks && audio === undefined) {
+            logger.notice(
+                `Node ${nodeId} endpoint ${endpointId}: talkback asked for, but the session carries no audio stream to play it on`,
+            );
+        }
+
         if (video === undefined && audio === undefined) {
             throw ServerError.cameraStreamIncompatible({
                 reason: "no_media",
@@ -1971,7 +2004,7 @@ export class CameraStreamManager {
             });
         }
 
-        const response = await this.#invokeEstablishingOffer(pending, args, video, audio);
+        const response = await this.#invokeEstablishingOffer(pending, args, offer, video, audio);
 
         const webRtcSessionId =
             typeof response === "object" && response !== null && "webRtcSessionId" in response
@@ -2008,6 +2041,7 @@ export class CameraStreamManager {
             mode: args.sdp === undefined ? "solicit_offer" : "provide_offer",
             video,
             audio,
+            talkback: talkbackOffered && cameraTalks && audio !== undefined,
         };
     }
 

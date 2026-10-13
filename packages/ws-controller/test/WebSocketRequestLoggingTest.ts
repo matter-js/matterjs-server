@@ -45,7 +45,13 @@ function createFakeCameraStreams() {
         // A connection issuing a camera command subscribes to these before the command is dispatched.
         events: { sessionEnded: new Observable(), streamEvicted: new Observable() },
         async startStream() {
-            return { webRtcSessionId: 42, mode: "provide_offer" as const, video: undefined, audio: undefined };
+            return {
+                webRtcSessionId: 42,
+                mode: "provide_offer" as const,
+                video: undefined,
+                audio: undefined,
+                talkback: false,
+            };
         },
         async snapshot() {
             return {

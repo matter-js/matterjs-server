@@ -19,7 +19,12 @@ import {
     buildSnapshotOverlays,
     buildVideoRequest,
     cameraErrorText,
+    cameraTalkbackMode,
     isAudioOnlyCamera,
+    MICROPHONE_NEEDS_SECURE_CONTEXT,
+    MICROPHONE_NOT_SUPPORTED,
+    microphoneUnavailableReason,
+    microphoneErrorText,
     parseResolutionOption,
     resolutionOption,
     snapshotMimeType,
@@ -239,6 +244,7 @@ describe("camera API helpers", () => {
             const result: CameraStartStreamResult = {
                 webrtc_session_id: 3,
                 mode: "provide_offer",
+                talkback: false,
                 video: video({ provenance: "allocated", stream_id: 5 }),
                 audio: { ...AUDIO_RESULT, provenance: "allocated", stream_id: 6 },
             };
@@ -252,6 +258,7 @@ describe("camera API helpers", () => {
             const result: CameraStartStreamResult = {
                 webrtc_session_id: 3,
                 mode: "provide_offer",
+                talkback: false,
                 video: video({ provenance: "adopted" }),
                 audio: { ...AUDIO_RESULT, provenance: "reused" },
             };
@@ -439,13 +446,137 @@ describe("camera API helpers", () => {
         });
     });
 
-    it("coerces sendrecv to sendonly inside media sections only (characterization)", () => {
-        const sdp = ["v=0", "a=sendrecv", "m=audio 9 UDP/TLS/RTP/SAVPF 111", "a=sendrecv"].join("\r\n");
-        expect(sanitizeAnswerSdp(sdp).split("\r\n")).to.deep.equal([
-            "v=0",
-            "a=sendrecv",
-            "m=audio 9 UDP/TLS/RTP/SAVPF 111",
-            "a=sendonly",
-        ]);
+    describe("sanitizeAnswerSdp", () => {
+        const VIDEO = "m=video 9 UDP/TLS/RTP/SAVPF 96";
+        const AUDIO = "m=audio 9 UDP/TLS/RTP/SAVPF 111";
+
+        it("coerces sendrecv to sendonly in a section offered recvonly, never at session level", () => {
+            const offer = ["v=0", AUDIO, "a=mid:0", "a=recvonly"].join("\r\n");
+            const answer = ["v=0", "a=sendrecv", AUDIO, "a=mid:0", "a=sendrecv"].join("\r\n");
+            expect(sanitizeAnswerSdp(answer, offer).split("\r\n")).to.deep.equal([
+                "v=0",
+                "a=sendrecv",
+                AUDIO,
+                "a=mid:0",
+                "a=sendonly",
+            ]);
+        });
+
+        it("keeps a sendrecv answer to a section offered sendrecv", () => {
+            const offer = ["v=0", VIDEO, "a=mid:0", "a=recvonly", AUDIO, "a=mid:1", "a=sendrecv"].join("\r\n");
+            const answer = ["v=0", VIDEO, "a=mid:0", "a=sendrecv", AUDIO, "a=mid:1", "a=sendrecv", ""].join("\r\n");
+            expect(sanitizeAnswerSdp(answer, offer).split("\r\n")).to.deep.equal([
+                "v=0",
+                VIDEO,
+                "a=mid:0",
+                "a=sendonly",
+                AUDIO,
+                "a=mid:1",
+                "a=sendrecv",
+                "",
+            ]);
+        });
+
+        it("pairs sections by mid, not by order", () => {
+            const offer = ["v=0", VIDEO, "a=mid:v", "a=recvonly", AUDIO, "a=mid:a", "a=sendrecv"].join("\r\n");
+            const answer = ["v=0", AUDIO, "a=mid:a", "a=sendrecv", VIDEO, "a=mid:v", "a=sendrecv"].join("\r\n");
+            expect(sanitizeAnswerSdp(answer, offer).split("\r\n")).to.deep.equal([
+                "v=0",
+                AUDIO,
+                "a=mid:a",
+                "a=sendrecv",
+                VIDEO,
+                "a=mid:v",
+                "a=sendonly",
+            ]);
+        });
+
+        it("rewrites a section the offer has no counterpart for", () => {
+            const offer = ["v=0", VIDEO, "a=mid:0", "a=sendrecv"].join("\r\n");
+            const answer = ["v=0", VIDEO, "a=mid:0", "a=sendrecv", AUDIO, "a=mid:1", "a=sendrecv"].join("\r\n");
+            expect(sanitizeAnswerSdp(answer, offer).split("\r\n")).to.deep.equal([
+                "v=0",
+                VIDEO,
+                "a=mid:0",
+                "a=sendrecv",
+                AUDIO,
+                "a=mid:1",
+                "a=sendonly",
+            ]);
+            expect(sanitizeAnswerSdp(["v=0", AUDIO, "a=sendrecv"].join("\r\n"), "").split("\r\n")).to.deep.equal([
+                "v=0",
+                AUDIO,
+                "a=sendonly",
+            ]);
+        });
+
+        it("pairs sections by order when the answer states no mid", () => {
+            const offer = ["v=0", VIDEO, "a=mid:0", "a=recvonly", AUDIO, "a=mid:1", "a=sendrecv"].join("\r\n");
+            const answer = ["v=0", VIDEO, "a=sendrecv", AUDIO, "a=sendrecv"].join("\r\n");
+            expect(sanitizeAnswerSdp(answer, offer).split("\r\n")).to.deep.equal([
+                "v=0",
+                VIDEO,
+                "a=sendonly",
+                AUDIO,
+                "a=sendrecv",
+            ]);
+        });
+    });
+
+    describe("cameraTalkbackMode", () => {
+        function talk(features: string[], support?: string) {
+            const caps = capabilities({ features });
+            return { ...caps, audio: { ...caps.audio, two_way_talk_support: support } };
+        }
+
+        it("names the duplex mode of a camera with a speaker and two-way talk", () => {
+            expect(cameraTalkbackMode(talk(["Audio", "Speaker"], "HalfDuplex"))).to.equal("HalfDuplex");
+            expect(cameraTalkbackMode(talk(["Audio", "Speaker"], "FullDuplex"))).to.equal("FullDuplex");
+        });
+
+        it("is null without the Speaker feature, without two-way talk, or without capabilities", () => {
+            expect(cameraTalkbackMode(talk(["Audio"], "FullDuplex"))).to.equal(null);
+            expect(cameraTalkbackMode(talk(["Audio", "Speaker"], "NotSupported"))).to.equal(null);
+            expect(cameraTalkbackMode(talk(["Audio", "Speaker"]))).to.equal(null);
+            expect(cameraTalkbackMode(null)).to.equal(null);
+        });
+    });
+
+    describe("microphone", () => {
+        function withGlobals(secure: boolean, navigatorValue: unknown, check: () => void) {
+            const originals = ["isSecureContext", "navigator"].map(
+                name => [name, Object.getOwnPropertyDescriptor(globalThis, name)] as const,
+            );
+            Object.defineProperty(globalThis, "isSecureContext", { value: secure, configurable: true });
+            Object.defineProperty(globalThis, "navigator", { value: navigatorValue, configurable: true });
+            try {
+                check();
+            } finally {
+                for (const [name, original] of originals) {
+                    if (original) Object.defineProperty(globalThis, name, original);
+                    else Reflect.deleteProperty(globalThis, name);
+                }
+            }
+        }
+        const withMicrophone = { mediaDevices: { getUserMedia: async () => ({}) } };
+
+        it("names why the microphone cannot be captured, or null when it can", () => {
+            withGlobals(true, withMicrophone, () => expect(microphoneUnavailableReason()).to.equal(null));
+            withGlobals(false, withMicrophone, () =>
+                expect(microphoneUnavailableReason()).to.equal(MICROPHONE_NEEDS_SECURE_CONTEXT),
+            );
+            withGlobals(true, {}, () => expect(microphoneUnavailableReason()).to.equal(MICROPHONE_NOT_SUPPORTED));
+        });
+
+        it("explains a refused or missing microphone in short text", () => {
+            expect(microphoneErrorText(new DOMException("x", "NotAllowedError"))).to.equal(
+                "Microphone access was denied",
+            );
+            expect(microphoneErrorText(new DOMException("x", "NotFoundError"))).to.equal("No microphone found");
+            expect(microphoneErrorText(new DOMException("x", "NotReadableError"))).to.equal(
+                "Microphone is in use by another application",
+            );
+            expect(microphoneErrorText(new Error("boom"))).to.equal("boom");
+        });
     });
 });

@@ -84,7 +84,9 @@ Beyond the `python-matter-server` API, the client exposes commands the Matter.js
   and `camera_snapshot` return dataclasses from `matter_server.common.models`; the other three return
   `None`.
   `camera_start_stream`'s `video` / `audio` take `None` (the server decides), a `CameraVideoHints` /
-  `CameraAudioHints` dict, or `False` (no such track). `camera_session_ended` and
+  `CameraAudioHints` dict, or `False` (no such track). `talkback=True` lets the offer ask the camera to
+  play your audio; without it the server makes the offer's audio sections not send, so a browser-style
+  `sendrecv` audio offer goes to the camera as `recvonly`. `camera_session_ended` and
   `camera_stream_evicted` events arrive as `CameraSessionEndedData` / `CameraStreamEvictedData`;
   `webrtc_callback` stays a dict. Errors 102 to 106 (`CameraStreamIncompatible`, ...) expose their
   details as attributes, e.g. `err.reason` and `err.bound` on `CameraStreamIncompatible`

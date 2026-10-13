@@ -210,6 +210,7 @@ const START_STREAM_ARG_KEY_SET: Record<keyof Required<ArgsOf<"camera_start_strea
     ice_transport_policy: true,
     metadata_enabled: true,
     allow_eviction: true,
+    talkback: true,
 };
 
 const CAPABILITIES_ARG_KEY_SET: Record<keyof Required<ArgsOf<"camera_get_capabilities">>, true> = {
@@ -344,6 +345,7 @@ export interface ParsedStartStreamArgs extends ParsedCameraTarget {
     iceTransportPolicy?: string;
     metadataEnabled?: boolean;
     allowEviction?: boolean;
+    talkback?: boolean;
 }
 
 export function parseStartStreamArgs(args: unknown): ParsedStartStreamArgs {
@@ -365,6 +367,10 @@ export function parseStartStreamArgs(args: unknown): ParsedStartStreamArgs {
               );
     const metadataEnabled = toOptionalBoolean(fields.metadata_enabled, "metadata_enabled");
     const allowEviction = toOptionalBoolean(fields.allow_eviction, "allow_eviction");
+    const talkback = toOptionalBoolean(fields.talkback, "talkback");
+    if (talkback === true && sdp === undefined) {
+        throw ServerError.invalidArguments("talkback: true requires sdp; without it the answer decides talkback");
+    }
     const video =
         fields.video === undefined ? undefined : fields.video === false ? false : parseVideoHints(fields.video);
     const audio =
@@ -379,6 +385,7 @@ export function parseStartStreamArgs(args: unknown): ParsedStartStreamArgs {
         ...(iceTransportPolicy === undefined ? {} : { iceTransportPolicy }),
         ...(metadataEnabled === undefined ? {} : { metadataEnabled }),
         ...(allowEviction === undefined ? {} : { allowEviction }),
+        ...(talkback === undefined ? {} : { talkback }),
     };
 }
 
@@ -615,6 +622,7 @@ export function toWireStartStreamResult(result: StartStreamResult): CameraStartS
         mode: result.mode,
         video: result.video === undefined ? null : toWireStartStreamVideo(result.video),
         audio: result.audio === undefined ? null : toWireStartStreamAudio(result.audio),
+        talkback: result.talkback,
     };
 }
 

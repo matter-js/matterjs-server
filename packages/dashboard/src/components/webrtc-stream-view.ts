@@ -30,6 +30,9 @@ import {
     cameraErrorText,
     type CameraQualityBadge,
     type CameraStreamRef,
+    type CameraTalkbackMode,
+    cameraTalkbackMode,
+    microphoneUnavailableReason,
     snapshotMimeType,
     streamQualityBadges,
     streamsToRelease,
@@ -66,6 +69,12 @@ class StreamAttempt {
     stopped: Promise<void> | null = null;
     /** Also covers a session that a `camera_start_stream` still in flight at teardown opens later. */
     settled: Promise<void> | null = null;
+    /** Set only when the offer asked the camera for talkback. */
+    talkTransceiver: RTCRtpTransceiver | null = null;
+    talkbackMode: CameraTalkbackMode | null = null;
+    micTrack: MediaStreamTrack | null = null;
+    /** Bumped by every talk change and by teardown, so a microphone granted after either is stopped at once. */
+    talkRequest = 0;
 
     constructor(
         readonly client: MatterClient,
@@ -100,6 +109,7 @@ export class WebRtcStreamView extends LitElement {
     private _ownSnapshotStreams = new Set<number>();
     private _stopCameraEvents: (() => void) | null = null;
     private _snapshotChain: Promise<unknown> = Promise.resolve();
+    private _userMuted = true;
 
     get state(): StreamState {
         return this._state;
@@ -118,12 +128,110 @@ export class WebRtcStreamView extends LitElement {
         return streamQualityBadges(this._attempt?.session?.result.video ?? null);
     }
 
+    /** The user's choice; a half-duplex camera's audio is also muted while talking. */
     get muted(): boolean {
-        return this._video?.muted ?? true;
+        return this._userMuted;
     }
 
     setMuted(muted: boolean): void {
-        if (this._video) this._video.muted = muted;
+        this._userMuted = muted;
+        this._applyPlaybackMute();
+    }
+
+    /** On a live stream, changes of this and of {@link talking} are announced with `talkchange`; teardown with `streamstate`. */
+    get talkAvailable(): boolean {
+        return this._attempt !== null && this._talkNegotiated(this._attempt);
+    }
+
+    get talking(): boolean {
+        return this._attempt?.micTrack != null;
+    }
+
+    get talkMutesPlayback(): boolean {
+        return this._attempt?.talkbackMode === "HalfDuplex";
+    }
+
+    /**
+     * Rejects when talking is not available or the microphone cannot be captured or sent; the view is then
+     * not talking. Switching off rejects only when the sender cannot be cleared, after the microphone stopped.
+     */
+    async setTalking(talking: boolean): Promise<void> {
+        const attempt = this._attempt;
+        const sender = attempt?.talkTransceiver?.sender;
+        if (!talking) {
+            if (attempt) await this._releaseMicrophone(attempt);
+            return;
+        }
+        if (!attempt || !sender || !this._talkNegotiated(attempt)) {
+            throw new Error("Talking is not available for this stream");
+        }
+        if (attempt.micTrack) return;
+        const unavailable = microphoneUnavailableReason();
+        if (unavailable !== null) throw new Error(unavailable);
+        const request = ++attempt.talkRequest;
+
+        let media: MediaStream;
+        try {
+            media = await navigator.mediaDevices.getUserMedia({ audio: true });
+        } catch (err) {
+            if (attempt.talkRequest === request) throw err;
+            return;
+        }
+        const track = media.getAudioTracks()[0];
+        const current = attempt.talkRequest === request;
+        if (!current || !track) {
+            for (const captured of media.getTracks()) captured.stop();
+            if (current) throw new Error("No microphone found");
+            return;
+        }
+        attempt.micTrack = track;
+        // The browser ends the track when the device goes away or the permission is revoked.
+        track.addEventListener("ended", () => this._releaseMicrophoneIf(attempt, track), { once: true });
+        this._applyPlaybackMute();
+        this._fireTalkChange();
+        try {
+            await sender.replaceTrack(track);
+        } catch (err) {
+            this._releaseMicrophoneIf(attempt, track);
+            throw err;
+        }
+    }
+
+    private _releaseMicrophoneIf(attempt: StreamAttempt, track: MediaStreamTrack): void {
+        if (attempt.micTrack !== track) return;
+        this._releaseMicrophone(attempt)?.catch(warnSenderNotCleared);
+    }
+
+    private _talkNegotiated(attempt: StreamAttempt): boolean {
+        const direction = attempt.talkTransceiver?.currentDirection;
+        return (direction === "sendrecv" || direction === "sendonly") && attempt.session?.result.talkback === true;
+    }
+
+    private _fireTalkChange(): void {
+        this.dispatchEvent(new CustomEvent("talkchange", { bubbles: false, composed: false }));
+    }
+
+    /**
+     * Stops the live microphone. On the current attempt it also announces the change (unless `announce` is
+     * false) and clears the sender, returning that call; null when nothing was live or the attempt is retired.
+     */
+    private _releaseMicrophone(attempt: StreamAttempt, announce = true): Promise<void> | null {
+        attempt.talkRequest++;
+        const track = attempt.micTrack;
+        if (!track) return null;
+        attempt.micTrack = null;
+        track.stop();
+        this._applyPlaybackMute();
+        const sender = attempt.talkTransceiver?.sender;
+        if (this._attempt !== attempt || !sender) return null;
+        if (announce) this._fireTalkChange();
+        return sender.replaceTrack(null);
+    }
+
+    private _applyPlaybackMute(): void {
+        const attempt = this._attempt;
+        const halfDuplexTalking = attempt?.micTrack != null && attempt.talkbackMode === "HalfDuplex";
+        if (this._video) this._video.muted = this._userMuted || halfDuplexTalking;
     }
 
     override disconnectedCallback() {
@@ -212,7 +320,12 @@ export class WebRtcStreamView extends LitElement {
                 osdEnabled: this.osdEnabled,
             });
             if (video !== false) pc.addTransceiver("video", { direction: "recvonly" });
-            pc.addTransceiver("audio", { direction: "recvonly" });
+            const talkbackMode = cameraTalkbackMode(this.capabilities);
+            const audio = pc.addTransceiver("audio", { direction: talkbackMode ? "sendrecv" : "recvonly" });
+            if (talkbackMode) {
+                attempt.talkTransceiver = audio;
+                attempt.talkbackMode = talkbackMode;
+            }
 
             pc.onicecandidate = ev => {
                 if (ev.candidate === null) return;
@@ -257,6 +370,7 @@ export class WebRtcStreamView extends LitElement {
                 stream_usage: "LiveView",
                 sdp,
                 ...(video === undefined ? {} : { video }),
+                ...(attempt.talkbackMode === null ? {} : { talkback: true }),
             });
             attempt.starting = starting;
             const result = await starting;
@@ -341,6 +455,7 @@ export class WebRtcStreamView extends LitElement {
         const attempt = this._attempt;
         if (!attempt) return Promise.resolve();
         this._attempt = null;
+        this._releaseMicrophone(attempt);
         attempt.stopSignalling?.();
         attempt.stopSignalling = null;
         attempt.pc.close();
@@ -475,7 +590,8 @@ export class WebRtcStreamView extends LitElement {
     private async _handleAnswer(attempt: StreamAttempt, data: WebRtcAnswerData | null): Promise<void> {
         if (!data) return;
         try {
-            await attempt.pc.setRemoteDescription({ type: "answer", sdp: sanitizeAnswerSdp(data.sdp) });
+            const offerSdp = attempt.pc.localDescription?.sdp ?? "";
+            await attempt.pc.setRemoteDescription({ type: "answer", sdp: sanitizeAnswerSdp(data.sdp, offerSdp) });
         } catch (err) {
             return this._fail(attempt, "applying the answer failed", err);
         }
@@ -494,10 +610,17 @@ export class WebRtcStreamView extends LitElement {
             console.info("[webrtc-stream-view] camera offer ignored in signaling state", pc.signalingState);
             return;
         }
+        const wasAvailable = this._talkNegotiated(attempt);
         await pc.setRemoteDescription({ type: "offer", sdp: data.sdp });
         try {
             const answer = await pc.createAnswer();
             await pc.setLocalDescription(answer);
+            const available = this._talkNegotiated(attempt);
+            const released = available ? null : this._releaseMicrophone(attempt, false);
+            released?.catch(warnSenderNotCleared);
+            if (this._attempt === attempt && (released !== null || available !== wasAvailable)) {
+                this._fireTalkChange();
+            }
             const sdp = pc.localDescription?.sdp;
             if (!sdp) throw new Error("Failed to create local SDP answer");
             await client.sendCommand("camera_provide_answer", CAMERA_API_SCHEMA, {
@@ -620,22 +743,40 @@ export class WebRtcStreamView extends LitElement {
     `;
 }
 
+function mediaSections(sdp: string): { session: string[]; media: string[][] } {
+    const session = new Array<string>();
+    const media = new Array<string[]>();
+    for (const line of sdp.split(/\r\n|\n/)) {
+        if (line.startsWith("m=")) media.push([line]);
+        else (media.at(-1) ?? session).push(line);
+    }
+    return { session, media };
+}
+
+function sectionMid(section: string[]): string | undefined {
+    return section.find(line => line.startsWith("a=mid:"))?.slice("a=mid:".length);
+}
+
+function warnSenderNotCleared(err: unknown): void {
+    console.warn("[webrtc-stream-view] clearing the microphone from the sender failed", err);
+}
+
 /**
  * Some cameras (notably the matter.js camera-controller example) answer `a=sendrecv` on m-lines this
  * view offered as `a=recvonly`. RFC 3264 only allows `sendonly` as the mirror of `recvonly`, and the
- * browser rejects the answer otherwise.
+ * browser rejects the answer otherwise. Sections are paired with the offer by `a=mid`, else by order;
+ * a section without an offered counterpart is rewritten as well.
  */
-export function sanitizeAnswerSdp(sdp: string): string {
-    const lines = sdp.split(/\r\n|\n/);
-    let inMediaSection = false;
-    for (let i = 0; i < lines.length; i++) {
-        if (lines[i].startsWith("m=")) {
-            inMediaSection = true;
-        } else if (inMediaSection && lines[i] === "a=sendrecv") {
-            lines[i] = "a=sendonly";
-        }
-    }
-    return lines.join("\r\n");
+export function sanitizeAnswerSdp(sdp: string, offerSdp: string): string {
+    const offered = mediaSections(offerSdp).media;
+    const { session, media } = mediaSections(sdp);
+    const answered = media.map((section, index) => {
+        const mid = sectionMid(section);
+        const offer = (mid === undefined ? undefined : offered.find(o => sectionMid(o) === mid)) ?? offered[index];
+        if (offer && !offer.includes("a=recvonly")) return section;
+        return section.map(line => (line === "a=sendrecv" ? "a=sendonly" : line));
+    });
+    return [...session, ...answered.flat()].join("\r\n");
 }
 
 declare global {

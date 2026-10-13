@@ -991,7 +991,7 @@ What the client gets: the best video stream the camera can serve, within what th
 - **Audio.** The first microphone codec the offer can receive, with the camera's largest channel count, its highest sample rate and bit depth, and 64000 bit/s. If no audio stream can be served, `audio` is `null` and the session still opens.
 - **Without `sdp`.** The server sends `SolicitOffer`. No offer bounds the stream, so only the camera and its encoder capacity do. The camera's offer arrives as a `webrtc_callback` `offer` event; answer it with `camera_provide_answer`.
 
-**Response:** `{ webrtc_session_id, mode, video, audio }`. `mode` is `"provide_offer"` or `"solicit_offer"`. Each of `video` and `audio` is the stream the session carries, with `stream_id`, `codec` and the allocated values, or `null` (all fields are listed under **Response fields** below).
+**Response:** `{ webrtc_session_id, mode, video, audio, talkback }`. `mode` is `"provide_offer"` or `"solicit_offer"`. Each of `video` and `audio` is the stream the session carries, with `stream_id`, `codec` and the allocated values, or `null` (all fields are listed under **Response fields** below). `talkback` says whether the server expects the camera to play the client's audio: it needs `talkback: true`, an offer that sends audio, a camera that states it can talk back and an audio stream in the session (see **Response fields** below).
 
 **Signalling.** The camera's half of the signalling arrives on the `webrtc_callback` ([Server Events](#server-events)) event. For a session opened with this command it reaches the connection that opened it and no other. `mode` says what the client owes next:
 
@@ -1006,13 +1006,14 @@ Every optional argument, stated or not:
 
 | Argument | Type | What it controls |
 |---|---|---|
-| `sdp` | string, optional | The offer; absent means `SolicitOffer`. Its media sections decide talkback and which tracks can be carried, and its `a=fmtp` lines bound the stream. See **The offer's media sections** and **The offer's decode ceiling** below |
+| `sdp` | string, optional | The offer; absent means `SolicitOffer`. Its media sections decide which tracks can be carried, and its `a=fmtp` lines bound the stream. See **The offer's media sections** and **The offer's decode ceiling** below |
 | `video` | object or `false` | Left out: the server decides. An object of range hints: hard bounds the stream must meet. `false`: no video track |
 | `audio` | object or `false` | Left out: the server decides. An object of exact-value hints: hard requirements. `false`: no audio track |
 | `ice_servers` | array of objects, optional | ICE servers for the session; limits below |
 | `ice_transport_policy` | string, optional | Passed to the WebRTC session setup unchanged. Length 1 to 16: `ProvideOffer`'s `ICETransportPolicy` field states the ceiling of 16, and this server refuses an empty string. Anything else is error 8 before the camera is asked |
 | `metadata_enabled` | boolean, optional | Passed to the WebRTC session setup; absent is `false` |
 | `allow_eviction` | boolean, optional | Whether the server may deallocate a stream nothing references to serve this request. Absent is `true`; `false` skips that step. See **Making room** below |
+| `talkback` | boolean, optional | Whether the offer may ask the camera to play the client's audio. Absent is `false`: the server makes the offer's audio sections not send. `true` requires `sdp`. See **The offer's media sections** below |
 
 `video` hints are **ranges**:
 
@@ -1103,12 +1104,16 @@ A track the caller *asked for* that the offer refuses is `reason: "offer"` inste
 - `username` and `credential` of each ICE server are masked in the server's debug log.
 - The TypeScript client library masks the offer a `webrtc_callback` reports the same way in its console output, together with its `ice_servers` credentials.
 
-**The offer's media sections.** Talkback is asked for in the offer:
+**The offer's media sections.** Talkback is the camera playing audio the client sends. An audio section can send when it states `a=sendrecv` or `a=sendonly`, or states no direction: a session-level direction applies then (RFC 4566 §5), and without one the section is `sendrecv` (RFC 4566 §6). Browsers offer audio as `sendrecv` by default, so the server forwards such a section only when the client asks for talkback:
 
-- An audio section with `a=sendrecv` or `a=sendonly` asks for talkback. So does one stating no direction at all, which is `sendrecv` (RFC 4566 §6).
-- `a=sendonly` asks for talkback and refuses the camera's audio in one statement, so such a section gets no audio stream.
+- `talkback` absent or `false`: before `ProvideOffer`, the server rewrites the direction of every audio section that can send. `a=sendrecv` becomes `a=recvonly`, and `a=sendonly` becomes `a=inactive`. A section stating no direction gets the new line added at its end. That overrides a session-level direction for that section only; the session-level line stays for the other sections. Nothing else in the offer changes.
+- The client keeps its own local description. A camera that follows the rewritten direction answers a section the client offered `sendrecv` with `a=sendonly` or `a=inactive`, and a section the client offered `sendonly` with `a=inactive`. Each is a valid answer to the client's original section (RFC 3264 §6.1), so the client applies the answer unchanged.
+- The rewrite only asks the camera. Some cameras answer `a=sendrecv` whatever was offered (the Matter SDK example camera does), and the server relays the answer unchanged, so the client's audio sender can still negotiate sending. A client that must not send audio keeps the track off its audio sender.
+- `talkback: true`: the offer goes to the camera unchanged. The call does not fail when the camera does not state `TwoWayTalkSupport` `HalfDuplex` or `FullDuplex` (the server logs it), or when no audio section can send, or when the session gets no audio stream. The response's `talkback` is `false` in these cases.
+- Only `camera_start_stream` applies this. A re-offer through `send_webrtc_provider_command` goes to the camera as given (see **Re-offers** below), so a client that re-offers from its own `sendrecv` local description asks for talkback again.
+- An audio section the client only sends on (`a=sendonly`) refuses the camera's audio, so such a section gets no audio stream, with or without `talkback`.
 - An `sdp` with no section of a kind refuses that kind as well. The answer carries exactly the m-lines of the offer it answers (RFC 3264 §6), so there is nothing to send such a track in.
-- Without `sdp` the camera writes the offer itself, and no kind is refused.
+- Without `sdp` the camera writes the offer itself, and no kind is refused. The camera's offer and the client's answer through `camera_provide_answer` then decide talkback, and the server changes neither. `talkback: true` is refused with error 8 there, because the server cannot act on it; `talkback: false` is accepted. The response's `talkback` is always `false` for `mode: "solicit_offer"`.
 
 **The offer's decode ceiling.** The offer's `a=fmtp` lines are read as the peer's decode ceiling, per codec, and every rung of the allocation is bound by them. Both the explicit parameters and the codec's own level are read, each under that codec's own payload format:
 
@@ -1182,6 +1187,7 @@ Reporting:
 - A track is `null` when the caller declined it with `false`, or left it out and no stream could be resolved. A track the caller asked for is never `null`: the call fails instead.
 - The `webrtc_session_id` names a session that had not ended when the server recorded it. A session ended between the camera answering the offer and that record — by the camera itself, or by another connection's `camera_stop_stream` or `EndSession` for the id the camera just issued — fails the call with error 7 and gives the streams back. An id whose signalling would reach nothing is never returned.
 - Any failed call deallocates the streams it allocated for the attempt. The caller never receives their ids, so it could not release them itself. A stream allocated back in place of a taken one stays.
+- `talkback` is always present. It is `true` when `talkback: true` was stated, an audio section of the offer can send, the camera states `TwoWayTalkSupport` `HalfDuplex` or `FullDuplex`, and `audio` is not `null`; otherwise `false`. The audio stream is required because the Matter SDK example camera (with its audio playback option on) plays the client's audio only while the session's audio stream runs. It is the server's reading of the offer and the camera's attributes. The audio direction in the camera's answer is the final word: `a=recvonly` or `a=sendrecv` means the camera takes the client's audio. The answer can arrive before or after this response.
 
 | Field | On | Meaning |
 |---|---|---|
@@ -1400,7 +1406,7 @@ Codecs, stream usages and talkback modes are names, not numbers. All names are m
 
 - Codecs: `H264`, `H265`, `H266`, `AV1` (video), `OPUS`, `AAC` (audio), `JPEG`, `HEIC` (snapshot). The codec set is open: a codec the cluster enum does not define is reported as its decimal digits and accepted back in that spelling.
 - Stream usages: `Internal`, `Recording`, `Analysis`, `LiveView`. They are closed for requests only. `camera_start_stream` refuses `Internal`, which marks a stream allocated for the device's own use, and any name not in this list. A session may still run on an existing `Internal` stream (§11.1.3.1.1). `camera_get_capabilities` still reports a usage the enum does not define as its decimal digits; a stream carrying it cannot be requested back.
-- `two_way_talk_support`: `NotSupported`, `HalfDuplex`, `FullDuplex`. A value the enum does not define is reported as its decimal digits. It has no request side: talkback is asked for in the SDP offer, not by a hint (see **The offer's media sections** under `camera_start_stream`).
+- `two_way_talk_support`: `NotSupported`, `HalfDuplex`, `FullDuplex`. A value the enum does not define is reported as its decimal digits. It has no request side: talkback is asked for with `camera_start_stream`'s `talkback` argument and an offer whose audio can send, not by a hint (see **The offer's media sections** under `camera_start_stream`).
 
 A client can send these reported values back in a request (the key name can differ):
 

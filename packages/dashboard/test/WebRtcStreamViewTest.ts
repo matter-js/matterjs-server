@@ -15,6 +15,7 @@ import {
     type WebRtcCallbackData,
 } from "@matter-server/ws-client";
 import { WebRtcStreamView } from "../src/components/webrtc-stream-view.js";
+import { MICROPHONE_NEEDS_SECURE_CONTEXT } from "../src/util/camera-api.js";
 import { capabilities } from "./CameraFixtures.js";
 
 const NODE_ID = 10;
@@ -32,11 +33,49 @@ interface FakeDescription {
     sdp: string;
 }
 
+const DIRECTIONS = ["sendrecv", "sendonly", "recvonly", "inactive"];
+
+function sectionDirection(section: string[]): string {
+    return section.find(line => DIRECTIONS.includes(line.slice(2)))?.slice(2) ?? "sendrecv";
+}
+
+function mediaSectionsOf(sdp: string): string[][] {
+    const sections = new Array<string[]>();
+    for (const line of sdp.split("\r\n")) {
+        if (line.startsWith("m=")) sections.push([line]);
+        else sections.at(-1)?.push(line);
+    }
+    return sections;
+}
+
+/** The direction a browser settles on for its side, given its own direction and the remote's (RFC 3264 §6.1). */
+function negotiatedDirection(local: string, remote: string): string {
+    const send = (local === "sendrecv" || local === "sendonly") && (remote === "sendrecv" || remote === "recvonly");
+    const recv = (local === "sendrecv" || local === "recvonly") && (remote === "sendrecv" || remote === "sendonly");
+    return send && recv ? "sendrecv" : send ? "sendonly" : recv ? "recvonly" : "inactive";
+}
+
+interface FakeTransceiver {
+    kind: string;
+    direction: string;
+    currentDirection: string | null;
+    sender: { replaceTrack: (track: unknown) => Promise<void> };
+}
+
 class FakePeerConnection {
     static instances = new Array<FakePeerConnection>();
     /** When set, createOffer waits for it. */
     static offerGate: Promise<void> | null = null;
+    /** When set, the offer has one m-section per transceiver instead of a placeholder. */
+    static sdpFromTransceivers = false;
     transceivers = new Array<string>();
+    audioTransceiver: FakeTransceiver | null = null;
+    #transceivers = new Array<FakeTransceiver>();
+    directions = new Array<string | undefined>();
+    /** Tracks passed to the audio sender's replaceTrack, in call order. */
+    replacedTracks = new Array<unknown>();
+    /** When set, replaceTrack rejects with it. */
+    replaceTrackError: Error | null = null;
     localDescription: FakeDescription | null = null;
     remoteDescription: FakeDescription | null = null;
     signalingState = "stable";
@@ -51,13 +90,45 @@ class FakePeerConnection {
         FakePeerConnection.instances.push(this);
     }
 
-    addTransceiver(kind: string) {
+    addTransceiver(kind: string, init?: { direction?: string }) {
         this.transceivers.push(kind);
+        this.directions.push(init?.direction);
+        const transceiver: FakeTransceiver = {
+            kind,
+            direction: init?.direction ?? "sendrecv",
+            currentDirection: null,
+            sender: {
+                replaceTrack: async (track: unknown) => {
+                    if (kind !== "audio") throw new Error(`a microphone on the ${kind} sender`);
+                    if (this.replaceTrackError) throw this.replaceTrackError;
+                    this.replacedTracks.push(track);
+                },
+            },
+        };
+        this.#transceivers.push(transceiver);
+        if (kind === "audio") this.audioTransceiver = transceiver;
+        return transceiver;
     }
 
     async createOffer(): Promise<FakeDescription> {
         await FakePeerConnection.offerGate;
-        return { type: "offer", sdp: "offer-sdp" };
+        if (!FakePeerConnection.sdpFromTransceivers) return { type: "offer", sdp: "offer-sdp" };
+        const lines = ["v=0"];
+        this.#transceivers.forEach((transceiver, index) => {
+            lines.push(`m=${transceiver.kind} 9 UDP/TLS/RTP/SAVPF 96`, `a=mid:${index}`, `a=${transceiver.direction}`);
+        });
+        return { type: "offer", sdp: lines.join("\r\n") };
+    }
+
+    /** Sets each transceiver's currentDirection from the remote SDP, as applying an answer does. */
+    #negotiate(remoteSdp: string) {
+        const sections = mediaSectionsOf(remoteSdp);
+        this.#transceivers.forEach((transceiver, index) => {
+            const section = sections[index];
+            transceiver.currentDirection = section
+                ? negotiatedDirection(transceiver.direction, sectionDirection(section))
+                : transceiver.direction;
+        });
     }
 
     async createAnswer(): Promise<FakeDescription> {
@@ -67,6 +138,7 @@ class FakePeerConnection {
     async setLocalDescription(description: FakeDescription) {
         this.localDescription = description;
         this.signalingState = description.type === "offer" ? "have-local-offer" : "stable";
+        if (description.type === "answer") this.#negotiate(this.remoteDescription?.sdp ?? "");
     }
 
     /** When set, setRemoteDescription stays pending until close(), which rejects it like a browser does. */
@@ -79,6 +151,7 @@ class FakePeerConnection {
         }
         this.remoteDescription = description;
         this.signalingState = description.type === "offer" ? "have-remote-offer" : "stable";
+        if (description.type === "answer") this.#negotiate(description.sdp);
     }
 
     async addIceCandidate(candidate: FakeCandidate) {
@@ -145,6 +218,7 @@ function startResult(overrides: Partial<CameraStartStreamResult> = {}): CameraSt
     return {
         webrtc_session_id: SESSION_ID,
         mode: "provide_offer",
+        talkback: false,
         video: {
             stream_id: 3,
             codec: "H264",
@@ -228,6 +302,17 @@ function captureConsole(method: "info" | "warn") {
     return { messages, restore: () => (console[method] = original) };
 }
 
+async function expectRejection(promise: Promise<unknown>, message: string): Promise<void> {
+    let error: unknown;
+    try {
+        await promise;
+    } catch (err) {
+        error = err;
+    }
+    expect(error).to.be.instanceOf(Error);
+    expect(error instanceof Error ? error.message : undefined).to.equal(message);
+}
+
 describe("WebRtcStreamView", () => {
     before(() => {
         Object.defineProperty(globalThis, "RTCPeerConnection", {
@@ -244,6 +329,7 @@ describe("WebRtcStreamView", () => {
     beforeEach(() => {
         FakePeerConnection.instances = [];
         FakePeerConnection.offerGate = null;
+        FakePeerConnection.sdpFromTransceivers = false;
     });
 
     describe("start", () => {
@@ -1058,6 +1144,416 @@ describe("WebRtcStreamView", () => {
                 ["camera_release_stream", "snapshot"],
             ]);
             expect(fake.listenerCounts()).to.deep.equal({ webrtc: 0, ended: 0, evicted: 0 });
+        });
+    });
+
+    describe("talkback", () => {
+        class FakeTrack extends EventTarget {
+            stopped = false;
+            stop() {
+                this.stopped = true;
+            }
+        }
+
+        let getUserMediaCalls: unknown[];
+        let getUserMedia: () => Promise<unknown>;
+        let track: FakeTrack;
+        let restoreGlobals: () => void;
+
+        function setGlobal(name: string, value: unknown): () => void {
+            const original = Object.getOwnPropertyDescriptor(globalThis, name);
+            Object.defineProperty(globalThis, name, { value, configurable: true, writable: true });
+            return () => {
+                if (original) Object.defineProperty(globalThis, name, original);
+                else Reflect.deleteProperty(globalThis, name);
+            };
+        }
+
+        function media(captured: FakeTrack) {
+            return { getAudioTracks: () => [captured], getTracks: () => [captured] };
+        }
+
+        beforeEach(() => {
+            getUserMediaCalls = [];
+            track = new FakeTrack();
+            getUserMedia = async () => media(track);
+            const restoreSecure = setGlobal("isSecureContext", true);
+            const restoreNavigator = setGlobal("navigator", {
+                mediaDevices: {
+                    getUserMedia: (constraints: unknown) => {
+                        getUserMediaCalls.push(constraints);
+                        return getUserMedia();
+                    },
+                },
+            });
+            restoreGlobals = () => {
+                restoreNavigator();
+                restoreSecure();
+            };
+        });
+
+        afterEach(() => restoreGlobals());
+
+        function talkCapabilities(twoWayTalkSupport: string) {
+            const caps = capabilities({ features: ["Audio", "Video", "Speaker"] });
+            return { ...caps, audio: { ...caps.audio, two_way_talk_support: twoWayTalkSupport } };
+        }
+
+        function cameraSdp(videoDirection: string, audioDirection: string): string {
+            return [
+                "v=0",
+                "m=video 9 UDP/TLS/RTP/SAVPF 96",
+                "a=mid:0",
+                `a=${videoDirection}`,
+                "m=audio 9 UDP/TLS/RTP/SAVPF 111",
+                "a=mid:1",
+                `a=${audioDirection}`,
+            ].join("\r\n");
+        }
+
+        function signalling(event_type: "answer" | "offer", sdp: string): WebRtcCallbackData {
+            return {
+                event_type,
+                webrtc_session_id: SESSION_ID,
+                node_id: NODE_ID,
+                endpoint_id: ENDPOINT_ID,
+                fabric_index: 1,
+                data: { sdp },
+            };
+        }
+
+        async function startTalkView(
+            twoWayTalkSupport = "FullDuplex",
+            {
+                audioAnswer = "sendrecv",
+                result = startResult({ talkback: true }),
+            }: { audioAnswer?: string; result?: CameraStartStreamResult } = {},
+        ) {
+            FakePeerConnection.sdpFromTransceivers = true;
+            const fake = fakeClient({ camera_start_stream: () => result });
+            const view = createView(fake.client);
+            view.capabilities = talkCapabilities(twoWayTalkSupport);
+            const video = { muted: true, srcObject: null };
+            Object.defineProperty(view, "_video", { value: video });
+            await view.start();
+            fake.emitWebRtc(signalling("answer", cameraSdp("sendrecv", audioAnswer)));
+            await settle();
+            return { fake, view, video };
+        }
+
+        for (const audioAnswer of ["sendonly", "inactive"]) {
+            it(`offers no talk when the camera answers the audio section ${audioAnswer}`, async () => {
+                const { view } = await startTalkView("FullDuplex", { audioAnswer });
+
+                expect(view.state).to.equal("streaming");
+                expect(view.talkAvailable).to.equal(false);
+                await expectRejection(view.setTalking(true), "Talking is not available for this stream");
+                expect(getUserMediaCalls).to.deep.equal([]);
+            });
+        }
+
+        it("keeps the camera's sendrecv answer on talk audio and makes the video sendonly", async () => {
+            await startTalkView();
+
+            expect(lastPeer().remoteDescription?.sdp).to.equal(cameraSdp("sendonly", "sendrecv"));
+            expect(lastPeer().audioTransceiver?.currentDirection).to.equal("sendrecv");
+        });
+
+        it("stops talking when a camera re-offer no longer takes audio", async () => {
+            const { view, fake, video } = await startTalkView("HalfDuplex");
+            view.setMuted(false);
+            await view.setTalking(true);
+            let talkChanges = 0;
+            view.addEventListener("talkchange", () => talkChanges++);
+
+            fake.emitWebRtc(signalling("offer", cameraSdp("sendonly", "sendonly")));
+            await settle();
+
+            expect(view.talkAvailable).to.equal(false);
+            expect(view.talking).to.equal(false);
+            expect(track.stopped).to.equal(true);
+            expect(video.muted).to.equal(false);
+            expect(talkChanges).to.equal(1);
+            expect(lastPeer().replacedTracks).to.deep.equal([track, null]);
+            expect(view.state).to.equal("streaming");
+        });
+
+        it("keeps talking and stays quiet when a camera re-offer still takes audio", async () => {
+            const { view, fake } = await startTalkView();
+            await view.setTalking(true);
+            let talkChanges = 0;
+            view.addEventListener("talkchange", () => talkChanges++);
+
+            fake.emitWebRtc(signalling("offer", cameraSdp("sendonly", "sendrecv")));
+            await settle();
+
+            expect(view.talking).to.equal(true);
+            expect(track.stopped).to.equal(false);
+            expect(talkChanges).to.equal(0);
+            expect(fake.commands()).to.include("camera_provide_answer");
+        });
+
+        it("asks for the microphone only once while talking", async () => {
+            const { view } = await startTalkView();
+            await view.setTalking(true);
+
+            await view.setTalking(true);
+
+            expect(getUserMediaCalls).to.have.length(1);
+            expect(lastPeer().replacedTracks).to.deep.equal([track]);
+        });
+
+        it("offers a sendrecv audio section and asks for talkback when the camera can talk back", async () => {
+            const { view, fake } = await startTalkView();
+
+            expect(lastPeer().directions).to.deep.equal(["recvonly", "sendrecv"]);
+            expect(fake.calls[0].args.talkback).to.equal(true);
+            expect(view.talkAvailable).to.equal(true);
+            expect(getUserMediaCalls).to.deep.equal([]);
+        });
+
+        it("offers recvonly audio and does not ask for talkback when the camera cannot talk back", async () => {
+            const fake = fakeClient({ camera_start_stream: () => startResult() });
+            const view = createView(fake.client);
+            view.capabilities = talkCapabilities("NotSupported");
+
+            await view.start();
+
+            expect(lastPeer().directions).to.deep.equal(["recvonly", "recvonly"]);
+            expect(fake.calls[0].args).to.not.have.property("talkback");
+            expect(view.talkAvailable).to.equal(false);
+            await expectRejection(view.setTalking(true), "Talking is not available for this stream");
+        });
+
+        it("offers no talk when the server reports no talkback for the session", async () => {
+            const { view } = await startTalkView("FullDuplex", { result: startResult({ talkback: false }) });
+
+            expect(lastPeer().audioTransceiver?.currentDirection).to.equal("sendrecv");
+            expect(view.talkAvailable).to.equal(false);
+            await expectRejection(view.setTalking(true), "Talking is not available for this stream");
+            expect(getUserMediaCalls).to.deep.equal([]);
+        });
+
+        it("sends the microphone track and stops it again without renegotiating", async () => {
+            const { view, fake } = await startTalkView();
+            const offer = lastPeer().localDescription;
+            const talkChanges = new Array<boolean>();
+            view.addEventListener("talkchange", () => talkChanges.push(view.talking));
+
+            await view.setTalking(true);
+            expect(getUserMediaCalls).to.deep.equal([{ audio: true }]);
+            expect(lastPeer().replacedTracks).to.deep.equal([track]);
+            expect(view.talking).to.equal(true);
+            expect(track.stopped).to.equal(false);
+
+            await view.setTalking(false);
+            expect(lastPeer().replacedTracks).to.deep.equal([track, null]);
+            expect(track.stopped).to.equal(true);
+            expect(view.talking).to.equal(false);
+            expect(talkChanges).to.deep.equal([true, false]);
+            expect(lastPeer().localDescription).to.equal(offer);
+            expect(fake.commands()).to.deep.equal(["camera_start_stream"]);
+        });
+
+        it("applies the user's mute choice to the playback", async () => {
+            const { view, video } = await startTalkView();
+
+            view.setMuted(false);
+            expect(video.muted).to.equal(false);
+            view.setMuted(true);
+            expect(video.muted).to.equal(true);
+        });
+
+        it("mutes a half-duplex camera's audio while talking and restores the user's choice after", async () => {
+            const { view, video } = await startTalkView("HalfDuplex");
+            view.setMuted(false);
+
+            await view.setTalking(true);
+            expect(video.muted).to.equal(true);
+            expect(view.muted).to.equal(false);
+
+            await view.setTalking(false);
+            expect(video.muted).to.equal(false);
+        });
+
+        it("restores a half-duplex camera's audio when the stream stops while talking", async () => {
+            const { view, video } = await startTalkView("HalfDuplex");
+            view.setMuted(false);
+            await view.setTalking(true);
+
+            await view.stop();
+
+            expect(video.muted).to.equal(false);
+        });
+
+        it("leaves a full-duplex camera's audio as the user set it while talking", async () => {
+            const { view, video } = await startTalkView("FullDuplex");
+            view.setMuted(false);
+
+            await view.setTalking(true);
+
+            expect(video.muted).to.equal(false);
+        });
+
+        it("does not ask for the microphone outside a secure context", async () => {
+            const { view } = await startTalkView();
+            const restore = setGlobal("isSecureContext", false);
+            try {
+                await expectRejection(view.setTalking(true), MICROPHONE_NEEDS_SECURE_CONTEXT);
+            } finally {
+                restore();
+            }
+
+            expect(getUserMediaCalls).to.deep.equal([]);
+            expect(view.talking).to.equal(false);
+            expect(view.state).to.not.equal("error");
+        });
+
+        it("stays not talking and keeps the stream when the microphone is refused", async () => {
+            const { view, fake } = await startTalkView();
+            getUserMedia = async () => {
+                throw new DOMException("Permission denied", "NotAllowedError");
+            };
+
+            await expectRejection(view.setTalking(true), "Permission denied");
+
+            expect(view.talking).to.equal(false);
+            expect(lastPeer().replacedTracks).to.deep.equal([]);
+            expect(fake.commands()).to.deep.equal(["camera_start_stream"]);
+        });
+
+        it("stops the microphone when the peer connection refuses the track", async () => {
+            const { view, video } = await startTalkView("HalfDuplex");
+            view.setMuted(false);
+            lastPeer().replaceTrackError = new Error("InvalidModificationError");
+            const talkChanges = new Array<boolean>();
+            view.addEventListener("talkchange", () => talkChanges.push(view.talking));
+
+            await expectRejection(view.setTalking(true), "InvalidModificationError");
+
+            expect(talkChanges).to.deep.equal([true, false]);
+            expect(track.stopped).to.equal(true);
+            expect(view.talking).to.equal(false);
+            expect(video.muted).to.equal(false);
+        });
+
+        it("reports a missing microphone when the browser grants no audio track", async () => {
+            const { view } = await startTalkView();
+            getUserMedia = async () => ({ getAudioTracks: () => [], getTracks: () => [] });
+
+            await expectRejection(view.setTalking(true), "No microphone found");
+
+            expect(view.talking).to.equal(false);
+        });
+
+        it("stops the microphone when the stream stops", async () => {
+            const { view } = await startTalkView();
+            await view.setTalking(true);
+
+            await view.stop();
+
+            expect(track.stopped).to.equal(true);
+            expect(view.talking).to.equal(false);
+        });
+
+        it("stops the microphone when the camera ends the session", async () => {
+            const { view, fake, video } = await startTalkView("HalfDuplex");
+            view.setMuted(false);
+            await view.setTalking(true);
+
+            fake.emitEnded({ node_id: NODE_ID, endpoint_id: ENDPOINT_ID, webrtc_session_id: SESSION_ID });
+
+            expect(track.stopped).to.equal(true);
+            expect(view.talking).to.equal(false);
+            expect(video.muted).to.equal(false);
+        });
+
+        it("stops a microphone granted after the stream stopped", async () => {
+            const { view } = await startTalkView();
+            const granted = deferred<unknown>();
+            getUserMedia = () => granted.promise;
+
+            const talking = view.setTalking(true);
+            await view.stop();
+            granted.resolve(media(track));
+            await talking;
+
+            expect(track.stopped).to.equal(true);
+            expect(lastPeer().replacedTracks).to.deep.equal([]);
+            expect(view.talking).to.equal(false);
+        });
+
+        it("stops talking when the microphone ends on its own", async () => {
+            const { view, video } = await startTalkView("HalfDuplex");
+            view.setMuted(false);
+            await view.setTalking(true);
+            const talkChanges = new Array<boolean>();
+            view.addEventListener("talkchange", () => talkChanges.push(view.talking));
+
+            track.dispatchEvent(new Event("ended"));
+            await settle();
+
+            expect(view.talking).to.equal(false);
+            expect(talkChanges).to.deep.equal([false]);
+            expect(video.muted).to.equal(false);
+            expect(lastPeer().replacedTracks).to.deep.equal([track, null]);
+        });
+
+        it("ignores the end of a microphone that was already switched off", async () => {
+            const { view } = await startTalkView();
+            await view.setTalking(true);
+            await view.setTalking(false);
+            let talkChanges = 0;
+            view.addEventListener("talkchange", () => talkChanges++);
+
+            track.dispatchEvent(new Event("ended"));
+            await settle();
+
+            expect(talkChanges).to.equal(0);
+            expect(lastPeer().replacedTracks).to.deep.equal([track, null]);
+        });
+
+        it("keeps talking when an earlier microphone ends after talking restarted", async () => {
+            const { view } = await startTalkView();
+            await view.setTalking(true);
+            await view.setTalking(false);
+            const first = track;
+            track = new FakeTrack();
+            await view.setTalking(true);
+
+            first.dispatchEvent(new Event("ended"));
+            await settle();
+
+            expect(view.talking).to.equal(true);
+            expect(track.stopped).to.equal(false);
+        });
+
+        it("drops a microphone refusal that arrives after the stream stopped", async () => {
+            const { view } = await startTalkView();
+            const granted = deferred<unknown>();
+            getUserMedia = () => granted.promise;
+
+            const talking = view.setTalking(true);
+            await view.stop();
+            granted.reject(new Error("NotAllowedError"));
+            await talking;
+
+            expect(view.talking).to.equal(false);
+        });
+
+        it("stops a microphone granted after talking was switched off", async () => {
+            const { view } = await startTalkView();
+            const granted = deferred<unknown>();
+            getUserMedia = () => granted.promise;
+
+            const talking = view.setTalking(true);
+            await view.setTalking(false);
+            granted.resolve(media(track));
+            await talking;
+
+            expect(track.stopped).to.equal(true);
+            expect(lastPeer().replacedTracks).to.deep.equal([]);
+            expect(view.talking).to.equal(false);
         });
     });
 

@@ -1601,6 +1601,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
             iceTransportPolicy: parsed.iceTransportPolicy,
             metadataEnabled: parsed.metadataEnabled,
             allowEviction: parsed.allowEviction,
+            talkback: parsed.talkback,
         });
         return toWireStartStreamResult(result);
     }
