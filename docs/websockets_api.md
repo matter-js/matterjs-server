@@ -1593,7 +1593,7 @@ Events are sent to clients that have called `start_listening`. Events have this 
 
 `endpoint_parents` *(schema 14+)* maps endpoints in `attributes` other than 0 to their direct parent endpoint; a top-level endpoint has parent `0`. An endpoint whose parent the server does not know has no entry, and the map is `{}` when `attributes` is empty. A server that sends the field sends it with every message that carries node data; a test node imported from a dump without the field has none. The PartsList of the Descriptor cluster does not say this by itself: Root Node, Aggregator and Bridged Node endpoints may list every descendant, not only their children. The field states only where an endpoint sits; whether it is a bridged device or a part of a composed device is for the client to decide from the device types.
 
-**node_updated** - A node's structure or availability changed
+**node_updated** - A node's structure or availability changed. After a server restart, a node is unavailable until the device's first report has been applied, and then becomes available in a `node_updated` carrying the reported values. Other `node_updated` events with `available: false` can arrive while it waits. A node whose first report arrived before the server registered it is available at once, without such an update. After commissioning, a node can be sent once more when its first report has been applied
 
 ```json
 {
@@ -1613,7 +1613,7 @@ Events are sent to clients that have called `start_listening`. Events have this 
 
 ### Attribute Events
 
-**attribute_updated** - An attribute value changed
+**attribute_updated** - An attribute value changed. Changes from a node's first report, after a server restart or after commissioning, are not sent this way
 
 ```json
 {

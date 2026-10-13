@@ -50,12 +50,7 @@ export class TestSite {
     }
 
     async startPair() {
-        const controller = await this.#addNode({
-            id: "controller",
-            type: ControllerRootEndpoint,
-            commissioning: { enabled: false },
-            controller: { adminFabricId: FabricId(1) },
-        });
+        const controller = await this.addController();
         const device = await this.#addNode({ id: "device" });
         const light = await device.add(OnOffLightDevice.with(BooleanStateServer), { id: "light" });
 
@@ -63,6 +58,19 @@ export class TestSite {
         await controller.start();
 
         return { controller, device, light };
+    }
+
+    /**
+     * A controller node that is not started yet. All controllers share one storage, so a controller added
+     * after another one closed restores the peers that one commissioned.
+     */
+    addController() {
+        return this.#addNode({
+            id: "controller",
+            type: ControllerRootEndpoint,
+            commissioning: { enabled: false },
+            controller: { adminFabricId: FabricId(1) },
+        });
     }
 
     /** A second commissionable device on the same simulated network. */
@@ -74,15 +82,20 @@ export class TestSite {
     }
 
     async commission(controller: ServerNode, device: ServerNode) {
+        const { passcode, discriminator } = device.state.commissioning;
+        await this.pairing(controller, device, () =>
+            controller.peers.commission({ passcode, discriminator, timeout: Seconds(90) }),
+        );
+    }
+
+    /** Runs `act`, which commissions the device by any route, with the entropy pairing needs. */
+    async pairing<T>(controller: ServerNode, device: ServerNode, act: () => Promise<T>) {
         // Session ids collide without entropy while pairing.
         const controllerCrypto = controller.env.get(Crypto) as MockCrypto;
         const deviceCrypto = device.env.get(Crypto) as MockCrypto;
         controllerCrypto.entropic = deviceCrypto.entropic = true;
         try {
-            const { passcode, discriminator } = device.state.commissioning;
-            await MockTime.resolve(controller.peers.commission({ passcode, discriminator, timeout: Seconds(90) }), {
-                macrotasks: true,
-            });
+            return await MockTime.resolve(act(), { macrotasks: true });
         } finally {
             controllerCrypto.entropic = deviceCrypto.entropic = false;
         }

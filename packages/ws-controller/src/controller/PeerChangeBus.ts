@@ -86,6 +86,8 @@ export class PeerChangeBus {
         attributeChanged: new Observable<[nodeId: NodeId, change: AttributeChange]>(),
         eventTriggered: new Observable<[nodeId: NodeId, change: EventChange]>(),
         endpointRemoved: new Observable<[nodeId: NodeId, endpointId: EndpointNumber]>(),
+        /** The peer's changes are forwarded from now on; those applied before were dropped. */
+        reportingStarted: new Observable<[nodeId: NodeId]>(),
     };
 
     constructor(controller: ServerNode) {
@@ -122,8 +124,15 @@ export class PeerChangeBus {
         const observers = new ObserverGroup();
         this.#peerObservers.set(peer, observers);
         observers.on(peer.eventsOf(NetworkClient).subscriptionStatusChanged, isActive => {
-            if (isActive) {
-                this.#reporting.add(peer);
+            if (!isActive || this.#reporting.has(peer)) {
+                return;
+            }
+            this.#reporting.add(peer);
+            // matter.js observes this event too, and a throw here would abort its emit.
+            try {
+                this.events.reportingStarted.emit(nodeIdOf(peer));
+            } catch (error) {
+                logger.warn(`Failed to announce reporting for peer ${peer.id}:`, error);
             }
         });
         // `changed` bubbles, so it also reports a child endpoint being destroyed. Only the peer's own
@@ -138,6 +147,11 @@ export class PeerChangeBus {
     #unwatch(peer: ClientNode) {
         this.#peerObservers.get(peer)?.close();
         this.#peerObservers.delete(peer);
+    }
+
+    /** Whether the peer's changes are forwarded; a peer not yet reporting announces it with `reportingStarted`. */
+    isReporting(peer: ClientNode): boolean {
+        return this.#reporting.has(peer);
     }
 
     close() {

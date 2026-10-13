@@ -46,10 +46,9 @@ export class AttributeDataCache {
     /**
      * Whether the node's model carries something to snapshot.
      *
-     * This is the one place that decides it. A peer restored from storage carries its endpoints and
-     * their persisted state before matter.js marks it seeded, which only happens once the structure has
-     * been read from the device in this runtime, so a caller testing `isSeeded` instead answers reads
-     * with an empty node until the device reconnects.
+     * This is the one place that decides it. A peer restored from storage can carry its endpoints and
+     * their persisted state while matter.js does not report it seeded, so a caller testing `isSeeded`
+     * instead would answer reads with an empty node.
      */
     static hasStructure(node: ClientNode): boolean {
         const { isCommissioned, isReady } = node.lifecycle;

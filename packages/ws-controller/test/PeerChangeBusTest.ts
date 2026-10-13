@@ -23,12 +23,14 @@ describe("PeerChangeBus", () => {
     let attributes: Array<[NodeId, AttributeChange]>;
     let events: Array<[NodeId, EventChange]>;
     let removedEndpoints: Array<[NodeId, number]>;
+    let reportingStarted: NodeId[];
 
     beforeEach(async () => {
         MockTime.reset();
         attributes = [];
         events = [];
         removedEndpoints = [];
+        reportingStarted = [];
 
         site = new TestSite();
         ({ controller, device, light } = await site.startPair());
@@ -42,6 +44,9 @@ describe("PeerChangeBus", () => {
         });
         bus.events.endpointRemoved.on((nodeId, endpointId) => {
             removedEndpoints.push([nodeId, endpointId]);
+        });
+        bus.events.reportingStarted.on(nodeId => {
+            reportingStarted.push(nodeId);
         });
     });
 
@@ -157,6 +162,50 @@ describe("PeerChangeBus", () => {
         await MockTime.resolve(peer().endpoints.for(endpointId).close(), { macrotasks: true });
 
         expect(removedEndpoints.map(([, removed]) => removed)).deep.equals([light.number]);
+    });
+
+    it("announces once that a peer's changes are forwarded, not again when it resubscribes", async () => {
+        await site.commission(controller, device);
+        await awaitSubscribed();
+        expect(reportingStarted).deep.equals([peer().peerAddress?.nodeId]);
+
+        const observers = new ObserverGroup();
+        const statuses = new Array<boolean>();
+        const resubscribed = new Promise<void>(resolve =>
+            observers.on(peer().eventsOf(NetworkClient).subscriptionStatusChanged, isActive => {
+                statuses.push(isActive);
+                if (isActive) {
+                    resolve();
+                }
+            }),
+        );
+        try {
+            await MockTime.resolve(peer().set({ network: { autoSubscribe: false } }), { macrotasks: true });
+            await MockTime.resolve(peer().set({ network: { autoSubscribe: true } }), { macrotasks: true });
+            await MockTime.resolve(resubscribed, { macrotasks: true });
+        } finally {
+            observers.close();
+        }
+        expect(statuses).include(false);
+        await turnLightOnAndAwaitReport();
+
+        expect(reportingStarted.length).equals(1);
+    });
+
+    it("does not announce reporting for a peer already connected when it is watched", async () => {
+        await site.commission(controller, device);
+        await awaitSubscribed();
+        const lateBus = new PeerChangeBus(controller);
+        const announced = new Array<NodeId>();
+        lateBus.events.reportingStarted.on(nodeId => {
+            announced.push(nodeId);
+        });
+        try {
+            await turnLightOnAndAwaitReport();
+            expect(announced).deep.equals([]);
+        } finally {
+            lateBus.close();
+        }
     });
 
     it("does not report a removed node's endpoints as individual endpoint removals", async () => {

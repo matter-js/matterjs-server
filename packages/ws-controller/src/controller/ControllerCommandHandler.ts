@@ -465,6 +465,14 @@ export class ControllerCommandHandler {
             });
         });
 
+        this.#busObservers.on(bus.events.reportingStarted, nodeId => {
+            this.#guard(nodeId, "first report", () => {
+                this.#refreshAfterFirstReport(this.#nodes.get(nodeId)).catch(error =>
+                    logger.warn(`Failed to refresh node ${this.formatNode(nodeId)} after its first report:`, error),
+                );
+            });
+        });
+
         this.#busObservers.on(bus.events.endpointRemoved, (nodeId, endpointId) => {
             this.#guard(nodeId, "endpoint removal", () => {
                 // Drop the endpoint before announcing it, so a read that follows the event never serves
@@ -475,6 +483,44 @@ export class ControllerCommandHandler {
                 this.#markNodeUpdatePending(this.#nodes.get(nodeId), "endpoint removed");
             });
         });
+    }
+
+    /**
+     * Rebuilds the node's cache from the state its first report applied, which the bus did not forward. A
+     * restored node waiting for that report then becomes available, with the rebuilt snapshot when the
+     * rebuild succeeds. Any other node is sent again when a new snapshot replaced one clients could have
+     * seen.
+     */
+    async #refreshAfterFirstReport(node: ClientNode) {
+        const nodeId = nodeIdOf(node);
+        const attributeCache = this.#nodes.attributeCache;
+        const stale = attributeCache.get(nodeId);
+        // Also restarts a populate already running, which may have collected endpoints before the report.
+        await attributeCache.update(node);
+        const attributes = attributeCache.get(nodeId);
+        // A populate that failed or was cancelled leaves the old snapshot, which must not go out as fresh.
+        const rebuilt = attributes !== undefined && attributes !== stale;
+        const waiting = this.#nodes.isAwaitingFirstReport(nodeId);
+        try {
+            if (rebuilt) {
+                this.#registerWithProcessors(nodeId, attributes);
+            }
+        } finally {
+            if (waiting) {
+                this.#endFirstReportWait(nodeId);
+            } else if (rebuilt && stale !== undefined) {
+                this.events.nodeStructureChanged.emit(nodeId);
+            }
+        }
+    }
+
+    /** The only way a restored node stops waiting for its first report. */
+    #endFirstReportWait(nodeId: NodeId) {
+        if (!this.#nodes.firstReportApplied(nodeId) || !this.#nodes.isAvailable(nodeId)) {
+            return;
+        }
+        logger.notice(`Node ${this.formatNode(nodeId)} available after its first report`);
+        this.events.nodeAvailabilityChanged.emit(nodeId, true);
     }
 
     /** Skips nodes no longer in the registry and contains throws; see {@link ControllerCommandHandler.#startChangeBus}. */
@@ -741,7 +787,7 @@ export class ControllerCommandHandler {
         }
     }
 
-    async #registerNode(nodeId: NodeId) {
+    async #registerNode(nodeId: NodeId, restored: boolean) {
         // A node commissioned moments ago may not have its commissioning behavior active yet, so the
         // handle has to be created on demand rather than looked up.
         const node = await this.#node.peers.forAddress(this.#peerOf(nodeId));
@@ -784,6 +830,10 @@ export class ControllerCommandHandler {
                 }
             }),
         );
+        // No await between the check and set(): a report starting later then finds the node registered.
+        if (restored && this.#changeBus?.isReporting(node) === false) {
+            this.#nodes.awaitFirstReport(nodeId);
+        }
         this.#nodes.set(nodeId, node);
 
         this.#nodes.seedState(nodeId, node.lifecycle.connectionState);
@@ -804,9 +854,12 @@ export class ControllerCommandHandler {
     async #snapshotNode(nodeId: NodeId, node: ClientNode): Promise<void> {
         await this.#nodes.attributeCache.add(node);
         const attributes = this.#nodes.attributeCache.get(nodeId);
-        if (attributes === undefined) {
-            return;
+        if (attributes !== undefined) {
+            this.#registerWithProcessors(nodeId, attributes);
         }
+    }
+
+    #registerWithProcessors(nodeId: NodeId, attributes: AttributesData) {
         const peer = this.#peerOf(nodeId);
         this.#customClusterPoller.registerNode(peer, attributes);
         this.#threadDetailsPoller?.registerNode(peer, attributes);
@@ -861,9 +914,9 @@ export class ControllerCommandHandler {
     async #handleNodeStateChange(node: ClientNode, state: NodeConnectionState): Promise<void> {
         const nodeId = nodeIdOf(node);
 
-        // A node that never became unavailable was only ever briefly re-establishing, so its data is
-        // still good: resubscription re-reports whatever changed. Rebuild only when it comes back from
-        // being considered offline.
+        // A node that never became unavailable was only briefly re-establishing, and the bus forwards what
+        // its resubscription reports. Rebuild only when it comes back from being considered offline. A
+        // restored node still waiting for its first report is rebuilt by #refreshAfterFirstReport instead.
         const wasAvailable = this.#nodes.isAvailable(nodeId);
         const result = this.#nodes.processStateChange(nodeId, state);
 
@@ -882,15 +935,15 @@ export class ControllerCommandHandler {
         // Populate last so the state/availability emits above are not delayed behind a multi-second
         // rebuild.
         if (state === NodeConnectionState.Connected) {
-            if (!wasAvailable || !this.#nodes.attributeCache.has(nodeId)) {
+            if (
+                !this.#nodes.isAwaitingFirstReport(nodeId) &&
+                (!wasAvailable || !this.#nodes.attributeCache.has(nodeId))
+            ) {
                 await this.#nodes.attributeCache.update(node);
             }
             const attributes = this.#nodes.attributeCache.get(nodeId);
             if (attributes) {
-                const peer = this.#peerOf(nodeId);
-                this.#customClusterPoller.registerNode(peer, attributes);
-                this.#threadDetailsPoller?.registerNode(peer, attributes);
-                this.#timeSyncManager?.registerNode(peer, attributes);
+                this.#registerWithProcessors(nodeId, attributes);
             }
         }
     }
@@ -933,7 +986,7 @@ export class ControllerCommandHandler {
         for (const nodeId of nodes) {
             try {
                 logger.info(`Initializing node "${this.formatNode(nodeId)}" ...`);
-                await this.#registerNode(nodeId);
+                await this.#registerNode(nodeId, true);
             } catch (error) {
                 logger.warn(`Failed to initialize node "${this.formatNode(nodeId)}":`, error);
             }
@@ -1564,7 +1617,7 @@ export class ControllerCommandHandler {
 
             // The device has joined by now, so failing to take it into the registry is still a failed
             // command, not an unmapped throw with a node the server tracks and never announced.
-            await this.#registerNode(nodeId);
+            await this.#registerNode(nodeId, false);
         } catch (error) {
             // PASE rejects the device's key confirmation, which is what a mistyped pairing code looks
             // like on the wire. Saying so lets a client offer the code again instead of a generic retry.

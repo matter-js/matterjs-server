@@ -556,7 +556,8 @@ export class WebSocketControllerHandler implements WebServerHandler {
                     this.#lastInterviewDates.set(nodeId, new Date());
                 }
                 // Availability changes (and node_updated events) are handled by nodeAvailabilityChanged
-                // Individual attribute updates are already sent via attributeChanged events
+                // Individual attribute updates are already sent via attributeChanged events (except a node's first
+                // report, which arrives in node_updated)
             });
 
             // Send node_updated when availability changes (debounced)
