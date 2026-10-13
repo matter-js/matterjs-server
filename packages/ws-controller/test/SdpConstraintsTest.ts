@@ -11,6 +11,7 @@ import {
     parseSdpVideoConstraints,
     receivableCodecs,
     videoCodecLimits,
+    withoutTalkback,
 } from "../src/camera/sdpConstraints.js";
 
 const H264 = CameraAvStreamManagement.VideoCodec.H264;
@@ -537,14 +538,14 @@ describe("sdpConstraints", () => {
             const constraints = parseSdpVideoConstraints(OFFER_REJECTED_SECTIONS);
             expect(constraints.audio.state).to.equal("refused");
             expect(receivableCodecs(constraints.audio)).to.equal(undefined);
-            expect(constraints.wantsTalkback).to.equal(false);
+            expect(constraints.sendingAudioSections).to.deep.equal([]);
         });
 
         it("reports audio codecs and talkback intent from a sendrecv audio m-line", () => {
             const constraints = parseSdpVideoConstraints(OFFER_AUDIO_SENDRECV);
             expect(constraints.audio.state).to.equal("receiving");
             expect(receivableCodecs(constraints.audio)).to.deep.equal(["OPUS"]);
-            expect(constraints.wantsTalkback).to.equal(true);
+            expect(constraints.sendingAudioSections).to.not.be.empty;
         });
 
         it("separates an offered section that names no codec from one that names some", () => {
@@ -564,30 +565,30 @@ describe("sdpConstraints", () => {
         });
 
         it("reports talkback intent from a sendonly audio m-line", () => {
-            expect(parseSdpVideoConstraints(OFFER_AUDIO_SENDONLY).wantsTalkback).to.equal(true);
+            expect(parseSdpVideoConstraints(OFFER_AUDIO_SENDONLY).sendingAudioSections).to.not.be.empty;
         });
 
         it("reports no talkback for an offer with no audio section", () => {
-            expect(parseSdpVideoConstraints(OFFER_H265_THEN_H264).wantsTalkback).to.equal(false);
+            expect(parseSdpVideoConstraints(OFFER_H265_THEN_H264).sendingAudioSections).to.deep.equal([]);
         });
 
         it("reports no talkback for a recvonly audio section", () => {
             expect(parseSdpVideoConstraints(OFFER_SESSION_INACTIVE).audio.state).to.equal("receiving");
-            expect(parseSdpVideoConstraints(OFFER_SESSION_INACTIVE).wantsTalkback).to.equal(false);
+            expect(parseSdpVideoConstraints(OFFER_SESSION_INACTIVE).sendingAudioSections).to.deep.equal([]);
         });
 
         it("reads an audio section stating no direction as asking for talkback", () => {
             // RFC 4566 §6 makes it sendrecv, and sendrecv offers to send.
             const constraints = parseSdpVideoConstraints(OFFER_AUDIO_NO_DIRECTION);
             expect(constraints.audio.state).to.equal("receiving");
-            expect(constraints.wantsTalkback).to.equal(true);
+            expect(constraints.sendingAudioSections).to.not.be.empty;
         });
 
         it("applies a permissive session-level direction to a section that restates none", () => {
             const constraints = parseSdpVideoConstraints(OFFER_SESSION_SENDRECV);
             expect(constraints.video.state).to.equal("receiving");
             expect(constraints.audio.state).to.equal("receiving");
-            expect(constraints.wantsTalkback).to.equal(true);
+            expect(constraints.sendingAudioSections).to.not.be.empty;
         });
 
         it("treats an explicit sendrecv video section as receiving", () => {
@@ -598,7 +599,7 @@ describe("sdpConstraints", () => {
             const constraints = parseSdpVideoConstraints(OFFER_TWO_AUDIO_SECTIONS);
             expect(constraints.video.state).to.equal("absent");
             expect(receivableCodecs(constraints.audio)).to.deep.equal(["OPUS"]);
-            expect(constraints.wantsTalkback).to.equal(true);
+            expect(constraints.sendingAudioSections).to.not.be.empty;
         });
 
         it("reports the live statement when one section is rejected and another will not receive", () => {
@@ -642,11 +643,11 @@ describe("sdpConstraints", () => {
             const constraints = parseSdpVideoConstraints(OFFER_AUDIO_SENDONLY);
             expect(constraints.audio).to.deep.equal({ state: "notReceiving", direction: "sendonly" });
             expect(receivableCodecs(constraints.audio)).to.equal(undefined);
-            expect(constraints.wantsTalkback).to.equal(true);
+            expect(constraints.sendingAudioSections).to.not.be.empty;
         });
 
         it("applies a session-level direction to a section that restates none", () => {
-            // RFC 4566 §5.13: a session-level attribute applies to every section that does not override it.
+            // RFC 4566 §5: a session-level attribute applies to every section that does not override it.
             const constraints = parseSdpVideoConstraints(OFFER_SESSION_INACTIVE);
             expect(constraints.video).to.deep.equal({ state: "notReceiving", direction: "inactive" });
             expect(constraints.audio.state).to.equal("receiving");
@@ -776,5 +777,180 @@ describe("sdpConstraints", () => {
             expect(mediaRefusal(undefined, "video")).to.equal(undefined);
             expect(mediaRefusal(undefined, "audio")).to.equal(undefined);
         });
+    });
+});
+
+describe("withoutTalkback", () => {
+    const SESSION = ["v=0", "o=- 1 1 IN IP4 127.0.0.1", "s=-", "t=0 0"];
+
+    function rewritten(sdp: string): string {
+        return withoutTalkback(sdp, parseSdpVideoConstraints(sdp).sendingAudioSections);
+    }
+
+    function offer(...lines: string[]): string {
+        return [...SESSION, ...lines, ""].join("\r\n");
+    }
+
+    it("names each sending audio section by its m-line position and the direction in effect", () => {
+        expect(parseSdpVideoConstraints(OFFER_TWO_AUDIO_SECTIONS).sendingAudioSections).to.deep.equal([
+            { index: 1, direction: "sendrecv" },
+        ]);
+        expect(parseSdpVideoConstraints(OFFER_SESSION_SENDRECV).sendingAudioSections).to.deep.equal([
+            { index: 1, direction: "sendrecv" },
+        ]);
+    });
+
+    it("makes a sendrecv audio section recvonly and leaves a sendrecv video section alone", () => {
+        const sdp = offer(
+            "m=video 9 UDP/TLS/RTP/SAVPF 96",
+            "a=sendrecv",
+            "m=audio 9 UDP/TLS/RTP/SAVPF 111",
+            "a=sendrecv",
+            "a=rtpmap:111 opus/48000/2",
+        );
+        expect(rewritten(sdp)).to.equal(
+            offer(
+                "m=video 9 UDP/TLS/RTP/SAVPF 96",
+                "a=sendrecv",
+                "m=audio 9 UDP/TLS/RTP/SAVPF 111",
+                "a=recvonly",
+                "a=rtpmap:111 opus/48000/2",
+            ),
+        );
+    });
+
+    it("leaves an extmap line with a direction suffix alone", () => {
+        const sdp = offer(
+            "m=audio 9 UDP/TLS/RTP/SAVPF 111",
+            "a=extmap:2/recvonly urn:ietf:params:rtp-hdrext:csrc-audio-level",
+            "a=sendrecv",
+        );
+        expect(rewritten(sdp)).to.equal(
+            offer(
+                "m=audio 9 UDP/TLS/RTP/SAVPF 111",
+                "a=extmap:2/recvonly urn:ietf:params:rtp-hdrext:csrc-audio-level",
+                "a=recvonly",
+            ),
+        );
+    });
+
+    it("makes a sendonly audio section inactive", () => {
+        const sdp = offer("m=audio 9 UDP/TLS/RTP/SAVPF 111", "a=sendonly");
+        expect(rewritten(sdp)).to.equal(offer("m=audio 9 UDP/TLS/RTP/SAVPF 111", "a=inactive"));
+    });
+
+    it("adds recvonly at the end of an audio section that states no direction", () => {
+        const sdp = offer(
+            "m=audio 9 UDP/TLS/RTP/SAVPF 111",
+            "a=rtpmap:111 opus/48000/2",
+            "m=video 9 UDP/TLS/RTP/SAVPF 96",
+            "a=recvonly",
+        );
+        expect(rewritten(sdp)).to.equal(
+            offer(
+                "m=audio 9 UDP/TLS/RTP/SAVPF 111",
+                "a=rtpmap:111 opus/48000/2",
+                "a=recvonly",
+                "m=video 9 UDP/TLS/RTP/SAVPF 96",
+                "a=recvonly",
+            ),
+        );
+    });
+
+    it("adds the direction to the last section of an offer with no final line break", () => {
+        const sdp = [...SESSION, "m=audio 9 UDP/TLS/RTP/SAVPF 111", "a=rtpmap:111 opus/48000/2"].join("\r\n");
+        expect(rewritten(sdp)).to.equal(`${sdp}\r\na=recvonly`);
+    });
+
+    it("keeps the offer's own line breaks", () => {
+        const sdp = [...SESSION, "m=audio 9 UDP/TLS/RTP/SAVPF 111", "a=sendrecv", ""].join("\n");
+        expect(rewritten(sdp)).to.equal(sdp.replace("a=sendrecv", "a=recvonly"));
+        expect(rewritten(OFFER_AUDIO_NO_DIRECTION)).to.equal(`${OFFER_AUDIO_NO_DIRECTION}a=recvonly\r\n`);
+    });
+
+    it("rewrites every sending audio section and no other", () => {
+        const sdp = offer(
+            "m=audio 9 UDP/TLS/RTP/SAVPF 111",
+            "a=sendrecv",
+            "m=audio 9 UDP/TLS/RTP/SAVPF 111",
+            "a=recvonly",
+            "m=audio 0 UDP/TLS/RTP/SAVPF 111",
+            "a=sendrecv",
+            "m=audio 9 UDP/TLS/RTP/SAVPF 111",
+            "a=sendonly",
+        );
+        expect(rewritten(sdp)).to.equal(
+            offer(
+                "m=audio 9 UDP/TLS/RTP/SAVPF 111",
+                "a=recvonly",
+                "m=audio 9 UDP/TLS/RTP/SAVPF 111",
+                "a=recvonly",
+                "m=audio 0 UDP/TLS/RTP/SAVPF 111",
+                "a=sendrecv",
+                "m=audio 9 UDP/TLS/RTP/SAVPF 111",
+                "a=inactive",
+            ),
+        );
+    });
+
+    it("adds the direction to each of several audio sections that state none", () => {
+        const sdp = offer("m=audio 9 UDP/TLS/RTP/SAVPF 111", "a=mid:0", "m=audio 9 UDP/TLS/RTP/SAVPF 111", "a=mid:1");
+        expect(rewritten(sdp)).to.equal(
+            offer(
+                "m=audio 9 UDP/TLS/RTP/SAVPF 111",
+                "a=mid:0",
+                "a=recvonly",
+                "m=audio 9 UDP/TLS/RTP/SAVPF 111",
+                "a=mid:1",
+                "a=recvonly",
+            ),
+        );
+    });
+
+    it("rewrites every direction line of a section that states more than one", () => {
+        const sdp = offer("m=audio 9 UDP/TLS/RTP/SAVPF 111", "a=recvonly", "a=sendrecv");
+        expect(rewritten(sdp)).to.equal(offer("m=audio 9 UDP/TLS/RTP/SAVPF 111", "a=recvonly", "a=recvonly"));
+    });
+
+    it("counts an application section when locating the audio section after it", () => {
+        const sdp = offer(
+            "m=application 9 UDP/DTLS/SCTP webrtc-datachannel",
+            "a=sendrecv",
+            "m=audio 9 UDP/TLS/RTP/SAVPF 111",
+            "a=sendrecv",
+        );
+        expect(rewritten(sdp)).to.equal(
+            offer(
+                "m=application 9 UDP/DTLS/SCTP webrtc-datachannel",
+                "a=sendrecv",
+                "m=audio 9 UDP/TLS/RTP/SAVPF 111",
+                "a=recvonly",
+            ),
+        );
+    });
+
+    it("adds the direction after the section's last line, not after a blank line in it", () => {
+        const sdp = [...SESSION, "m=audio 9 UDP/TLS/RTP/SAVPF 111", "a=mid:0", "", "a=mid:1", ""].join("\r");
+        expect(rewritten(sdp)).to.equal(
+            [...SESSION, "m=audio 9 UDP/TLS/RTP/SAVPF 111", "a=mid:0", "", "a=mid:1", "a=recvonly", ""].join("\r"),
+        );
+    });
+
+    it("rewrites a bundle-only audio section, which is live although its port is 0", () => {
+        const sdp = offer("m=audio 0 UDP/TLS/RTP/SAVPF 111", "a=bundle-only", "a=sendrecv");
+        expect(rewritten(sdp)).to.equal(offer("m=audio 0 UDP/TLS/RTP/SAVPF 111", "a=bundle-only", "a=recvonly"));
+    });
+
+    it("overrides a sending session-level direction in the audio section only", () => {
+        // The session line still applies to the video section, which states none.
+        expect(rewritten(OFFER_SESSION_SENDRECV)).to.equal(`${OFFER_SESSION_SENDRECV}a=recvonly\r\n`);
+        const sendonly = [...SESSION, "a=sendonly", "m=audio 9 UDP/TLS/RTP/SAVPF 111", ""].join("\r\n");
+        expect(rewritten(sendonly)).to.equal(`${sendonly}a=inactive\r\n`);
+    });
+
+    it("leaves an offer that asks for no talkback unchanged", () => {
+        const sdp = offer("m=audio 9 UDP/TLS/RTP/SAVPF 111", "a=recvonly");
+        expect(rewritten(sdp)).to.equal(sdp);
+        expect(rewritten("not an sdp")).to.equal("not an sdp");
     });
 });

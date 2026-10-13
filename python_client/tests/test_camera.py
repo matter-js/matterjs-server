@@ -265,6 +265,7 @@ async def test_start_stream_sends_every_stated_argument() -> None:
         ice_transport_policy="all",
         metadata_enabled=False,
         allow_eviction=False,
+        talkback=True,
     )
     _, kwargs = _sent(client)
     assert kwargs == {
@@ -279,6 +280,7 @@ async def test_start_stream_sends_every_stated_argument() -> None:
         "ice_transport_policy": "all",
         "metadata_enabled": False,
         "allow_eviction": False,
+        "talkback": True,
     }
 
 
@@ -302,6 +304,7 @@ async def test_start_stream_parses_a_full_result() -> None:
             "bit_depth": 16,
             "provenance": "reused",
         },
+        "talkback": True,
     }
     result = await _bare_client(wire).camera_start_stream(5, 1, "LiveView", sdp="v=0")
     assert isinstance(result, CameraStartStreamResult)
@@ -319,6 +322,7 @@ async def test_start_stream_parses_a_full_result() -> None:
     assert result.audio is not None
     assert result.audio.stream_id == 7
     assert result.audio.provenance == "reused"
+    assert result.talkback is True
 
 
 async def test_start_stream_leaves_absent_fields_none() -> None:
@@ -328,6 +332,7 @@ async def test_start_stream_leaves_absent_fields_none() -> None:
     assert result.video.evicted_stream_ids is None
     assert result.video.narrowed_by_encoder_budget is None
     assert result.audio is None
+    assert result.talkback is False
 
 
 async def test_get_capabilities_parses_the_wire_result() -> None:

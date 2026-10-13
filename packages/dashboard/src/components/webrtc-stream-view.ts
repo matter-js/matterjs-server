@@ -189,7 +189,8 @@ export class WebRtcStreamView extends LitElement {
 
     private _talkNegotiated(attempt: StreamAttempt): boolean {
         const direction = attempt.talkTransceiver?.currentDirection;
-        return (direction === "sendrecv" || direction === "sendonly") && attempt.session?.result.audio != null;
+        const result = attempt.session?.result;
+        return (direction === "sendrecv" || direction === "sendonly") && result?.audio != null && result.talkback;
     }
 
     /** Returns whether a microphone track was live. */
@@ -345,6 +346,7 @@ export class WebRtcStreamView extends LitElement {
                 stream_usage: "LiveView",
                 sdp,
                 ...(video === undefined ? {} : { video }),
+                ...(attempt.talkbackMode === null ? {} : { talkback: true }),
             });
             attempt.starting = starting;
             const result = await starting;

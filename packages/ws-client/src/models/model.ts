@@ -715,6 +715,11 @@ export interface CameraStartStreamResult {
     mode: "solicit_offer" | "provide_offer";
     video: CameraStartStreamVideoResult | null;
     audio: CameraStartStreamAudioResult | null;
+    /**
+     * True when `talkback` was asked for, the offer's audio can send and the camera states `HalfDuplex` or
+     * `FullDuplex`. The audio direction in the camera's answer is the final word.
+     */
+    talkback: boolean;
 }
 
 /**
@@ -1084,6 +1089,11 @@ export interface APICommands {
              * streams; the request can then still succeed with `video.degraded` true.
              */
             allow_eviction?: boolean;
+            /**
+             * Defaults to false: the server rewrites the offer's sending audio sections so the camera is not
+             * asked to play audio. `true` forwards the offer unchanged and requires `sdp`.
+             */
+            talkback?: boolean;
         };
         response: CameraStartStreamResult;
     };

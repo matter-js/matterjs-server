@@ -242,6 +242,7 @@ describe("camera API helpers", () => {
             const result: CameraStartStreamResult = {
                 webrtc_session_id: 3,
                 mode: "provide_offer",
+                talkback: false,
                 video: video({ provenance: "allocated", stream_id: 5 }),
                 audio: { ...AUDIO_RESULT, provenance: "allocated", stream_id: 6 },
             };
@@ -255,6 +256,7 @@ describe("camera API helpers", () => {
             const result: CameraStartStreamResult = {
                 webrtc_session_id: 3,
                 mode: "provide_offer",
+                talkback: false,
                 video: video({ provenance: "adopted" }),
                 audio: { ...AUDIO_RESULT, provenance: "reused" },
             };

@@ -217,6 +217,7 @@ function startResult(overrides: Partial<CameraStartStreamResult> = {}): CameraSt
     return {
         webrtc_session_id: SESSION_ID,
         mode: "provide_offer",
+        talkback: false,
         video: {
             stream_id: 3,
             codec: "H264",
@@ -1224,7 +1225,7 @@ describe("WebRtcStreamView", () => {
             twoWayTalkSupport = "FullDuplex",
             {
                 audioAnswer = "sendrecv",
-                result = startResult(),
+                result = startResult({ talkback: true }),
             }: { audioAnswer?: string; result?: CameraStartStreamResult } = {},
         ) {
             FakePeerConnection.sdpFromTransceivers = true;
@@ -1285,15 +1286,16 @@ describe("WebRtcStreamView", () => {
             expect(lastPeer().replacedTracks).to.deep.equal([track]);
         });
 
-        it("offers a sendrecv audio section when the camera can talk back", async () => {
-            const { view } = await startTalkView();
+        it("offers a sendrecv audio section and asks for talkback when the camera can talk back", async () => {
+            const { view, fake } = await startTalkView();
 
             expect(lastPeer().directions).to.deep.equal(["recvonly", "sendrecv"]);
+            expect(fake.calls[0].args.talkback).to.equal(true);
             expect(view.talkAvailable).to.equal(true);
             expect(getUserMediaCalls).to.deep.equal([]);
         });
 
-        it("offers recvonly audio and no talk when the camera cannot talk back", async () => {
+        it("offers recvonly audio and does not ask for talkback when the camera cannot talk back", async () => {
             const fake = fakeClient({ camera_start_stream: () => startResult() });
             const view = createView(fake.client);
             view.capabilities = talkCapabilities("NotSupported");
@@ -1301,8 +1303,18 @@ describe("WebRtcStreamView", () => {
             await view.start();
 
             expect(lastPeer().directions).to.deep.equal(["recvonly", "recvonly"]);
+            expect(fake.calls[0].args).to.not.have.property("talkback");
             expect(view.talkAvailable).to.equal(false);
             await expectRejection(view.setTalking(true), "Talking is not available for this stream");
+        });
+
+        it("offers no talk when the server reports no talkback for the session", async () => {
+            const { view } = await startTalkView("FullDuplex", { result: startResult({ talkback: false }) });
+
+            expect(lastPeer().audioTransceiver?.currentDirection).to.equal("sendrecv");
+            expect(view.talkAvailable).to.equal(false);
+            await expectRejection(view.setTalking(true), "Talking is not available for this stream");
+            expect(getUserMediaCalls).to.deep.equal([]);
         });
 
         it("sends the microphone track and stops it again without renegotiating", async () => {
@@ -1324,7 +1336,9 @@ describe("WebRtcStreamView", () => {
         });
 
         it("offers no talk when the camera serves the session without audio", async () => {
-            const { view } = await startTalkView("FullDuplex", { result: startResult({ audio: null }) });
+            const { view } = await startTalkView("FullDuplex", {
+                result: startResult({ audio: null, talkback: true }),
+            });
 
             expect(lastPeer().directions).to.deep.equal(["recvonly", "sendrecv"]);
             expect(view.talkAvailable).to.equal(false);

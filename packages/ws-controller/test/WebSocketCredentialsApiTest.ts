@@ -28,7 +28,7 @@ function freshEnv(): Environment {
 
 interface StubCameraStreams {
     releaseConnection(connectionId: string): Promise<void>;
-    startStream?(args: { connectionId: string; allowEviction?: boolean }): Promise<unknown>;
+    startStream?(args: { connectionId: string; allowEviction?: boolean; talkback?: boolean }): Promise<unknown>;
     stopStream?(nodeId: bigint, endpointId: number, webRtcSessionId: number, requestedBy?: string): Promise<boolean>;
     /** What the manager reports on nobody's request: a session that ended, a stream that was taken. */
     events?: {
@@ -1201,6 +1201,37 @@ describe("WebSocket camera_start_stream arguments", () => {
                 await h.sendOn(client, "camera_start_stream", { ...base, allow_eviction: false });
                 await h.sendOn(client, "camera_start_stream", base);
                 expect(stated).to.deep.equal([false, undefined]);
+            } finally {
+                client.close();
+            }
+        } finally {
+            await h.close();
+        }
+    });
+});
+
+describe("WebSocket camera_start_stream talkback", () => {
+    it("forwards talkback to the stream manager and reports the manager's verdict", async () => {
+        const stated = new Array<boolean | undefined>();
+        const h = await createHarness({
+            async releaseConnection() {},
+            async startStream(args: { connectionId: string; talkback?: boolean }) {
+                stated.push(args.talkback);
+                return { webRtcSessionId: 1, mode: "provide_offer", talkback: args.talkback === true };
+            },
+        });
+        try {
+            const client = await h.openClient();
+            try {
+                const base = { node_id: 1, endpoint_id: 1, stream_usage: "LiveView", sdp: "v=0" };
+                const asked = await h.sendOn<{ talkback: boolean }>(client, "camera_start_stream", {
+                    ...base,
+                    talkback: true,
+                });
+                const unasked = await h.sendOn<{ talkback: boolean }>(client, "camera_start_stream", base);
+                expect(stated).to.deep.equal([true, undefined]);
+                expect(asked.talkback).to.equal(true);
+                expect(unasked.talkback).to.equal(false);
             } finally {
                 client.close();
             }

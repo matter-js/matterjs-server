@@ -278,6 +278,38 @@ describe("cameraCommands", () => {
             expect(parseStartStreamArgs(base).allowEviction).to.equal(undefined);
         });
 
+        it("reads talkback, and leaves it unstated when the caller says nothing", () => {
+            const base = { node_id: 5, endpoint_id: 1, stream_usage: "LiveView", sdp: "v=0" };
+            expect(parseStartStreamArgs({ ...base, talkback: true }).talkback).to.equal(true);
+            expect(parseStartStreamArgs({ ...base, talkback: false }).talkback).to.equal(false);
+            expect(parseStartStreamArgs(base).talkback).to.equal(undefined);
+        });
+
+        function startStreamRefusal(args: Record<string, unknown>): ServerError | undefined {
+            try {
+                parseStartStreamArgs({ node_id: 5, endpoint_id: 1, stream_usage: "LiveView", ...args });
+            } catch (error) {
+                if (error instanceof ServerError) return error;
+                throw error;
+            }
+            return undefined;
+        }
+
+        for (const talkback of ["true", 1, null]) {
+            it(`refuses talkback ${JSON.stringify(talkback)}, which is not a boolean`, () => {
+                const refusal = startStreamRefusal({ sdp: "v=0", talkback });
+                expect(refusal?.code).to.equal(ServerErrorCode.InvalidArguments);
+                expect(refusal?.message).to.equal("talkback must be a boolean");
+            });
+        }
+
+        it("refuses talkback true without sdp, and accepts talkback false without it", () => {
+            const refusal = startStreamRefusal({ talkback: true });
+            expect(refusal?.code).to.equal(ServerErrorCode.InvalidArguments);
+            expect(refusal?.message).to.match(/^talkback: true requires sdp/);
+            expect(startStreamRefusal({ talkback: false })).to.equal(undefined);
+        });
+
         it("reads the overlay hints, and leaves each unstated when the caller says nothing", () => {
             const base = { node_id: 5, endpoint_id: 1, stream_usage: "LiveView" };
             const parsed = parseStartStreamArgs({
@@ -1130,6 +1162,7 @@ describe("cameraCommands", () => {
             const result: StartStreamResult = {
                 webRtcSessionId: 9,
                 mode: "provide_offer",
+                talkback: false,
                 video: {
                     streamId: 1,
                     provenance: "allocated",
@@ -1180,6 +1213,7 @@ describe("cameraCommands", () => {
                 const wire = toWireStartStreamResult({
                     webRtcSessionId: 9,
                     mode: "provide_offer",
+                    talkback: false,
                     video: { streamId: 1, provenance, envelope },
                     audio: { streamId: 2, provenance, envelope: audioEnvelope },
                 });
@@ -1207,10 +1241,16 @@ describe("cameraCommands", () => {
             const narrowed = toWireStartStreamResult({
                 webRtcSessionId: 9,
                 mode: "provide_offer",
+                talkback: false,
                 video: { ...video, budgetNarrowed: { maxFrameRate: 30 } },
             });
             expect(narrowed.video?.narrowed_by_encoder_budget).to.deep.equal({ max_frame_rate: 30 });
-            const untouched = toWireStartStreamResult({ webRtcSessionId: 9, mode: "provide_offer", video });
+            const untouched = toWireStartStreamResult({
+                webRtcSessionId: 9,
+                mode: "provide_offer",
+                video,
+                talkback: false,
+            });
             expect(untouched.video).to.not.have.property("narrowed_by_encoder_budget");
         });
 
@@ -1218,6 +1258,7 @@ describe("cameraCommands", () => {
             const result: StartStreamResult = {
                 webRtcSessionId: 9,
                 mode: "solicit_offer",
+                talkback: false,
                 video: {
                     streamId: 1,
                     provenance: "reused",
