@@ -152,14 +152,15 @@ export class WebRtcStreamView extends LitElement {
         return this._attempt?.talkbackMode === "HalfDuplex";
     }
 
-    /** Rejects when the microphone cannot be captured or sent; the view is then not talking. */
+    /**
+     * Rejects when talking is not available or the microphone cannot be captured or sent; the view is then
+     * not talking. Switching off rejects only when the sender cannot be cleared, after the microphone stopped.
+     */
     async setTalking(talking: boolean): Promise<void> {
         const attempt = this._attempt;
         const sender = attempt?.talkTransceiver?.sender;
         if (!talking) {
-            if (!attempt || !sender || !this._releaseMicrophone(attempt)) return;
-            this._fireTalkChange();
-            await sender.replaceTrack(null);
+            if (attempt) await this._releaseMicrophone(attempt);
             return;
         }
         if (!attempt || !sender || !this._talkNegotiated(attempt)) {
@@ -184,25 +185,21 @@ export class WebRtcStreamView extends LitElement {
             return;
         }
         attempt.micTrack = track;
-        track.addEventListener("ended", () => this._onMicrophoneEnded(attempt, track, sender), { once: true });
+        // The browser ends the track when the device goes away or the permission is revoked.
+        track.addEventListener("ended", () => this._releaseMicrophoneIf(attempt, track), { once: true });
         this._applyPlaybackMute();
         this._fireTalkChange();
         try {
             await sender.replaceTrack(track);
         } catch (err) {
-            if (attempt.micTrack === track && this._releaseMicrophone(attempt)) this._fireTalkChange();
-            track.stop();
+            this._releaseMicrophoneIf(attempt, track);
             throw err;
         }
     }
 
-    /** The browser ends the track when the device goes away or the permission is revoked. */
-    private _onMicrophoneEnded(attempt: StreamAttempt, track: MediaStreamTrack, sender: RTCRtpSender): void {
-        if (attempt.micTrack !== track || !this._releaseMicrophone(attempt)) return;
-        this._fireTalkChange();
-        sender
-            .replaceTrack(null)
-            .catch(err => console.warn("[webrtc-stream-view] clearing the ended microphone failed", err));
+    private _releaseMicrophoneIf(attempt: StreamAttempt, track: MediaStreamTrack): void {
+        if (attempt.micTrack !== track) return;
+        this._releaseMicrophone(attempt)?.catch(warnSenderNotCleared);
     }
 
     private _talkNegotiated(attempt: StreamAttempt): boolean {
@@ -214,15 +211,21 @@ export class WebRtcStreamView extends LitElement {
         this.dispatchEvent(new CustomEvent("talkchange", { bubbles: false, composed: false }));
     }
 
-    /** Returns whether a microphone track was live. */
-    private _releaseMicrophone(attempt: StreamAttempt): boolean {
+    /**
+     * Stops the live microphone. On the current attempt it also announces the change (unless `announce` is
+     * false) and clears the sender, returning that call; null when nothing was live or the attempt is retired.
+     */
+    private _releaseMicrophone(attempt: StreamAttempt, announce = true): Promise<void> | null {
         attempt.talkRequest++;
         const track = attempt.micTrack;
-        if (!track) return false;
+        if (!track) return null;
         attempt.micTrack = null;
         track.stop();
         this._applyPlaybackMute();
-        return true;
+        const sender = attempt.talkTransceiver?.sender;
+        if (this._attempt !== attempt || !sender) return null;
+        if (announce) this._fireTalkChange();
+        return sender.replaceTrack(null);
     }
 
     private _applyPlaybackMute(): void {
@@ -607,12 +610,17 @@ export class WebRtcStreamView extends LitElement {
             console.info("[webrtc-stream-view] camera offer ignored in signaling state", pc.signalingState);
             return;
         }
+        const wasAvailable = this._talkNegotiated(attempt);
         await pc.setRemoteDescription({ type: "offer", sdp: data.sdp });
         try {
             const answer = await pc.createAnswer();
             await pc.setLocalDescription(answer);
-            if (!this._talkNegotiated(attempt)) this._releaseMicrophone(attempt);
-            if (this._attempt === attempt) this._fireTalkChange();
+            const available = this._talkNegotiated(attempt);
+            const released = available ? null : this._releaseMicrophone(attempt, false);
+            released?.catch(warnSenderNotCleared);
+            if (this._attempt === attempt && (released !== null || available !== wasAvailable)) {
+                this._fireTalkChange();
+            }
             const sdp = pc.localDescription?.sdp;
             if (!sdp) throw new Error("Failed to create local SDP answer");
             await client.sendCommand("camera_provide_answer", CAMERA_API_SCHEMA, {
@@ -747,6 +755,10 @@ function mediaSections(sdp: string): { session: string[]; media: string[][] } {
 
 function sectionMid(section: string[]): string | undefined {
     return section.find(line => line.startsWith("a=mid:"))?.slice("a=mid:".length);
+}
+
+function warnSenderNotCleared(err: unknown): void {
+    console.warn("[webrtc-stream-view] clearing the microphone from the sender failed", err);
 }
 
 /**

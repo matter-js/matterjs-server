@@ -522,8 +522,8 @@ export interface StartStreamResult {
     audio?: ResolvedStream;
     /**
      * Talkback was asked for, the offer's audio can send, the camera states half or full duplex, and the
-     * session carries an audio stream: the Matter SDK example camera plays the client's audio only while that
-     * stream runs.
+     * session carries an audio stream: the Matter SDK example camera (with its audio playback option on) plays
+     * the client's audio only while that stream runs.
      */
     talkback: boolean;
 }
@@ -1882,7 +1882,7 @@ export class CameraStreamManager {
                 : withoutTalkback(args.sdp, sdp.sendingAudioSections);
         if (offer !== args.sdp) {
             logger.debug(
-                `Node ${nodeId} endpoint ${endpointId}: talkback not asked for; offer audio sections ${sdp?.sendingAudioSections.map(section => section.index).join(", ")} rewritten so they do not send`,
+                `Node ${nodeId} endpoint ${endpointId}: talkback not asked for; offer audio m-sections ${sdp?.sendingAudioSections.map(section => section.index).join(", ")} rewritten so they do not send`,
             );
         }
         // Before the first await, so a connection closing from here on claims this registration.

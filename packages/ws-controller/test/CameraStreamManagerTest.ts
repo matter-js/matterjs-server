@@ -3254,6 +3254,17 @@ describe("CameraStreamManager", () => {
                 expect(result.talkback).to.equal(false);
             });
 
+            it("reports no talkback when talkback is false, even for a camera and offer that could talk", async () => {
+                const { result, sent } = await start({
+                    sdp: TALKBACK_OFFER,
+                    talkback: false,
+                    twoWayTalkSupport: FullDuplex,
+                });
+                expect(sent).to.equal(TALKBACK_OFFER.replace("a=sendrecv", "a=recvonly"));
+                expect(result.audio?.streamId).to.equal(4);
+                expect(result.talkback).to.equal(false);
+            });
+
             it("sends the offer with a sendonly audio section made inactive when talkback is false", async () => {
                 const { sent } = await start({ sdp: AUDIO_SENDONLY_OFFER, talkback: false, audio: false });
                 expect(sent).to.equal(AUDIO_SENDONLY_OFFER.replace("a=sendonly", "a=inactive"));
@@ -3325,16 +3336,27 @@ describe("CameraStreamManager", () => {
                 expect(offer?.fields.audioStreams).to.deep.equal([4]);
             });
 
-            it("reports no talkback when the session carries no audio stream", async () => {
-                const { result, sent } = await start({
-                    sdp: TALKBACK_OFFER,
-                    talkback: true,
-                    twoWayTalkSupport: FullDuplex,
-                    audio: false,
+            it("reports and logs no talkback when the session carries no audio stream", async () => {
+                let started: Awaited<ReturnType<typeof start>> | undefined;
+                const messages = await logged(async () => {
+                    started = await start({
+                        sdp: TALKBACK_OFFER,
+                        talkback: true,
+                        twoWayTalkSupport: FullDuplex,
+                        audio: false,
+                    });
                 });
-                expect(sent).to.equal(TALKBACK_OFFER);
-                expect(result.audio).to.equal(undefined);
-                expect(result.talkback).to.equal(false);
+                expect(started?.sent).to.equal(TALKBACK_OFFER);
+                expect(started?.result.audio).to.equal(undefined);
+                expect(started?.result.talkback).to.equal(false);
+                expect(messages.some(message => message.includes("no audio stream"))).to.equal(true);
+            });
+
+            it("does not log a missing audio stream when talkback is not asked for", async () => {
+                const messages = await logged(() =>
+                    start({ sdp: TALKBACK_OFFER, twoWayTalkSupport: FullDuplex, audio: false }),
+                );
+                expect(messages.some(message => message.includes("no audio stream"))).to.equal(false);
             });
 
             it("reports no talkback when the offer's audio cannot send", async () => {

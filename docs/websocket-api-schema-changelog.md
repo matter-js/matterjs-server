@@ -37,8 +37,9 @@ New commands:
   error 102 instead of returning something the client did not ask for. The response names the
   session id, each stream, and whether the stream was newly allocated or reused. The camera is
   asked to play the client's audio only with `talkback: true`; otherwise the server makes the
-  offer's audio sections not send. The response's `talkback` says whether the server expects the camera to take the client's audio: it
-  needs the flag, an offer that sends audio, a camera that states it can talk back and an audio stream in the session.
+  offer's audio sections not send. The response's `talkback` says whether the server expects the
+  camera to take the client's audio: it needs the flag, an offer that sends audio, a camera that
+  states it can talk back and an audio stream in the session.
 - **`camera_provide_answer`**, **`camera_provide_ice_candidates`** — send the client's SDP answer and
   ICE candidates for a session, so a client never needs the raw WebRTC commands.
 - **`camera_stop_stream`** — ends a session. The streams stay allocated for reuse. It also ends a

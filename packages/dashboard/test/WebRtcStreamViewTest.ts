@@ -99,6 +99,7 @@ class FakePeerConnection {
             currentDirection: null,
             sender: {
                 replaceTrack: async (track: unknown) => {
+                    if (kind !== "audio") throw new Error(`a microphone on the ${kind} sender`);
                     if (this.replaceTrackError) throw this.replaceTrackError;
                     this.replacedTracks.push(track);
                 },
@@ -1273,7 +1274,23 @@ describe("WebRtcStreamView", () => {
             expect(track.stopped).to.equal(true);
             expect(video.muted).to.equal(false);
             expect(talkChanges).to.equal(1);
+            expect(lastPeer().replacedTracks).to.deep.equal([track, null]);
             expect(view.state).to.equal("streaming");
+        });
+
+        it("keeps talking and stays quiet when a camera re-offer still takes audio", async () => {
+            const { view, fake } = await startTalkView();
+            await view.setTalking(true);
+            let talkChanges = 0;
+            view.addEventListener("talkchange", () => talkChanges++);
+
+            fake.emitWebRtc(signalling("offer", cameraSdp("sendonly", "sendrecv")));
+            await settle();
+
+            expect(view.talking).to.equal(true);
+            expect(track.stopped).to.equal(false);
+            expect(talkChanges).to.equal(0);
+            expect(fake.commands()).to.include("camera_provide_answer");
         });
 
         it("asks for the microphone only once while talking", async () => {
