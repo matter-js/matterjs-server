@@ -1820,7 +1820,7 @@ describe("CameraStreamManager", () => {
             expect(invokes.filter(invoke => invoke.command === "videoStreamAllocate")).to.have.length(1);
         });
 
-        it("never takes a stream the degraded rung could have handed out", async () => {
+        it("never takes another controller's stream the degraded rung could have handed out", async () => {
             // The bit-rate range keeps it out of reuse, so only the degraded rung can serve it.
             const usable = {
                 ...CONTAINED_STREAM,
@@ -8512,10 +8512,10 @@ describe("CameraStreamManager eviction order", () => {
     };
 
     /**
-     * A camera that answers this server's own snapshot (5) and recording (9) allocations, and refuses the
-     * live view until a stream is freed.
+     * A camera that answers this server's own snapshot (5) and recording allocations (`recordingIds` in
+     * turn, the last one repeated), and refuses the live view until a stream is freed.
      */
-    function cameraWithoutRoom() {
+    function cameraWithoutRoom(recordingIds = [9]) {
         let freed = false;
         const built = managerWith(STATE, async invoke => {
             switch (invoke.command) {
@@ -8528,7 +8528,9 @@ describe("CameraStreamManager eviction order", () => {
                     freed = true;
                     return undefined;
                 case "videoStreamAllocate":
-                    if (invoke.fields.streamUsage !== LIVE_VIEW) return { videoStreamId: 9 };
+                    if (invoke.fields.streamUsage !== LIVE_VIEW) {
+                        return { videoStreamId: recordingIds.length > 1 ? recordingIds.shift() : recordingIds[0] };
+                    }
                     if (!freed) throw statusError(Status.ResourceExhausted);
                     return { videoStreamId: 11 };
             }
@@ -8579,6 +8581,141 @@ describe("CameraStreamManager eviction order", () => {
         await manager.resolveVideoStream(liveView);
 
         expect(firstFreed()).to.equal("snapshotStreamDeallocate 6");
+    });
+
+    it("frees its own idle stream the degraded rung could hand out, and allocates a fresh one", async () => {
+        const { manager, holder, firstFreed } = cameraWithoutRoom();
+        await manager.resolveVideoStream({ ...liveView, streamUsage: StreamUsage.Recording, hints: undefined });
+        // Below the computed bit rate range, so only the degraded rung could hand it out.
+        holder.state = {
+            ...STATE,
+            allocatedVideoStreams: [{ ...RECORDING_STREAM, minBitRate: 100000, maxBitRate: 200000 }],
+        };
+
+        const resolved = await manager.resolveVideoStream({ ...liveView, hints: undefined });
+
+        expect(firstFreed()).to.equal("videoStreamDeallocate 9");
+        expect(resolved.streamId).to.equal(11);
+        expect(resolved.degraded).to.equal(undefined);
+    });
+
+    /** Within every bound of a live view without hints; its bit rate range keeps it out of reuse. */
+    const SERVABLE_STREAM = { ...RECORDING_STREAM, minBitRate: 100000, maxBitRate: 200000 };
+
+    /**
+     * A camera that refuses every live view allocate for capacity, freed room or not, and answers this
+     * server's recording allocates with `recordingAnswers` in turn.
+     */
+    function cameraThatStaysFull(recordingAnswers: Array<number | Error>) {
+        const built = managerWith(STATE, async invoke => {
+            if (invoke.command !== "videoStreamAllocate") return undefined;
+            if (invoke.fields.streamUsage === LIVE_VIEW) throw statusError(Status.ResourceExhausted);
+            const answer = recordingAnswers.shift();
+            if (answer instanceof Error) throw answer;
+            return { videoStreamId: answer };
+        });
+        const recordingAllocates = () =>
+            built.invokes.filter(
+                invoke => invoke.command === "videoStreamAllocate" && invoke.fields.streamUsage !== LIVE_VIEW,
+            ).length;
+        return { ...built, recordingAllocates };
+    }
+
+    async function ownServableStream(built: ReturnType<typeof cameraThatStaysFull>) {
+        await built.manager.resolveVideoStream({ ...liveView, streamUsage: StreamUsage.Recording, hints: undefined });
+        built.holder.state = { ...STATE, allocatedVideoStreams: [SERVABLE_STREAM] };
+    }
+
+    it("frees its own stream the degraded rung could not hand out before one it could", async () => {
+        const { manager, holder, firstFreed } = cameraWithoutRoom([9, 10]);
+        const servable = { ...SERVABLE_STREAM, maxResolution: { width: 1280, height: 720 } };
+        await manager.resolveVideoStream({ ...liveView, streamUsage: StreamUsage.Recording, hints: undefined });
+        holder.state = { ...STATE, allocatedVideoStreams: [servable] };
+        // Outside this hint, so stream 9 is not reused and the allocate answers 10.
+        await manager.resolveVideoStream({
+            ...liveView,
+            streamUsage: StreamUsage.Recording,
+            hints: { maxResolution: { width: 640, height: 360 } },
+        });
+        holder.state = { ...STATE, allocatedVideoStreams: [servable, { ...RECORDING_STREAM, videoStreamId: 10 }] };
+
+        await manager.resolveVideoStream(liveView);
+
+        expect(firstFreed()).to.equal("videoStreamDeallocate 10");
+    });
+
+    it("hands out its freed stream allocated again, degraded, when the request still fails", async () => {
+        const built = cameraThatStaysFull([9, 12]);
+        await ownServableStream(built);
+
+        const resolved = await built.manager.resolveVideoStream({ ...liveView, hints: undefined });
+
+        expect(resolved.streamId).to.equal(12);
+        expect(resolved.degraded).to.equal(true);
+        expect(resolved.provenance).to.equal("allocated");
+        expect(resolved.evicted).to.deep.equal([9]);
+        expect(built.recordingAllocates()).to.equal(2);
+    });
+
+    it("keeps its freed stream allocated again when the session then fails", async () => {
+        // The camera answers no session id, so the start fails after the video track was resolved.
+        const built = cameraThatStaysFull([9, 12]);
+        await ownServableStream(built);
+
+        let thrown: unknown;
+        try {
+            await built.manager.startStream({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                connectionId: "conn-1",
+                streamUsage: LIVE_VIEW,
+                audio: false,
+            });
+        } catch (error) {
+            thrown = error;
+        }
+
+        expect((thrown as ServerError).code).to.equal(ServerErrorCode.SDKStackError);
+        expect(
+            built.invokes.filter(invoke => invoke.command === "videoStreamDeallocate").map(i => i.fields.videoStreamId),
+        ).to.deep.equal([9]);
+        expect(built.recordingAllocates()).to.equal(2);
+    });
+
+    for (const [name, answer] of [
+        ["fails", statusError(Status.ResourceExhausted)],
+        ["is answered with a stream the camera already held", 9],
+    ] as const) {
+        it(`fails with 103 when allocating its freed stream again ${name}`, async () => {
+            const built = cameraThatStaysFull([9, answer]);
+            await ownServableStream(built);
+
+            let thrown: unknown;
+            try {
+                await built.manager.resolveVideoStream({ ...liveView, hints: undefined });
+            } catch (error) {
+                thrown = error;
+            }
+
+            expect((thrown as ServerError).code).to.equal(ServerErrorCode.CameraResourceExhausted);
+            expect(built.recordingAllocates()).to.equal(2);
+        });
+    }
+
+    // Characterization: unchanged behaviour with eviction off.
+    it("hands out its own stream degraded without freeing it when eviction is not allowed", async () => {
+        const built = cameraThatStaysFull([9]);
+        await ownServableStream(built);
+
+        const resolved = await built.manager.resolveVideoStream({
+            ...liveView,
+            hints: undefined,
+            allowEviction: false,
+        });
+
+        expect(resolved.streamId).to.equal(9);
+        expect(resolved.degraded).to.equal(true);
+        expect(built.invokes.map(invoke => invoke.command)).to.not.include("videoStreamDeallocate");
     });
 });
 

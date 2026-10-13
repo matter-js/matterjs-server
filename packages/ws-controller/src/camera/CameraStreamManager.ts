@@ -495,9 +495,17 @@ export interface StartStreamArgs {
 export type TrackOutcome = { readonly stream: ResolvedStream } | { readonly unavailable: unknown };
 
 /** `gone`: the camera answered NOT_FOUND, so the room is free although this request evicted nothing. */
-type FreedRoom =
-    | { readonly streamId: number; readonly outcome: "refused" | "gone" }
-    | { readonly streamId: number; readonly outcome: "evicted"; readonly spend: () => void };
+type UnevictedRoom = { readonly streamId: number; readonly outcome: "refused" | "gone" };
+type EvictedRoom = { readonly streamId: number; readonly outcome: "evicted"; readonly spend: () => void };
+type FreedRoom = UnevictedRoom | EvictedRoom;
+
+/**
+ * `restore` allocates the freed stream's equivalent once, whoever calls first: the request handing it out,
+ * or the scope's give-back. `undefined`: the allocate failed or the camera answered with a stream it held.
+ */
+type FreedVideoRoom =
+    | UnevictedRoom
+    | (EvictedRoom & { readonly restore: () => Promise<AllocatedVideoStream | undefined> });
 
 export interface StartStreamResult {
     webRtcSessionId: number;
@@ -1100,14 +1108,22 @@ export class CameraStreamManager {
 
         const search = new VideoWindowSearch(selection.plan, fitsBudget());
 
-        // A stream the degraded rung could hand out is never evicted for the same request. Each candidate
-        // is tried once, freed or not, so the candidate lists strictly shrink.
-        let videoCandidates = liveStreams.filter(stream => !satisfiesVideoCallerBounds(stream, bounds));
+        // Another controller's stream the degraded rung could hand out is never evicted for the same request.
+        // Each candidate is tried once, freed or not, so the candidate lists strictly shrink.
+        let videoCandidates = liveStreams.filter(
+            stream =>
+                this.ownsStream(nodeId, endpointId, "video", stream.videoStreamId) ||
+                !satisfiesVideoCallerBounds(stream, bounds),
+        );
         let snapshotCandidates = liveSnapshotStreams;
 
         let lastStatus: number | undefined;
         let answeredOutsideBounds: number | undefined;
         const freed = new Array<() => void>();
+        const freedServable = new Array<{
+            readonly stream: AllocatedVideoStream;
+            readonly restore: () => Promise<AllocatedVideoStream | undefined>;
+        }>();
         const evicted = new Array<number>();
         const reporting = (resolved: ResolvedStream): ResolvedStream =>
             evicted.length === 0 ? resolved : { ...resolved, evicted };
@@ -1128,14 +1144,17 @@ export class CameraStreamManager {
                 return true;
             }
         };
-        const freeVideo = async (ours: boolean): Promise<boolean> => {
+        const freeVideo = async (ours: boolean, servable: boolean): Promise<boolean> => {
             for (;;) {
+                const group = videoCandidates.filter(
+                    stream =>
+                        this.ownsStream(nodeId, endpointId, "video", stream.videoStreamId) === ours &&
+                        satisfiesVideoCallerBounds(stream, bounds) === servable,
+                );
                 const room = await this.freeAnUnreferencedVideoStream(
                     nodeId,
                     endpointId,
-                    videoCandidates.filter(
-                        stream => this.ownsStream(nodeId, endpointId, "video", stream.videoStreamId) === ours,
-                    ),
+                    group,
                     state.streamUsagePriorities,
                     scope,
                 );
@@ -1146,20 +1165,24 @@ export class CameraStreamManager {
                 if (room.outcome === "evicted") {
                     freed.push(room.spend);
                     evicted.push(room.streamId);
+                    const stream = group.find(candidate => candidate.videoStreamId === room.streamId);
+                    if (servable && stream !== undefined) freedServable.push({ stream, restore: room.restore });
                 }
                 return true;
             }
         };
         /**
          * Frees one stream this request may take; false when no candidate is left. This server's own
-         * streams cost only itself, so they go first. Another controller's snapshot stream goes before its
-         * video stream, although `CaptureSnapshot` does not raise `ReferenceCount` and it may be in use.
+         * streams go first, those the degraded rung could hand out last among them. Another controller's
+         * snapshot stream goes before its video stream, although `CaptureSnapshot` does not raise
+         * `ReferenceCount` and it may be in use.
          */
         const makeRoom = async (): Promise<boolean> =>
             (await freeSnapshot(true)) ||
-            (await freeVideo(true)) ||
+            (await freeVideo(true, false)) ||
+            (await freeVideo(true, true)) ||
             (await freeSnapshot(false)) ||
-            (await freeVideo(false));
+            (await freeVideo(false, false));
         for (;;) {
             const move = search.move;
             if (move.kind === "giveUp") break;
@@ -1274,6 +1297,21 @@ export class CameraStreamManager {
                 envelope: envelopeOfVideoStream(degraded),
                 degraded: true,
                 provenance: existingStreamProvenance(this.leaseReusedVideoStream(nodeId, endpointId, degraded)),
+            });
+        }
+        // The request freed a stream the degraded rung would have handed out; its equivalent serves instead.
+        const servableFreed = findDegradedVideoStream(
+            freedServable.map(({ stream }) => stream),
+            bounds,
+            streamUsage,
+        );
+        const restored = await freedServable.find(({ stream }) => stream === servableFreed)?.restore();
+        if (restored !== undefined) {
+            return reporting({
+                streamId: restored.videoStreamId,
+                envelope: envelopeOfVideoStream(restored),
+                degraded: true,
+                provenance: "allocated",
             });
         }
 
@@ -1539,7 +1577,7 @@ export class CameraStreamManager {
         streams: AllocatedVideoStream[],
         priorities: number[],
         scope: AllocationScope,
-    ): Promise<FreedRoom | undefined> {
+    ): Promise<FreedVideoRoom | undefined> {
         const ours = (stream: AllocatedVideoStream): boolean =>
             this.ownsStream(nodeId, endpointId, "video", stream.videoStreamId);
         const victim = chooseEvictionVictim(streams, priorities, ours);
@@ -1568,15 +1606,17 @@ export class CameraStreamManager {
             kind: "video",
             streamId: victim.videoStreamId,
         });
-        const spend = scope.returnUnlessSpent(() =>
-            this.#restoreFreedVideoStream(nodeId, endpointId, victim).catch(error => {
+        let restored: Promise<AllocatedVideoStream | undefined> | undefined;
+        const restore = (): Promise<AllocatedVideoStream | undefined> =>
+            (restored ??= this.#restoreFreedVideoStream(nodeId, endpointId, victim).catch(error => {
                 logger.warn(
-                    `Could not allocate a replacement for video stream ${victim.videoStreamId} on node ${nodeId}, which was deallocated to make room the request did not use; the camera is one stream poorer:`,
+                    `Could not allocate a replacement for video stream ${victim.videoStreamId} on node ${nodeId}, which was deallocated to make room; the camera is one stream poorer:`,
                     error,
                 );
-            }),
-        );
-        return { streamId: victim.videoStreamId, outcome: "evicted", spend };
+                return undefined;
+            }));
+        const spend = scope.returnUnlessSpent(restore);
+        return { streamId: victim.videoStreamId, outcome: "evicted", spend, restore };
     }
 
     /**
@@ -1589,7 +1629,7 @@ export class CameraStreamManager {
         kind: "video" | "snapshot",
         streamId: number,
         error: unknown,
-    ): FreedRoom {
+    ): UnevictedRoom {
         if (deviceStatusOf(error) === Status.NotFound) {
             this.dropLease(nodeId, endpointId, kind, streamId);
             logger.info(
@@ -1733,16 +1773,16 @@ export class CameraStreamManager {
     }
 
     /**
-     * Allocate a stream with the parameters of one the make-room rung took, when the request did not use
-     * the capacity. Not an undo: the camera issues a new id, and the old one stays forgotten. The
+     * Allocate a stream with the parameters of one the make-room rung took: when the request did not use
+     * the capacity, or as the request's degraded stream when nothing else fits. Not an undo: the camera issues a new id, and the old one stays forgotten. The
      * replacement is leased as ours whoever allocated the original, unless the camera answers with a
-     * stream it already held.
+     * stream it already held; then `undefined`.
      */
     async #restoreFreedVideoStream(
         nodeId: NodeId,
         endpointId: EndpointNumber,
         freed: AllocatedVideoStream,
-    ): Promise<void> {
+    ): Promise<AllocatedVideoStream | undefined> {
         const envelope = envelopeOfVideoStream(freed);
         const known = await this.#reportedStreamIds(nodeId, endpointId, "video");
         const response = await this.io.invoke({
@@ -1774,17 +1814,14 @@ export class CameraStreamManager {
             logger.info(
                 `Node ${nodeId} answered the replacement for video stream ${freed.videoStreamId} with its existing stream ${streamId}`,
             );
-            return;
+            return undefined;
         }
-        this.recordAllocation(nodeId, endpointId, {
-            kind: "video",
-            streamId,
-            allocatedByUs: true,
-            allocation: allocatedVideoStream(streamId, freed.streamUsage, envelope),
-        });
+        const allocation = allocatedVideoStream(streamId, freed.streamUsage, envelope);
+        this.recordAllocation(nodeId, endpointId, { kind: "video", streamId, allocatedByUs: true, allocation });
         logger.notice(
-            `Allocated video stream ${streamId} on node ${nodeId} with the parameters of stream ${freed.videoStreamId}, which was deallocated to make room that the request did not end up using. The old id is gone; a controller still holding it must allocate again`,
+            `Allocated video stream ${streamId} on node ${nodeId} with the parameters of stream ${freed.videoStreamId}, which was deallocated to make room. The old id is gone; a controller still holding it must allocate again`,
         );
+        return allocation;
     }
 
     /** The `SolicitOffer` / `ProvideOffer` that establishes the session, with privacy refusals typed. */

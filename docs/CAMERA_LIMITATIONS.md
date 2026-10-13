@@ -47,15 +47,15 @@ A camera has a limited number of encoders and a limited encoding capacity. When 
 
 1. It reuses a stream the camera already has, when that stream fits the request, whatever purpose it was set up for.
 2. It asks for a smaller stream.
-3. It frees a stream that nothing uses at the moment, in this order: its own snapshot streams, its own video streams, then snapshot streams of another controller, then video streams of another controller. Its own idle streams go first because freeing them costs nobody else anything. Among another controller's streams, snapshot streams go first: a live view is more important than a still frame.
+3. It frees a stream that nothing uses at the moment, in this order: its own snapshot streams, its own video streams, then snapshot streams of another controller, then video streams of another controller. Its own idle streams go first because freeing them costs no other controller anything. Among its own video streams, those it could hand out as they are go last. Among another controller's streams, snapshot streams go first: a live view is more important than a still frame.
 
 Things to know:
 
 - **Another controller can lose a stream.** If Home Assistant, another hub or an app keeps a stream allocated but idle, the server may free it. That controller must allocate it again. The server sends a `camera_stream_evicted` event for every stream it frees.
-- **A stream's purpose does not limit who uses it.** A live view can run on a recording stream another controller set up, when that stream fits the request. The server picks such a stream itself, and it does not free a stream it could hand out instead. The session still states the purpose the client asked for, and the camera's privacy switches act on that. How well this works on a given camera is still being tested.
+- **A stream's purpose does not limit who uses it.** A live view can run on a recording stream another controller set up, when that stream fits the request. The server picks such a stream itself, but prefers one set up for the same purpose. It does not free another controller's stream it could hand out instead. It can free such a stream of its own. If no new stream can then be set up and no other existing stream fits, it sets the freed stream up again under a new id and uses it; if that fails too, the start fails. The session still states the purpose the client asked for, and the camera's privacy switches act on that. How well this works on a given camera is still being tested.
 - **The camera can pick an existing stream itself.** When the server asks for a new stream, the camera may answer with a stream that already exists and is close enough, whatever its purpose. When a video stream breaks a limit the client set, such as `max_resolution`, the server looks for another existing stream within the limits first, and fails with error 102 only when there is none. For a snapshot, the size of the picture the camera returns decides. The server never frees such a stream, because it existed before the request.
 - **No freeing:** `allow_eviction: false` on `camera_start_stream` stops the server from freeing streams. The request can then fail with error 103 when the camera is full.
-- **After a server restart,** the server no longer knows which streams it allocated itself. It treats the streams it allocated before the restart as another controller's. This only changes the order in which streams are freed.
+- **After a server restart,** the server no longer knows which streams it allocated itself. It treats the streams it allocated before the restart as another controller's. They are freed later, and one the server could hand out as it is is not freed at all.
 
 ## Snapshots
 

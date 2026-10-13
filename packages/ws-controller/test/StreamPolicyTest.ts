@@ -885,6 +885,19 @@ describe("streamPolicy", () => {
             expect(found?.videoStreamId).to.equal(2);
         });
 
+        it("prefers an idle stream of the session's usage over a running stream of another usage", () => {
+            const runningRecording = stream({ videoStreamId: 1, streamUsage: RECORDING_USAGE, referenceCount: 1 });
+            const idleLiveView = stream({ videoStreamId: 2 });
+            const found = findReusableVideoStream(
+                [runningRecording, idleLiveView],
+                planOf(REQUEST),
+                LIVE_VIEW_H265,
+                () => REQUEST.maxFrameRate,
+                LIVE_VIEW,
+            );
+            expect(found?.videoStreamId).to.equal(2);
+        });
+
         it("refuses a stream whose bit-rate ceiling is above the one the caller stated", () => {
             // The envelope admits the stream, so only the caller's own bound refuses it.
             const wide = { ...REQUEST, maxBitRate: 8000000 };
@@ -1152,6 +1165,18 @@ describe("streamPolicy", () => {
         it("prefers a stream of the session's usage among equally large ones", () => {
             const recording = { ...IN_USE_WIDE, videoStreamId: 5, streamUsage: RECORDING_USAGE };
             expect(findDegradedVideoStream([recording, IN_USE_WIDE], bounds(), LIVE_VIEW)?.videoStreamId).to.equal(4);
+        });
+
+        it("prefers a smaller stream of the session's usage over a larger one of another usage", () => {
+            const largerRecording = {
+                ...IN_USE_WIDE,
+                videoStreamId: 5,
+                streamUsage: RECORDING_USAGE,
+                maxResolution: { width: 2560, height: 1440 },
+            };
+            expect(
+                findDegradedVideoStream([largerRecording, IN_USE_WIDE], bounds(), LIVE_VIEW)?.videoStreamId,
+            ).to.equal(4);
         });
 
         it("accepts a stream that matches pinned bounds exactly", () => {

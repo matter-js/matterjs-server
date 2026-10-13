@@ -513,9 +513,9 @@ export function findReusableVideoStream(
             satisfiesVideoCallerBounds(candidate, bounds) && fitsPlan(candidate, plan, firstFrameRate(candidate)),
     );
 
-    // Starting an encoder is the expensive part, so a stream already running wins.
+    // Then a running stream, since starting an encoder is the expensive part.
     return candidates.sort(
-        (a, b) => b.referenceCount - a.referenceCount || usageRank(a, preferredUsage) - usageRank(b, preferredUsage),
+        (a, b) => usageRank(a, preferredUsage) - usageRank(b, preferredUsage) || b.referenceCount - a.referenceCount,
     )[0];
 }
 
@@ -527,18 +527,15 @@ export function findDegradedVideoStream(
 ): AllocatedVideoStream | undefined {
     const candidates = streams.filter(candidate => satisfiesVideoCallerBounds(candidate, bounds));
 
-    // Prefer the most capable stream, since this rung is already a compromise.
+    // Then the most capable stream, since this rung is already a compromise.
     return candidates.sort(
         (a, b) =>
-            pixels(b.maxResolution) - pixels(a.maxResolution) ||
-            usageRank(a, preferredUsage) - usageRank(b, preferredUsage),
+            usageRank(a, preferredUsage) - usageRank(b, preferredUsage) ||
+            pixels(b.maxResolution) - pixels(a.maxResolution),
     )[0];
 }
 
-/**
- * 0 for a stream of `preferredUsage`, else 1. Among equal candidates the session's own usage wins
- * (§11.2.1.2.1), since the camera arbitrates resources by the stream's usage (§11.2.1.2.2).
- */
+/** 0 for a stream of `preferredUsage`, else 1: the session's own usage is the first preference (§11.2.1.2.1). */
 export function usageRank(stream: { readonly streamUsage: number }, preferredUsage: number | undefined): number {
     return stream.streamUsage === preferredUsage ? 0 : 1;
 }
