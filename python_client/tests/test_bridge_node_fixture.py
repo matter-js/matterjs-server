@@ -22,6 +22,7 @@ from matter_server.common.models import MatterNodeData
 _FIXTURE = Path(__file__).parent / "fixtures" / "bridge_node.json"
 
 _ON_OFF_LIGHT_DEVICE_TYPE = 256
+_BRIDGED_NODE_DEVICE_TYPE = 19
 
 # endpoint layout of the fixture device
 _LOCAL_LIGHT = 1
@@ -61,6 +62,12 @@ def test_the_bridge_reports_a_full_family_parts_list() -> None:
         11,
     ]
     assert node.get_attribute_value(_COMPOSED_SENSOR, 29, 3) == [5, 6]
+    # a Bridged Node with parts hosts no application device type itself
+    composed_types = {
+        device_type.deviceType
+        for device_type in node.get_attribute_value(_COMPOSED_SENSOR, 29, 0)
+    }
+    assert composed_types == {_BRIDGED_NODE_DEVICE_TYPE}
     assert sorted(node.get_attribute_value(_NESTED_AGGREGATOR, 29, 3)) == [8, 9, 10, 11]
     # the nested aggregator holds endpoints that do not report the Bridged Node device type
     untagged_types = {
