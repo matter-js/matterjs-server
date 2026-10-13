@@ -193,7 +193,7 @@ describe("Integration Test", function () {
 
             expect(info).to.have.property("fabric_id");
             expect(info).to.have.property("compressed_fabric_id");
-            expect(info.schema_version).to.equal(13);
+            expect(info.schema_version).to.equal(14);
             expect(info.min_supported_schema_version).to.equal(11);
             expect(info.sdk_version).to.be.a("string").that.includes("matter-server");
             expect(info.sdk_version).to.be.a("string").that.includes("matter.js");
@@ -236,7 +236,7 @@ describe("Integration Test", function () {
             expect(diag).to.have.property("info");
             expect(diag).to.have.property("nodes");
             expect(diag).to.have.property("events");
-            expect(diag.info.schema_version).to.equal(13);
+            expect(diag.info.schema_version).to.equal(14);
             expect(diag.nodes).to.be.an("array");
             expect(diag.events).to.be.an("array");
         });
@@ -784,6 +784,40 @@ describe("Integration Test", function () {
 
             expect(error.error_code).to.equal(ServerErrorCode.InvalidArguments);
             expect(error.details).to.include("Endpoint 99");
+        });
+
+        it("should return InvalidArguments for a WebRTC provider command to an endpoint the node does not have", async function () {
+            const error = await client.sendCommandExpectError("send_webrtc_provider_command", {
+                node_id: commissionedNodeId,
+                endpoint_id: 99,
+                command_name: "ProvideOffer",
+                payload: { webRtcSessionId: null, sdp: "v=0", streamUsage: 3 },
+            });
+
+            expect(error.error_code).to.equal(ServerErrorCode.InvalidArguments);
+            expect(error.details).to.include("Endpoint 99");
+        });
+
+        it("should return InvalidArguments for a WebRTC provider command to an endpoint without the provider cluster", async function () {
+            const error = await client.sendCommandExpectError("send_webrtc_provider_command", {
+                node_id: commissionedNodeId,
+                endpoint_id: 1,
+                command_name: "ProvideAnswer",
+                payload: { webRtcSessionId: 1, sdp: "v=0" },
+            });
+
+            expect(error.error_code).to.equal(ServerErrorCode.InvalidArguments);
+            expect(error.details).to.include("webRtcTransportProvider");
+        });
+
+        it("should return CameraNotSupported naming both clusters for a camera command to an endpoint the node does not have", async function () {
+            const error = await client.sendCommandExpectError("camera_get_capabilities", {
+                node_id: commissionedNodeId,
+                endpoint_id: 99,
+            });
+
+            expect(error.error_code).to.equal(ServerErrorCode.CameraNotSupported);
+            expect(JSON.parse(error.details).missing_clusters).to.deep.equal([0x0551, 0x0553]);
         });
     });
 
@@ -1505,8 +1539,27 @@ describe("Integration Test", function () {
             // An aggregator reports the Full-Family Pattern: the parts of its bridged devices are
             // listed again below the aggregator itself.
             expect(partsListOf(bridgeNode, 2)).to.deep.equal([3, 4, 5, 6, 7, 8, 9, 10, 11]);
+            expect(deviceTypesOf(bridgeNode, 4)).to.deep.equal([BRIDGED_NODE_DEVICE_TYPE]);
             expect(partsListOf(bridgeNode, 4)).to.deep.equal([5, 6]);
             expect(deviceTypesOf(bridgeNode, 5)).to.deep.equal([TEMPERATURE_SENSOR_DEVICE_TYPE]);
+        });
+
+        it("reports the direct parent of every endpoint", function () {
+            expect(bridgeNode.endpoint_parents).to.deep.equal({
+                1: 0,
+                2: 0,
+                12: 0,
+                3: 2,
+                4: 2,
+                7: 2,
+                5: 4,
+                6: 4,
+                8: 7,
+                9: 7,
+                10: 7,
+                11: 7,
+                13: 12,
+            });
         });
 
         it("controls a device behind the bridge and reports its attribute update", async function () {
@@ -1560,6 +1613,7 @@ describe("Integration Test", function () {
 
             const updated = await client.getNode(bridgeNode.node_id);
             expect(updated.attributes[`${RUNTIME_LIGHT_ENDPOINT}/57/5`]).to.equal("Runtime Light");
+            expect(updated.endpoint_parents?.[RUNTIME_LIGHT_ENDPOINT]).to.equal(2);
             expect(deviceTypesOf(updated, RUNTIME_LIGHT_ENDPOINT)).to.deep.equal([
                 ON_OFF_LIGHT_DEVICE_TYPE,
                 BRIDGED_NODE_DEVICE_TYPE,
@@ -1578,6 +1632,7 @@ describe("Integration Test", function () {
 
             const updated = await client.getNode(bridgeNode.node_id);
             expect(updated.attributes[`${UNTAGGED_LIGHT_2_ENDPOINT}/29/0`]).to.be.undefined;
+            expect(updated.endpoint_parents).not.to.have.property(String(UNTAGGED_LIGHT_2_ENDPOINT));
         });
 
         it("reports the bridged device info of each bridged endpoint", function () {

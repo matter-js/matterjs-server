@@ -8,12 +8,18 @@ import { ClientNode, ClusterBehavior, Diagnostic, Logger, MatterError, Millis, N
 import { EndpointNumber } from "@matter/main/types";
 import { ClusterMap } from "../model/ModelMapper.js";
 import { buildAttributePath, convertMatterToWebSocketTagBased } from "../server/Converters.js";
-import { AttributesData } from "../types/CommandHandler.js";
+import { AttributesData, EndpointParentsData } from "../types/CommandHandler.js";
 import { formatNodeId } from "../util/formatNodeId.js";
 import { nodeIdOf } from "../util/nodeIdOf.js";
 import { AttributeChange } from "./PeerChangeBus.js";
 
 const logger = Logger.get("AttributeDataCache");
+
+/** A node's attributes, and the parent of each endpoint as of the populate that built them. */
+type NodeSnapshot = {
+    attributes: AttributesData;
+    endpointParents: EndpointParentsData;
+};
 
 /**
  * Tracks an in-flight asynchronous populate so concurrent populate requests collapse onto a single
@@ -34,16 +40,15 @@ type PopulateContext = {
  * clients request node data.
  */
 export class AttributeDataCache {
-    #cache = new Map<NodeId, AttributesData>();
+    #cache = new Map<NodeId, NodeSnapshot>();
     #inFlight = new Map<NodeId, PopulateContext>();
 
     /**
      * Whether the node's model carries something to snapshot.
      *
-     * This is the one place that decides it. A peer restored from storage carries its endpoints and
-     * their persisted state before matter.js marks it seeded, which only happens once the structure has
-     * been read from the device in this runtime, so a caller testing `isSeeded` instead answers reads
-     * with an empty node until the device reconnects.
+     * This is the one place that decides it. A peer restored from storage can carry its endpoints and
+     * their persisted state while matter.js does not report it seeded, so a caller testing `isSeeded`
+     * instead would answer reads with an empty node.
      */
     static hasStructure(node: ClientNode): boolean {
         const { isCommissioned, isReady } = node.lifecycle;
@@ -96,7 +101,7 @@ export class AttributeDataCache {
         }
         const path = buildAttributePath(endpointId, clusterId, attributeId);
         const inFlight = this.#inFlight.get(nodeId);
-        const attributes = this.#cache.get(nodeId);
+        const attributes = this.#cache.get(nodeId)?.attributes;
 
         // Only patch an existing complete snapshot. Never create an entry from a single attribute:
         // has() must not report a node as cached from a partial write, or ensureNodePopulated /
@@ -114,7 +119,7 @@ export class AttributeDataCache {
 
     /** Whether the cached snapshot of the node carries any attribute of the endpoint. */
     hasEndpoint(nodeId: NodeId, endpointId: EndpointNumber): boolean {
-        const attributes = this.#cache.get(nodeId);
+        const attributes = this.#cache.get(nodeId)?.attributes;
         if (attributes === undefined) {
             return false;
         }
@@ -125,22 +130,22 @@ export class AttributeDataCache {
     /**
      * Drop the attributes of one endpoint, for a node that no longer has it.
      *
-     * The snapshot a populate is building reads live state, so it cannot contain the endpoint; a
-     * report that arrived for it before it went away still can, so the replay is filtered as well.
+     * A running populate may already have collected the endpoint, so it is restarted from live state.
      */
     deleteEndpoint(nodeId: NodeId, endpointId: EndpointNumber): void {
         const prefix = `${endpointId}/`;
-        const attributes = this.#cache.get(nodeId);
-        if (attributes !== undefined) {
-            for (const path of Object.keys(attributes)) {
+        const snapshot = this.#cache.get(nodeId);
+        if (snapshot !== undefined) {
+            for (const path of Object.keys(snapshot.attributes)) {
                 if (path.startsWith(prefix)) {
-                    delete attributes[path];
+                    delete snapshot.attributes[path];
                 }
             }
+            delete snapshot.endpointParents[endpointId];
         }
         const inFlight = this.#inFlight.get(nodeId);
         if (inFlight !== undefined) {
-            inFlight.pending = inFlight.pending.filter(([path]) => !path.startsWith(prefix));
+            inFlight.rerun = true;
         }
     }
 
@@ -157,7 +162,39 @@ export class AttributeDataCache {
      * Returns undefined if no cache exists for the node.
      */
     get(nodeId: NodeId): AttributesData | undefined {
-        return this.#cache.get(nodeId);
+        return this.#cache.get(nodeId)?.attributes;
+    }
+
+    /**
+     * Get the direct parent of each endpoint in the cached attributes of a node other than 0, keyed by
+     * endpoint number; empty if no cache exists for the node.
+     *
+     * Attribute reports patch the cached attributes between populates, so an endpoint the node added
+     * since the last populate has attributes but no recorded parent; its parent is read from the node.
+     * The recorded parent comes first: the node drops an endpoint before its removal is announced, and
+     * until then the endpoint keeps its attributes here.
+     */
+    endpointParents(nodeId: NodeId, node: ClientNode): EndpointParentsData {
+        const parents: EndpointParentsData = {};
+        const snapshot = this.#cache.get(nodeId);
+        if (snapshot === undefined) {
+            return parents;
+        }
+        const seen = new Set<number>([0]);
+        for (const path of Object.keys(snapshot.attributes)) {
+            const endpointId = Number(path.slice(0, path.indexOf("/")));
+            if (seen.has(endpointId)) {
+                continue;
+            }
+            seen.add(endpointId);
+            const parentId =
+                snapshot.endpointParents[endpointId] ??
+                (node.endpoints.has(endpointId) ? node.endpoints.for(endpointId).owner?.maybeNumber : undefined);
+            if (parentId !== undefined) {
+                parents[endpointId] = parentId;
+            }
+        }
+        return parents;
     }
 
     /**
@@ -169,7 +206,7 @@ export class AttributeDataCache {
 
     /**
      * Populate the cache for a node from its current state.
-     * Creates a completely fresh flat attribute object.
+     * Creates a completely fresh flat attribute object and endpoint parent map.
      *
      * Collecting attributes for a large node (~90 endpoints) is heavy synchronous work, so it is
      * chunked with event-loop yields. Concurrent calls for the same node collapse onto the running
@@ -209,8 +246,8 @@ export class AttributeDataCache {
                 context.rerun = false;
                 context.pending = [];
 
-                const attributes: AttributesData = {};
-                await this.#collectAttributes(node, attributes, context);
+                const snapshot: NodeSnapshot = { attributes: {}, endpointParents: {} };
+                await this.#collectSnapshot(node, snapshot, context);
 
                 // The node may have been deleted (or this run superseded) while suspended at a yield;
                 // dropping the snapshot avoids resurrecting a removed node's cache entry.
@@ -223,10 +260,10 @@ export class AttributeDataCache {
                     continue;
                 }
                 for (const [path, value] of context.pending) {
-                    attributes[path] = value;
+                    snapshot.attributes[path] = value;
                 }
-                this.#cache.set(nodeId, attributes);
-                attributeCount = Object.keys(attributes).length;
+                this.#cache.set(nodeId, snapshot);
+                attributeCount = Object.keys(snapshot.attributes).length;
             } while (context.rerun);
 
             logger.debug(
@@ -242,12 +279,21 @@ export class AttributeDataCache {
     }
 
     /**
-     * Collect attributes from all endpoints into a flat attribute object, yielding to the event loop
-     * between endpoints so a large node does not block other timers, I/O, and WebSocket traffic.
+     * Collect attributes from all endpoints into a flat attribute object, and the parent of each endpoint,
+     * yielding to the event loop between endpoints so a large node does not block other timers, I/O, and
+     * WebSocket traffic.
      */
-    async #collectAttributes(node: ClientNode, attributes: AttributesData, context: PopulateContext): Promise<void> {
+    async #collectSnapshot(node: ClientNode, snapshot: NodeSnapshot, context: PopulateContext): Promise<void> {
+        const { attributes, endpointParents } = snapshot;
         for (const endpoint of node.endpoints) {
             const endpointId = endpoint.number;
+
+            if (endpointId !== 0) {
+                const parentId = endpoint.owner?.maybeNumber;
+                if (parentId !== undefined) {
+                    endpointParents[endpointId] = parentId;
+                }
+            }
 
             for (const behavior of endpoint.behaviors.active) {
                 if (!ClusterBehavior.is(behavior)) {

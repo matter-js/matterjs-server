@@ -7,7 +7,11 @@
 import { MatterNode, type MatterNodeData } from "@matter-server/ws-client";
 import { getEndpointTree } from "../src/util/endpoints.js";
 
-function node(attributes: Record<string, unknown>, node_id: number | bigint = 1): MatterNode {
+function node(
+    attributes: Record<string, unknown>,
+    node_id: number | bigint = 1,
+    endpoint_parents?: MatterNodeData["endpoint_parents"],
+): MatterNode {
     const data: MatterNodeData = {
         node_id,
         date_commissioned: "",
@@ -17,12 +21,32 @@ function node(attributes: Record<string, unknown>, node_id: number | bigint = 1)
         is_bridge: false,
         attributes,
         attribute_subscriptions: [],
+        endpoint_parents,
     };
     return new MatterNode(data);
 }
 
 describe("endpoints util", () => {
     describe("getEndpointTree", () => {
+        it("places each endpoint below the parent the server reports instead of deriving it", () => {
+            // The PartsLists alone would put 3 below 1
+            const n = node({ "0/29/3": [1, 2, 3], "1/29/3": [3], "2/29/3": [] }, 1, { 1: 0, 2: 0, 3: 2 });
+            expect(getEndpointTree(n, [0, 1, 2, 3])).to.deep.equal([
+                { endpointId: 0, depth: 0 },
+                { endpointId: 1, depth: 1 },
+                { endpointId: 2, depth: 1 },
+                { endpointId: 3, depth: 2 },
+            ]);
+        });
+
+        it("places an endpoint whose reported parent is not shown at the top level", () => {
+            const n = node({}, 1, { 1: 0, 2: 1 });
+            expect(getEndpointTree(n, [0, 2])).to.deep.equal([
+                { endpointId: 0, depth: 0 },
+                { endpointId: 2, depth: 0 },
+            ]);
+        });
+
         it("orders a flat node (no PartsList) as a single root level", () => {
             const n = node({});
             expect(getEndpointTree(n, [0, 1, 2])).to.deep.equal([

@@ -6,6 +6,7 @@
 
 import { Connection, WebSocketFactory } from "./connection.js";
 import { CommandTimeoutError, ConnectionClosedError, InvalidServerVersion, ServerCommandError } from "./exceptions.js";
+import { redactIncomingMessage } from "./logging-redaction.js";
 import {
     AccessControlEntry,
     AllCredentialsSummary,
@@ -26,12 +27,21 @@ import {
     SubscriptionReportData,
     SuccessResultMessage,
     ThreadDiagnosticsBatch,
+    CameraSessionEndedData,
+    CameraStreamEvictedData,
     WebRtcCallbackData,
+    WebRtcProviderCommandName,
 } from "./models/model.js";
 import { MatterNode } from "./models/node.js";
 
 /** Union type for all incoming WebSocket messages */
 type IncomingMessage = EventMessage | ErrorResultMessage | SuccessResultMessage;
+
+/** Schema 14 is when the server started relaying these two; the offer commands need only schema 12. */
+const SIGNALLING_PROVIDER_COMMANDS: ReadonlySet<WebRtcProviderCommandName> = new Set([
+    "ProvideAnswer",
+    "ProvideIceCandidates",
+]);
 
 /** Converts node_id to string for use as object key (works for both number and bigint without precision loss) */
 function toNodeKey(nodeId: number | bigint): string {
@@ -73,6 +83,30 @@ export interface CredentialCommandOptions {
     timeout?: number;
 }
 
+/**
+ * Says which node a `nodes_changed` event concerns and why it fired. `nodeId` is a bigint for large ids, so compare
+ * it via `String()`.
+ */
+export type NodesChangedDetail =
+    | { reason: "node_added" | "node_removed" | "node_updated"; nodeId: number | bigint }
+    | {
+          reason: "attribute_updated";
+          nodeId: number | bigint;
+          /** `endpoint/cluster/attribute` of the changed attribute. */
+          attributeKey: string;
+      };
+
+/** Listener arguments for each event name that {@link MatterClient.addEventListener} accepts. */
+export interface ClientEventMap {
+    nodes_changed: [detail: NodesChangedDetail];
+    server_info_updated: [];
+    server_shutdown: [];
+    connection_lost: [];
+    thread_diagnostics_updated: [];
+}
+
+type ClientEventListeners = { [E in keyof ClientEventMap]: Array<(...args: ClientEventMap[E]) => void> };
+
 /** Receives the events of one subscription opened with {@link MatterClient.subscribe}. */
 export interface SubscriptionListener {
     /** A report after the first one, which the `subscribe` result carries. */
@@ -107,8 +141,16 @@ export class MatterClient {
     private subscriptionListeners = new Map<number, SubscriptionListener>();
     // Start with random offset for defense-in-depth and easier debugging across sessions
     private msgId = Math.floor(Math.random() * 0x7fffffff);
-    private eventListeners: Record<string, Array<() => void>> = {};
+    private eventListeners: ClientEventListeners = {
+        nodes_changed: [],
+        server_info_updated: [],
+        server_shutdown: [],
+        connection_lost: [],
+        thread_diagnostics_updated: [],
+    };
     private webrtcCallbackListeners: Array<(data: WebRtcCallbackData) => void> = [];
+    private cameraSessionEndedListeners: Array<(data: CameraSessionEndedData) => void> = [];
+    private cameraStreamEvictedListeners: Array<(data: CameraStreamEvictedData) => void> = [];
     private threadDiagnosticsListeners: Array<(batch: ThreadDiagnosticsBatch) => void> = [];
     private nodeEventListeners: Array<(event: MatterNodeEvent) => void> = [];
 
@@ -132,13 +174,21 @@ export class MatterClient {
         return this.connection.serverInfo!;
     }
 
-    addEventListener(event: string, listener: () => void) {
-        if (!this.eventListeners[event]) {
-            this.eventListeners[event] = [];
-        }
-        this.eventListeners[event].push(listener);
+    /**
+     * Listen for a client event. `nodes_changed` passes a {@link NodesChangedDetail} naming the node it
+     * concerns, so a listener interested in one node can ignore the rest; other events pass nothing.
+     * Returns an unsubscribe function.
+     */
+    addEventListener<E extends keyof ClientEventMap>(event: E, listener: (...args: ClientEventMap[E]) => void) {
+        const listeners = this.eventListeners[event];
+        // Wrapper per registration: the same listener added twice must unsubscribe separately
+        const entry = (...args: ClientEventMap[E]) => listener(...args);
+        listeners.push(entry);
         return () => {
-            this.eventListeners[event] = this.eventListeners[event].filter(l => l !== listener);
+            const index = listeners.indexOf(entry);
+            if (index !== -1) {
+                listeners.splice(index, 1);
+            }
         };
     }
 
@@ -150,6 +200,26 @@ export class MatterClient {
         this.webrtcCallbackListeners.push(listener);
         return () => {
             this.webrtcCallbackListeners = this.webrtcCallbackListeners.filter(l => l !== listener);
+        };
+    }
+
+    /**
+     * Subscribe to camera_session_ended events. Returns an unsubscribe function.
+     *
+     * The server sends them only to a connection that has issued a camera command.
+     */
+    addCameraSessionEndedListener(listener: (data: CameraSessionEndedData) => void): () => void {
+        this.cameraSessionEndedListeners.push(listener);
+        return () => {
+            this.cameraSessionEndedListeners = this.cameraSessionEndedListeners.filter(l => l !== listener);
+        };
+    }
+
+    /** Subscribe to camera_stream_evicted events. Returns an unsubscribe function. */
+    addCameraStreamEvictedListener(listener: (data: CameraStreamEvictedData) => void): () => void {
+        this.cameraStreamEvictedListeners.push(listener);
+        return () => {
+            this.cameraStreamEvictedListeners = this.cameraStreamEvictedListeners.filter(l => l !== listener);
         };
     }
 
@@ -557,13 +627,13 @@ export class MatterClient {
     async sendWebRtcProviderCommand(
         nodeId: number | bigint,
         endpointId: number,
-        commandName: "ProvideOffer" | "SolicitOffer",
+        commandName: WebRtcProviderCommandName,
         payload: Record<string, unknown>,
         timeout?: number,
     ): Promise<unknown> {
         return await this.sendCommand(
             "send_webrtc_provider_command",
-            0,
+            SIGNALLING_PROVIDER_COMMANDS.has(commandName) ? 14 : 12,
             { node_id: nodeId, endpoint_id: endpointId, command_name: commandName, payload },
             timeout,
         );
@@ -825,11 +895,11 @@ export class MatterClient {
             return;
         }
 
-        console.warn("Received message with unknown format", msg);
+        console.warn("Received message with unknown format", redactIncomingMessage(msg));
     }
 
     private _handleEventMessage(event: EventMessage) {
-        console.debug("Incoming event", event);
+        console.debug("Incoming event", redactIncomingMessage(event));
 
         // Allow subclasses to hook into raw events (for testing)
         this.onRawEvent(event);
@@ -837,20 +907,20 @@ export class MatterClient {
         if (event.event === "node_added") {
             const node = new MatterNode(event.data);
             this.nodes = { ...this.nodes, [toNodeKey(node.node_id)]: node };
-            this.fireEvent("nodes_changed");
+            this.fireEvent("nodes_changed", { reason: "node_added", nodeId: node.node_id });
             return;
         }
         if (event.event === "node_removed") {
             delete this.nodes[toNodeKey(event.data)];
             this.nodes = { ...this.nodes };
-            this.fireEvent("nodes_changed");
+            this.fireEvent("nodes_changed", { reason: "node_removed", nodeId: event.data });
             return;
         }
 
         if (event.event === "node_updated") {
             const node = new MatterNode(event.data);
             this.nodes = { ...this.nodes, [toNodeKey(node.node_id)]: node };
-            this.fireEvent("nodes_changed");
+            this.fireEvent("nodes_changed", { reason: "node_updated", nodeId: node.node_id });
             return;
         }
 
@@ -862,7 +932,7 @@ export class MatterClient {
                 const node = new MatterNode(existingNode.data);
                 node.attributes[attributeKey] = attributeValue;
                 this.nodes = { ...this.nodes, [nodeKey]: node };
-                this.fireEvent("nodes_changed");
+                this.fireEvent("nodes_changed", { reason: "attribute_updated", nodeId, attributeKey });
             }
             return;
         }
@@ -897,6 +967,20 @@ export class MatterClient {
             return;
         }
 
+        if (event.event === "camera_session_ended") {
+            for (const listener of this.cameraSessionEndedListeners) {
+                listener(event.data);
+            }
+            return;
+        }
+
+        if (event.event === "camera_stream_evicted") {
+            for (const listener of this.cameraStreamEvictedListeners) {
+                listener(event.data);
+            }
+            return;
+        }
+
         if (event.event === "node_event") {
             for (const listener of this.nodeEventListeners) {
                 listener(event.data);
@@ -917,12 +1001,10 @@ export class MatterClient {
         }
     }
 
-    private fireEvent(event: string) {
-        const listeners = this.eventListeners[event];
-        if (listeners) {
-            for (const listener of listeners) {
-                listener();
-            }
+    private fireEvent<E extends keyof ClientEventMap>(event: E, ...args: ClientEventMap[E]) {
+        // Copy: a listener unsubscribing mid-loop must not make the loop skip the next one
+        for (const listener of [...this.eventListeners[event]]) {
+            listener(...args);
         }
     }
 

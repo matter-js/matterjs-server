@@ -8,6 +8,20 @@
  * @matter-server/ws-controller - Matter controller Websocket library
  */
 
+export {
+    establishesWebRtcSession,
+    isProviderCommandName,
+    PROVIDER_COMMAND_NAMES,
+    toProviderCommandFields,
+} from "./camera/webRtcProviderArguments.js";
+export type {
+    ProviderCommandName,
+    SessionEstablishingCommandName,
+    SignallingCommandName,
+} from "./camera/webRtcProviderArguments.js";
+
+export type { CameraSessionEnded, CameraStreamEvicted } from "./camera/cameraTypes.js";
+
 // Export controller components
 export { WebRtcTransportRequestorServer } from "@matter/node/behaviors/web-rtc-transport-requestor";
 export * from "./controller/ControllerCommandHandler.js";

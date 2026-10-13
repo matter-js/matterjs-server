@@ -100,9 +100,14 @@ export type OpenCommissioningWindowResponse = {
     commissioningTimeout: number;
 };
 
-import type { AttributesData, InteractionReportData, MatterNodeData } from "@matter-server/ws-client";
+import type {
+    AttributesData,
+    EndpointParentsData,
+    InteractionReportData,
+    MatterNodeData,
+} from "@matter-server/ws-client";
 
-export type { AttributesData, MatterNodeData };
+export type { AttributesData, EndpointParentsData, MatterNodeData };
 
 /** A Matter read with full request control. Paths use the `read_attribute` string format, wildcards included. */
 export type InteractionReadRequest = {

@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import { isTestNodeId } from "@matter-server/ws-client";
 import { Logger, NodeId, Observable } from "@matter/main";
 import { parseBigIntAwareJson, splitAttributePath } from "../server/Converters.js";
 import {
@@ -31,12 +32,8 @@ export class TestNodeCommandHandler implements NodeCommandHandler {
     /** Observable for node removed events */
     readonly nodeRemoved = new Observable<[nodeId: NodeId]>();
 
-    /**
-     * Check if a node ID is in the test node range (>= TEST_NODE_START).
-     */
     static isTestNodeId(nodeId: number | bigint): boolean {
-        const bigId = typeof nodeId === "bigint" ? nodeId : BigInt(nodeId);
-        return bigId >= TEST_NODE_START;
+        return isTestNodeId(nodeId);
     }
 
     /**
@@ -166,6 +163,8 @@ export class TestNodeCommandHandler implements NodeCommandHandler {
                 is_bridge: nodeDict.is_bridge,
                 attributes: nodeDict.attributes,
                 attribute_subscriptions: [],
+                // A Python client writes `null` for a server that does not send the field
+                endpoint_parents: nodeDict.endpoint_parents ?? undefined,
             };
 
             // Store the test node

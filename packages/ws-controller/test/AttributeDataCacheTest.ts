@@ -4,7 +4,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { ClientNode, NodeId } from "@matter/main";
+import { ClientNode, MatterError, NodeId } from "@matter/main";
+import { AttributeId, ClusterId, EndpointNumber } from "@matter/main/types";
 import { AttributeDataCache } from "../src/controller/AttributeDataCache.js";
 
 type NodeShape = {
@@ -12,22 +13,52 @@ type NodeShape = {
     ready?: boolean;
     seeded?: boolean;
     endpointNumbers?: number[];
+    /** Owner endpoint number per endpoint number; an endpoint missing here has no owner. */
+    owners?: Record<number, number>;
+    /** Endpoints whose state cannot be read. */
+    unreadable?: number[];
+    /** Called when an endpoint's state is read; `remove` takes an endpoint off the node. */
+    onRead?: (number: number, remove: (number: number) => void) => void;
 };
 
 /** A peer as the model presents it: endpoints with one readable OnOff cluster each. */
 function clientNode(nodeId: NodeId, shape: NodeShape = {}): ClientNode {
-    const { commissioned = true, ready = true, seeded = false, endpointNumbers = [0, 1] } = shape;
+    const {
+        commissioned = true,
+        ready = true,
+        seeded = false,
+        endpointNumbers = [0, 1],
+        owners = {},
+        unreadable = [],
+        onRead,
+    } = shape;
     const onOff = { cluster: { id: 6, schema: { attributes: [{ id: 0, propertyName: "onOff" }] } } };
     const endpoints = endpointNumbers.map(number => ({
         number,
+        owner: owners[number] === undefined ? undefined : { maybeNumber: owners[number] },
         behaviors: { active: [onOff] },
-        stateOf: () => ({ onOff: true }),
+        stateOf: () => {
+            onRead?.(number, removed =>
+                endpoints.splice(
+                    endpoints.findIndex(endpoint => endpoint.number === removed),
+                    1,
+                ),
+            );
+            if (unreadable.includes(number)) {
+                throw new MatterError(`Endpoint ${number} cannot be read`);
+            }
+            return { onOff: true };
+        },
     }));
     return {
         id: `peer-${nodeId}`,
         peerAddress: { fabricIndex: 1, nodeId },
         lifecycle: { isCommissioned: commissioned, isReady: ready, isSeeded: seeded },
-        endpoints: Object.assign(endpoints, { size: endpoints.length }),
+        endpoints: Object.assign(endpoints, {
+            size: endpoints.length,
+            has: (number: number) => endpoints.some(endpoint => endpoint.number === number),
+            for: (number: number) => endpoints.find(endpoint => endpoint.number === number),
+        }),
     } as unknown as ClientNode;
 }
 
@@ -71,6 +102,105 @@ describe("AttributeDataCache", () => {
             await cache.add(clientNode(NODE_ID, { endpointNumbers: [0] }));
 
             expect(cache.has(NODE_ID)).to.equal(false);
+        });
+
+        it("records the owner of each endpoint but the root", async function () {
+            const cache = new AttributeDataCache();
+            const node = clientNode(NODE_ID, { endpointNumbers: [0, 1, 2, 3], owners: { 0: 0, 1: 0, 2: 1, 3: 2 } });
+
+            await cache.add(node);
+
+            expect(cache.endpointParents(NODE_ID, node)).to.deep.equal({ 1: 0, 2: 1, 3: 2 });
+        });
+
+        it("records no parent for an endpoint without an owner", async function () {
+            const cache = new AttributeDataCache();
+            const node = clientNode(NODE_ID, { endpointNumbers: [0, 1, 2], owners: { 1: 0 } });
+
+            await cache.add(node);
+
+            expect(cache.endpointParents(NODE_ID, node)).to.deep.equal({ 1: 0 });
+        });
+
+        it("records no parent for an endpoint without attributes", async function () {
+            const cache = new AttributeDataCache();
+            const node = clientNode(NODE_ID, { endpointNumbers: [0, 1, 2], owners: { 1: 0, 2: 1 }, unreadable: [2] });
+
+            await cache.add(node);
+
+            expect(cache.endpointParents(NODE_ID, node)).to.deep.equal({ 1: 0 });
+        });
+    });
+
+    describe("endpointParents", () => {
+        it("is empty for a node without a snapshot", function () {
+            const cache = new AttributeDataCache();
+
+            expect(cache.endpointParents(NODE_ID, clientNode(NODE_ID, { owners: { 1: 0 } }))).to.deep.equal({});
+        });
+
+        it("reads the parent of an endpoint reported since the last populate from the node", async function () {
+            const cache = new AttributeDataCache();
+            await cache.add(clientNode(NODE_ID, { endpointNumbers: [0, 1], owners: { 1: 0 } }));
+            const grown = clientNode(NODE_ID, { endpointNumbers: [0, 1, 2], owners: { 1: 0, 2: 1 } });
+
+            cache.updateAttribute(NODE_ID, {
+                path: { endpointId: EndpointNumber(2), clusterId: ClusterId(6), attributeId: AttributeId(0) },
+                value: true,
+            });
+
+            expect(cache.get(NODE_ID)?.["2/6/0"]).to.equal(true);
+            expect(cache.endpointParents(NODE_ID, grown)).to.deep.equal({ 1: 0, 2: 1 });
+        });
+
+        it("keeps the recorded parent of an endpoint the node dropped before its removal is announced", async function () {
+            const cache = new AttributeDataCache();
+            await cache.add(clientNode(NODE_ID, { endpointNumbers: [0, 1, 2], owners: { 1: 0, 2: 1 } }));
+            const shrunk = clientNode(NODE_ID, { endpointNumbers: [0, 1], owners: { 1: 0 } });
+
+            expect(cache.endpointParents(NODE_ID, shrunk)).to.deep.equal({ 1: 0, 2: 1 });
+        });
+    });
+
+    describe("deleteEndpoint", () => {
+        it("drops the parent of the endpoint together with its attributes", async function () {
+            const cache = new AttributeDataCache();
+            const node = clientNode(NODE_ID, { endpointNumbers: [0, 1, 2], owners: { 1: 0, 2: 1 } });
+            await cache.add(node);
+
+            cache.deleteEndpoint(NODE_ID, EndpointNumber(2));
+
+            expect(cache.get(NODE_ID)?.["2/6/0"]).to.equal(undefined);
+            expect(cache.endpointParents(NODE_ID, node)).to.deep.equal({ 1: 0 });
+        });
+
+        it("keeps a running populate from restoring an endpoint it collected or got a report for before the removal", async function () {
+            const cache = new AttributeDataCache();
+            let removed = false;
+            const node = clientNode(NODE_ID, {
+                endpointNumbers: [0, 1, 2, 3],
+                owners: { 1: 0, 2: 1, 3: 1 },
+                onRead: (number, remove) => {
+                    if (number === 3 && !removed) {
+                        removed = true;
+                        cache.updateAttribute(NODE_ID, {
+                            path: {
+                                endpointId: EndpointNumber(2),
+                                clusterId: ClusterId(6),
+                                attributeId: AttributeId(0),
+                            },
+                            value: false,
+                        });
+                        remove(2);
+                        cache.deleteEndpoint(NODE_ID, EndpointNumber(2));
+                    }
+                },
+            });
+
+            await cache.add(node);
+
+            expect(cache.get(NODE_ID)?.["2/6/0"]).to.equal(undefined);
+            expect(cache.endpointParents(NODE_ID, node)).to.deep.equal({ 1: 0, 3: 1 });
         });
     });
 });

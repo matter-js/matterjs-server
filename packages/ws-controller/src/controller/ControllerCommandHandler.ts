@@ -50,7 +50,6 @@ import {
     OperationalCredentials,
     TimeSynchronization,
 } from "@matter/main/clusters";
-import { WebRtcTransportDefinitions } from "@matter/main/clusters/web-rtc-transport-definitions";
 import { WebRtcTransportProvider } from "@matter/main/clusters/web-rtc-transport-provider";
 import { AcceptedCommandList, AttributeList, ClusterRevision, FeatureMap } from "@matter/main/model";
 import {
@@ -67,6 +66,7 @@ import {
     ReadResult,
     Specifier,
     Subscribe,
+    Write,
 } from "@matter/main/protocol";
 import {
     AttributeId,
@@ -87,9 +87,11 @@ import {
     VendorId,
 } from "@matter/main/types";
 import { CommissioningDiscovery, Endpoint, ServerNode } from "@matter/node";
+import { WebRtcTransportProviderClient } from "@matter/node/behaviors/web-rtc-transport-provider";
 import { WebRtcTransportRequestorServer } from "@matter/node/behaviors/web-rtc-transport-requestor";
 import { CameraControllerDevice } from "@matter/node/devices/camera-controller";
 import { OtaProviderEndpoint } from "@matter/node/endpoints/ota-provider";
+import type { SessionEstablishingCommandName, SignallingCommandName } from "../camera/webRtcProviderArguments.js";
 import { ClusterMap, ClusterMapEntry, GlobalAttributes } from "../model/ModelMapper.js";
 import {
     buildAttributePath,
@@ -151,9 +153,10 @@ import { pushNodeTime, TimeSyncInvokers } from "./timeSyncCommands.js";
 import { SyncTrigger, TIME_FAILURE_EVENT_ID, TIME_SYNC_CLUSTER_ID, TimeSyncManager } from "./TimeSyncManager.js";
 import { attachWebRtcCallbackBridge } from "./WebRtcCallbackBridge.js";
 import {
-    isTrackableWebRtcSession,
-    resolveWebRtcSessionStreams,
-    selectWebRtcStreamFields,
+    establishWebRtcProviderSession,
+    sameWebRtcSession,
+    trackedSessionOf,
+    type WebRtcProviderSessionIo,
 } from "./webRtcSessionStreams.js";
 
 const logger = Logger.get("ControllerCommandHandler");
@@ -161,6 +164,11 @@ const logger = Logger.get("ControllerCommandHandler");
 /** The controller's own camera endpoint, which receives the WebRTC callbacks a peer sends back. */
 export const CameraControllerEndpoint = CameraControllerDevice.with(WebRtcTransportRequestorServer);
 export type CameraControllerEndpoint = typeof CameraControllerEndpoint;
+
+const SIGNALLING_INVOKE_NAMES: Record<SignallingCommandName, "provideAnswer" | "provideIceCandidates"> = {
+    ProvideAnswer: "provideAnswer",
+    ProvideIceCandidates: "provideIceCandidates",
+};
 
 /** Coalescing window for structure and basic-information changes arriving as a burst. */
 const NODE_UPDATE_DEBOUNCE = Seconds(2);
@@ -300,6 +308,14 @@ export interface ControllerCommandHandlerOptions {
      * per peer. Defaults to false.
      */
     disableAutoSubscription?: boolean;
+}
+
+/**
+ * Cast: matter.js types the `ClusterType(model)` overload as `object`, but a `ClusterMap` model always
+ * carries the id `ClusterLike` requires.
+ */
+function clusterSpecifierOf(entry: ClusterMapEntry): Specifier.ClusterLike {
+    return ClusterType(entry.model) as Specifier.ClusterLike;
 }
 
 /** A known-address attempt that left the device off the fabric, so discovery may still reach it. */
@@ -556,6 +572,14 @@ export class ControllerCommandHandler {
             });
         });
 
+        this.#busObservers.on(bus.events.reportingStarted, nodeId => {
+            this.#guard(nodeId, "first report", () => {
+                this.#refreshAfterFirstReport(this.#nodes.get(nodeId)).catch(error =>
+                    logger.warn(`Failed to refresh node ${this.formatNode(nodeId)} after its first report:`, error),
+                );
+            });
+        });
+
         this.#busObservers.on(bus.events.endpointRemoved, (nodeId, endpointId) => {
             this.#guard(nodeId, "endpoint removal", () => {
                 // Drop the endpoint before announcing it, so a read that follows the event never serves
@@ -566,6 +590,44 @@ export class ControllerCommandHandler {
                 this.#markNodeUpdatePending(this.#nodes.get(nodeId), "endpoint removed");
             });
         });
+    }
+
+    /**
+     * Rebuilds the node's cache from the state its first report applied, which the bus did not forward. A
+     * restored node waiting for that report then becomes available, with the rebuilt snapshot when the
+     * rebuild succeeds. Any other node is sent again when a new snapshot replaced one clients could have
+     * seen.
+     */
+    async #refreshAfterFirstReport(node: ClientNode) {
+        const nodeId = nodeIdOf(node);
+        const attributeCache = this.#nodes.attributeCache;
+        const stale = attributeCache.get(nodeId);
+        // Also restarts a populate already running, which may have collected endpoints before the report.
+        await attributeCache.update(node);
+        const attributes = attributeCache.get(nodeId);
+        // A populate that failed or was cancelled leaves the old snapshot, which must not go out as fresh.
+        const rebuilt = attributes !== undefined && attributes !== stale;
+        const waiting = this.#nodes.isAwaitingFirstReport(nodeId);
+        try {
+            if (rebuilt) {
+                this.#registerWithProcessors(nodeId, attributes);
+            }
+        } finally {
+            if (waiting) {
+                this.#endFirstReportWait(nodeId);
+            } else if (rebuilt && stale !== undefined) {
+                this.events.nodeStructureChanged.emit(nodeId);
+            }
+        }
+    }
+
+    /** The only way a restored node stops waiting for its first report. */
+    #endFirstReportWait(nodeId: NodeId) {
+        if (!this.#nodes.firstReportApplied(nodeId) || !this.#nodes.isAvailable(nodeId)) {
+            return;
+        }
+        logger.notice(`Node ${this.formatNode(nodeId)} available after its first report`);
+        this.events.nodeAvailabilityChanged.emit(nodeId, true);
     }
 
     /** Skips nodes no longer in the registry and contains throws; see {@link ControllerCommandHandler.#startChangeBus}. */
@@ -635,146 +697,133 @@ export class ControllerCommandHandler {
         }
     }
 
-    /** `originatingEndpointId` is server-injected; any client-supplied value in `payload` is overwritten. */
-    async sendWebRtcProviderCommand(args: {
+    async #establishWebRtcProviderSession(args: {
         nodeId: NodeId;
         endpointId: EndpointNumber;
         commandName: "ProvideOffer" | "SolicitOffer";
-        payload: Record<string, unknown>;
+        fields: Record<string, unknown>;
+        sessionEstablishing?: (webRtcSessionId: number) => void;
     }): Promise<WebRtcTransportProvider.ProvideOfferResponse | WebRtcTransportProvider.SolicitOfferResponse> {
-        const { nodeId, endpointId, commandName, payload } = args;
-
-        if (commandName !== "ProvideOffer" && commandName !== "SolicitOffer") {
-            throw ServerError.invalidArguments(
-                `Unsupported WebRTC provider command "${commandName}"; expected ProvideOffer or SolicitOffer`,
-            );
-        }
+        const { nodeId, endpointId, commandName, fields, sessionEstablishing } = args;
 
         const requestorEndpoint = this.#webRtcRequestor;
         const originatingEndpointId = EndpointNumber(requestorEndpoint.number);
         const fabricIndex = this.#fabric.fabricIndex;
-
         const node = this.#nodes.get(nodeId);
+        const providerEndpoint = this.#clusterEndpoint(nodeId, endpointId, WebRtcTransportProviderClient.id);
 
-        const command = commandName === "ProvideOffer" ? "provideOffer" : "solicitOffer";
-
-        // `payload` arrives using the Python Matter Server wire convention (e.g. `webRtcSessionID`,
-        // see python_client/chip/clusters/cluster_defs), which does not match matter.js's own
-        // camelCase property names (e.g. `webRtcSessionId`). Route it through the same model-based
-        // conversion used for regular invokes so field names and value types (nullables, bytes,
-        // epochs, ...) line up with what matter.js expects.
-        const providerClusterEntry = ClusterMap[WebRtcTransportProvider.id];
-        const commandModel = providerClusterEntry?.commands[command.toLowerCase()];
-        const convertedPayload =
-            providerClusterEntry !== undefined && commandModel !== undefined
-                ? (convertCommandDataToMatter(payload, commandModel, providerClusterEntry.model) as Record<
-                      string,
-                      unknown
-                  >)
-                : payload;
-
-        const fields: Record<string, unknown> = {
-            ...convertedPayload,
-            originatingEndpointId,
-        };
-
-        const clusterRevision =
-            this.#nodes.attributeCache.get(nodeId)?.[
-                `${endpointId}/${WebRtcTransportProvider.id}/${ClusterRevision.id}`
-            ];
-        selectWebRtcStreamFields(fields, clusterRevision);
-
-        const response = (await this.#invokeCommand(node, {
-            endpoint: endpointId,
-            cluster: WebRtcTransportProvider,
-            command,
-            fields,
-        })) as WebRtcTransportProvider.ProvideOfferResponse | WebRtcTransportProvider.SolicitOfferResponse | undefined;
-
-        if (response === undefined || typeof response.webRtcSessionId !== "number") {
-            throw ServerError.sdkStackError(
-                `${commandName} did not return a WebRTCSessionID for node ${this.formatNode(nodeId)}`,
-            );
-        }
-
-        const streamUsage = convertedPayload.streamUsage;
-        const metadataEnabled = convertedPayload.metadataEnabled === true;
-
-        const videoStreams = resolveWebRtcSessionStreams(
-            fields.videoStreams,
-            fields.videoStreamId,
-            response.videoStreamId,
-        );
-        const audioStreams = resolveWebRtcSessionStreams(
-            fields.audioStreams,
-            fields.audioStreamId,
-            response.audioStreamId,
-        );
-
-        // An untrackable session (no stream usage, or no stream — e.g. an auto-select/deferred
-        // SolicitOffer whose provider reports no stream id yet) cannot be stored in the requestor's
-        // CurrentSessions, so we could never route the peer's follow-up signaling for it. Rather than
-        // return a session id that will silently never deliver media, tear the just-created device
-        // session down and fail the command. Deferred/auto-select is thus unsupported for now; the
-        // dashboard never hits this (it always requests a concrete stream usage + id).
-        if (!isTrackableWebRtcSession(streamUsage, videoStreams, audioStreams)) {
-            logger.warn(
-                `Tearing down untrackable WebRTC session id=${response.webRtcSessionId} for node ${this.formatNode(
-                    nodeId,
-                )}: request lacks a stream usage or any video/audio stream, so signaling cannot be routed for it`,
-            );
-            try {
-                await this.#invokeCommand(node, {
+        const io: WebRtcProviderSessionIo = {
+            invoke: (command, invokeFields) =>
+                this.#invokeCommand(node, {
                     endpoint: endpointId,
                     cluster: WebRtcTransportProvider,
-                    command: "endSession",
-                    fields: {
-                        webRtcSessionId: response.webRtcSessionId,
-                        reason: WebRtcTransportDefinitions.WebRtcEndReason.OutOfResources,
-                    },
+                    command,
+                    fields: invokeFields,
+                }),
+            upsertSession: async (session, options) => {
+                await requestorEndpoint.act(agent => {
+                    const requestor = agent.get(WebRtcTransportRequestorServer);
+                    if (
+                        options?.onlyIfAbsent &&
+                        requestor.state.currentSessions.some(s => sameWebRtcSession(s, session))
+                    ) {
+                        return;
+                    }
+                    requestor.upsertSession(session);
                 });
-            } catch (err) {
-                logger.warn(
-                    `EndSession cleanup for untrackable WebRTC session id=${response.webRtcSessionId} failed: ${
-                        err instanceof Error ? err.message : String(err)
-                    }`,
-                );
-            }
-            throw ServerError.sdkStackError(
-                `${commandName} for node ${this.formatNode(nodeId)} produced a session with no stream usage or ` +
-                    `video/audio stream; deferred/auto-select streaming is not supported`,
-            );
-        }
-
-        const session: WebRtcTransportDefinitions.WebRtcSession = {
-            id: response.webRtcSessionId,
-            peerNodeId: nodeId,
-            peerEndpointId: endpointId,
-            streamUsage: streamUsage as WebRtcTransportDefinitions.WebRtcSession["streamUsage"],
-            metadataEnabled,
-            videoStreams,
-            audioStreams,
-            fabricIndex,
+            },
         };
 
-        logger.info(
-            `upserting WebRTC session id=${session.id} peerNodeId=${nodeId} peerEndpointId=${endpointId} fabricIndex=${fabricIndex} streamUsage=${streamUsage} originatingEndpointId=${originatingEndpointId}`,
-        );
-        await requestorEndpoint.act(agent => {
-            agent.get(WebRtcTransportRequestorServer).upsertSession(session);
+        const response = await establishWebRtcProviderSession(io, {
+            commandName,
+            fields,
+            sessionEstablishing,
+            nodeId,
+            endpointId,
+            originatingEndpointId,
+            fabricIndex,
+            // Globals, not the attribute cache: the cache stays empty after a restart until a report carries it.
+            clusterRevision: providerEndpoint.globalsOf(WebRtcTransportProviderClient).clusterRevision,
+            formatNode: id => this.formatNode(id),
         });
-
         return response;
     }
 
     /**
-     * Drop a WebRTC session from the local requestor's CurrentSessions tracking. Call when the session
-     * is ended locally (e.g. the client invokes EndSession on the provider); peer-initiated ends are
-     * already removed by the requestor's own End handler. No-op if the id is not tracked.
+     * `fields` must already be in matter.js's convention (see `toProviderCommandFields`); any
+     * `originatingEndpointId` in it is overwritten.
      */
-    async removeTrackedWebRtcSession(webRtcSessionId: number): Promise<void> {
+    async invokeWebRtcProviderCommand(args: {
+        nodeId: NodeId;
+        endpointId: EndpointNumber;
+        commandName: SessionEstablishingCommandName;
+        fields: Record<string, unknown>;
+        /** @see WebRtcProviderSessionArgs.sessionEstablishing */
+        sessionEstablishing?: (webRtcSessionId: number) => void;
+    }): Promise<WebRtcTransportProvider.ProvideOfferResponse | WebRtcTransportProvider.SolicitOfferResponse> {
+        return this.#establishWebRtcProviderSession(args);
+    }
+
+    /**
+     * The session id is not checked against local records: they cover only this run, and the camera
+     * answers for ids it does not hold.
+     */
+    async invokeWebRtcSignallingCommand(args: {
+        nodeId: NodeId;
+        endpointId: EndpointNumber;
+        commandName: SignallingCommandName;
+        fields: Record<string, unknown>;
+    }): Promise<void> {
+        this.#clusterEndpoint(args.nodeId, args.endpointId, WebRtcTransportProviderClient.id);
+        await this.#invokeCommand(this.#nodes.get(args.nodeId), {
+            endpoint: args.endpointId,
+            cluster: WebRtcTransportProvider,
+            command: SIGNALLING_INVOKE_NAMES[args.commandName],
+            fields: args.fields,
+        });
+    }
+
+    /** This server's node id on the fabric: the `PeerNodeID` a camera stores for its sessions (§11.4.5.5). */
+    get localNodeId(): NodeId {
+        return this.#fabric.nodeId;
+    }
+
+    /** @throws ServerError if node not found */
+    getNode(nodeId: NodeId): ClientNode {
+        return this.#nodes.get(nodeId);
+    }
+
+    async invokeCommand<const C extends Specifier.ClusterLike>(
+        node: ClientNode,
+        request: Invoke.ConcreteCommandRequest<C>,
+        options?: Omit<Invoke.Definition, "commands">,
+    ) {
+        return this.#invokeCommand(node, request, options);
+    }
+
+    /**
+     * Drop a locally ended WebRTC session from the requestor's CurrentSessions; peer-initiated ends
+     * are removed by the requestor itself. No-op if this camera's session is untracked.
+     */
+    async removeTrackedWebRtcSession(
+        webRtcSessionId: number,
+        nodeId: NodeId,
+        endpointId: EndpointNumber,
+    ): Promise<void> {
         await this.#webRtcRequestor.act(agent => {
-            agent.get(WebRtcTransportRequestorServer).removeSession(webRtcSessionId);
+            const requestor = agent.get(WebRtcTransportRequestorServer);
+            const tracked = trackedSessionOf(
+                requestor.state.currentSessions,
+                { id: webRtcSessionId, fabricIndex: this.#fabric.fabricIndex, peerNodeId: nodeId },
+                endpointId,
+            );
+            if (tracked === undefined) {
+                logger.debug(
+                    `WebRTC session ${webRtcSessionId} is not tracked for node ${this.formatNode(nodeId)} endpoint ${endpointId}; local tracking left unchanged`,
+                );
+                return;
+            }
+            requestor.removeSession(tracked);
         });
     }
 
@@ -845,7 +894,7 @@ export class ControllerCommandHandler {
         }
     }
 
-    async #registerNode(nodeId: NodeId) {
+    async #registerNode(nodeId: NodeId, restored: boolean) {
         // A node commissioned moments ago may not have its commissioning behavior active yet, so the
         // handle has to be created on demand rather than looked up.
         const node = await this.#node.peers.forAddress(this.#peerOf(nodeId));
@@ -888,6 +937,10 @@ export class ControllerCommandHandler {
                 }
             }),
         );
+        // No await between the check and set(): a report starting later then finds the node registered.
+        if (restored && this.#changeBus?.isReporting(node) === false) {
+            this.#nodes.awaitFirstReport(nodeId);
+        }
         this.#nodes.set(nodeId, node);
 
         this.#nodes.seedState(nodeId, node.lifecycle.connectionState);
@@ -908,9 +961,12 @@ export class ControllerCommandHandler {
     async #snapshotNode(nodeId: NodeId, node: ClientNode): Promise<void> {
         await this.#nodes.attributeCache.add(node);
         const attributes = this.#nodes.attributeCache.get(nodeId);
-        if (attributes === undefined) {
-            return;
+        if (attributes !== undefined) {
+            this.#registerWithProcessors(nodeId, attributes);
         }
+    }
+
+    #registerWithProcessors(nodeId: NodeId, attributes: AttributesData) {
         const peer = this.#peerOf(nodeId);
         this.#customClusterPoller.registerNode(peer, attributes);
         this.#threadDetailsPoller?.registerNode(peer, attributes);
@@ -965,9 +1021,9 @@ export class ControllerCommandHandler {
     async #handleNodeStateChange(node: ClientNode, state: NodeConnectionState): Promise<void> {
         const nodeId = nodeIdOf(node);
 
-        // A node that never became unavailable was only ever briefly re-establishing, so its data is
-        // still good: resubscription re-reports whatever changed. Rebuild only when it comes back from
-        // being considered offline.
+        // A node that never became unavailable was only briefly re-establishing, and the bus forwards what
+        // its resubscription reports. Rebuild only when it comes back from being considered offline. A
+        // restored node still waiting for its first report is rebuilt by #refreshAfterFirstReport instead.
         const wasAvailable = this.#nodes.isAvailable(nodeId);
         const result = this.#nodes.processStateChange(nodeId, state);
 
@@ -986,15 +1042,15 @@ export class ControllerCommandHandler {
         // Populate last so the state/availability emits above are not delayed behind a multi-second
         // rebuild.
         if (state === NodeConnectionState.Connected) {
-            if (!wasAvailable || !this.#nodes.attributeCache.has(nodeId)) {
+            if (
+                !this.#nodes.isAwaitingFirstReport(nodeId) &&
+                (!wasAvailable || !this.#nodes.attributeCache.has(nodeId))
+            ) {
                 await this.#nodes.attributeCache.update(node);
             }
             const attributes = this.#nodes.attributeCache.get(nodeId);
             if (attributes) {
-                const peer = this.#peerOf(nodeId);
-                this.#customClusterPoller.registerNode(peer, attributes);
-                this.#threadDetailsPoller?.registerNode(peer, attributes);
-                this.#timeSyncManager?.registerNode(peer, attributes);
+                this.#registerWithProcessors(nodeId, attributes);
             }
         }
     }
@@ -1038,7 +1094,7 @@ export class ControllerCommandHandler {
         for (const nodeId of nodes) {
             try {
                 logger.info(`Initializing node "${this.formatNode(nodeId)}" ...`);
-                await this.#registerNode(nodeId);
+                await this.#registerNode(nodeId, true);
             } catch (error) {
                 logger.warn(`Failed to initialize node "${this.formatNode(nodeId)}":`, error);
             }
@@ -1148,6 +1204,7 @@ export class ControllerCommandHandler {
             attributes,
             attribute_subscriptions: [],
             matter_version: determineMatterVersion(attributes),
+            endpoint_parents: attributeCache.endpointParents(nodeId, node),
         };
     }
 
@@ -1519,6 +1576,15 @@ export class ControllerCommandHandler {
         request: Invoke.ConcreteCommandRequest<C>,
         options: Omit<Invoke.Definition, "commands"> = {},
     ) {
+        return this.#invokeOnPath(node, request, options);
+    }
+
+    /** Only groupcasts may omit the endpoint; unicast goes through {@link #invokeCommand}, whose type requires it. */
+    async #invokeOnPath<const C extends Specifier.ClusterLike>(
+        node: ClientNode,
+        request: Invoke.CommandRequest<C>,
+        options: Omit<Invoke.Definition, "commands"> = {},
+    ) {
         const invoke = Invoke({
             commands: [request],
             ...options,
@@ -1542,6 +1608,84 @@ export class ControllerCommandHandler {
                 }
             }
         }
+    }
+
+    /** Callers must have classified `nodeId` as a Group Node ID with `nodeIdTarget`. */
+    async #groupFor(nodeId: NodeId): Promise<ClientNode> {
+        return this.#node.peers.forAddress(this.#peerOf(nodeId));
+    }
+
+    /** Resolves once the packet is sent: no node answers. Each node's group table decides which endpoints act. */
+    async handleGroupWriteAttribute(data: Omit<WriteAttributeRequest, "endpointId">): Promise<void> {
+        const { nodeId, clusterId, attributeId } = data;
+
+        const clusterEntry = ClusterMap[clusterId];
+        const attributeModel = clusterEntry?.attributes[attributeId];
+        if (!clusterEntry || !attributeModel) {
+            throw ServerError.invalidArguments(`Attribute ${attributeId} on cluster ${clusterId} unknown`);
+        }
+        const value = convertWebSocketTagBasedToMatter(data.value, attributeModel, clusterEntry.model);
+        logger.info(
+            `Groupcasting write of attribute ${clusterId}.${attributeModel.propertyName} to ${this.formatNode(nodeId)} with value`,
+            value,
+        );
+
+        const group = await this.#groupFor(nodeId);
+        await group.interaction.write(
+            Write(
+                Write.Attribute({
+                    cluster: clusterSpecifierOf(clusterEntry),
+                    attributes: attributeModel.propertyName,
+                    value,
+                }),
+            ),
+        );
+    }
+
+    /**
+     * Resolves once the packet is sent: no node answers, so there are no timeouts, and timed commands
+     * cannot be groupcast. Duplicates are not coalesced: with no answer to share, the second would not be sent.
+     */
+    async handleGroupInvoke(
+        data: Omit<InvokeRequest, "endpointId" | "timedInteractionTimeoutMs" | "interactionTimeoutMs">,
+    ): Promise<void> {
+        const { nodeId, clusterId } = data;
+        let { data: commandData } = data;
+
+        const clusterEntry = ClusterMap[clusterId];
+        if (!clusterEntry) {
+            throw ServerError.invalidArguments(`Cluster Id "${clusterId}" unknown`);
+        }
+        const commandName = camelize(data.commandName);
+        const commandModel = clusterEntry.commands[commandName.toLowerCase()];
+        if (!commandModel) {
+            throw ServerError.invalidArguments(
+                `Command "${commandName}" does not exist on cluster "${clusterEntry.model.propertyName}"`,
+            );
+        }
+        if (commandModel.effectiveAccess.timed) {
+            throw ServerError.invalidArguments(
+                `Command "${commandName}" must be invoked as a timed request, which a groupcast cannot carry`,
+            );
+        }
+        if (isObject(commandData)) {
+            if (Object.keys(commandData).length === 0) {
+                commandData = undefined;
+            } else {
+                commandData = convertCommandDataToMatter(commandData, commandModel, clusterEntry.model);
+            }
+        }
+
+        logger.info(
+            `Groupcasting command ${clusterEntry.model.propertyName}.${commandName} to ${this.formatNode(nodeId)}`,
+        );
+
+        const group = await this.#groupFor(nodeId);
+        await this.#invokeOnPath(group, {
+            cluster: clusterSpecifierOf(clusterEntry),
+            command: commandName,
+            fields: commandData,
+        });
     }
 
     async handleInvoke(data: InvokeRequest): Promise<unknown> {
@@ -1596,8 +1740,7 @@ export class ControllerCommandHandler {
             return existing;
         }
 
-        // Resolve cluster namespace with command definitions for typed invoke
-        const cluster = ClusterType(clusterEntry.model) as Specifier.ClusterLike;
+        const cluster = clusterSpecifierOf(clusterEntry);
 
         // Execute and track the command
         const invokePromise = this.#invokeCommand(
@@ -1763,7 +1906,7 @@ export class ControllerCommandHandler {
 
             // The device has joined by now, so failing to take it into the registry is still a failed
             // command, not an unmapped throw with a node the server tracks and never announced.
-            await this.#registerNode(nodeId);
+            await this.#registerNode(nodeId, false);
         } catch (error) {
             throw commissionFailureOf(error, attestation.rejected);
         }

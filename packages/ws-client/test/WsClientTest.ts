@@ -9,7 +9,9 @@ import {
     CommandTimeoutError,
     ConnectionClosedError,
     DEFAULT_COMMAND_TIMEOUT,
+    InvalidServerVersion,
     MatterClient,
+    type NodesChangedDetail,
     otaUploadUrl,
     ServerCommandError,
     WebSocketLike,
@@ -528,6 +530,10 @@ describe("ws-client", () => {
                     expect(error).to.be.instanceOf(ServerCommandError);
                     expect((error as ServerCommandError).errorCode).to.equal(100);
                     expect((error as ServerCommandError).message).to.equal(details);
+                    expect((error as ServerCommandError).details).to.deep.equal({
+                        message: "multi admin",
+                        admin_vendor_ids: [4631],
+                    });
                 }
             });
 
@@ -675,6 +681,370 @@ describe("ws-client", () => {
                 expect(nodesChangedCalled).to.be.true;
                 const nodeKey = String(nodeId);
                 expect(client.nodes[nodeKey]?.attributes["1/6/0"]).to.equal(true);
+            });
+
+            it("hands a camera session ending and a camera eviction to their own listeners", async () => {
+                await client.connect();
+                const endings = new Array<unknown>();
+                const evictions = new Array<unknown>();
+                const stopEndings = client.addCameraSessionEndedListener(data => endings.push(data));
+                const stopEvictions = client.addCameraStreamEvictedListener(data => evictions.push(data));
+                try {
+                    server.sendEvent("camera_session_ended", {
+                        node_id: 5,
+                        endpoint_id: 1,
+                        webrtc_session_id: 7,
+                    });
+                    server.sendEvent("camera_stream_evicted", {
+                        node_id: 5,
+                        endpoint_id: 1,
+                        kind: "snapshot",
+                        stream_id: 3,
+                    });
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                } finally {
+                    stopEndings();
+                    stopEvictions();
+                }
+                expect(endings).to.deep.equal([{ node_id: 5, endpoint_id: 1, webrtc_session_id: 7 }]);
+                expect(evictions).to.deep.equal([{ node_id: 5, endpoint_id: 1, kind: "snapshot", stream_id: 3 }]);
+
+                server.sendEvent("camera_session_ended", {
+                    node_id: 5,
+                    endpoint_id: 1,
+                    webrtc_session_id: 8,
+                });
+                await new Promise(resolve => setTimeout(resolve, 100));
+                expect(endings).to.have.length(1);
+            });
+
+            it("keeps the ICE credentials and TURN secret of an incoming offer out of the console", async () => {
+                const bigIntSafe = (_key: string, value: unknown) =>
+                    typeof value === "bigint" ? value.toString() : value;
+                server.onCommand("start_listening", () => []);
+                await client.startListening();
+
+                const sdp = [
+                    "v=0",
+                    "m=video 9 UDP/TLS/RTP/SAVPF 96",
+                    "a=ice-ufrag:uNgu3ss4ble-ufrag",
+                    "a=ice-pwd:uNgu3ss4ble-ice-password",
+                    "a=rtpmap:96 H264/90000",
+                ].join("\r\n");
+                const logged = new Array<string>();
+                const debug = console.debug;
+                console.debug = (...args: unknown[]) => {
+                    logged.push(args.map(arg => JSON.stringify(arg, bigIntSafe)).join(" "));
+                };
+                try {
+                    server.sendEvent("webrtc_callback", {
+                        type: "offer",
+                        node_id: 5,
+                        session_id: 7,
+                        sdp,
+                        ice_servers: [
+                            { urls: ["turn:turn.example.org:3478"], username: "cam", credential: "uNgu3ss4ble-turn" },
+                        ],
+                    });
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                } finally {
+                    console.debug = debug;
+                }
+
+                const offerLines = logged.filter(line => line.includes("m=video"));
+                expect(offerLines.length).to.equal(2);
+                for (const line of logged) {
+                    expect(line).to.not.contain("uNgu3ss4ble-ufrag");
+                    expect(line).to.not.contain("uNgu3ss4ble-ice-password");
+                    expect(line).to.not.contain("uNgu3ss4ble-turn");
+                }
+            });
+
+            it("keeps a snapshot frame out of the console and the rest of the response in it", async () => {
+                const frame = `${"Zm9vYmFy".repeat(400)}ZnJhbWUtYnl0ZXMtZG8tbm90LWxvZw==`;
+                server.onCommand("camera_snapshot", () => ({
+                    data: frame,
+                    codec: "JPEG",
+                    resolution: { width: 640, height: 480 },
+                    degraded: false,
+                    stream_id: 3,
+                    provenance: "allocated",
+                }));
+                await client.connect();
+
+                const logged = new Array<string>();
+                const debug = console.debug;
+                console.debug = (...args: unknown[]) => {
+                    logged.push(args.map(arg => JSON.stringify(arg)).join(" "));
+                };
+                let result;
+                try {
+                    result = await client.sendCommand("camera_snapshot", 0, { node_id: 5, endpoint_id: 1 });
+                } finally {
+                    console.debug = debug;
+                }
+
+                expect(result.data).to.equal(frame);
+                for (const line of logged) {
+                    expect(line).to.not.contain("ZnJhbWUtYnl0ZXMtZG8tbm90LWxvZw");
+                }
+                const frameLine = logged.find(line => line.includes("JPEG"));
+                expect(frameLine).to.contain(`[${frame.length} chars omitted]`);
+                expect(frameLine).to.contain('"width":640');
+                expect(frameLine).to.contain('"height":480');
+                expect(frameLine).to.contain('"stream_id":3');
+            });
+
+            // A guard against over-redaction; green on the unmodified baseline too.
+            it("logs a short data field of another command in full", async () => {
+                server.onCommand("read_attribute", () => ({ data: "1/6/0", node_id: 5 }));
+                await client.connect();
+
+                const logged = new Array<string>();
+                const debug = console.debug;
+                console.debug = (...args: unknown[]) => {
+                    logged.push(args.map(arg => JSON.stringify(arg)).join(" "));
+                };
+                try {
+                    await client.sendCommand("read_attribute", 0, {
+                        node_id: 5,
+                        attribute_path: "1/6/0",
+                    });
+                } finally {
+                    console.debug = debug;
+                }
+
+                expect(logged.some(line => line.includes('"data":"1/6/0"'))).to.be.true;
+            });
+
+            it("names the node and attribute an attribute_updated event concerns", async () => {
+                const nodeId = BigInt("18446744069414584320");
+                server.onCommand("start_listening", () => [
+                    {
+                        node_id: nodeId,
+                        date_commissioned: "2025-01-01T00:00:00.000000",
+                        last_interview: "2025-01-01T00:00:00.000000",
+                        interview_version: 6,
+                        available: true,
+                        is_bridge: false,
+                        attributes: { "1/6/0": false },
+                    },
+                ]);
+                await client.startListening();
+
+                const details = new Array<NodesChangedDetail>();
+                client.addEventListener("nodes_changed", detail => {
+                    details.push(detail);
+                });
+
+                server.sendEvent("attribute_updated", [nodeId, "1/6/0", true]);
+                await new Promise(resolve => setTimeout(resolve, 100));
+
+                expect(details).to.deep.equal([{ reason: "attribute_updated", nodeId, attributeKey: "1/6/0" }]);
+            });
+
+            it("names the node a node_added event concerns", async () => {
+                server.onCommand("start_listening", () => []);
+                await client.startListening();
+
+                const nodeId = BigInt("18446744069414584320");
+                const details = new Array<NodesChangedDetail>();
+                client.addEventListener("nodes_changed", detail => {
+                    details.push(detail);
+                });
+
+                server.sendEvent("node_added", {
+                    node_id: nodeId,
+                    date_commissioned: "2025-01-01T00:00:00.000000",
+                    last_interview: "2025-01-01T00:00:00.000000",
+                    interview_version: 6,
+                    available: true,
+                    is_bridge: false,
+                    attributes: {},
+                });
+                await new Promise(resolve => setTimeout(resolve, 100));
+
+                expect(details).to.deep.equal([{ reason: "node_added", nodeId }]);
+            });
+
+            it("names the node a node_updated event concerns", async () => {
+                server.onCommand("start_listening", () => []);
+                await client.startListening();
+
+                const details = new Array<NodesChangedDetail>();
+                client.addEventListener("nodes_changed", detail => {
+                    details.push(detail);
+                });
+
+                server.sendEvent("node_updated", {
+                    node_id: 7,
+                    date_commissioned: "2025-01-01T00:00:00.000000",
+                    last_interview: "2025-01-01T00:00:00.000000",
+                    interview_version: 6,
+                    available: true,
+                    is_bridge: false,
+                    attributes: {},
+                });
+                await new Promise(resolve => setTimeout(resolve, 100));
+
+                expect(details).to.deep.equal([{ reason: "node_updated", nodeId: 7 }]);
+            });
+
+            it("names the node a node_removed event concerns", async () => {
+                server.onCommand("start_listening", () => []);
+                await client.startListening();
+
+                const details = new Array<NodesChangedDetail>();
+                client.addEventListener("nodes_changed", detail => {
+                    details.push(detail);
+                });
+
+                server.sendEvent("node_removed", 7);
+                await new Promise(resolve => setTimeout(resolve, 100));
+
+                expect(details).to.deep.equal([{ reason: "node_removed", nodeId: 7 }]);
+            });
+
+            it("passes the detail to a listener that declares no parameter without breaking it", async () => {
+                server.onCommand("start_listening", () => []);
+                await client.startListening();
+
+                let calls = 0;
+                client.addEventListener("nodes_changed", () => {
+                    calls++;
+                });
+
+                server.sendEvent("node_added", {
+                    node_id: 1,
+                    date_commissioned: "2025-01-01T00:00:00.000000",
+                    last_interview: "2025-01-01T00:00:00.000000",
+                    interview_version: 6,
+                    available: true,
+                    is_bridge: false,
+                    attributes: {},
+                });
+                await new Promise(resolve => setTimeout(resolve, 100));
+
+                expect(calls).to.equal(1);
+            });
+
+            it("stops calling a listener after it unsubscribes, also from inside its own call", async () => {
+                server.onCommand("start_listening", () => []);
+                await client.startListening();
+
+                const calls = new Array<string>();
+                const unsubscribeFirst = client.addEventListener("nodes_changed", () => {
+                    calls.push("first");
+                    unsubscribeFirst();
+                });
+                client.addEventListener("nodes_changed", () => {
+                    calls.push("second");
+                });
+
+                server.sendEvent("node_removed", 1);
+                await new Promise(resolve => setTimeout(resolve, 100));
+                unsubscribeFirst();
+                server.sendEvent("node_removed", 2);
+                await new Promise(resolve => setTimeout(resolve, 100));
+
+                expect(calls).to.deep.equal(["first", "second", "second"]);
+            });
+
+            it("removes only its own registration when the same listener is added twice", async () => {
+                server.onCommand("start_listening", () => []);
+                await client.startListening();
+
+                let calls = 0;
+                const listener = () => {
+                    calls++;
+                };
+                const unsubscribeFirst = client.addEventListener("nodes_changed", listener);
+                client.addEventListener("nodes_changed", listener);
+                unsubscribeFirst();
+                unsubscribeFirst();
+
+                server.sendEvent("node_removed", 1);
+                await new Promise(resolve => setTimeout(resolve, 100));
+
+                expect(calls).to.equal(1);
+            });
+
+            it("types each event's listener arguments", () => {
+                // Compile-time checks only, never called
+                function contract(typed: MatterClient) {
+                    typed.addEventListener("nodes_changed", detail => {
+                        const nodeId: number | bigint = detail.nodeId;
+                        if (detail.reason === "attribute_updated") {
+                            const attributeKey: string = detail.attributeKey;
+                            return [nodeId, attributeKey];
+                        }
+                        // @ts-expect-error only attribute updates carry an attributeKey
+                        return detail.attributeKey;
+                    });
+                    // @ts-expect-error events other than nodes_changed pass no argument
+                    typed.addEventListener("connection_lost", (detail: NodesChangedDetail) => detail);
+                    typed.addEventListener("connection_lost", (...args) => {
+                        const none: [] = args;
+                        return none;
+                    });
+                    // @ts-expect-error unknown event names are rejected
+                    typed.addEventListener("node_changed", () => {});
+                }
+                expect(contract).to.be.a("function");
+            });
+        });
+
+        describe("sendWebRtcProviderCommand schema gate", () => {
+            async function connectWithSchema(schemaVersion: number): Promise<MatterClient> {
+                const gated = new MockMatterServer({ serverInfo: { schema_version: schemaVersion } });
+                await gated.start();
+                const gatedClient = new MatterClient(gated.url, createNodeWebSocket);
+                gated.onCommand("send_webrtc_provider_command", () => null);
+                await gatedClient.connect();
+                gatedClients.push({ gated, gatedClient });
+                return gatedClient;
+            }
+            async function expectRefused(pending: Promise<unknown>, message: RegExp): Promise<void> {
+                let refusal: unknown;
+                try {
+                    await pending;
+                } catch (error) {
+                    refusal = error;
+                }
+                expect(refusal).to.be.instanceOf(InvalidServerVersion);
+                expect(refusal).to.have.property("message").that.matches(message);
+            }
+            const gatedClients = new Array<{ gated: MockMatterServer; gatedClient: MatterClient }>();
+
+            afterEach(async () => {
+                for (const { gated, gatedClient } of gatedClients.splice(0)) {
+                    if (gatedClient.connection?.connected) gatedClient.disconnect();
+                    await gated.stop();
+                }
+            });
+
+            for (const commandName of ["ProvideAnswer", "ProvideIceCandidates"] as const) {
+                it(`refuses ${commandName} against a schema 13 server`, async () => {
+                    const old = await connectWithSchema(13);
+                    await expectRefused(old.sendWebRtcProviderCommand(1, 1, commandName, {}), /at least api schema 14/);
+                });
+            }
+
+            it("sends ProvideAnswer to a schema 14 server", async () => {
+                const current = await connectWithSchema(14);
+                await current.sendWebRtcProviderCommand(1, 1, "ProvideAnswer", {});
+            });
+
+            for (const commandName of ["ProvideOffer", "SolicitOffer"] as const) {
+                it(`sends ${commandName} to a schema 12 server`, async () => {
+                    const older = await connectWithSchema(12);
+                    await older.sendWebRtcProviderCommand(1, 1, commandName, {});
+                });
+            }
+
+            it("refuses ProvideOffer against a schema 11 server", async () => {
+                const old = await connectWithSchema(11);
+                await expectRefused(old.sendWebRtcProviderCommand(1, 1, "ProvideOffer", {}), /at least api schema 12/);
             });
         });
 

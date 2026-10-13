@@ -43,6 +43,7 @@
         "python:lint": "cd python_client && .venv/bin/ruff check . --exclude chip",
         "python:lint-fix": "cd python_client && .venv/bin/ruff check . --exclude chip --fix --unsafe-fixes",
         "python:typecheck": "cd python_client && .venv/bin/mypy .",
+        "python:check": "npm run python:lint && npm run python:typecheck && npm run python:test",
         "python:test-all": "cd python_client && .venv/bin/pytest tests/ -v",
         "python:build": "cd python_client && .venv/bin/pip install build && .venv/bin/python -m build",
         "python-ble-proxy:install": "cd python_ble_proxy && python3 -m venv .venv && .venv/bin/pip install -e '.[test]'",
@@ -54,7 +55,7 @@
         "python-ble-proxy:run": "cd python_ble_proxy && { [ -x .venv/bin/matter-ble-proxy ] || (python3 -m venv .venv && .venv/bin/pip install -e .); } && .venv/bin/matter-ble-proxy"
     },
     "devDependencies": {
-        "@matter/testing": "0.18.0-alpha.0-20261008-6066b7499",
+        "@matter/testing": "0.18.0-alpha.0-20261013-2e5a97ca3",
         "@nacho-iot/js-tools": "^0.2.0",
         "@types/mocha": "^10.0.10",
         "glob": "^13.0.6",

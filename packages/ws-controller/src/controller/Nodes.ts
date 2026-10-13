@@ -29,6 +29,8 @@ export class Nodes {
      * so HA can resolve node.endpoints[endpoint_id] in its callback.
      */
     #pendingEndpointAdds = new Map<NodeId, EndpointNumber[]>();
+    /** Restored nodes that had no report yet when registered. */
+    #awaitingFirstReport = new Set<NodeId>();
 
     get attributeCache(): AttributeDataCache {
         return this.#attributeCache;
@@ -60,6 +62,20 @@ export class Nodes {
         this.#attributeCache.delete(nodeId);
         this.#lastAvailability.delete(nodeId);
         this.#pendingEndpointAdds.delete(nodeId);
+        this.#awaitingFirstReport.delete(nodeId);
+    }
+
+    awaitFirstReport(nodeId: NodeId): void {
+        this.#awaitingFirstReport.add(nodeId);
+    }
+
+    isAwaitingFirstReport(nodeId: NodeId): boolean {
+        return this.#awaitingFirstReport.has(nodeId);
+    }
+
+    /** Ends the wait, returning whether the node was waiting. */
+    firstReportApplied(nodeId: NodeId): boolean {
+        return this.#awaitingFirstReport.delete(nodeId);
     }
 
     queueEndpointAdded(nodeId: NodeId, endpointId: EndpointNumber): void {
@@ -93,10 +109,9 @@ export class Nodes {
         nodeId: NodeId,
         newState: NodeConnectionState,
     ): { availabilityChanged: true; available: boolean } | { availabilityChanged: false } {
-        const wasAvailable = this.#lastAvailability.get(nodeId) ?? false;
-        const available = this.isNodeAvailable(newState);
-
-        this.#lastAvailability.set(nodeId, available);
+        const wasAvailable = this.isAvailable(nodeId);
+        this.#lastAvailability.set(nodeId, this.isNodeAvailable(newState));
+        const available = this.isAvailable(nodeId);
 
         if (wasAvailable !== available) {
             return { availabilityChanged: true, available };
@@ -113,8 +128,11 @@ export class Nodes {
         return currentState === NodeConnectionState.Connected || currentState === NodeConnectionState.Reconnecting;
     }
 
-    /** Returns the cached value, not a recomputation — avoids disagreement with the event path. */
+    /**
+     * The cached connection-state availability, not a recomputation, so serialization and the event path
+     * agree. False while the node waits for its first report.
+     */
     isAvailable(nodeId: NodeId): boolean {
-        return this.#lastAvailability.get(nodeId) ?? false;
+        return (this.#lastAvailability.get(nodeId) ?? false) && !this.#awaitingFirstReport.has(nodeId);
     }
 }

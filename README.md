@@ -273,4 +273,5 @@ This implementation aims to be API-compatible with the [Python Matter Server](ht
 | Fabric Label            | Accepts null/empty to clear                                | Resets to "Home" when null/empty                                                                           |
 | Storage Format          | Single `chip.json` and `{fabricId}.json` file              | matter.js native storage (migration supported)                                                             |
 | Attribute Subscriptions | Tracks per-node in `attribute_subscriptions`               | Always empty (handled internally)                                                                          |
+| Endpoint Parents        | Not sent                                                   | `endpoint_parents` in node data: the direct parent endpoint of each endpoint whose parent is known         |
 | Custom OTA Files        | Allows to import them independently from the test-dcl flag | Only imports them when also test-dcl is enabled                                                            |

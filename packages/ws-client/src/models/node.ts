@@ -4,6 +4,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import type { EndpointParentsData } from "./model.js";
+
 /** Raw node data from server */
 export interface MatterNodeData {
     node_id: number | bigint;
@@ -22,6 +24,12 @@ export interface MatterNodeData {
      * Optional - not available in Python Matter Server.
      */
     matter_version?: string;
+    /**
+     * The direct parent endpoint of endpoints in `attributes` other than 0; a top-level endpoint has
+     * parent 0, and an endpoint whose parent is not known has no entry. Not available in Python Matter
+     * Server and older servers: derive the parents from the Descriptor PartsLists then.
+     */
+    endpoint_parents?: EndpointParentsData;
 }
 
 export class MatterNode {
@@ -39,6 +47,12 @@ export class MatterNode {
      * Optional - not available in Python Matter Server.
      */
     matter_version?: string;
+    /**
+     * The direct parent endpoint of endpoints in `attributes` other than 0; a top-level endpoint has
+     * parent 0, and an endpoint whose parent is not known has no entry. Not available in Python Matter
+     * Server and older servers: derive the parents from the Descriptor PartsLists then.
+     */
+    endpoint_parents?: EndpointParentsData;
 
     constructor(public data: MatterNodeData) {
         this.node_id = data.node_id;
@@ -50,6 +64,7 @@ export class MatterNode {
         this.attributes = data.attributes;
         this.attribute_subscriptions = data.attribute_subscriptions;
         this.matter_version = data.matter_version;
+        this.endpoint_parents = data.endpoint_parents;
     }
 
     get nodeLabel(): string {

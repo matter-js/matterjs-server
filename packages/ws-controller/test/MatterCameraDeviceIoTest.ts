@@ -1,0 +1,909 @@
+/**
+ * @license
+ * Copyright 2025-2026 Open Home Foundation
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+import { EndpointNumber, NodeId } from "@matter/main";
+import { CameraAvStreamManagement } from "@matter/main/clusters/camera-av-stream-management";
+import { WebRtcTransportProvider } from "@matter/main/clusters/web-rtc-transport-provider";
+import { Status, StatusResponse } from "@matter/main/types";
+import { CameraAvStreamManagementClient } from "@matter/node/behaviors/camera-av-stream-management";
+import { WebRtcTransportProviderClient } from "@matter/node/behaviors/web-rtc-transport-provider";
+import { deviceStatusOf } from "../src/camera/deviceStatus.js";
+import type { RawCameraAvStreamManagementState } from "../src/camera/MatterCameraDeviceIo.js";
+import { MatterCameraDeviceIo, toCameraState } from "../src/camera/MatterCameraDeviceIo.js";
+import type { ControllerCommandHandler } from "../src/controller/ControllerCommandHandler.js";
+import { cameraFeatures } from "./cameraFixtures.js";
+
+const MINIMAL_STATE: RawCameraAvStreamManagementState = {
+    supportedStreamUsages: [3],
+    streamUsagePriorities: [3],
+    maxNetworkBandwidth: 8000000,
+};
+
+/** The features every test below reads unless it is about the feature map itself. */
+const FEATURES = cameraFeatures("audio", "video", "snapshot");
+
+describe("toCameraState", () => {
+    it("defaults every feature-gated list to empty when the source omits it", () => {
+        const state = toCameraState(MINIMAL_STATE, FEATURES);
+        expect(state.rateDistortionTradeOffPoints).to.deep.equal([]);
+        expect(state.snapshotCapabilities).to.deep.equal([]);
+        expect(state.allocatedVideoStreams).to.deep.equal([]);
+        expect(state.allocatedAudioStreams).to.deep.equal([]);
+        expect(state.allocatedSnapshotStreams).to.deep.equal([]);
+        expect(state.videoSensorParams).to.equal(undefined);
+        expect(state.microphoneCapabilities).to.equal(undefined);
+    });
+
+    it("copies supportedStreamUsages/streamUsagePriorities into plain mutable arrays", () => {
+        const source: readonly number[] = [1, 2, 3];
+        const state = toCameraState(
+            { ...MINIMAL_STATE, supportedStreamUsages: source, streamUsagePriorities: source },
+            FEATURES,
+        );
+        expect(state.supportedStreamUsages).to.deep.equal([1, 2, 3]);
+        expect(state.supportedStreamUsages).to.not.equal(source);
+    });
+
+    // HDRModeEnabled is the on/off switch, not the capability, so hdrCapable must not read it.
+    it("renames maxHdrfps to maxHdrFps and reads hdrCapable from the feature map", () => {
+        const state = toCameraState(
+            {
+                ...MINIMAL_STATE,
+                videoSensorParams: { sensorWidth: 2560, sensorHeight: 1440, maxFps: 30, maxHdrfps: 15 },
+            },
+            cameraFeatures("highDynamicRange"),
+        );
+        expect(state.videoSensorParams).to.deep.equal({
+            sensorWidth: 2560,
+            sensorHeight: 1440,
+            maxFps: 30,
+            maxHdrFps: 15,
+            hdrCapable: true,
+        });
+    });
+
+    it("carries videoSensorParams through without maxHdrfps when the device omits it", () => {
+        const state = toCameraState(
+            {
+                ...MINIMAL_STATE,
+                videoSensorParams: { sensorWidth: 1920, sensorHeight: 1080, maxFps: 30 },
+            },
+            FEATURES,
+        );
+        expect(state.videoSensorParams?.maxHdrFps).to.equal(undefined);
+    });
+
+    it("reports hdrCapable false when the device has no HighDynamicRange feature", () => {
+        const state = toCameraState(
+            {
+                ...MINIMAL_STATE,
+                videoSensorParams: { sensorWidth: 1920, sensorHeight: 1080, maxFps: 30 },
+            },
+            FEATURES,
+        );
+        expect(state.videoSensorParams?.hdrCapable).to.equal(false);
+    });
+
+    it("reports the feature map and the privacy attributes as the device states them", () => {
+        const features = cameraFeatures("audio", "privacy");
+        const state = toCameraState(
+            {
+                ...MINIMAL_STATE,
+                softRecordingPrivacyModeEnabled: false,
+                softLivestreamPrivacyModeEnabled: true,
+                hardPrivacyModeOn: false,
+            },
+            features,
+        );
+        expect(state.features).to.equal(features);
+        expect(state.privacy).to.deep.equal({
+            softRecordingModeEnabled: false,
+            softLivestreamModeEnabled: true,
+            hardModeOn: false,
+        });
+    });
+
+    it("leaves a privacy switch the camera does not state absent rather than reporting it off", () => {
+        const state = toCameraState(MINIMAL_STATE, cameraFeatures());
+        expect(state.privacy).to.deep.equal({
+            softRecordingModeEnabled: undefined,
+            softLivestreamModeEnabled: undefined,
+            hardModeOn: undefined,
+        });
+        expect(state.privacy.hardModeOn).to.equal(undefined);
+    });
+
+    it("maps rateDistortionTradeOffPoints field names one-to-one", () => {
+        const state = toCameraState(
+            {
+                ...MINIMAL_STATE,
+                rateDistortionTradeOffPoints: [
+                    { codec: 1, resolution: { width: 1920, height: 1080 }, minBitRate: 800000 },
+                ],
+            },
+            FEATURES,
+        );
+        expect(state.rateDistortionTradeOffPoints).to.deep.equal([
+            { codec: 1, resolution: { width: 1920, height: 1080 }, minBitRate: 800000 },
+        ]);
+    });
+
+    it("defaults requiresHardwareEncoder to false when the device omits it", () => {
+        const state = toCameraState(
+            {
+                ...MINIMAL_STATE,
+                snapshotCapabilities: [
+                    {
+                        resolution: { width: 640, height: 480 },
+                        maxFrameRate: 1,
+                        imageCodec: 0,
+                        requiresEncodedPixels: false,
+                    },
+                ],
+            },
+            FEATURES,
+        );
+        expect(state.snapshotCapabilities[0]?.requiresHardwareEncoder).to.equal(false);
+    });
+
+    it("carries a stated requiresHardwareEncoder through unchanged", () => {
+        const state = toCameraState(
+            {
+                ...MINIMAL_STATE,
+                snapshotCapabilities: [
+                    {
+                        resolution: { width: 640, height: 480 },
+                        maxFrameRate: 1,
+                        imageCodec: 0,
+                        requiresEncodedPixels: true,
+                        requiresHardwareEncoder: true,
+                    },
+                ],
+            },
+            FEATURES,
+        );
+        expect(state.snapshotCapabilities[0]?.requiresHardwareEncoder).to.equal(true);
+    });
+
+    it("maps an allocated video stream field-for-field", () => {
+        const state = toCameraState(
+            {
+                ...MINIMAL_STATE,
+                allocatedVideoStreams: [
+                    {
+                        videoStreamId: 1,
+                        streamUsage: 3,
+                        videoCodec: 1,
+                        minResolution: { width: 640, height: 360 },
+                        maxResolution: { width: 1920, height: 1080 },
+                        minFrameRate: 1,
+                        maxFrameRate: 30,
+                        minBitRate: 100000,
+                        maxBitRate: 8000000,
+                        keyFrameInterval: 2000,
+                        referenceCount: 2,
+                        watermarkEnabled: true,
+                    },
+                ],
+            },
+            FEATURES,
+        );
+        expect(state.allocatedVideoStreams).to.deep.equal([
+            {
+                videoStreamId: 1,
+                streamUsage: 3,
+                videoCodec: 1,
+                minResolution: { width: 640, height: 360 },
+                maxResolution: { width: 1920, height: 1080 },
+                minFrameRate: 1,
+                maxFrameRate: 30,
+                minBitRate: 100000,
+                maxBitRate: 8000000,
+                keyFrameInterval: 2000,
+                referenceCount: 2,
+                // Absent means the camera lacks the OSD feature, which keeps the field off a re-allocate.
+                overlays: { watermarkEnabled: true, osdEnabled: undefined },
+            },
+        ]);
+    });
+
+    it("maps an allocated audio stream field-for-field", () => {
+        const state = toCameraState(
+            {
+                ...MINIMAL_STATE,
+                allocatedAudioStreams: [
+                    {
+                        audioStreamId: 2,
+                        streamUsage: 3,
+                        audioCodec: 0,
+                        channelCount: 1,
+                        sampleRate: 48000,
+                        bitRate: 64000,
+                        bitDepth: 16,
+                        referenceCount: 1,
+                    },
+                ],
+            },
+            FEATURES,
+        );
+        expect(state.allocatedAudioStreams).to.deep.equal([
+            {
+                audioStreamId: 2,
+                streamUsage: 3,
+                audioCodec: 0,
+                channelCount: 1,
+                sampleRate: 48000,
+                bitRate: 64000,
+                bitDepth: 16,
+                referenceCount: 1,
+            },
+        ]);
+    });
+
+    it("keeps an allocated snapshot stream's independent min and max resolution", () => {
+        const state = toCameraState(
+            {
+                ...MINIMAL_STATE,
+                allocatedSnapshotStreams: [
+                    {
+                        snapshotStreamId: 3,
+                        imageCodec: 0,
+                        frameRate: 1,
+                        minResolution: { width: 640, height: 480 },
+                        maxResolution: { width: 1920, height: 1080 },
+                        quality: 100,
+                        encodedPixels: false,
+                        hardwareEncoder: false,
+                        referenceCount: 0,
+                        osdEnabled: true,
+                    },
+                ],
+            },
+            FEATURES,
+        );
+        expect(state.allocatedSnapshotStreams).to.deep.equal([
+            {
+                snapshotStreamId: 3,
+                imageCodec: 0,
+                minResolution: { width: 640, height: 480 },
+                maxResolution: { width: 1920, height: 1080 },
+                quality: 100,
+                referenceCount: 0,
+                frameRate: 1,
+                encodedPixels: false,
+                hardwareEncoder: false,
+                overlays: { watermarkEnabled: undefined, osdEnabled: true },
+            },
+        ]);
+    });
+
+    it("copies microphoneCapabilities' list fields into plain mutable arrays", () => {
+        const codecs: readonly number[] = [0, 1];
+        const state = toCameraState(
+            {
+                ...MINIMAL_STATE,
+                microphoneCapabilities: {
+                    supportedCodecs: codecs,
+                    maxNumberOfChannels: 2,
+                    supportedSampleRates: [48000],
+                    supportedBitDepths: [16],
+                },
+            },
+            FEATURES,
+        );
+        expect(state.microphoneCapabilities).to.deep.equal({
+            supportedCodecs: [0, 1],
+            maxNumberOfChannels: 2,
+            supportedSampleRates: [48000],
+            supportedBitDepths: [16],
+        });
+        expect(state.microphoneCapabilities?.supportedCodecs).to.not.equal(codecs);
+    });
+
+    it("carries twoWayTalkSupport and scalar limits through unchanged", () => {
+        const state = toCameraState(
+            {
+                ...MINIMAL_STATE,
+                maxConcurrentEncoders: 1,
+                maxEncodedPixelRate: 248832000,
+                maxNetworkBandwidth: 4000000,
+                twoWayTalkSupport: 2,
+            },
+            FEATURES,
+        );
+        expect(state.maxConcurrentEncoders).to.equal(1);
+        expect(state.maxEncodedPixelRate).to.equal(248832000);
+        expect(state.maxNetworkBandwidth).to.equal(4000000);
+        expect(state.twoWayTalkSupport).to.equal(2);
+    });
+});
+
+describe("MatterCameraDeviceIo.invoke (webrtcProvider routing)", () => {
+    const NODE_ID = NodeId(5n);
+    const ENDPOINT_ID = EndpointNumber(1);
+
+    interface HandlerStub {
+        invokeCommand: () => Promise<unknown>;
+        invokeWebRtcProviderCommand: (args: {
+            nodeId: NodeId;
+            endpointId: EndpointNumber;
+            commandName: string;
+            fields: Record<string, unknown>;
+            sessionEstablishing?: (webRtcSessionId: number) => void;
+        }) => Promise<unknown>;
+        removeTrackedWebRtcSession: (
+            webRtcSessionId: number,
+            nodeId: NodeId,
+            endpointId: EndpointNumber,
+        ) => Promise<void>;
+    }
+
+    /** A device rejection carrying a Matter status, as matter.js surfaces one. */
+    function statusError(status: number): Error & { code: number } {
+        const error = new Error(`Device returned status ${status}`) as Error & { code: number };
+        error.code = status;
+        return error;
+    }
+
+    function makeHandler(overrides: Partial<HandlerStub> = {}): ControllerCommandHandler {
+        const stub: HandlerStub & { getNode: () => unknown } = {
+            getNode: () => ({}),
+            invokeCommand: overrides.invokeCommand ?? (async () => undefined),
+            invokeWebRtcProviderCommand: overrides.invokeWebRtcProviderCommand ?? (async () => undefined),
+            removeTrackedWebRtcSession: overrides.removeTrackedWebRtcSession ?? (async () => {}),
+        };
+        return stub as unknown as ControllerCommandHandler;
+    }
+
+    it("routes a provideOffer invoke through invokeWebRtcProviderCommand as ProvideOffer", async () => {
+        const calls = new Array<unknown>();
+        const io = new MatterCameraDeviceIo(
+            makeHandler({
+                invokeWebRtcProviderCommand: async args => {
+                    calls.push(args);
+                    return { webRtcSessionId: 1 };
+                },
+            }),
+        );
+
+        await io.invoke({
+            nodeId: NODE_ID,
+            endpointId: ENDPOINT_ID,
+            cluster: "webrtcProvider",
+            command: "provideOffer",
+            fields: { sdp: "v=0" },
+        });
+
+        expect(calls).to.deep.equal([
+            {
+                nodeId: NODE_ID,
+                endpointId: ENDPOINT_ID,
+                commandName: "ProvideOffer",
+                fields: { sdp: "v=0" },
+                sessionEstablishing: undefined,
+            },
+        ]);
+    });
+
+    it("forwards the caller's session-establishing hook, which the session registry depends on", async () => {
+        const announced = new Array<number>();
+        const io = new MatterCameraDeviceIo(
+            makeHandler({
+                invokeWebRtcProviderCommand: async args => {
+                    args.sessionEstablishing?.(7);
+                    return { webRtcSessionId: 7 };
+                },
+            }),
+        );
+
+        await io.invoke({
+            nodeId: NODE_ID,
+            endpointId: ENDPOINT_ID,
+            cluster: "webrtcProvider",
+            command: "provideOffer",
+            fields: { sdp: "v=0" },
+            sessionEstablishing: webRtcSessionId => announced.push(webRtcSessionId),
+        });
+
+        expect(announced).to.deep.equal([7]);
+    });
+
+    it("routes a solicitOffer invoke through invokeWebRtcProviderCommand as SolicitOffer", async () => {
+        const calls = new Array<unknown>();
+        const io = new MatterCameraDeviceIo(
+            makeHandler({
+                invokeWebRtcProviderCommand: async args => {
+                    calls.push(args);
+                    return { webRtcSessionId: 2 };
+                },
+            }),
+        );
+
+        await io.invoke({
+            nodeId: NODE_ID,
+            endpointId: ENDPOINT_ID,
+            cluster: "webrtcProvider",
+            command: "solicitOffer",
+            fields: { streamUsage: 3 },
+        });
+
+        expect(calls).to.deep.equal([
+            {
+                nodeId: NODE_ID,
+                endpointId: ENDPOINT_ID,
+                commandName: "SolicitOffer",
+                fields: { streamUsage: 3 },
+                sessionEstablishing: undefined,
+            },
+        ]);
+    });
+
+    it("untracks the session after a successful endSession invoke, naming the camera it was issued by", async () => {
+        const untracked = new Array<string>();
+        const io = new MatterCameraDeviceIo(
+            makeHandler({
+                invokeCommand: async () => undefined,
+                removeTrackedWebRtcSession: async (webRtcSessionId, nodeId, endpointId) => {
+                    untracked.push(`${nodeId}/${endpointId}/${webRtcSessionId}`);
+                },
+            }),
+        );
+
+        await io.invoke({
+            nodeId: NODE_ID,
+            endpointId: ENDPOINT_ID,
+            cluster: "webrtcProvider",
+            command: "endSession",
+            fields: { webRtcSessionId: 7, reason: 0 },
+        });
+
+        expect(untracked).to.deep.equal(["5/1/7"]);
+    });
+
+    it("untracks the session when the device answers NotFound, as the manager does", async () => {
+        // Must match the manager, which drops its entry on NotFound.
+        const untracked = new Array<number>();
+        const io = new MatterCameraDeviceIo(
+            makeHandler({
+                invokeCommand: async () => {
+                    throw statusError(Status.NotFound);
+                },
+                removeTrackedWebRtcSession: async webRtcSessionId => {
+                    untracked.push(webRtcSessionId);
+                },
+            }),
+        );
+
+        let thrown: unknown;
+        try {
+            await io.invoke({
+                nodeId: NODE_ID,
+                endpointId: ENDPOINT_ID,
+                cluster: "webrtcProvider",
+                command: "endSession",
+                fields: { webRtcSessionId: 7, reason: 0 },
+            });
+        } catch (error) {
+            thrown = error;
+        }
+
+        expect(untracked).to.deep.equal([7]);
+        expect(deviceStatusOf(thrown)).to.equal(Status.NotFound);
+    });
+
+    it("reports a successful EndSession even when dropping the local tracking fails", async () => {
+        // The manager drops its entry only after this resolves, so a tracking failure must not reject it.
+        const io = new MatterCameraDeviceIo(
+            makeHandler({
+                invokeCommand: async () => ({ ok: true }),
+                removeTrackedWebRtcSession: async () => {
+                    throw new Error("requestor endpoint is gone");
+                },
+            }),
+        );
+
+        const response = await io.invoke({
+            nodeId: NODE_ID,
+            endpointId: ENDPOINT_ID,
+            cluster: "webrtcProvider",
+            command: "endSession",
+            fields: { webRtcSessionId: 7, reason: 0 },
+        });
+
+        expect(response).to.deep.equal({ ok: true });
+    });
+
+    it("reports the device's status even when dropping the local tracking fails", async () => {
+        const io = new MatterCameraDeviceIo(
+            makeHandler({
+                invokeCommand: async () => {
+                    throw statusError(Status.NotFound);
+                },
+                removeTrackedWebRtcSession: async () => {
+                    throw new Error("requestor endpoint is gone");
+                },
+            }),
+        );
+
+        let thrown: unknown;
+        try {
+            await io.invoke({
+                nodeId: NODE_ID,
+                endpointId: ENDPOINT_ID,
+                cluster: "webrtcProvider",
+                command: "endSession",
+                fields: { webRtcSessionId: 7, reason: 0 },
+            });
+        } catch (error) {
+            thrown = error;
+        }
+
+        expect(deviceStatusOf(thrown)).to.equal(Status.NotFound);
+    });
+
+    it("keeps tracking the session when endSession fails with any other status", async () => {
+        const untracked = new Array<number>();
+        const io = new MatterCameraDeviceIo(
+            makeHandler({
+                invokeCommand: async () => {
+                    throw statusError(Status.Busy);
+                },
+                removeTrackedWebRtcSession: async webRtcSessionId => {
+                    untracked.push(webRtcSessionId);
+                },
+            }),
+        );
+
+        let thrown: unknown;
+        try {
+            await io.invoke({
+                nodeId: NODE_ID,
+                endpointId: ENDPOINT_ID,
+                cluster: "webrtcProvider",
+                command: "endSession",
+                fields: { webRtcSessionId: 7, reason: 0 },
+            });
+        } catch (error) {
+            thrown = error;
+        }
+
+        expect(untracked).to.deep.equal([]);
+        expect(deviceStatusOf(thrown)).to.equal(Status.Busy);
+    });
+
+    it("does not untrack when endSession's webRtcSessionId is missing or non-numeric", async () => {
+        const untracked = new Array<number>();
+        const io = new MatterCameraDeviceIo(
+            makeHandler({
+                removeTrackedWebRtcSession: async webRtcSessionId => {
+                    untracked.push(webRtcSessionId);
+                },
+            }),
+        );
+
+        await io.invoke({
+            nodeId: NODE_ID,
+            endpointId: ENDPOINT_ID,
+            cluster: "webrtcProvider",
+            command: "endSession",
+            fields: { webRtcSessionId: "7" },
+        });
+
+        expect(untracked).to.deep.equal([]);
+    });
+});
+
+describe("MatterCameraDeviceIo.invoke (stream list re-read)", () => {
+    const NODE_ID = NodeId(5n);
+    const ENDPOINT_ID = EndpointNumber(2);
+    const AVSM = CameraAvStreamManagement.Cluster;
+
+    interface ReadRequest {
+        isFabricFiltered: boolean;
+        attributeRequests: { endpointId: number; clusterId: number; attributeId: number }[];
+    }
+
+    function makeHandler(options: { invokeCommand?: () => Promise<unknown>; read?: () => Promise<void> } = {}) {
+        const events = new Array<string>();
+        const reads = new Array<ReadRequest>();
+        const stub = {
+            getNode: () => ({
+                interaction: {
+                    read: async function* (request: ReadRequest) {
+                        reads.push(request);
+                        events.push("read");
+                        await options.read?.();
+                        // The camera reports nothing when the list's data version is unchanged.
+                        yield new Array<never>();
+                    },
+                },
+            }),
+            invokeCommand: async () => {
+                events.push("invoke");
+                return (options.invokeCommand ?? (async () => ({ ok: true })))();
+            },
+        };
+        return { handler: stub as unknown as ControllerCommandHandler, events, reads };
+    }
+
+    const cases = [
+        ["videoStreamAllocate", AVSM.attributes.allocatedVideoStreams.id],
+        ["videoStreamDeallocate", AVSM.attributes.allocatedVideoStreams.id],
+        ["audioStreamAllocate", AVSM.attributes.allocatedAudioStreams.id],
+        ["audioStreamDeallocate", AVSM.attributes.allocatedAudioStreams.id],
+        ["snapshotStreamAllocate", AVSM.attributes.allocatedSnapshotStreams.id],
+        ["snapshotStreamDeallocate", AVSM.attributes.allocatedSnapshotStreams.id],
+    ] as const;
+
+    for (const [command, attributeId] of cases) {
+        it(`re-reads the stream list the camera changed after ${command} succeeds`, async () => {
+            const { handler, events, reads } = makeHandler();
+            const io = new MatterCameraDeviceIo(handler);
+
+            const response = await io.invoke({
+                nodeId: NODE_ID,
+                endpointId: ENDPOINT_ID,
+                cluster: "avsm",
+                command,
+                fields: {},
+            });
+
+            expect(response).to.deep.equal({ ok: true });
+            expect(events).to.deep.equal(["invoke", "read"]);
+            expect(reads[0].isFabricFiltered).to.equal(true);
+            expect(reads[0].attributeRequests).to.deep.equal([
+                { endpointId: ENDPOINT_ID, clusterId: AVSM.id, attributeId },
+            ]);
+        });
+    }
+
+    it("does not read after a command that leaves the stream lists alone", async () => {
+        const { handler, events } = makeHandler();
+        const io = new MatterCameraDeviceIo(handler);
+
+        await io.invoke({
+            nodeId: NODE_ID,
+            endpointId: ENDPOINT_ID,
+            cluster: "avsm",
+            command: "captureSnapshot",
+            fields: {},
+        });
+
+        expect(events).to.deep.equal(["invoke"]);
+    });
+
+    it("does not read when the camera refuses the command", async () => {
+        const { handler, events } = makeHandler({
+            invokeCommand: async () => {
+                throw new StatusResponse.ResourceExhaustedError("no encoder");
+            },
+        });
+        const io = new MatterCameraDeviceIo(handler);
+
+        let thrown: unknown;
+        try {
+            await io.invoke({
+                nodeId: NODE_ID,
+                endpointId: ENDPOINT_ID,
+                cluster: "avsm",
+                command: "videoStreamAllocate",
+                fields: {},
+            });
+        } catch (error) {
+            thrown = error;
+        }
+
+        expect(deviceStatusOf(thrown)).to.equal(Status.ResourceExhausted);
+        expect(events).to.deep.equal(["invoke"]);
+    });
+
+    it("returns the camera's answer when the re-read fails", async () => {
+        const { handler } = makeHandler({
+            read: async () => {
+                throw new Error("session lost");
+            },
+        });
+        const io = new MatterCameraDeviceIo(handler);
+
+        const response = await io.invoke({
+            nodeId: NODE_ID,
+            endpointId: ENDPOINT_ID,
+            cluster: "avsm",
+            command: "snapshotStreamDeallocate",
+            fields: { snapshotStreamId: 5 },
+        });
+
+        expect(response).to.deep.equal({ ok: true });
+    });
+});
+
+/** Mirrors matter.js `Endpoints`: `for()` throws NotFound for an endpoint the node does not have. */
+function endpointsOf<T>(endpoint: T | undefined) {
+    return {
+        has: () => endpoint !== undefined,
+        for: (id: number): T => {
+            if (endpoint === undefined) throw new StatusResponse.NotFoundError(`Endpoint ${id} does not exist`);
+            return endpoint;
+        },
+    };
+}
+
+describe("MatterCameraDeviceIo.readCameraState", () => {
+    const NODE_ID = NodeId(5n);
+    const ENDPOINT_ID = EndpointNumber(1);
+
+    function makeHandler(endpoint: { behaviors: { has: (behavior: unknown) => boolean } } | undefined) {
+        const stub = { getNode: () => ({ endpoints: endpointsOf(endpoint) }) };
+        return stub as unknown as ControllerCommandHandler;
+    }
+
+    it("reports nothing for an endpoint that does not exist", async () => {
+        const io = new MatterCameraDeviceIo(makeHandler(undefined));
+        expect(await io.readCameraState(NODE_ID, ENDPOINT_ID)).to.equal(undefined);
+    });
+
+    it("reports nothing for an endpoint without AV stream management", async () => {
+        const io = new MatterCameraDeviceIo(makeHandler({ behaviors: { has: () => false } }));
+        expect(await io.readCameraState(NODE_ID, ENDPOINT_ID)).to.equal(undefined);
+    });
+});
+
+describe("MatterCameraDeviceIo.readWebRtcSessions", () => {
+    const NODE_ID = NodeId(5n);
+    const ENDPOINT_ID = EndpointNumber(1);
+    const LOCAL_NODE_ID = NodeId(112233n);
+
+    interface FakeEndpoint {
+        behaviors: { has: (behavior: unknown) => boolean };
+        stateOf: (behavior: unknown) => { currentSessions: unknown[] };
+    }
+
+    function makeHandler(endpoint: FakeEndpoint | undefined): ControllerCommandHandler {
+        const stub = {
+            getNode: () => ({ endpoints: endpointsOf(endpoint) }),
+            localNodeId: LOCAL_NODE_ID,
+        };
+        return stub as unknown as ControllerCommandHandler;
+    }
+
+    function endpointWith(sessions: unknown[]): FakeEndpoint {
+        return {
+            behaviors: { has: behavior => behavior === WebRtcTransportProviderClient },
+            stateOf: () => ({ currentSessions: sessions }),
+        };
+    }
+
+    it("reports nothing for an endpoint without the provider cluster", async () => {
+        const io = new MatterCameraDeviceIo(
+            makeHandler({ behaviors: { has: () => false }, stateOf: () => ({ currentSessions: [] }) }),
+        );
+        expect(await io.readWebRtcSessions(NODE_ID, ENDPOINT_ID)).to.equal(undefined);
+    });
+
+    it("reports nothing for an endpoint that does not exist", async () => {
+        const io = new MatterCameraDeviceIo(makeHandler(undefined));
+        expect(await io.readWebRtcSessions(NODE_ID, ENDPOINT_ID)).to.equal(undefined);
+    });
+
+    it("names this server's own sessions by the peer node id the camera recorded", async () => {
+        const io = new MatterCameraDeviceIo(
+            makeHandler(
+                endpointWith([
+                    {
+                        id: 7,
+                        peerNodeId: LOCAL_NODE_ID,
+                        peerEndpointId: EndpointNumber(2),
+                        streamUsage: 3,
+                        videoStreams: [9],
+                        audioStreams: [4],
+                    },
+                    {
+                        id: 8,
+                        peerNodeId: NodeId(998877n),
+                        peerEndpointId: EndpointNumber(2),
+                        streamUsage: 3,
+                        videoStreams: [9],
+                        audioStreams: [],
+                    },
+                ]),
+            ),
+        );
+
+        const sessions = (await io.readWebRtcSessions(NODE_ID, ENDPOINT_ID)) ?? [];
+
+        expect(sessions.map(session => session.webRtcSessionId)).to.deep.equal([7, 8]);
+        expect(sessions.map(session => session.establishedByThisServer)).to.deep.equal([true, false]);
+        expect(sessions[0].videoStreamIds).to.deep.equal([9]);
+        expect(sessions[0].audioStreamIds).to.deep.equal([4]);
+    });
+
+    it("names the streams a revision-1 camera states as singular ids", async () => {
+        const io = new MatterCameraDeviceIo(
+            makeHandler(
+                endpointWith([
+                    {
+                        id: 7,
+                        peerNodeId: LOCAL_NODE_ID,
+                        peerEndpointId: EndpointNumber(2),
+                        streamUsage: 3,
+                        videoStreamId: 9,
+                        audioStreamId: 4,
+                    },
+                ]),
+            ),
+        );
+
+        const sessions = (await io.readWebRtcSessions(NODE_ID, ENDPOINT_ID)) ?? [];
+
+        expect(sessions[0].videoStreamIds).to.deep.equal([9]);
+        expect(sessions[0].audioStreamIds).to.deep.equal([4]);
+    });
+
+    it("reports a session that names no stream either way with empty lists", async () => {
+        const io = new MatterCameraDeviceIo(
+            makeHandler(
+                endpointWith([
+                    {
+                        id: 7,
+                        peerNodeId: LOCAL_NODE_ID,
+                        peerEndpointId: EndpointNumber(2),
+                        streamUsage: 3,
+                        videoStreamId: null,
+                    },
+                ]),
+            ),
+        );
+
+        const sessions = (await io.readWebRtcSessions(NODE_ID, ENDPOINT_ID)) ?? [];
+
+        expect(sessions[0].videoStreamIds).to.deep.equal([]);
+        expect(sessions[0].audioStreamIds).to.deep.equal([]);
+    });
+});
+
+describe("MatterCameraDeviceIo.missingCameraClusters", () => {
+    const NODE_ID = NodeId(5n);
+    const ENDPOINT_ID = EndpointNumber(1);
+
+    interface FakeEndpoint {
+        behaviors: { has: (behavior: unknown) => boolean };
+    }
+
+    function makeHandler(endpoint: FakeEndpoint | undefined): ControllerCommandHandler {
+        const stub = {
+            getNode: () => ({ endpoints: endpointsOf(endpoint) }),
+        };
+        return stub as unknown as ControllerCommandHandler;
+    }
+
+    it("reports both clusters missing when the endpoint does not exist", async () => {
+        const io = new MatterCameraDeviceIo(makeHandler(undefined));
+        const missing = await io.missingCameraClusters(NODE_ID, ENDPOINT_ID);
+        expect(missing).to.deep.equal([CameraAvStreamManagement.Cluster.id, WebRtcTransportProvider.Cluster.id]);
+    });
+
+    it("reports only the transport provider missing when the endpoint carries just AV stream management", async () => {
+        const io = new MatterCameraDeviceIo(
+            makeHandler({ behaviors: { has: behavior => behavior === CameraAvStreamManagementClient } }),
+        );
+        const missing = await io.missingCameraClusters(NODE_ID, ENDPOINT_ID);
+        expect(missing).to.deep.equal([WebRtcTransportProvider.Cluster.id]);
+    });
+
+    it("reports only AV stream management missing when the endpoint carries just the transport provider", async () => {
+        const io = new MatterCameraDeviceIo(
+            makeHandler({ behaviors: { has: behavior => behavior === WebRtcTransportProviderClient } }),
+        );
+        const missing = await io.missingCameraClusters(NODE_ID, ENDPOINT_ID);
+        expect(missing).to.deep.equal([CameraAvStreamManagement.Cluster.id]);
+    });
+
+    it("reports nothing missing when the endpoint carries both clusters", async () => {
+        const io = new MatterCameraDeviceIo(makeHandler({ behaviors: { has: () => true } }));
+        const missing = await io.missingCameraClusters(NODE_ID, ENDPOINT_ID);
+        expect(missing).to.deep.equal([]);
+    });
+});
