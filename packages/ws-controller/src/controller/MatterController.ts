@@ -396,6 +396,7 @@ export class MatterController {
             });
             new DclVendorInfoService(this.#env.root, {
                 dclConfig,
+                offline: this.#dclOffline,
                 seed: { vendors: vendors({ includeTest: trustTestCertificates }) },
             });
             this.#services.get(DclVendorInfoService);
@@ -437,6 +438,7 @@ export class MatterController {
                 await controller.node.setStateOf(DclBehavior, {
                     fetchTestCertificates: true,
                     acceptTestCertificates: this.#enableTestNetDcl,
+                    offline: this.#dclOffline,
                 });
                 // Re-check after the await — stop() may have run during it; don't start work that outlives teardown.
                 if (this.#stopped) return;

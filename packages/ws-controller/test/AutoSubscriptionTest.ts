@@ -609,6 +609,22 @@ describe("auto subscription setting", () => {
             expect(controller.commandHandler.autoSubscriptionDisabled).false;
         });
 
+        it("runs every DCL service offline with dclOffline", async () => {
+            const controller = await createMatterController({ dclOffline: true, disableDclSeed: false });
+            await MockTime.resolve(controller.commandHandler.events.started.emit(), { macrotasks: true });
+
+            const services = await MockTime.resolve(
+                Promise.all([
+                    controller.certificateService(),
+                    controller.vendorInfoService(),
+                    controller.otaUpdateService(),
+                ]),
+                { macrotasks: true },
+            );
+
+            expect(services.map(service => service.offline)).deep.equals([true, true, true]);
+        });
+
         describe("Border Router discovery", () => {
             let starts: number;
             let restoreStart: () => void;
