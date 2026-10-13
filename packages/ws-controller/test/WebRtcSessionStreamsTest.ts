@@ -10,7 +10,7 @@ import { StreamUsage } from "@matter/main/types";
 import {
     establishWebRtcProviderSession,
     isTrackableWebRtcSession,
-    tracksSessionOf,
+    trackedSessionOf,
     resolveWebRtcSessionStreams,
     selectWebRtcStreamFields,
 } from "../src/controller/webRtcSessionStreams.js";
@@ -675,16 +675,18 @@ describe("establishWebRtcProviderSession", () => {
     });
 });
 
-describe("tracksSessionOf", () => {
+describe("trackedSessionOf", () => {
     const CAMERA_A = NodeId(5n);
     const CAMERA_B = NodeId(6n);
     const ENDPOINT_1 = EndpointNumber(1);
     const ENDPOINT_2 = EndpointNumber(2);
+    const FABRIC = FabricIndex(1);
 
     function session(
         id: number,
         peerNodeId: NodeId,
         peerEndpointId: EndpointNumber,
+        fabricIndex = FABRIC,
     ): WebRtcTransportDefinitions.WebRtcSession {
         return {
             id,
@@ -694,27 +696,37 @@ describe("tracksSessionOf", () => {
             videoStreams: [1],
             audioStreams: undefined,
             metadataEnabled: false,
-            fabricIndex: FabricIndex(1),
+            fabricIndex,
         };
     }
 
+    const keyOfA = (id: number) => ({ id, fabricIndex: FABRIC, peerNodeId: CAMERA_A });
+
     it("names the session the given camera issued", () => {
         const sessions = [session(1, CAMERA_A, ENDPOINT_1)];
-        expect(tracksSessionOf(sessions, 1, CAMERA_A, ENDPOINT_1)).to.equal(true);
+        expect(trackedSessionOf(sessions, keyOfA(1), ENDPOINT_1)).to.equal(sessions[0]);
+    });
+
+    it("names each camera's own session when two cameras issued the same id", () => {
+        // WebRTCSessionID is allocated per provider, so two cameras both issuing id 1 is ordinary.
+        const sessions = [session(1, CAMERA_B, ENDPOINT_1), session(1, CAMERA_A, ENDPOINT_1)];
+        expect(trackedSessionOf(sessions, keyOfA(1), ENDPOINT_1)).to.equal(sessions[1]);
     });
 
     it("does not name another camera's session carrying the same id", () => {
-        // WebRTCSessionID is allocated per provider, so two cameras both issuing id 1 is ordinary.
-        const sessions = [session(1, CAMERA_B, ENDPOINT_1)];
-        expect(tracksSessionOf(sessions, 1, CAMERA_A, ENDPOINT_1)).to.equal(false);
+        expect(trackedSessionOf([session(1, CAMERA_B, ENDPOINT_1)], keyOfA(1), ENDPOINT_1)).to.equal(undefined);
+    });
+
+    it("does not name the same camera's session on another fabric", () => {
+        const sessions = [session(1, CAMERA_A, ENDPOINT_1, FabricIndex(2))];
+        expect(trackedSessionOf(sessions, keyOfA(1), ENDPOINT_1)).to.equal(undefined);
     });
 
     it("does not name a session of another endpoint on the same node", () => {
-        const sessions = [session(1, CAMERA_A, ENDPOINT_2)];
-        expect(tracksSessionOf(sessions, 1, CAMERA_A, ENDPOINT_1)).to.equal(false);
+        expect(trackedSessionOf([session(1, CAMERA_A, ENDPOINT_2)], keyOfA(1), ENDPOINT_1)).to.equal(undefined);
     });
 
     it("reports nothing for an id no entry carries", () => {
-        expect(tracksSessionOf([session(2, CAMERA_A, ENDPOINT_1)], 1, CAMERA_A, ENDPOINT_1)).to.equal(false);
+        expect(trackedSessionOf([session(2, CAMERA_A, ENDPOINT_1)], keyOfA(1), ENDPOINT_1)).to.equal(undefined);
     });
 });

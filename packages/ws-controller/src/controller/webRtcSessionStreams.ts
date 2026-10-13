@@ -135,18 +135,20 @@ export function isTrackableWebRtcSession(
     );
 }
 
-/**
- * `WebRTCSessionID` is allocated per provider, but matter.js's requestor keys `CurrentSessions` by
- * the id alone, so a removal must check the peer or it can drop another camera's session.
- */
-export function tracksSessionOf(
+/** The fields matter.js's requestor keys `CurrentSessions` by: `WebRTCSessionID` is allocated per provider. */
+export type WebRtcSessionKey = Pick<WebRtcTransportDefinitions.WebRtcSession, "id" | "fabricIndex" | "peerNodeId">;
+
+export function sameWebRtcSession(a: WebRtcSessionKey, b: WebRtcSessionKey): boolean {
+    return a.id === b.id && a.fabricIndex === b.fabricIndex && a.peerNodeId === b.peerNodeId;
+}
+
+/** The requestor's entry for this session on this endpoint, if it tracks one. */
+export function trackedSessionOf(
     sessions: readonly WebRtcTransportDefinitions.WebRtcSession[],
-    webRtcSessionId: number,
-    nodeId: NodeId,
+    key: WebRtcSessionKey,
     endpointId: EndpointNumber,
-): boolean {
-    const tracked = sessions.find(session => session.id === webRtcSessionId);
-    return tracked !== undefined && tracked.peerNodeId === nodeId && tracked.peerEndpointId === endpointId;
+): WebRtcTransportDefinitions.WebRtcSession | undefined {
+    return sessions.find(session => sameWebRtcSession(session, key) && session.peerEndpointId === endpointId);
 }
 
 export interface WebRtcProviderSessionIo {

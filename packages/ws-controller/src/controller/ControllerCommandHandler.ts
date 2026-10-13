@@ -130,7 +130,8 @@ import { SyncTrigger, TIME_FAILURE_EVENT_ID, TIME_SYNC_CLUSTER_ID, TimeSyncManag
 import { attachWebRtcCallbackBridge } from "./WebRtcCallbackBridge.js";
 import {
     establishWebRtcProviderSession,
-    tracksSessionOf,
+    sameWebRtcSession,
+    trackedSessionOf,
     type WebRtcProviderSessionIo,
 } from "./webRtcSessionStreams.js";
 
@@ -569,8 +570,10 @@ export class ControllerCommandHandler {
             upsertSession: async (session, options) => {
                 await requestorEndpoint.act(agent => {
                     const requestor = agent.get(WebRtcTransportRequestorServer);
-                    // Ids are per camera but the requestor keys by id alone, so any entry counts as present.
-                    if (options?.onlyIfAbsent && requestor.state.currentSessions.some(s => s.id === session.id)) {
+                    if (
+                        options?.onlyIfAbsent &&
+                        requestor.state.currentSessions.some(s => sameWebRtcSession(s, session))
+                    ) {
                         return;
                     }
                     requestor.upsertSession(session);
@@ -647,8 +650,7 @@ export class ControllerCommandHandler {
 
     /**
      * Drop a locally ended WebRTC session from the requestor's CurrentSessions; peer-initiated ends
-     * are removed by the requestor itself. No-op if the id is untracked or held by another peer
-     * (session ids are only unique per camera).
+     * are removed by the requestor itself. No-op if this camera's session is untracked.
      */
     async removeTrackedWebRtcSession(
         webRtcSessionId: number,
@@ -657,13 +659,18 @@ export class ControllerCommandHandler {
     ): Promise<void> {
         await this.#webRtcRequestor.act(agent => {
             const requestor = agent.get(WebRtcTransportRequestorServer);
-            if (!tracksSessionOf(requestor.state.currentSessions, webRtcSessionId, nodeId, endpointId)) {
+            const tracked = trackedSessionOf(
+                requestor.state.currentSessions,
+                { id: webRtcSessionId, fabricIndex: this.#fabric.fabricIndex, peerNodeId: nodeId },
+                endpointId,
+            );
+            if (tracked === undefined) {
                 logger.debug(
                     `WebRTC session ${webRtcSessionId} is not tracked for node ${this.formatNode(nodeId)} endpoint ${endpointId}; local tracking left unchanged`,
                 );
                 return;
             }
-            requestor.removeSession(webRtcSessionId);
+            requestor.removeSession(tracked);
         });
     }
 
