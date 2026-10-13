@@ -568,6 +568,13 @@ Paths:
   endpoint and 4294967295 as cluster, attribute or event id also act as wildcards.
 - `event_min` must be an integer from 0 to 2^64-1 and `data_version` one from 0 to 2^32-1, otherwise the request is
   rejected with `InvalidArguments`. Test nodes are not supported (`InvalidArguments`).
+- `event_min` needs at least one event path, and a non-empty `data_version_filters` needs at least one attribute path,
+  as the Matter Read Request allows EventFilters only with EventRequests and DataVersionFilters only with
+  AttributeRequests. Otherwise the request is rejected with `InvalidArguments`.
+- Every argument must have the documented type: lists must be lists, each `event_paths` and `data_version_filters`
+  entry an object, paths strings and `fabric_filtered`, `is_urgent` and `keep_subscriptions` `true` or `false`. An
+  argument of another type is rejected with `InvalidArguments` before anything is sent to a device. An optional
+  argument sent as `null` counts as left out.
 
 Values in the results and reports have the same shape as in `read_attribute` (attributes) and `node_event`
 (events). When the device answers a path with a status instead of data (for example an unsupported attribute),
@@ -711,7 +718,8 @@ max interval plus a response margin; until then the subscription still looks act
 ```
 
 Only available with `--disable-auto-subscription`; otherwise it fails with `InvalidArguments`. Returns `null`. Both
-`node_id` and `subscription_id` are required. A subscription this connection does not hold under that node and id
+`node_id` and `subscription_id` are required; `subscription_id` must be an integer from 0 to 2^32-1, otherwise the
+request fails with `InvalidArguments`. A subscription this connection does not hold under that node and id
 gives an `InvalidArguments` error.
 Matter has no unsubscribe message: the server stops accepting reports, and the device ends the subscription at its
 next report.

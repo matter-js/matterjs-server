@@ -142,63 +142,20 @@ describe("generic read", () => {
         expect(report.attributes).deep.equals({});
     });
 
-    it("rejects a request without paths", async () => {
-        await expectInvalidArguments(site.handler.read({ nodeId: NODE_ID }));
-    });
-
-    it("rejects a malformed path instead of reading it as a wildcard, without contacting the device", async () => {
+    it("rejects an out-of-range id in a path without contacting the device", async () => {
         const captured = captureReads(site.peer);
 
-        for (const attributePath of [
-            "1/OnOff/0",
-            "",
-            "x",
-            "1/6",
-            "1/6/0/1",
-            "1//0",
-            "-1/6/0",
-            "1/6/0x",
-            "65536/6/0",
-            "1/4294967296/0",
-            "1/6/4294967296",
-            "1/4294967294/0",
-            "1/32768/0",
-        ]) {
+        for (const attributePath of ["65536/6/0", "1/4294967294/0", "1/32768/0", "1/6/4294967296"]) {
             await expectInvalidArguments(site.handler.read({ nodeId: NODE_ID, attributePaths: [attributePath] }));
         }
-        await expectInvalidArguments(site.handler.read({ nodeId: NODE_ID, eventPaths: [{ path: "1/Switch/*" }] }));
         await expectInvalidArguments(site.handler.read({ nodeId: NODE_ID, eventPaths: [{ path: "1/59/256" }] }));
         await expectInvalidArguments(
-            site.handler.read({ nodeId: NODE_ID, eventPaths: [{ path: "1/59/1" }, { path: "1/59" }] }),
+            site.handler.read({
+                nodeId: NODE_ID,
+                attributePaths: ["1/6/0"],
+                dataVersionFilters: [{ path: "65536/6", dataVersion: 1 }],
+            }),
         );
-        for (const filterPath of ["1/6/0", "one/6", "1", "65536/6"]) {
-            await expectInvalidArguments(
-                site.handler.read({
-                    nodeId: NODE_ID,
-                    attributePaths: ["1/6/0"],
-                    dataVersionFilters: [{ path: filterPath, dataVersion: 1 }],
-                }),
-            );
-        }
-
-        expect(captured).deep.equals([]);
-    });
-
-    it("rejects an event_min or data_version out of range without contacting the device", async () => {
-        const captured = captureReads(site.peer);
-
-        for (const eventMin of [-1, 1.5, Number.MAX_SAFE_INTEGER + 1, -1n, 0x1_0000_0000_0000_0000n]) {
-            await expectInvalidArguments(site.handler.read({ nodeId: NODE_ID, attributePaths: ["1/6/0"], eventMin }));
-        }
-        for (const dataVersion of [-1, 1.5, 0x1_0000_0000]) {
-            await expectInvalidArguments(
-                site.handler.read({
-                    nodeId: NODE_ID,
-                    attributePaths: ["1/6/0"],
-                    dataVersionFilters: [{ path: "1/6", dataVersion }],
-                }),
-            );
-        }
 
         expect(captured).deep.equals([]);
     });
@@ -316,5 +273,70 @@ describe("read over WebSocket", () => {
         }
         expect(harness.readRequests).deep.equals([]);
         expect(harness.subscribeRequests).deep.equals([]);
+    });
+
+    it("refuses malformed arguments with InvalidArguments before any read", async () => {
+        const client = await harness.connect();
+
+        for (const args of [
+            { attribute_paths: [1] },
+            { attribute_paths: "1/6/0" },
+            { attribute_paths: [null] },
+            { event_paths: [null] },
+            { event_paths: [{ path: 1 }] },
+            { event_paths: "1/69/0" },
+            { attribute_paths: ["1/6/0"], data_version_filters: [null] },
+            { attribute_paths: ["1/6/0"], data_version_filters: [{ path: "1/6", data_version: "1" }] },
+            { attribute_paths: ["1/6/0"], fabric_filtered: "false" },
+            { attribute_paths: ["1/6/0"], fabric_filtered: 0 },
+            { event_paths: [{ path: "1/69/0" }], event_min: "2" },
+            { attribute_paths: ["1/6/0"], node_id: "42" },
+            { attribute_paths: ["1/6/0"], node_id: 1.5 },
+        ]) {
+            const response = await client.command("read", { node_id: 42, ...args });
+            expect(response.error_code, JSON.stringify(args)).equals(ServerErrorCode.InvalidArguments);
+        }
+        expect(harness.readRequests).deep.equals([]);
+    });
+
+    it("refuses event_min without event paths and data version filters without attribute paths", async () => {
+        const client = await harness.connect();
+
+        const eventMin = await client.command("read", { node_id: 42, attribute_paths: ["1/6/0"], event_min: 1 });
+        expect(eventMin.error_code).equals(ServerErrorCode.InvalidArguments);
+        expect(eventMin.details).equals("event_min requires event_paths");
+        const filters = await client.command("read", {
+            node_id: 42,
+            event_paths: [{ path: "1/69/0" }],
+            data_version_filters: [{ path: "1/6", data_version: 1 }],
+        });
+        expect(filters.error_code).equals(ServerErrorCode.InvalidArguments);
+        expect(filters.details).equals("data_version_filters requires attribute_paths");
+        expect(harness.readRequests).deep.equals([]);
+    });
+
+    it("reads optional arguments sent as null as left out", async () => {
+        const client = await harness.connect();
+
+        const response = await client.command("read", {
+            node_id: 42,
+            attribute_paths: ["1/6/0"],
+            event_paths: null,
+            event_min: null,
+            fabric_filtered: null,
+            data_version_filters: null,
+        });
+
+        expect(response.error_code).undefined;
+        expect(harness.readRequests).deep.equals([
+            {
+                nodeId: NodeId(42),
+                attributePaths: ["1/6/0"],
+                eventPaths: undefined,
+                eventMin: undefined,
+                fabricFiltered: undefined,
+                dataVersionFilters: undefined,
+            },
+        ]);
     });
 });

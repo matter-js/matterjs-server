@@ -15,7 +15,7 @@ import type {
     CameraResolution,
     CameraVideoHints,
 } from "@matter-server/ws-client";
-import { Bytes, EndpointNumber, NodeId, UINT64_MAX } from "@matter/main";
+import { Bytes, EndpointNumber, NodeId } from "@matter/main";
 import type { WebRtcTransportDefinitions } from "@matter/main/clusters";
 import { StreamUsage } from "@matter/main/types";
 import { ServerError } from "../types/WebSocketMessageTypes.js";
@@ -33,6 +33,7 @@ import {
     rangeText,
     rejectUnknownKeys,
     toBoundedString,
+    toNodeIdValue,
     toRequiredNumber,
 } from "./wireArgumentChecks.js";
 import {
@@ -136,19 +137,8 @@ export function requireArgumentObject(args: unknown, command: string): Record<st
  * and any id that does not name one single node (e.g. a Group Node ID).
  */
 export function parseTargetIds(fields: Record<string, unknown>, subject: string): ParsedCameraTarget {
-    const { node_id: nodeId, endpoint_id: endpointId } = fields;
-    if (typeof nodeId !== "number" && typeof nodeId !== "bigint") {
-        throw ServerError.invalidArguments(`${subject} requires a numeric or bigint node_id`);
-    }
-    // parseBigIntAwareJson turns large integer literals into bigint; an unsafe number here lost precision.
-    if (typeof nodeId === "number" && !Number.isSafeInteger(nodeId)) {
-        throw ServerError.invalidArguments(
-            `${subject} requires a numeric node_id to be an integer no greater than ${Number.MAX_SAFE_INTEGER}; state a larger node id as a bigint`,
-        );
-    }
-    if (nodeId < 0 || nodeId > UINT64_MAX) {
-        throw ServerError.invalidArguments(`${subject} requires node_id to be between 0 and ${UINT64_MAX}`);
-    }
+    const { endpoint_id: endpointId } = fields;
+    const nodeId = toNodeIdValue(fields.node_id, subject);
     if (typeof endpointId !== "number" || !Number.isInteger(endpointId) || endpointId < 0 || endpointId > 0xfffe) {
         throw ServerError.invalidArguments(`${subject} requires endpoint_id to be an integer between 0 and 0xFFFE`);
     }

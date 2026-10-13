@@ -234,15 +234,6 @@ describe("generic subscribe", () => {
             expect(record.closed).equals(1);
         });
 
-        it("rejects a request without paths", async () => {
-            await expectInvalidArguments(
-                site.handler.subscribe(
-                    { ...LIGHT_ON_OFF, attributePaths: [], eventPaths: undefined },
-                    recorder().listener,
-                ),
-            );
-        });
-
         it("rejects intervals outside the Matter range or in the wrong order", async () => {
             const captured = captureSubscribes(site.peer);
 
@@ -274,21 +265,12 @@ describe("generic subscribe", () => {
             ]);
         });
 
-        it("rejects a malformed path without contacting the device", async () => {
+        it("rejects an out-of-range id in a path without contacting the device", async () => {
             const captured = captureSubscribes(site.peer);
 
             await expectInvalidArguments(
-                site.handler.subscribe({ ...LIGHT_ON_OFF, attributePaths: ["1/OnOff/0"] }, recorder().listener),
-            );
-            await expectInvalidArguments(
-                site.handler.subscribe({ ...LIGHT_ON_OFF, eventPaths: [{ path: "x" }] }, recorder().listener),
-            );
-            await expectInvalidArguments(
                 site.handler.subscribe({ ...LIGHT_ON_OFF, attributePaths: ["1/32768/0"] }, recorder().listener),
                 'Invalid id in path "1/32768/0"',
-            );
-            await expectInvalidArguments(
-                site.handler.subscribe({ ...LIGHT_ON_OFF, eventMin: -1 }, recorder().listener),
             );
 
             expect(captured).deep.equals([]);
@@ -415,6 +397,48 @@ describe("subscribe over WebSocket", () => {
                 keepSubscriptions: true,
             },
         ]);
+    });
+
+    it("refuses malformed arguments with InvalidArguments before any subscribe", async () => {
+        const client = await harness.connect();
+
+        for (const args of [
+            { attribute_paths: [1] },
+            { attribute_paths: "1/6/0" },
+            { event_paths: [null] },
+            { event_paths: [{ path: "1/69/0", is_urgent: "yes" }] },
+            { data_version_filters: [null] },
+            { fabric_filtered: "true" },
+            { keep_subscriptions: 1 },
+            { min_interval: "1" },
+            { max_interval: undefined },
+            { min_interval: 0, max_interval: 0x10000 },
+            { min_interval: 31, max_interval: 30 },
+            { attribute_paths: undefined, data_version_filters: [{ path: "1/6", data_version: 7 }] },
+            { event_paths: undefined, event_min: 4 },
+        ]) {
+            const response = await client.command("subscribe", { ...SUBSCRIBE_ARGS, ...args });
+            expect(response.error_code, JSON.stringify(args)).equals(ServerErrorCode.InvalidArguments);
+        }
+        expect(harness.subscribeRequests).deep.equals([]);
+    });
+
+    it("refuses a malformed unsubscribe with InvalidArguments", async () => {
+        const client = await harness.connect();
+        harness.nextSubscriptionId = 5;
+        await client.command("subscribe", SUBSCRIBE_ARGS);
+
+        for (const args of [
+            { node_id: 42, subscription_id: "5" },
+            { node_id: 42 },
+            { node_id: 42, subscription_id: 5.5 },
+            { node_id: 42, subscription_id: 0x1_0000_0000 },
+            { node_id: "42", subscription_id: 5 },
+        ]) {
+            const response = await client.command("unsubscribe", args);
+            expect(response.error_code, JSON.stringify(args)).equals(ServerErrorCode.InvalidArguments);
+        }
+        expect(harness.isOpen(5)).equals(true);
     });
 
     it("answers with the subscription id and the priming report, then sends later reports to the owner only", async () => {

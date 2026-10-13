@@ -100,13 +100,13 @@ import {
     convertMatterToWebSocketTagBased,
     convertWebSocketTagBasedToMatter,
     getDateAsString,
-    isWellFormedPath,
     pathStatusOf,
     splitAttributePath,
     splitEventPath,
     statusPathOf,
     toBigIntAwareJson,
 } from "../server/Converters.js";
+import { readRequestOf, subscribeIntervalsOf } from "../server/interactionArguments.js";
 import {
     AttributeResponseStatus,
     AttributesData,
@@ -262,20 +262,6 @@ async function awaitSeeded(node: ClientNode, abort: Abort): Promise<void> {
     } finally {
         observers.close();
     }
-}
-
-function isIntervalSeconds(value: number) {
-    return Number.isInteger(value) && value >= 0 && value <= 0xffff;
-}
-
-function isEventNumber(value: number | bigint) {
-    return typeof value === "bigint"
-        ? value >= 0n && value <= 0xffff_ffff_ffff_ffffn
-        : Number.isSafeInteger(value) && value >= 0;
-}
-
-function isDataVersion(value: number) {
-    return Number.isInteger(value) && value >= 0 && value <= 0xffff_ffff;
 }
 
 /**
@@ -1265,7 +1251,8 @@ export class ControllerCommandHandler {
 
     /**
      * Read with full control over the Matter request. Unlike {@link handleReadAttributes} the paths go out as one
-     * request, and only the data version filters the caller gives are sent.
+     * request, and only the data version filters the caller gives are sent. Path format and value ranges are not checked
+     * here; the WebSocket handler checks its arguments with {@link readRequestOf} first.
      */
     async read(request: InteractionReadRequest): Promise<InteractionReport> {
         const node = this.#nodes.get(request.nodeId);
@@ -1287,14 +1274,8 @@ export class ControllerCommandHandler {
         if (!this.#autoSubscriptionDisabled) {
             throw ServerError.invalidArguments("subscribe requires the server to run with --disable-auto-subscription");
         }
-        if (!isIntervalSeconds(minInterval) || !isIntervalSeconds(maxInterval)) {
-            throw ServerError.invalidArguments(
-                "min_interval and max_interval must be integers from 0 to 65535 seconds",
-            );
-        }
-        if (maxInterval < minInterval) {
-            throw ServerError.invalidArguments("max_interval must not be less than min_interval");
-        }
+        // Guards library callers, which bypass the WebSocket parser; the number type cannot express the range.
+        subscribeIntervalsOf(minInterval, maxInterval);
         const node = this.#nodes.get(nodeId);
         if (this.#autoSubscribes(node)) {
             throw ServerError.invalidArguments(
@@ -1347,25 +1328,6 @@ export class ControllerCommandHandler {
         request: Omit<InteractionSubscribeRequest, "minInterval" | "maxInterval" | "keepSubscriptions">,
     ): Read {
         const { attributePaths, eventPaths, eventMin, fabricFiltered = true, dataVersionFilters } = request;
-        if (!attributePaths?.length && !eventPaths?.length) {
-            throw ServerError.invalidArguments("At least one attribute or event path is required");
-        }
-        if (eventMin !== undefined && !isEventNumber(eventMin)) {
-            throw ServerError.invalidArguments("event_min must be an event number, an integer from 0 to 2^64-1");
-        }
-        if (dataVersionFilters?.some(({ dataVersion }) => !isDataVersion(dataVersion))) {
-            throw ServerError.invalidArguments("data_version must be an integer from 0 to 2^32-1");
-        }
-        const malformed = [
-            ...(attributePaths ?? []).filter(path => !isWellFormedPath(path, 3)),
-            ...(eventPaths ?? []).map(({ path }) => path).filter(path => !isWellFormedPath(path, 3)),
-            ...(dataVersionFilters ?? []).map(({ path }) => path).filter(path => !isWellFormedPath(path, 2)),
-        ];
-        if (malformed.length > 0) {
-            throw ServerError.invalidArguments(
-                `Malformed path(s) ${malformed.map(path => JSON.stringify(path)).join(", ")}: expected three parts (two for a data version filter), each a number or "*"`,
-            );
-        }
         return Read({
             fabricFilter: fabricFiltered,
             attributes: attributePaths?.length ? attributePaths.map(path => splitAttributePath(path)) : undefined,

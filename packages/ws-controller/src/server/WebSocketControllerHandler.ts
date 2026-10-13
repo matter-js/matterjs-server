@@ -45,7 +45,7 @@ import {
     PROVIDER_COMMAND_NAMES,
     toProviderCommandFields,
 } from "../camera/webRtcProviderArguments.js";
-import { rejectUnknownKeys } from "../camera/wireArgumentChecks.js";
+import { rejectUnknownKeys, toNodeIdValue } from "../camera/wireArgumentChecks.js";
 import { ControllerCommandHandler } from "../controller/ControllerCommandHandler.js";
 import { MatterController, registerThreadCredentialsFromHex } from "../controller/MatterController.js";
 import type { TopologyNodeSource } from "../controller/NetworkTopologyService.js";
@@ -53,7 +53,7 @@ import { TestNodeCommandHandler } from "../controller/TestNodeCommandHandler.js"
 import { dropWebRtcSessionTracking, invokeEndSession } from "../controller/webRtcSessionTracking.js";
 import { VendorIds } from "../data/VendorIDs.js";
 import { ClusterMap, ClusterMapEntry } from "../model/ModelMapper.js";
-import { CommissioningRequest, InteractionReadRequest, InteractionSubscription } from "../types/CommandHandler.js";
+import { CommissioningRequest, InteractionSubscription } from "../types/CommandHandler.js";
 import { HttpServer, WebServerHandler } from "../types/WebServer.js";
 import {
     APIEvents,
@@ -83,6 +83,7 @@ import {
     splitAttributePath,
     toBigIntAwareJson,
 } from "./Converters.js";
+import { readRequestOf, subscribeRequestOf, subscriptionIdOf } from "./interactionArguments.js";
 import { serializeBatch } from "./serializeBatch.js";
 import { WebSocketConnection } from "./WebSocketConnection.js";
 
@@ -916,7 +917,9 @@ export class WebSocketControllerHandler implements WebServerHandler {
                     result = await this.#handleReadAttribute(args);
                     break;
                 case "read":
-                    result = await this.#commandHandler.read(this.#interactionReadRequestOf(args, "read"));
+                    result = await this.#commandHandler.read(
+                        readRequestOf(this.#interactionNodeId(args, "read"), args),
+                    );
                     break;
                 case "subscribe":
                     ({ result, afterResponse } = await this.#handleSubscribe(args, connection));
@@ -1389,77 +1392,56 @@ export class WebSocketControllerHandler implements WebServerHandler {
         return result;
     }
 
-    #interactionReadRequestOf(args: ArgsOf<"read">, command: "read" | "subscribe"): InteractionReadRequest {
-        const { node_id, attribute_paths, event_paths, event_min, fabric_filtered, data_version_filters } = args;
-        const nodeId = this.#targetNodeId(node_id, command);
-        if (TestNodeCommandHandler.isTestNodeId(nodeId)) {
+    #interactionNodeId(args: Record<string, unknown>, command: "read" | "subscribe" | "unsubscribe"): NodeId {
+        const nodeId = this.#targetNodeId(toNodeIdValue(args.node_id, command), command);
+        if (command !== "unsubscribe" && TestNodeCommandHandler.isTestNodeId(nodeId)) {
             throw ServerError.invalidArguments("read and subscribe are not supported for test nodes");
         }
-        return {
-            nodeId,
-            attributePaths: attribute_paths,
-            eventPaths: event_paths?.map(({ path }) => ({ path })),
-            eventMin: event_min,
-            fabricFiltered: fabric_filtered,
-            dataVersionFilters: data_version_filters?.map(({ path, data_version }) => ({
-                path,
-                dataVersion: data_version,
-            })),
-        };
+        return nodeId;
     }
 
     /** The subscription's events are held until the response is sent, so the client knows the id first. */
     async #handleSubscribe(
-        args: ArgsOf<"subscribe">,
+        args: Record<string, unknown>,
         connection: WebSocketConnection,
     ): Promise<{ result: ResponseOf<"subscribe">; afterResponse: () => void }> {
-        const { event_paths, min_interval, max_interval, keep_subscriptions } = args;
+        const nodeId = this.#interactionNodeId(args, "subscribe");
+        const request = subscribeRequestOf(nodeId, args);
         const pending = new Array<(id: number) => void>();
         let deliver = (send: (id: number) => void) => {
             pending.push(send);
         };
         const registered: { key?: string; entry?: OwnedSubscription } = {};
-        const request = this.#interactionReadRequestOf(args, "subscribe");
-        const { nodeId } = request;
 
-        const subscription = await this.#commandHandler.subscribe(
-            {
-                ...request,
-                eventPaths: event_paths?.map(({ path, is_urgent }) => ({ path, isUrgent: is_urgent })),
-                minInterval: min_interval,
-                maxInterval: max_interval,
-                keepSubscriptions: keep_subscriptions,
-            },
-            {
-                report: report =>
-                    deliver(id =>
-                        this.#sendSubscriptionEvent(
-                            connection,
-                            "subscription_report",
-                            { node_id: nodeId, subscription_id: id, ...report },
-                            "ordered",
-                        ),
+        const subscription = await this.#commandHandler.subscribe(request, {
+            report: report =>
+                deliver(id =>
+                    this.#sendSubscriptionEvent(
+                        connection,
+                        "subscription_report",
+                        { node_id: nodeId, subscription_id: id, ...report },
+                        "ordered",
                     ),
-                // An unsubscribe or the owner's connection close removes the entry first, so only an end the owner
-                // did not ask for is announced.
-                closed: () => {
-                    const { key, entry } = registered;
-                    if (key === undefined || this.#interactionSubscriptions.get(key) !== entry) {
-                        return;
-                    }
-                    this.#interactionSubscriptions.delete(key);
-                    // Never dropped under backpressure: a lost end notice leaves the client trusting a dead subscription.
-                    deliver(id =>
-                        this.#sendSubscriptionEvent(
-                            connection,
-                            "subscription_ended",
-                            { node_id: nodeId, subscription_id: id },
-                            "reliable",
-                        ),
-                    );
-                },
+                ),
+            // An unsubscribe or the owner's connection close removes the entry first, so only an end the owner
+            // did not ask for is announced.
+            closed: () => {
+                const { key, entry } = registered;
+                if (key === undefined || this.#interactionSubscriptions.get(key) !== entry) {
+                    return;
+                }
+                this.#interactionSubscriptions.delete(key);
+                // Never dropped under backpressure: a lost end notice leaves the client trusting a dead subscription.
+                deliver(id =>
+                    this.#sendSubscriptionEvent(
+                        connection,
+                        "subscription_ended",
+                        { node_id: nodeId, subscription_id: id },
+                        "reliable",
+                    ),
+                );
             },
-        );
+        });
 
         const { id } = subscription;
         if (!this.#connections.has(connection)) {
@@ -1509,19 +1491,19 @@ export class WebSocketControllerHandler implements WebServerHandler {
         }
     }
 
-    #handleUnsubscribe(args: ArgsOf<"unsubscribe">, connection: WebSocketConnection): ResponseOf<"unsubscribe"> {
-        const { node_id, subscription_id } = args;
+    #handleUnsubscribe(args: Record<string, unknown>, connection: WebSocketConnection): ResponseOf<"unsubscribe"> {
         if (!this.#commandHandler.autoSubscriptionDisabled) {
             throw ServerError.invalidArguments(
                 "unsubscribe requires the server to run with --disable-auto-subscription",
             );
         }
-        const nodeId = this.#targetNodeId(node_id, "unsubscribe");
-        const key = subscriptionKey(nodeId, subscription_id);
+        const nodeId = this.#interactionNodeId(args, "unsubscribe");
+        const subscriptionId = subscriptionIdOf(args.subscription_id);
+        const key = subscriptionKey(nodeId, subscriptionId);
         const entry = this.#interactionSubscriptions.get(key);
         if (entry === undefined || entry.connection !== connection) {
             throw ServerError.invalidArguments(
-                `No subscription ${subscription_id} of node ${formatNodeId(nodeId)} on this connection`,
+                `No subscription ${subscriptionId} of node ${formatNodeId(nodeId)} on this connection`,
             );
         }
         this.#interactionSubscriptions.delete(key);
