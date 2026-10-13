@@ -389,6 +389,8 @@ export class ControllerCommandHandler {
     #nodeUpdateDeadlines = new Map<NodeId, number>();
     /** Nodes with a lazy getNodeDetails populate in flight, so concurrent reads emit node_updated once. */
     #pendingLazyPopulate = new Set<NodeId>();
+    /** Nodes whose subscription {@link resyncIcd} switches off and on; an enable waiting on them ignores the off. */
+    readonly #resubscribing = new Set<NodeId>();
     /** In-flight invokes per dedup scope; a scope dropped by its owner takes its entries with it. */
     readonly #inFlightInvokes = new WeakMap<object, Map<string, Promise<unknown>>>();
     events = {
@@ -2230,8 +2232,13 @@ export class ControllerCommandHandler {
             return;
         }
         // Tearing the sustained subscription down and back up is what forces the re-registration.
-        await node.set({ network: { autoSubscribe: false } });
-        await node.set({ network: { autoSubscribe: true } });
+        this.#resubscribing.add(nodeId);
+        try {
+            await node.set({ network: { autoSubscribe: false } });
+            await node.set({ network: { autoSubscribe: true } });
+        } finally {
+            this.#resubscribing.delete(nodeId);
+        }
     }
 
     /**
@@ -2262,7 +2269,7 @@ export class ControllerCommandHandler {
             }
         });
         observers.on(node.eventsOf(NetworkClient).autoSubscribe$Changed, autoSubscribe => {
-            if (!autoSubscribe) {
+            if (!autoSubscribe && !this.#resubscribing.has(nodeId)) {
                 settle(ServerError.nodeNotReady(nodeId, new Error("auto subscription was disabled while waiting")));
             }
         });

@@ -425,9 +425,15 @@ describe("auto subscription setting", () => {
             return await peerOf(controller).act(agent => agent.get(NetworkClient).subscriptionActive);
         }
 
+        /** Returns a function that accepts subscriptions again. */
         function refuseSubscriptions() {
-            device.env.get(InteractionServer).handleSubscribeRequest = async () => {
+            const server = device.env.get(InteractionServer);
+            const original = server.handleSubscribeRequest;
+            server.handleSubscribeRequest = async () => {
                 throw new StatusResponseError("Refused by the test", Status.ResourceExhausted);
+            };
+            return () => {
+                server.handleSubscribeRequest = original;
             };
         }
 
@@ -531,6 +537,23 @@ describe("auto subscription setting", () => {
             const error = await MockTime.resolve(pending);
             expectServerError(error, ServerErrorCode.NodeNotReady);
             expect(String(error)).contains("disabled while waiting");
+        });
+
+        it("keeps waiting while the ICD registration is resynced and resolves once the subscription is active", async () => {
+            const controller = await commissioned(true);
+            const acceptSubscriptions = refuseSubscriptions();
+            const pending = controller.handler.setAutoSubscription(NODE_ID, true).then(
+                () => undefined,
+                (error: unknown) => error,
+            );
+            await settle();
+
+            await MockTime.resolve(controller.handler.resyncIcd(NODE_ID), { macrotasks: true });
+            acceptSubscriptions();
+            await settle();
+
+            expect(await MockTime.resolve(pending, { macrotasks: true })).undefined;
+            expect(await subscriptionActive(controller)).equals(true);
         });
 
         it("closes the subscription by the time disabling resolves", async () => {
