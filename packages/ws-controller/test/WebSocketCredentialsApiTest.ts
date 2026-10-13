@@ -2401,6 +2401,35 @@ describe("groupcast on the generic commands", () => {
         }
     });
 
+    for (const stated of [-1, 1.5, "5000", 86_400_001]) {
+        it(`refuses interaction_timeout_ms ${JSON.stringify(stated)} on a device_command`, async () => {
+            const h = await createHarness(undefined, {
+                handleInvoke: async () => {
+                    throw new Error("invoke must not be reached");
+                },
+            });
+            try {
+                const answer = await answerFor(
+                    h,
+                    "device_command",
+                    {
+                        node_id: 1,
+                        endpoint_id: 1,
+                        cluster_id: 6,
+                        command_name: "toggle",
+                        payload: {},
+                        interaction_timeout_ms: stated,
+                    },
+                    `unicast-invoke-interaction-timeout-${String(stated)}`,
+                );
+                expect(answer.error_code).to.equal(8);
+                expect(answer.details).to.contain("interaction_timeout_ms");
+            } finally {
+                await h.close();
+            }
+        });
+    }
+
     // A wrong-type timeout converts to `undefined`, so the check must read the stated value.
     for (const [name, stated] of [
         ["timed_request_timeout_ms", 1000],
