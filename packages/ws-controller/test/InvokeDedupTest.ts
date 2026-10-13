@@ -37,7 +37,11 @@ describe("invoke de-duplication", () => {
             await site.close();
         });
 
-        function toggle(dedupScope?: object, timedInteractionTimeoutMs?: Duration): InvokeRequest {
+        function toggle(
+            dedupScope?: object,
+            timedInteractionTimeoutMs?: Duration,
+            interactionTimeoutMs?: Duration,
+        ): InvokeRequest {
             return {
                 nodeId: NODE_ID,
                 endpointId: EndpointNumber(1),
@@ -45,6 +49,7 @@ describe("invoke de-duplication", () => {
                 commandName: "toggle",
                 data: {},
                 timedInteractionTimeoutMs,
+                interactionTimeoutMs,
                 dedupScope,
             };
         }
@@ -77,6 +82,14 @@ describe("invoke de-duplication", () => {
             const invokes = countInvokes(site.peer);
 
             await invokeConcurrently(toggle(connA), toggle(connA, Millis(5000)));
+
+            expect(invokes.count).equals(2);
+        });
+
+        it("sends invokes that differ only in the interaction timeout to the device separately", async () => {
+            const invokes = countInvokes(site.peer);
+
+            await invokeConcurrently(toggle(connA), toggle(connA, undefined, Millis(30000)));
 
             expect(invokes.count).equals(2);
         });

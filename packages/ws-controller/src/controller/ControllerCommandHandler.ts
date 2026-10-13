@@ -1689,7 +1689,7 @@ export class ControllerCommandHandler {
 
         // Build dedup key from validated/converted fields
         const serializedData = commandData !== undefined ? toBigIntAwareJson(commandData) : "";
-        const dedupKey = `${nodeId}:${endpointId}:${clusterId}:${commandName}:${data.timedInteractionTimeoutMs ?? ""}:${serializedData}`;
+        const dedupKey = `${nodeId}:${endpointId}:${clusterId}:${commandName}:${data.timedInteractionTimeoutMs ?? ""}:${data.interactionTimeoutMs ?? ""}:${serializedData}`;
         const scope = data.dedupScope ?? UNSCOPED_INVOKES;
         let inFlight = this.#inFlightInvokes.get(scope);
         if (inFlight === undefined) {
