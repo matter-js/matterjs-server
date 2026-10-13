@@ -154,7 +154,8 @@ export function checkInteractionRequest(request: InteractionReadRequest | Intera
     if (!attributePaths?.length && !eventPaths?.length) {
         throw ServerError.invalidArguments("At least one attribute or event path is required");
     }
-    // Matter Core spec 8.4.2.1: EventFilters has the conformance EventRequests, DataVersionFilters AttributeRequests.
+    // Matter Core spec 8.4.2.1 and 8.5.2.1: EventFilters has the conformance EventRequests, DataVersionFilters
+    // AttributeRequests.
     if (eventMin !== undefined && !eventPaths?.length) {
         throw ServerError.invalidArguments("event_min requires event_paths");
     }

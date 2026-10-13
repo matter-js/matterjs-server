@@ -573,7 +573,8 @@ Paths:
   as the Matter Read Request allows EventFilters only with EventRequests and DataVersionFilters only with
   AttributeRequests. Otherwise the request is rejected with `InvalidArguments`.
 - Every argument must have the documented type: lists must be lists, each `event_paths` and `data_version_filters`
-  entry an object, paths strings and `fabric_filtered`, `is_urgent` and `keep_subscriptions` `true` or `false`. An
+  entry an object, paths strings and `fabric_filtered`, `keep_subscriptions` and, in `subscribe`, `is_urgent` `true`
+  or `false`. `read` ignores `is_urgent`. An
   argument of another type is rejected with `InvalidArguments` before anything is sent to a device. An optional
   argument sent as `null` counts as left out.
 
@@ -704,9 +705,10 @@ A subscription belongs to the connection that opened it. It ends when the connec
 connection closes, when the node is removed, and when the server shuts down. It also ends when the device stops
 reporting (no report within the max interval plus a response margin) or when another subscription of this
 controller to the node is made with `keep_subscriptions` `false` or left out, from any connection. Every end the
-connection did not ask for, including node removal, is announced with `subscription_ended`; `unsubscribe` and
-closing the connection are not. A server shutdown is announced only with `server_shutdown`: the server closes the
-connections before it ends their subscriptions, so no `subscription_ended` is sent.
+connection did not ask for, including node removal, is announced with `subscription_ended`, except a server shutdown;
+`unsubscribe` and closing the connection are not announced. A server shutdown is announced only with
+`server_shutdown`: the server closes the connections before it ends their subscriptions, so no `subscription_ended`
+is sent.
 
 The server only learns that a subscription ended on the device when the local subscription times out or matter.js
 closes it. A device that dropped the subscription (for example after a reboot) is noticed at the latest after the
@@ -765,7 +767,9 @@ when:
 - the server shuts down while waiting: `UnknownError` (0)
 
 It also fails with `NodeNotReady` (3) when `disable_auto_subscription` switches the node off while it waits; the
-node then stays switched off. Send `disable_auto_subscription` to switch a node off again after a failure.
+node then stays switched off, also when a `resync_icd` for the node runs at the same time. A `resync_icd` while it
+waits does not make it fail, unless switching the subscription back on fails; then it fails with `NodeNotReady` (3)
+at once and the node stays switched off. Send `disable_auto_subscription` to switch a node off again after a failure.
 `disable_auto_subscription` returns `null` once the server's subscription is closed in the server. A node whose
 device cannot be reached becomes unavailable as without `--disable-auto-subscription`.
 
@@ -2343,7 +2347,7 @@ These commands are available only in the Matter.js server and not in the Python 
 - **A missing required argument**: The Python server converts each argument against the handler's type
   hints, so a missing or mistyped one is error 8 for every command. Here each command checks its own
   arguments: the `camera_*` commands, `send_webrtc_provider_command`, `set_thread_dataset`,
-  `set_wifi_credentials` and `set_default_fabric_label` answer error 8, while a command that hands
+  `set_wifi_credentials`, `set_default_fabric_label`, `read`, `subscribe` and `unsubscribe` answer error 8, while a command that hands
   `node_id` straight to the Matter conversion — `get_node`, `interview_node`, `ping_node` and the
   other node-targeted ones — reports a missing or non-numeric one as error 0 (`UnknownError`)
 - **Node ID classes**: every node-targeted command refuses a `node_id` whose class can never name a

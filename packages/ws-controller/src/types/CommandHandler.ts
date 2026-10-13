@@ -142,7 +142,10 @@ export type InteractionReport = InteractionReportData;
 /** Receives the reports after the priming report and the end of one subscription. */
 export interface InteractionSubscriptionListener {
     report(report: InteractionReport): void;
-    /** The subscription ended, whoever ended it. */
+    /**
+     * The subscription ended, whoever ended it. Also called when `subscribe` rejects after matter.js opened the
+     * subscription, so a listener ignores a call for a subscription it never received.
+     */
     closed(): void;
 }
 
