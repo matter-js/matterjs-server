@@ -457,7 +457,7 @@ export class MatterClient {
 
     /** Schema 14. A Matter Read with full control over the request. */
     async read(args: APICommands["read"]["requestArgs"], timeout?: number): Promise<ResponseOf<"read">> {
-        return await this.sendCommand("read", 0, args, timeout);
+        return await this.sendCommand("read", 14, args, timeout);
     }
 
     /**
@@ -471,7 +471,7 @@ export class MatterClient {
     ): Promise<ResponseOf<"subscribe">> {
         let timedOut = false;
         // Registered when the response is handled, because a report can arrive in the same socket read.
-        const response = this.sendCommand("subscribe", 0, args, 0, ({ subscription_id }) => {
+        const response = this.sendCommand("subscribe", 14, args, 0, ({ subscription_id }) => {
             if (timedOut) {
                 // The caller never learned this id, so nobody else can end the subscription.
                 this.unsubscribe(subscription_id).catch(error =>
@@ -503,7 +503,7 @@ export class MatterClient {
     /** Schema 14. Ends a subscription opened with {@link subscribe}; its listener gets no further calls. */
     async unsubscribe(subscriptionId: number, timeout?: number): Promise<void> {
         this.subscriptionListeners.delete(subscriptionId);
-        await this.sendCommand("unsubscribe", 0, { subscription_id: subscriptionId }, timeout);
+        await this.sendCommand("unsubscribe", 14, { subscription_id: subscriptionId }, timeout);
     }
 
     async writeAttribute(

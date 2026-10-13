@@ -239,6 +239,36 @@ describe("ws-client", () => {
             const EMPTY_REPORT = { attributes: {}, events: [] };
             const LIGHT_ON_OFF = { node_id: 1, attribute_paths: ["1/6/0"], min_interval: 0, max_interval: 60 };
 
+            beforeEach(async () => {
+                await server.stop();
+                server = new MockMatterServer({ serverInfo: { schema_version: 14 } });
+                await server.start();
+                client = new MatterClient(server.url, createNodeWebSocket);
+            });
+
+            it("refuses read, subscribe and unsubscribe on a server below schema 14 without sending them", async () => {
+                await server.stop();
+                server = new MockMatterServer({ serverInfo: { schema_version: 13 } });
+                await server.start();
+                client = new MatterClient(server.url, createNodeWebSocket);
+                await client.connect();
+
+                for (const call of [
+                    () => client.read({ node_id: 1, attribute_paths: ["1/6/0"] }),
+                    () => client.subscribe(LIGHT_ON_OFF, recorder().listener),
+                    () => client.unsubscribe(7),
+                ]) {
+                    let refusal: unknown;
+                    try {
+                        await call();
+                    } catch (error) {
+                        refusal = error;
+                    }
+                    expect(refusal).to.be.instanceOf(InvalidServerVersion);
+                }
+                expect(server.getReceivedCommands().map(({ message }) => message.command)).to.deep.equal([]);
+            });
+
             function recorder() {
                 const reports = new Array<number>();
                 let ended = 0;
