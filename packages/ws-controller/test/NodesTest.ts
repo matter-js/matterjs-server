@@ -178,6 +178,52 @@ describe("Nodes", () => {
             nodes.delete(TEST_NODE_ID);
             expect(nodes.drainPendingEndpointAdds(TEST_NODE_ID)).to.deep.equal([]);
         });
+
+        it("forgets the wait when the node is deleted", () => {
+            const nodes = new Nodes();
+            nodes.awaitFirstReport(TEST_NODE_ID);
+            nodes.delete(TEST_NODE_ID);
+            nodes.seedState(TEST_NODE_ID, NodeConnectionState.Connected);
+            expect(nodes.isAvailable(TEST_NODE_ID)).to.equal(true);
+        });
+    });
+
+    describe("waiting for a first report", () => {
+        let nodes: Nodes;
+
+        beforeEach(() => {
+            nodes = new Nodes();
+            nodes.awaitFirstReport(TEST_NODE_ID);
+            nodes.seedState(TEST_NODE_ID, NodeConnectionState.Reconnecting);
+        });
+
+        it("keeps a node unavailable whatever its connection state", () => {
+            expect(nodes.isAvailable(TEST_NODE_ID)).to.equal(false);
+            expect(nodes.processStateChange(TEST_NODE_ID, NodeConnectionState.Connected)).to.deep.equal({
+                availabilityChanged: false,
+            });
+            expect(nodes.isAvailable(TEST_NODE_ID)).to.equal(false);
+        });
+
+        it("makes the node available by its connection state once the report is applied", () => {
+            nodes.processStateChange(TEST_NODE_ID, NodeConnectionState.Connected);
+            expect(nodes.firstReportApplied(TEST_NODE_ID)).to.equal(true);
+            expect(nodes.isAvailable(TEST_NODE_ID)).to.equal(true);
+            expect(nodes.firstReportApplied(TEST_NODE_ID)).to.equal(false);
+        });
+
+        it("reports the availability change of a node no longer waiting", () => {
+            nodes.firstReportApplied(TEST_NODE_ID);
+            expect(nodes.processStateChange(TEST_NODE_ID, NodeConnectionState.Disconnected)).to.deep.equal({
+                availabilityChanged: true,
+                available: false,
+            });
+        });
+
+        it("leaves other nodes alone", () => {
+            nodes.seedState(OTHER_NODE_ID, NodeConnectionState.Connected);
+            expect(nodes.isAvailable(OTHER_NODE_ID)).to.equal(true);
+        });
     });
 
     describe("pending endpoint adds", () => {
