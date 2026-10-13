@@ -125,6 +125,7 @@ export type InteractionReadRequest = {
     dataVersionFilters?: { path: string; dataVersion: number }[];
 };
 
+/** A Matter subscribe with full request control; the paths and filters are those of {@link InteractionReadRequest}. */
 export type InteractionSubscribeRequest = Omit<InteractionReadRequest, "eventPaths"> & {
     eventPaths?: { path: string; isUrgent?: boolean }[];
     /** Seconds. */
@@ -135,14 +136,17 @@ export type InteractionSubscribeRequest = Omit<InteractionReadRequest, "eventPat
     keepSubscriptions?: boolean;
 };
 
+/** The data and per-path statuses of one read result or subscription report, in the wire shape. */
 export type InteractionReport = InteractionReportData;
 
+/** Receives the reports after the priming report and the end of one subscription. */
 export interface InteractionSubscriptionListener {
     report(report: InteractionReport): void;
     /** The subscription ended, whoever ended it. */
     closed(): void;
 }
 
+/** A subscription opened with `subscribe`; `close` ends it locally, and the device ends it at its next report. */
 export interface InteractionSubscription {
     /** The subscription id the device assigned. */
     readonly id: number;

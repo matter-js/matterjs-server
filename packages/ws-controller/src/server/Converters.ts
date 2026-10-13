@@ -723,6 +723,7 @@ export function statusPathOf(...ids: (number | undefined)[]) {
     return ids.map(id => id ?? "*").join("/");
 }
 
+/** The wire `PathStatus` of a Matter status; `cluster_status` only when the device sent one. */
 export function pathStatusOf({ status, clusterStatus }: { status: Status; clusterStatus?: number }): PathStatus {
     return clusterStatus === undefined ? { status } : { status, cluster_status: clusterStatus };
 }

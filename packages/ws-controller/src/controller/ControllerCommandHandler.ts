@@ -327,6 +327,10 @@ function decodePairingCode<T>(decode: () => T): T {
     }
 }
 
+/**
+ * The `NodeCommissionFailed` error for a failed commissioning, with a `reason` a client can act on. With
+ * `attestationRejected` the reason is `attestation-rejected`, whatever error the aborted commissioning raised.
+ */
 export function commissionFailureOf(error: unknown, attestationRejected: boolean): ServerError {
     const cause = error instanceof Error ? error : undefined;
     const failed = (
