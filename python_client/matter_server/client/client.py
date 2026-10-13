@@ -1062,7 +1062,9 @@ class MatterClient:
                 error = exception_from_error_code(msg.error_code)(msg.details)
                 error.status = msg.status
                 error.cluster_status = msg.cluster_status
-                error.reason = msg.reason
+                # Camera errors carry their own reason in the details; keep it when the reply has none.
+                if msg.reason is not None:
+                    error.reason = msg.reason
                 future.set_exception(error)
                 return
 

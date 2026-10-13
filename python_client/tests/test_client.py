@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock
 
@@ -12,7 +13,7 @@ from chip.clusters import Objects as clusters
 from matter_server.client.client import MatterClient
 from matter_server.client.connection import MatterClientConnection, parse_message
 from matter_server.common.const import SCHEMA_VERSION
-from matter_server.common.errors import IcdMultiAdmin, NodeCommissionFailed
+from matter_server.common.errors import CameraStreamIncompatible, IcdMultiAdmin, NodeCommissionFailed
 from matter_server.common.models import (
     APICommand,
     CommandMessage,
@@ -116,6 +117,23 @@ async def test_handle_incoming_message_leaves_absent_error_fields_unset() -> Non
     error = future.exception()
     assert isinstance(error, IcdMultiAdmin)
     assert (error.status, error.cluster_status, error.reason) == (None, None, None)
+
+
+async def test_handle_incoming_message_keeps_the_camera_reason_from_the_details() -> None:
+    client = _make_client()
+    future = asyncio.get_running_loop().create_future()
+    client._result_futures["pending-error"] = future
+    details = json.dumps(
+        {"message": "no shared codec", "reason": "codec", "device": ["H264"], "requested": ["H265"]}
+    )
+
+    client._handle_incoming_message(
+        parse_message({"message_id": "pending-error", "error_code": 102, "details": details})
+    )
+
+    error = future.exception()
+    assert isinstance(error, CameraStreamIncompatible)
+    assert error.reason == "codec"
 
 
 async def test_write_attribute_sends_tag_keyed_value() -> None:
