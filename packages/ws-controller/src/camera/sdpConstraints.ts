@@ -358,6 +358,7 @@ export function parseSdpVideoConstraints(sdp: string): SdpVideoConstraints {
     };
 }
 
+// Same prefix match as sdp-transform's `direction` grammar, so the rewrite hits exactly the lines the parser read.
 const DIRECTION_LINE = /^a=(?:sendrecv|sendonly|recvonly|inactive)/;
 const TALKBACK_REFUSED: Record<SendingAudioSection["direction"], string> = {
     sendrecv: "a=recvonly",

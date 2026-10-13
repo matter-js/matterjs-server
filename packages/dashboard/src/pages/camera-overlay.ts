@@ -142,7 +142,10 @@ export class CameraOverlay extends LitElement {
         this._qualityBadges = streaming ? (view?.qualityBadges ?? []) : [];
         this._talkAvailable = streaming && (view?.talkAvailable ?? false);
         this._talking = streaming && (view?.talking ?? false);
-        if (!streaming) this._talkError = null;
+        if (!streaming) {
+            this._talkError = null;
+            this._talkBusy = false;
+        }
 
         // Audio-only "Listen" sessions have no video; starting muted would defeat the feature, so
         // unmute on stream start. Started from the user's Start click, so autoplay policy allows it.

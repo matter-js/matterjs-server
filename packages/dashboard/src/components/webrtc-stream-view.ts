@@ -169,7 +169,13 @@ export class WebRtcStreamView extends LitElement {
         if (!microphoneCaptureAvailable()) throw new Error(MICROPHONE_NEEDS_SECURE_CONTEXT);
         const request = ++attempt.talkRequest;
 
-        const media = await navigator.mediaDevices.getUserMedia({ audio: true });
+        let media: MediaStream;
+        try {
+            media = await navigator.mediaDevices.getUserMedia({ audio: true });
+        } catch (err) {
+            if (attempt.talkRequest === request) throw err;
+            return;
+        }
         const track = media.getAudioTracks()[0];
         const current = attempt.talkRequest === request;
         if (!current || !track) {

@@ -1466,6 +1466,19 @@ describe("WebRtcStreamView", () => {
             expect(view.talking).to.equal(false);
         });
 
+        it("drops a microphone refusal that arrives after the stream stopped", async () => {
+            const { view } = await startTalkView();
+            const granted = deferred<unknown>();
+            getUserMedia = () => granted.promise;
+
+            const talking = view.setTalking(true);
+            await view.stop();
+            granted.reject(new Error("NotAllowedError"));
+            await talking;
+
+            expect(view.talking).to.equal(false);
+        });
+
         it("stops a microphone granted after talking was switched off", async () => {
             const { view } = await startTalkView();
             const granted = deferred<unknown>();
