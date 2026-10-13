@@ -1239,7 +1239,8 @@ export interface APICommands {
      * with auto subscription disabled.
      */
     unsubscribe: {
-        requestArgs: { subscription_id: number };
+        /** A subscription id is only unique per node, so the node is part of it. */
+        requestArgs: { node_id: number | bigint; subscription_id: number };
         response: null;
     };
     /**
@@ -1490,7 +1491,7 @@ export interface APIEvents {
         data: SubscriptionReportData;
     };
     subscription_ended: {
-        data: { subscription_id: number };
+        data: SubscriptionEndedData;
     };
     /**
      * Another connection ended a session with `camera_stop_stream` or a `device_command` `EndSession`.
@@ -1567,6 +1568,13 @@ interface ServerEventWebRtcCallback {
 }
 /** Schema 14: sent only to the connection that opened the subscription. */
 export interface SubscriptionReportData extends InteractionReportData {
+    node_id: number | bigint;
+    subscription_id: number;
+}
+
+/** Schema 14. */
+export interface SubscriptionEndedData {
+    node_id: number | bigint;
     subscription_id: number;
 }
 interface ServerEventSubscriptionReport {
@@ -1576,7 +1584,7 @@ interface ServerEventSubscriptionReport {
 /** Schema 14: a subscription ended without `unsubscribe`; sent only to the connection that opened it. */
 interface ServerEventSubscriptionEnded {
     event: "subscription_ended";
-    data: { subscription_id: number };
+    data: SubscriptionEndedData;
 }
 interface ServerEventCameraSessionEnded {
     event: "camera_session_ended";

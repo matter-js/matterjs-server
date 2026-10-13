@@ -86,28 +86,28 @@ new MatterClient(url: string, wsFactory?: WebSocketFactory)
 
 #### Methods
 
-| Method                                                        | Description                                                    |
-| ------------------------------------------------------------- | -------------------------------------------------------------- |
-| `startListening()`                                            | Connect and start receiving events                             |
-| `disconnect()`                                                | Disconnect from the server                                     |
-| `getNodes(onlyAvailable?)`                                    | Get all nodes (optionally only available ones)                 |
-| `commissionWithCode(code, networkOnly)`                       | Commission a new device                                        |
-| `removeNode(nodeId)`                                          | Remove a node from the fabric                                  |
-| `interviewNode(nodeId)`                                       | Re-interview a node                                            |
-| `pingNode(nodeId)`                                            | Ping a node to check availability                              |
-| `deviceCommand(nodeId, endpoint, cluster, command, payload?)` | Send a command to a device                                     |
-| `readAttribute(nodeId, endpoint, cluster, attribute)`         | Read an attribute value                                        |
-| `writeAttribute(nodeId, endpoint, cluster, attribute, value)` | Write an attribute value                                       |
-| `read(args)` | Matter Read with full control over the request (schema 14) |
-| `subscribe(args, listener)` | Open a subscription owned by this connection; the result carries the first report, `listener.report` gets the later ones and `listener.ended` its end, also when the connection is lost (schema 14, server with `--disable-auto-subscription`) |
-| `unsubscribe(subscriptionId)` | End a subscription opened with `subscribe` (schema 14) |
-| `openCommissioningWindow(nodeId)`                             | Open commissioning window for sharing                          |
-| `setWifiCredentials(ssid, password)`                          | Set WiFi credentials for commissioning                         |
-| `setThreadOperationalDataset(dataset)`                        | Set Thread dataset for commissioning                           |
-| `checkNodeUpdate(nodeId)`                                     | Check for firmware updates                                     |
-| `updateNode(nodeId, version)`                                 | Start firmware update                                          |
-| `uploadOtaFile(file)`                                         | Store a local `.ota` firmware image on the server (schema 13+) |
-| `addEventListener(event, callback)`                           | Listen for events; returns an unsubscribe function             |
+| Method                                                        | Description                                                                                                                                                                                                                                    |
+| ------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `startListening()`                                            | Connect and start receiving events                                                                                                                                                                                                             |
+| `disconnect()`                                                | Disconnect from the server                                                                                                                                                                                                                     |
+| `getNodes(onlyAvailable?)`                                    | Get all nodes (optionally only available ones)                                                                                                                                                                                                 |
+| `commissionWithCode(code, networkOnly)`                       | Commission a new device                                                                                                                                                                                                                        |
+| `removeNode(nodeId)`                                          | Remove a node from the fabric                                                                                                                                                                                                                  |
+| `interviewNode(nodeId)`                                       | Re-interview a node                                                                                                                                                                                                                            |
+| `pingNode(nodeId)`                                            | Ping a node to check availability                                                                                                                                                                                                              |
+| `deviceCommand(nodeId, endpoint, cluster, command, payload?)` | Send a command to a device                                                                                                                                                                                                                     |
+| `readAttribute(nodeId, endpoint, cluster, attribute)`         | Read an attribute value                                                                                                                                                                                                                        |
+| `writeAttribute(nodeId, endpoint, cluster, attribute, value)` | Write an attribute value                                                                                                                                                                                                                       |
+| `read(args)`                                                  | Matter Read with full control over the request (schema 14)                                                                                                                                                                                     |
+| `subscribe(args, listener)`                                   | Open a subscription owned by this connection; the result carries the first report, `listener.report` gets the later ones and `listener.ended` its end, also when the connection is lost (schema 14, server with `--disable-auto-subscription`) |
+| `unsubscribe(nodeId, subscriptionId)`                         | End a subscription opened with `subscribe` (schema 14)                                                                                                                                                                                         |
+| `openCommissioningWindow(nodeId)`                             | Open commissioning window for sharing                                                                                                                                                                                                          |
+| `setWifiCredentials(ssid, password)`                          | Set WiFi credentials for commissioning                                                                                                                                                                                                         |
+| `setThreadOperationalDataset(dataset)`                        | Set Thread dataset for commissioning                                                                                                                                                                                                           |
+| `checkNodeUpdate(nodeId)`                                     | Check for firmware updates                                                                                                                                                                                                                     |
+| `updateNode(nodeId, version)`                                 | Start firmware update                                                                                                                                                                                                                          |
+| `uploadOtaFile(file)`                                         | Store a local `.ota` firmware image on the server (schema 13+)                                                                                                                                                                                 |
+| `addEventListener(event, callback)`                           | Listen for events; returns an unsubscribe function                                                                                                                                                                                             |
 
 #### Events
 

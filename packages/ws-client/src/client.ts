@@ -83,6 +83,11 @@ export interface CredentialCommandOptions {
     timeout?: number;
 }
 
+/** Subscription ids are assigned by each device, so only node and id together name one subscription. */
+function subscriptionKey(nodeId: number | bigint, subscriptionId: number) {
+    return `${nodeId}/${subscriptionId}`;
+}
+
 /**
  * Says which node a `nodes_changed` event concerns and why it fired. `nodeId` is a bigint for large ids, so compare
  * it via `String()`.
@@ -138,7 +143,8 @@ export class MatterClient {
             timeoutId?: ReturnType<typeof setTimeout>;
         }
     > = {};
-    private subscriptionListeners = new Map<number, SubscriptionListener>();
+    /** Keyed by {@link subscriptionKey}. */
+    private subscriptionListeners = new Map<string, SubscriptionListener>();
     // Start with random offset for defense-in-depth and easier debugging across sessions
     private msgId = Math.floor(Math.random() * 0x7fffffff);
     private eventListeners: ClientEventListeners = {
@@ -474,12 +480,12 @@ export class MatterClient {
         const response = this.sendCommand("subscribe", 14, args, 0, ({ subscription_id }) => {
             if (timedOut) {
                 // The caller never learned this id, so nobody else can end the subscription.
-                this.unsubscribe(subscription_id).catch(error =>
+                this.unsubscribe(args.node_id, subscription_id).catch(error =>
                     console.warn(`Could not end subscription ${subscription_id} after its subscribe timed out`, error),
                 );
                 return;
             }
-            this.subscriptionListeners.set(subscription_id, listener);
+            this.subscriptionListeners.set(subscriptionKey(args.node_id, subscription_id), listener);
         });
         if (timeout <= 0) {
             return await response;
@@ -501,9 +507,9 @@ export class MatterClient {
     }
 
     /** Schema 14. Ends a subscription opened with {@link subscribe}; its listener gets no further calls. */
-    async unsubscribe(subscriptionId: number, timeout?: number): Promise<void> {
-        this.subscriptionListeners.delete(subscriptionId);
-        await this.sendCommand("unsubscribe", 14, { subscription_id: subscriptionId }, timeout);
+    async unsubscribe(nodeId: number | bigint, subscriptionId: number, timeout?: number): Promise<void> {
+        this.subscriptionListeners.delete(subscriptionKey(nodeId, subscriptionId));
+        await this.sendCommand("unsubscribe", 14, { node_id: nodeId, subscription_id: subscriptionId }, timeout);
     }
 
     async writeAttribute(
@@ -989,13 +995,16 @@ export class MatterClient {
         }
 
         if (event.event === "subscription_report") {
-            this.subscriptionListeners.get(event.data.subscription_id)?.report(event.data);
+            this.subscriptionListeners
+                .get(subscriptionKey(event.data.node_id, event.data.subscription_id))
+                ?.report(event.data);
             return;
         }
 
         if (event.event === "subscription_ended") {
-            const listener = this.subscriptionListeners.get(event.data.subscription_id);
-            this.subscriptionListeners.delete(event.data.subscription_id);
+            const key = subscriptionKey(event.data.node_id, event.data.subscription_id);
+            const listener = this.subscriptionListeners.get(key);
+            this.subscriptionListeners.delete(key);
             listener?.ended?.();
             return;
         }

@@ -428,7 +428,12 @@ describe("subscribe over WebSocket", () => {
 
         harness.report(77, { attributes: { "1/6/0": true }, events: [] });
         const update = await owner.nextEvent("subscription_report");
-        expect(update.data).deep.equals({ subscription_id: 77, attributes: { "1/6/0": true }, events: [] });
+        expect(update.data).deep.equals({
+            node_id: 42,
+            subscription_id: 77,
+            attributes: { "1/6/0": true },
+            events: [],
+        });
         expect(owner.events("subscription_report")).deep.equals([update]);
 
         await other.command("server_info", {});
@@ -443,7 +448,7 @@ describe("subscribe over WebSocket", () => {
         const response = await owner.command("subscribe", SUBSCRIBE_ARGS);
         const early = await owner.nextEvent("subscription_report");
 
-        expect(early.data).deep.equals({ subscription_id: 78, attributes: { "1/6/0": true }, events: [] });
+        expect(early.data).deep.equals({ node_id: 42, subscription_id: 78, attributes: { "1/6/0": true }, events: [] });
         expect(owner.indexOf(early)).greaterThan(owner.indexOf(response));
     });
 
@@ -453,16 +458,16 @@ describe("subscribe over WebSocket", () => {
         harness.nextSubscriptionId = 5;
         await owner.command("subscribe", SUBSCRIBE_ARGS);
 
-        const foreign = await other.command("unsubscribe", { subscription_id: 5 });
+        const foreign = await other.command("unsubscribe", { node_id: 42, subscription_id: 5 });
         expect(foreign.error_code).equals(ServerErrorCode.InvalidArguments);
         expect(harness.isOpen(5)).equals(true);
 
-        const own = await owner.command("unsubscribe", { subscription_id: 5 });
+        const own = await owner.command("unsubscribe", { node_id: 42, subscription_id: 5 });
         expect(own.error_code).undefined;
         expect(own.result).equals(null);
         expect(harness.isOpen(5)).equals(false);
 
-        const again = await owner.command("unsubscribe", { subscription_id: 5 });
+        const again = await owner.command("unsubscribe", { node_id: 42, subscription_id: 5 });
         expect(again.error_code).equals(ServerErrorCode.InvalidArguments);
     });
 
@@ -470,7 +475,7 @@ describe("subscribe over WebSocket", () => {
         harness.autoSubscriptionDisabled = false;
         const client = await harness.connect();
 
-        const response = await client.command("unsubscribe", { subscription_id: 8 });
+        const response = await client.command("unsubscribe", { node_id: 42, subscription_id: 8 });
 
         expect(response.error_code).equals(ServerErrorCode.InvalidArguments);
         expect(response.details).contains("--disable-auto-subscription");
@@ -505,7 +510,7 @@ describe("subscribe over WebSocket", () => {
     it("answers an unknown subscription id with an error result", async () => {
         const client = await harness.connect();
 
-        const response = await client.command("unsubscribe", { subscription_id: 1234 });
+        const response = await client.command("unsubscribe", { node_id: 42, subscription_id: 1234 });
 
         expect(response.error_code).equals(ServerErrorCode.InvalidArguments);
         const followUp = await client.command("server_info", {});
@@ -519,7 +524,7 @@ describe("subscribe over WebSocket", () => {
 
         harness.endFromController(9);
 
-        const response = await client.command("unsubscribe", { subscription_id: 9 });
+        const response = await client.command("unsubscribe", { node_id: 42, subscription_id: 9 });
         expect(response.error_code).equals(ServerErrorCode.InvalidArguments);
     });
 
@@ -532,7 +537,7 @@ describe("subscribe over WebSocket", () => {
         harness.endFromController(10);
 
         const ended = await owner.nextEvent("subscription_ended");
-        expect(ended.data).deep.equals({ subscription_id: 10 });
+        expect(ended.data).deep.equals({ node_id: 42, subscription_id: 10 });
         await other.command("server_info", {});
         expect(other.events("subscription_ended")).deep.equals([]);
     });
@@ -542,7 +547,7 @@ describe("subscribe over WebSocket", () => {
         harness.nextSubscriptionId = 6;
         await client.command("subscribe", SUBSCRIBE_ARGS);
 
-        await client.command("unsubscribe", { subscription_id: 6 });
+        await client.command("unsubscribe", { node_id: 42, subscription_id: 6 });
         harness.repeatClosedNotice(6);
         await client.command("server_info", {});
 
@@ -553,12 +558,12 @@ describe("subscribe over WebSocket", () => {
         const client = await harness.connect();
         harness.nextSubscriptionId = 31;
         await client.command("subscribe", SUBSCRIBE_ARGS);
-        await client.command("unsubscribe", { subscription_id: 31 });
+        await client.command("unsubscribe", { node_id: 42, subscription_id: 31 });
         await client.command("subscribe", SUBSCRIBE_ARGS);
 
         harness.repeatClosedNotice(31);
 
-        const response = await client.command("unsubscribe", { subscription_id: 31 });
+        const response = await client.command("unsubscribe", { node_id: 42, subscription_id: 31 });
         expect(response.error_code).undefined;
     });
 
@@ -631,7 +636,7 @@ describe("subscribe over WebSocket", () => {
         client.resume();
 
         const ended = await client.nextEvent("subscription_ended");
-        expect(ended.data).deep.equals({ subscription_id: 50 });
+        expect(ended.data).deep.equals({ node_id: 42, subscription_id: 50 });
         await client.command("server_info", {});
         expect(client.events("subscription_report").length).lessThan(sent);
     });
@@ -646,18 +651,79 @@ describe("subscribe over WebSocket", () => {
         expect(harness.isOpen(13)).equals(false);
     });
 
-    it("rejects a subscription whose id is already taken and closes it", async () => {
+    it("rejects a subscription whose id the same node already uses and closes it", async () => {
         const client = await harness.connect();
         harness.nextSubscriptionId = 21;
         await client.command("subscribe", SUBSCRIBE_ARGS);
 
-        harness.nextSubscriptionId = 21;
-        const response = await client.command("subscribe", { ...SUBSCRIBE_ARGS, node_id: 43 });
+        const response = await client.command("subscribe", SUBSCRIBE_ARGS);
 
         expect(response.error_code).equals(ServerErrorCode.SDKStackError);
         expect(harness.openSubscriptions(21)).equals(1);
-        const own = await client.command("unsubscribe", { subscription_id: 21 });
+        const own = await client.command("unsubscribe", { node_id: 42, subscription_id: 21 });
         expect(own.error_code).undefined;
         expect(harness.openSubscriptions(21)).equals(0);
+    });
+
+    it("refuses a node_id that names a group on every read and subscription command", async () => {
+        const client = await harness.connect();
+        const group = 0xffff_ffff_ffff_0001n;
+
+        const responses = [
+            await client.command("read", { node_id: group, attribute_paths: ["1/6/0"] }),
+            await client.command("subscribe", { ...SUBSCRIBE_ARGS, node_id: group }),
+            await client.command("unsubscribe", { node_id: group, subscription_id: 1 }),
+            await client.command("enable_auto_subscription", { node_id: group }),
+            await client.command("disable_auto_subscription", { node_id: group }),
+        ];
+
+        expect(responses.map(({ error_code }) => error_code)).deep.equals(
+            Array(5).fill(ServerErrorCode.InvalidArguments),
+        );
+        // An unknown subscription is refused too; only the message tells the node id check ran.
+        expect(responses[2]?.details).contains("node_id must name one node");
+        expect([harness.readRequests, harness.subscribeRequests, harness.autoSubscriptionRequests]).deep.equals([
+            [],
+            [],
+            [],
+        ]);
+    });
+
+    it("keeps the subscriptions of two nodes that got the same id apart", async () => {
+        const client = await harness.connect();
+        harness.nextSubscriptionId = 21;
+        await client.command("subscribe", SUBSCRIBE_ARGS);
+        const second = await client.command("subscribe", { ...SUBSCRIBE_ARGS, node_id: 43 });
+        const [ofNode42, ofNode43] = harness.subscriptions;
+
+        ofNode43?.listener.report({ attributes: { "1/6/0": true }, events: [] });
+        const report = await client.nextEvent("subscription_report");
+        const own = await client.command("unsubscribe", { node_id: 43, subscription_id: 21 });
+
+        expect(second.error_code).undefined;
+        expect(report.data).deep.equals({
+            node_id: 43,
+            subscription_id: 21,
+            attributes: { "1/6/0": true },
+            events: [],
+        });
+        expect(own.error_code).undefined;
+        expect([ofNode42?.open, ofNode43?.open]).deep.equals([true, false]);
+    });
+
+    it("announces the end of one of two subscriptions that share an id with its node", async () => {
+        const client = await harness.connect();
+        harness.nextSubscriptionId = 21;
+        await client.command("subscribe", SUBSCRIBE_ARGS);
+        await client.command("subscribe", { ...SUBSCRIBE_ARGS, node_id: 43 });
+        const [ofNode42, ofNode43] = harness.subscriptions;
+
+        ofNode43?.close();
+        const ended = await client.nextEvent("subscription_ended");
+        const own = await client.command("unsubscribe", { node_id: 42, subscription_id: 21 });
+
+        expect(ended.data).deep.equals({ node_id: 43, subscription_id: 21 });
+        expect(own.error_code).undefined;
+        expect(ofNode42?.open).equals(false);
     });
 });

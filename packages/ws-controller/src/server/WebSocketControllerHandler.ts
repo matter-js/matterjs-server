@@ -198,6 +198,11 @@ interface OwnedSubscription {
     subscription: InteractionSubscription;
 }
 
+/** Subscription ids are assigned by each device, so only node and id together name one subscription. */
+function subscriptionKey(nodeId: NodeId, subscriptionId: number) {
+    return `${nodeId}/${subscriptionId}`;
+}
+
 /** The status the device answered with, if the failure is one; matter.js also reports local validation as status errors. */
 function statusResponseOf(error: unknown): ReceivedStatusResponseError | undefined {
     if (error instanceof ReceivedStatusResponseError) {
@@ -258,8 +263,8 @@ export class WebSocketControllerHandler implements WebServerHandler {
      * or release another connection's claim.
      */
     #fabricLabelOwner?: WebSocketConnection;
-    /** Subscriptions opened with `subscribe`, by subscription id, each owned by the connection that opened it. */
-    #interactionSubscriptions = new Map<number, OwnedSubscription>();
+    /** Subscriptions opened with `subscribe`, keyed by {@link subscriptionKey}, each owned by the connection that opened it. */
+    #interactionSubscriptions = new Map<string, OwnedSubscription>();
 
     constructor(controller: MatterController, config: ConfigStorage, serverVersion: string) {
         this.#controller = controller;
@@ -911,7 +916,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
                     result = await this.#handleReadAttribute(args);
                     break;
                 case "read":
-                    result = await this.#commandHandler.read(this.#interactionReadRequestOf(args));
+                    result = await this.#commandHandler.read(this.#interactionReadRequestOf(args, "read"));
                     break;
                 case "subscribe":
                     ({ result, afterResponse } = await this.#handleSubscribe(args, connection));
@@ -1384,13 +1389,14 @@ export class WebSocketControllerHandler implements WebServerHandler {
         return result;
     }
 
-    #interactionReadRequestOf(args: ArgsOf<"read">): InteractionReadRequest {
+    #interactionReadRequestOf(args: ArgsOf<"read">, command: "read" | "subscribe"): InteractionReadRequest {
         const { node_id, attribute_paths, event_paths, event_min, fabric_filtered, data_version_filters } = args;
-        if (TestNodeCommandHandler.isTestNodeId(node_id)) {
+        const nodeId = this.#targetNodeId(node_id, command);
+        if (TestNodeCommandHandler.isTestNodeId(nodeId)) {
             throw ServerError.invalidArguments("read and subscribe are not supported for test nodes");
         }
         return {
-            nodeId: NodeId(node_id),
+            nodeId,
             attributePaths: attribute_paths,
             eventPaths: event_paths?.map(({ path }) => ({ path })),
             eventMin: event_min,
@@ -1412,11 +1418,13 @@ export class WebSocketControllerHandler implements WebServerHandler {
         let deliver = (send: (id: number) => void) => {
             pending.push(send);
         };
-        const registered: { entry?: OwnedSubscription } = {};
+        const registered: { key?: string; entry?: OwnedSubscription } = {};
+        const request = this.#interactionReadRequestOf(args, "subscribe");
+        const { nodeId } = request;
 
         const subscription = await this.#commandHandler.subscribe(
             {
-                ...this.#interactionReadRequestOf(args),
+                ...request,
                 eventPaths: event_paths?.map(({ path, is_urgent }) => ({ path, isUrgent: is_urgent })),
                 minInterval: min_interval,
                 maxInterval: max_interval,
@@ -1428,24 +1436,24 @@ export class WebSocketControllerHandler implements WebServerHandler {
                         this.#sendSubscriptionEvent(
                             connection,
                             "subscription_report",
-                            { subscription_id: id, ...report },
+                            { node_id: nodeId, subscription_id: id, ...report },
                             "ordered",
                         ),
                     ),
                 // An unsubscribe or the owner's connection close removes the entry first, so only an end the owner
                 // did not ask for is announced.
                 closed: () => {
-                    const { entry } = registered;
-                    if (entry === undefined || this.#interactionSubscriptions.get(entry.subscription.id) !== entry) {
+                    const { key, entry } = registered;
+                    if (key === undefined || this.#interactionSubscriptions.get(key) !== entry) {
                         return;
                     }
-                    this.#interactionSubscriptions.delete(entry.subscription.id);
+                    this.#interactionSubscriptions.delete(key);
                     // Never dropped under backpressure: a lost end notice leaves the client trusting a dead subscription.
                     deliver(id =>
                         this.#sendSubscriptionEvent(
                             connection,
                             "subscription_ended",
-                            { subscription_id: id },
+                            { node_id: nodeId, subscription_id: id },
                             "reliable",
                         ),
                     );
@@ -1458,12 +1466,16 @@ export class WebSocketControllerHandler implements WebServerHandler {
             subscription.close();
             throw ServerError.unknownError("The connection closed while subscribing");
         }
-        if (this.#interactionSubscriptions.has(id)) {
+        const key = subscriptionKey(nodeId, id);
+        if (this.#interactionSubscriptions.has(key)) {
             subscription.close();
-            throw ServerError.sdkStackError(`Subscription id ${id} is already in use by another subscription`);
+            throw ServerError.sdkStackError(
+                `Subscription id ${id} of node ${formatNodeId(nodeId)} is already in use by another subscription`,
+            );
         }
+        registered.key = key;
         registered.entry = { connection, subscription };
-        this.#interactionSubscriptions.set(id, registered.entry);
+        this.#interactionSubscriptions.set(key, registered.entry);
 
         return {
             result: { subscription_id: id, ...subscription.priming },
@@ -1490,22 +1502,29 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 connection.sendOrdered(frame);
             }
         } catch (err) {
-            logger.error(`[${connection.connId}] Failed to send ${event} for ${data.subscription_id}`, err);
+            logger.error(
+                `[${connection.connId}] Failed to send ${event} for subscription ${data.subscription_id} of node ${formatNodeId(NodeId(data.node_id))}`,
+                err,
+            );
         }
     }
 
     #handleUnsubscribe(args: ArgsOf<"unsubscribe">, connection: WebSocketConnection): ResponseOf<"unsubscribe"> {
-        const { subscription_id } = args;
+        const { node_id, subscription_id } = args;
         if (!this.#commandHandler.autoSubscriptionDisabled) {
             throw ServerError.invalidArguments(
                 "unsubscribe requires the server to run with --disable-auto-subscription",
             );
         }
-        const entry = this.#interactionSubscriptions.get(subscription_id);
+        const nodeId = this.#targetNodeId(node_id, "unsubscribe");
+        const key = subscriptionKey(nodeId, subscription_id);
+        const entry = this.#interactionSubscriptions.get(key);
         if (entry === undefined || entry.connection !== connection) {
-            throw ServerError.invalidArguments(`No subscription ${subscription_id} on this connection`);
+            throw ServerError.invalidArguments(
+                `No subscription ${subscription_id} of node ${formatNodeId(nodeId)} on this connection`,
+            );
         }
-        this.#interactionSubscriptions.delete(subscription_id);
+        this.#interactionSubscriptions.delete(key);
         entry.subscription.close();
         return null;
     }
@@ -1514,18 +1533,21 @@ export class WebSocketControllerHandler implements WebServerHandler {
         args: ArgsOf<"enable_auto_subscription" | "disable_auto_subscription">,
         enabled: boolean,
     ): Promise<null> {
-        const { node_id } = args;
-        if (TestNodeCommandHandler.isTestNodeId(node_id)) {
+        const nodeId = this.#targetNodeId(
+            args.node_id,
+            enabled ? "enable_auto_subscription" : "disable_auto_subscription",
+        );
+        if (TestNodeCommandHandler.isTestNodeId(nodeId)) {
             throw ServerError.invalidArguments("Auto subscription commands are not supported for test nodes");
         }
-        await this.#commandHandler.setAutoSubscription(NodeId(node_id), enabled);
+        await this.#commandHandler.setAutoSubscription(nodeId, enabled);
         return null;
     }
 
     #closeInteractionSubscriptionsOf(connection: WebSocketConnection) {
-        for (const [id, entry] of this.#interactionSubscriptions) {
+        for (const [key, entry] of this.#interactionSubscriptions) {
             if (entry.connection === connection) {
-                this.#interactionSubscriptions.delete(id);
+                this.#interactionSubscriptions.delete(key);
                 entry.subscription.close();
             }
         }

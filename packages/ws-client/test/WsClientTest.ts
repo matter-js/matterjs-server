@@ -256,7 +256,7 @@ describe("ws-client", () => {
                 for (const call of [
                     () => client.read({ node_id: 1, attribute_paths: ["1/6/0"] }),
                     () => client.subscribe(LIGHT_ON_OFF, recorder().listener),
-                    () => client.unsubscribe(7),
+                    () => client.unsubscribe(1, 7),
                 ]) {
                     let refusal: unknown;
                     try {
@@ -290,7 +290,7 @@ describe("ws-client", () => {
             it("passes the reports and the end of a subscription to its listener only", async () => {
                 server.onCommand("subscribe", () => {
                     queueMicrotask(() =>
-                        server.sendEvent("subscription_report", { subscription_id: 7, ...EMPTY_REPORT }),
+                        server.sendEvent("subscription_report", { node_id: 1, subscription_id: 7, ...EMPTY_REPORT }),
                     );
                     return { subscription_id: 7, ...EMPTY_REPORT };
                 });
@@ -298,13 +298,34 @@ describe("ws-client", () => {
                 const own = recorder();
 
                 const result = await client.subscribe(LIGHT_ON_OFF, own.listener);
-                server.sendEvent("subscription_report", { subscription_id: 8, ...EMPTY_REPORT });
-                server.sendEvent("subscription_ended", { subscription_id: 7 });
-                server.sendEvent("subscription_report", { subscription_id: 7, ...EMPTY_REPORT });
+                server.sendEvent("subscription_report", { node_id: 1, subscription_id: 8, ...EMPTY_REPORT });
+                server.sendEvent("subscription_ended", { node_id: 1, subscription_id: 7 });
+                server.sendEvent("subscription_report", { node_id: 1, subscription_id: 7, ...EMPTY_REPORT });
                 await eventsArrived();
 
                 expect(result.subscription_id).equals(7);
                 expect([own.reports, own.ended()]).deep.equals([[7], 1]);
+            });
+
+            it("tells apart subscriptions of two nodes that got the same id", async () => {
+                server.onCommand("subscribe", () => ({ subscription_id: 7, ...EMPTY_REPORT }));
+                await client.connect();
+                const first = recorder();
+                const second = recorder();
+
+                await client.subscribe(LIGHT_ON_OFF, first.listener);
+                await client.subscribe({ ...LIGHT_ON_OFF, node_id: 2n }, second.listener);
+                server.sendEvent("subscription_report", { node_id: 2, subscription_id: 7, ...EMPTY_REPORT });
+                server.sendEvent("subscription_ended", { node_id: 1, subscription_id: 7 });
+                await eventsArrived();
+                await client.unsubscribe(2n, 7);
+
+                expect([first.reports, first.ended()]).deep.equals([[], 1]);
+                expect([second.reports, second.ended()]).deep.equals([[7], 0]);
+                expect(server.getReceivedCommands().at(-1)?.message.args).deep.equals({
+                    node_id: 2,
+                    subscription_id: 7,
+                });
             });
 
             it("stops calling the listener after unsubscribe", async () => {
@@ -313,9 +334,9 @@ describe("ws-client", () => {
                 const own = recorder();
 
                 await client.subscribe(LIGHT_ON_OFF, own.listener);
-                await client.unsubscribe(7);
-                server.sendEvent("subscription_report", { subscription_id: 7, ...EMPTY_REPORT });
-                server.sendEvent("subscription_ended", { subscription_id: 7 });
+                await client.unsubscribe(1, 7);
+                server.sendEvent("subscription_report", { node_id: 1, subscription_id: 7, ...EMPTY_REPORT });
+                server.sendEvent("subscription_ended", { node_id: 1, subscription_id: 7 });
                 await eventsArrived();
 
                 expect([own.reports, own.ended()]).deep.equals([[], 0]);
@@ -344,7 +365,7 @@ describe("ws-client", () => {
                 const own = recorder();
 
                 const error = await client.subscribe(LIGHT_ON_OFF, own.listener).catch((error: unknown) => error);
-                server.sendEvent("subscription_report", { subscription_id: 7, ...EMPTY_REPORT });
+                server.sendEvent("subscription_report", { node_id: 1, subscription_id: 7, ...EMPTY_REPORT });
                 await eventsArrived();
 
                 expect(error).instanceOf(ServerCommandError);
@@ -362,12 +383,13 @@ describe("ws-client", () => {
 
                 const error = await client.subscribe(LIGHT_ON_OFF, own.listener, 10).catch((error: unknown) => error);
                 await new Promise(resolve => setTimeout(resolve, 100));
-                server.sendEvent("subscription_report", { subscription_id: 7, ...EMPTY_REPORT });
+                server.sendEvent("subscription_report", { node_id: 1, subscription_id: 7, ...EMPTY_REPORT });
                 await eventsArrived();
 
                 expect(error).instanceOf(CommandTimeoutError);
                 expect(own.reports).deep.equals([]);
                 expect(server.getReceivedCommands().map(({ message }) => message.args)).deep.includes({
+                    node_id: 1,
                     subscription_id: 7,
                 });
             });

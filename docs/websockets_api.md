@@ -681,12 +681,13 @@ Response:
 }
 ```
 
-`subscription_id` is the SubscriptionId the device assigned. The rest of the result is the priming report, in the
-shape of the `read` result (`attributes`, `events`, `attribute_status`, `event_status`). Later reports follow as
-`subscription_report` events after this response. All reports have the same side effects on all clients as `read`:
-`attribute_updated` to every listening client, only when `fabric_filtered` is `true`, the default, and every
-reported event as `node_event` to every listening client and into the event history, whatever `fabric_filtered` is
-and without a check against events already seen.
+`subscription_id` is the SubscriptionId the device assigned. Each device assigns its own ids, so two nodes can use the
+same one: a subscription is named by `node_id` and `subscription_id` together, in `unsubscribe` and in the events. The
+rest of the result is the priming report, in the shape of the `read` result (`attributes`, `events`,
+`attribute_status`, `event_status`). Later reports follow as `subscription_report` events after this response. All
+reports have the same side effects on all clients as `read`: `attribute_updated` to every listening client, only when
+`fabric_filtered` is `true`, the default, and every reported event as `node_event` to every listening client and into
+the event history, whatever `fabric_filtered` is and without a check against events already seen.
 
 A subscription belongs to the connection that opened it. It ends when the connection sends `unsubscribe`, when the
 connection closes, when the node is removed, and when the server shuts down. It also ends when the device stops
@@ -705,12 +706,13 @@ max interval plus a response margin; until then the subscription still looks act
 {
   "message_id": "1",
   "command": "unsubscribe",
-  "args": { "subscription_id": 2864434397 }
+  "args": { "node_id": 1, "subscription_id": 2864434397 }
 }
 ```
 
-Only available with `--disable-auto-subscription`; otherwise it fails with `InvalidArguments`. Returns `null`. An
-unknown id, or the id of another connection's subscription, gives an `InvalidArguments` error.
+Only available with `--disable-auto-subscription`; otherwise it fails with `InvalidArguments`. Returns `null`. Both
+`node_id` and `subscription_id` are required. A subscription this connection does not hold under that node and id
+gives an `InvalidArguments` error.
 Matter has no unsubscribe message: the server stops accepting reports, and the device ends the subscription at its
 next report.
 
@@ -1941,6 +1943,7 @@ Sent only to the connection that opened the subscription, also when it has not c
 {
   "event": "subscription_report",
   "data": {
+    "node_id": 1,
     "subscription_id": 2864434397,
     "attributes": { "1/6/0": true },
     "events": []
@@ -1954,7 +1957,7 @@ Like `node_event`, `subscription_report` is queued under backpressure: when a co
 and its outgoing queue passes the limit, the oldest queued events are dropped, reports included.
 `subscription_ended` is never dropped; it is sent ahead of reports still queued. A report for a subscription can
 therefore arrive after its `unsubscribe` response or after its `subscription_ended`. Ignore reports for
-subscription ids you no longer track.
+subscriptions you no longer track.
 
 **subscription_ended** *(schema 14+)* - A subscription opened with `subscribe` ended without `unsubscribe`
 
@@ -1963,7 +1966,7 @@ Sent only to the owning connection, for example when the node was removed or the
 ```json
 {
   "event": "subscription_ended",
-  "data": { "subscription_id": 2864434397 }
+  "data": { "node_id": 1, "subscription_id": 2864434397 }
 }
 ```
 
