@@ -15,7 +15,7 @@ import WebSocket from "ws";
 import type { CameraSessionEnded, CameraStreamEvicted } from "../src/camera/cameraTypes.js";
 import { ConfigStorage } from "../src/server/ConfigStorage.js";
 import { WebSocketControllerHandler } from "../src/server/WebSocketControllerHandler.js";
-import type { CommissioningRequest } from "../src/types/CommandHandler.js";
+import type { CommissioningRequest, InvokeRequest } from "../src/types/CommandHandler.js";
 
 // Minimal dataset: extPanId = DE:AD:BE:EF:CA:FE:11:22 (a-f bytes exercise the UPPERCASE invariant), network = "OpenThread".
 const DATASET_HEX =
@@ -51,7 +51,7 @@ interface StubCameraStreams {
 
 /** The command-handler behaviour a test needs to vary; everything else is fixed in the stub. */
 interface StubCommandHandlerOverrides {
-    handleInvoke?(): Promise<unknown>;
+    handleInvoke?(data: InvokeRequest): Promise<unknown>;
     handleWriteAttribute?(data: unknown): Promise<{ status: number }>;
     handleGroupWriteAttribute?(data: unknown): Promise<void>;
     handleGroupInvoke?(data: unknown): Promise<void>;
@@ -2361,6 +2361,41 @@ describe("groupcast on the generic commands", () => {
             );
             expect(answer.error_code).to.equal(8);
             expect(answer.details).to.contain("requires endpoint_id");
+        } finally {
+            await h.close();
+        }
+    });
+
+    it("passes timed_request_timeout_ms and interaction_timeout_ms of a device_command to handleInvoke", async () => {
+        const invokes = new Array<InvokeRequest>();
+        const h = await createHarness(undefined, {
+            handleInvoke: async data => {
+                invokes.push(data);
+                return undefined;
+            },
+        });
+        try {
+            const answer = await answerFor(
+                h,
+                "device_command",
+                {
+                    node_id: 1,
+                    endpoint_id: 1,
+                    cluster_id: 6,
+                    command_name: "toggle",
+                    payload: {},
+                    timed_request_timeout_ms: 1000,
+                    interaction_timeout_ms: 5000,
+                },
+                "unicast-invoke-timeouts",
+            );
+            expect(answer.error_code).to.equal(undefined);
+            expect(
+                invokes.map(({ timedInteractionTimeoutMs, interactionTimeoutMs }) => ({
+                    timedInteractionTimeoutMs,
+                    interactionTimeoutMs,
+                })),
+            ).deep.equals([{ timedInteractionTimeoutMs: Millis(1000), interactionTimeoutMs: Millis(5000) }]);
         } finally {
             await h.close();
         }

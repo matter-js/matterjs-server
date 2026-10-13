@@ -1663,6 +1663,8 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 data: payload,
                 timedInteractionTimeoutMs:
                     typeof timedInteractionTimeoutMs === "number" ? Millis(timedInteractionTimeoutMs) : undefined,
+                interactionTimeoutMs:
+                    typeof interactionTimeoutMs === "number" ? Millis(interactionTimeoutMs) : undefined,
                 dedupScope: connection,
             });
 

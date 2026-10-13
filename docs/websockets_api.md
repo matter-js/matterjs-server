@@ -818,6 +818,7 @@ Command with parameters (e.g., move to level):
 Optional parameters:
 - `response_type`: Client SDK type hint (currently ignored by the server)
 - `timed_request_timeout_ms`: Timeout for timed interactions (required for some commands like door lock)
+- `interaction_timeout_ms`: Time in milliseconds the device may take to process the command; the server waits that much longer for the response
 
 A `node_id` in the Group Node ID range multicasts the command to the group. `endpoint_id` must then be
 absent or `null`, because a groupcast carries no endpoint: each node's own group table decides which of
