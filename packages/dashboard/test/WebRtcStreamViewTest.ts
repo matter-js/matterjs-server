@@ -1147,7 +1147,7 @@ describe("WebRtcStreamView", () => {
     });
 
     describe("talkback", () => {
-        class FakeTrack {
+        class FakeTrack extends EventTarget {
             stopped = false;
             stop() {
                 this.stopped = true;
@@ -1464,6 +1464,51 @@ describe("WebRtcStreamView", () => {
             expect(track.stopped).to.equal(true);
             expect(lastPeer().replacedTracks).to.deep.equal([]);
             expect(view.talking).to.equal(false);
+        });
+
+        it("stops talking when the microphone ends on its own", async () => {
+            const { view, video } = await startTalkView("HalfDuplex");
+            view.setMuted(false);
+            await view.setTalking(true);
+            const talkChanges = new Array<boolean>();
+            view.addEventListener("talkchange", () => talkChanges.push(view.talking));
+
+            track.dispatchEvent(new Event("ended"));
+            await settle();
+
+            expect(view.talking).to.equal(false);
+            expect(talkChanges).to.deep.equal([false]);
+            expect(video.muted).to.equal(false);
+            expect(lastPeer().replacedTracks).to.deep.equal([track, null]);
+        });
+
+        it("ignores the end of a microphone that was already switched off", async () => {
+            const { view } = await startTalkView();
+            await view.setTalking(true);
+            await view.setTalking(false);
+            let talkChanges = 0;
+            view.addEventListener("talkchange", () => talkChanges++);
+
+            track.dispatchEvent(new Event("ended"));
+            await settle();
+
+            expect(talkChanges).to.equal(0);
+            expect(lastPeer().replacedTracks).to.deep.equal([track, null]);
+        });
+
+        it("keeps talking when an earlier microphone ends after talking restarted", async () => {
+            const { view } = await startTalkView();
+            await view.setTalking(true);
+            await view.setTalking(false);
+            const first = track;
+            track = new FakeTrack();
+            await view.setTalking(true);
+
+            first.dispatchEvent(new Event("ended"));
+            await settle();
+
+            expect(view.talking).to.equal(true);
+            expect(track.stopped).to.equal(false);
         });
 
         it("drops a microphone refusal that arrives after the stream stopped", async () => {

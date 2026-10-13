@@ -184,6 +184,7 @@ export class WebRtcStreamView extends LitElement {
             return;
         }
         attempt.micTrack = track;
+        track.addEventListener("ended", () => this._onMicrophoneEnded(attempt, track, sender), { once: true });
         this._applyPlaybackMute();
         this._fireTalkChange();
         try {
@@ -193,6 +194,15 @@ export class WebRtcStreamView extends LitElement {
             track.stop();
             throw err;
         }
+    }
+
+    /** The browser ends the track when the device goes away or the permission is revoked. */
+    private _onMicrophoneEnded(attempt: StreamAttempt, track: MediaStreamTrack, sender: RTCRtpSender): void {
+        if (attempt.micTrack !== track || !this._releaseMicrophone(attempt)) return;
+        this._fireTalkChange();
+        sender
+            .replaceTrack(null)
+            .catch(err => console.warn("[webrtc-stream-view] clearing the ended microphone failed", err));
     }
 
     private _talkNegotiated(attempt: StreamAttempt): boolean {

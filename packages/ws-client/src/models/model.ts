@@ -1091,7 +1091,8 @@ export interface APICommands {
             allow_eviction?: boolean;
             /**
              * Defaults to false: the server rewrites the offer's sending audio sections so the camera is not
-             * asked to play audio. `true` forwards the offer unchanged and requires `sdp`.
+             * asked to play audio. `true` forwards the offer unchanged and requires `sdp`. A camera may still
+             * answer `sendrecv`, so a client that must not send audio keeps the track off its sender.
              */
             talkback?: boolean;
         };

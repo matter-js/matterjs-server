@@ -3073,8 +3073,28 @@ describe("CameraStreamManager", () => {
         }
 
         it("reports an offer asking for talkback on a camera that does not support it", async () => {
-            // Nothing in the response says so; the log is the only place the mismatch shows.
             const { manager } = allocatingManager();
+            const messages = await logged(() =>
+                manager.startStream({
+                    nodeId: NODE,
+                    endpointId: ENDPOINT,
+                    connectionId: "conn-1",
+                    streamUsage: LIVE_VIEW,
+                    sdp: TALKBACK_OFFER,
+                    talkback: true,
+                    video: {},
+                    audio: false,
+                }),
+            );
+            expect(messages.some(message => message.includes("TwoWayTalkSupport"))).to.equal(true);
+        });
+
+        it("reports an offer asking for talkback on a camera stating an unknown TwoWayTalkSupport", async () => {
+            const { manager } = managerWith({ ...STATE, twoWayTalkSupport: 3 }, async invoke => {
+                if (invoke.command === "videoStreamAllocate") return { videoStreamId: 9 };
+                if (invoke.command === "provideOffer") return { webRtcSessionId: 42 };
+                return undefined;
+            });
             const messages = await logged(() =>
                 manager.startStream({
                     nodeId: NODE,

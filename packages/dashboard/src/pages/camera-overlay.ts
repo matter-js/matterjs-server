@@ -71,6 +71,8 @@ export class CameraOverlay extends LitElement {
     @state() private _talkAvailable = false;
     @state() private _talking = false;
     @state() private _talkBusy = false;
+    /** Bumped when a stream ends, so a talk toggle still pending from it leaves the next stream's state alone. */
+    private _talkGeneration = 0;
     @state() private _talkError: string | null = null;
     @state() private _watermarkEnabled = false;
     @state() private _osdEnabled = false;
@@ -145,6 +147,7 @@ export class CameraOverlay extends LitElement {
         if (!streaming) {
             this._talkError = null;
             this._talkBusy = false;
+            this._talkGeneration++;
         }
 
         // Audio-only "Listen" sessions have no video; starting muted would defeat the feature, so
@@ -184,15 +187,18 @@ export class CameraOverlay extends LitElement {
     private async _toggleTalk(): Promise<void> {
         const view = this._streamViewRef.value;
         if (!view) return;
+        const generation = this._talkGeneration;
         this._talkBusy = true;
         this._talkError = null;
         try {
             await view.setTalking(!view.talking);
         } catch (err) {
-            this._talkError = microphoneErrorText(err);
+            if (generation === this._talkGeneration) this._talkError = microphoneErrorText(err);
         } finally {
-            this._talkBusy = false;
-            this._talking = view.talking;
+            if (generation === this._talkGeneration) {
+                this._talkBusy = false;
+                this._talking = view.talking;
+            }
         }
     }
 

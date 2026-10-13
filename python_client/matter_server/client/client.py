@@ -801,7 +801,9 @@ class MatterClient:
         offer arrives as a ``webrtc_callback`` ``offer`` event. For ``video`` and ``audio``, ``None``
         lets the server decide, a hints dict sets hard requirements, and ``False`` leaves the track
         out. ``talkback=True`` (requires ``sdp``) forwards the offer unchanged so the camera can play
-        the caller's audio; otherwise the server makes the offer's audio sections not send. Arguments
+        the caller's audio; otherwise the server makes the offer's audio sections not send. That only
+        asks the camera: it may still answer ``sendrecv``, so a caller that must not send audio keeps
+        the track off its audio sender. Arguments
         left ``None`` are not sent.
 
         Requires schema 14.

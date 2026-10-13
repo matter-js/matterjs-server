@@ -1918,13 +1918,9 @@ export class CameraStreamManager {
         const cameraTalks =
             state.twoWayTalkSupport === CameraAvStreamManagement.TwoWayTalkSupportType.HalfDuplex ||
             state.twoWayTalkSupport === CameraAvStreamManagement.TwoWayTalkSupportType.FullDuplex;
-        if (
-            talkbackOffered &&
-            (state.twoWayTalkSupport ?? CameraAvStreamManagement.TwoWayTalkSupportType.NotSupported) ===
-                CameraAvStreamManagement.TwoWayTalkSupportType.NotSupported
-        ) {
+        if (talkbackOffered && !cameraTalks) {
             logger.notice(
-                `Node ${nodeId} endpoint ${endpointId} states no TwoWayTalkSupport; the audio the offer asks to send will not reach the camera`,
+                `Node ${nodeId} endpoint ${endpointId} states no HalfDuplex or FullDuplex TwoWayTalkSupport; the audio the offer asks to send will not reach the camera`,
             );
         }
         const videoRequest = trackRequest(args.video);
