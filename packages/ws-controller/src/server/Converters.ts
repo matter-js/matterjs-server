@@ -661,6 +661,20 @@ export function buildAttributePath(endpointId: number, clusterId: number, attrib
     return `${endpointId}/${clusterId}/${attributeId}`;
 }
 
+/** The numbers of a path; non-numeric parts and the wildcard values 0xffff / 0xffffffff are undefined. */
+function pathNumbersOf(path: string) {
+    const [endpointStr, clusterStr, thirdStr] = path.split("/");
+    const numberOf = (part: string | undefined, wildcard: number) => {
+        const value = part !== undefined && /^\d+$/.test(part) ? parseInt(part, 10) : undefined;
+        return value === wildcard ? undefined : value;
+    };
+    return {
+        endpoint: numberOf(endpointStr, 0xffff),
+        cluster: numberOf(clusterStr, 0xffffffff),
+        third: numberOf(thirdStr, 0xffffffff),
+    };
+}
+
 /**
  * Parse an attribute path string into its components.
  * Supports wildcards (*) for endpoint, cluster, and attribute IDs.
@@ -668,33 +682,18 @@ export function buildAttributePath(endpointId: number, clusterId: number, attrib
  *
  * @param path - Attribute path string in format "endpoint/cluster/attribute"
  * @returns Object with endpointId, clusterId, attributeId - each undefined if wildcard
+ * @throws ServerError with InvalidArguments when a number is not a valid id of its kind
  */
 export function splitAttributePath(path: string): {
     endpointId: EndpointNumber | undefined;
     clusterId: ClusterId | undefined;
     attributeId: AttributeId | undefined;
 } {
-    const [endpointStr, clusterStr, attributeStr] = path.split("/");
-
-    // Non-numeric values (like "*") are treated as wildcards (undefined)
-    let endpointNum = /^\d+$/.test(endpointStr) ? parseInt(endpointStr, 10) : undefined;
-    let clusterNum = /^\d+$/.test(clusterStr) ? parseInt(clusterStr, 10) : undefined;
-    let attributeNum = /^\d+$/.test(attributeStr) ? parseInt(attributeStr, 10) : undefined;
-
-    if (endpointNum !== undefined && endpointNum === 0xffff) {
-        endpointNum = undefined;
-    }
-    if (clusterNum !== undefined && clusterNum === 0xffffffff) {
-        clusterNum = undefined;
-    }
-    if (attributeNum !== undefined && attributeNum === 0xffffffff) {
-        attributeNum = undefined;
-    }
-
+    const { endpoint, cluster, third } = pathNumbersOf(path);
     return idsOf(path, () => ({
-        endpointId: endpointNum !== undefined ? EndpointNumber(endpointNum) : undefined,
-        clusterId: clusterNum !== undefined ? ClusterId(clusterNum) : undefined,
-        attributeId: attributeNum !== undefined ? AttributeId(attributeNum) : undefined,
+        endpointId: endpoint !== undefined ? EndpointNumber(endpoint) : undefined,
+        clusterId: cluster !== undefined ? ClusterId(cluster) : undefined,
+        attributeId: third !== undefined ? AttributeId(third) : undefined,
     }));
 }
 
@@ -731,17 +730,19 @@ export function pathStatusOf({ status, clusterStatus }: { status: Status; cluste
 /**
  * Parse an event path string ("endpoint/cluster/event") into its components, with the same wildcard rules as
  * {@link splitAttributePath}.
+ *
+ * @throws ServerError with InvalidArguments when a number is not a valid id of its kind
  */
 export function splitEventPath(path: string): {
     endpointId: EndpointNumber | undefined;
     clusterId: ClusterId | undefined;
     eventId: EventId | undefined;
 } {
-    const { endpointId, clusterId, attributeId } = splitAttributePath(path);
+    const { endpoint, cluster, third } = pathNumbersOf(path);
     return idsOf(path, () => ({
-        endpointId,
-        clusterId,
-        eventId: attributeId === undefined ? undefined : EventId(attributeId),
+        endpointId: endpoint !== undefined ? EndpointNumber(endpoint) : undefined,
+        clusterId: cluster !== undefined ? ClusterId(cluster) : undefined,
+        eventId: third !== undefined ? EventId(third) : undefined,
     }));
 }
 

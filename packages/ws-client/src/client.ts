@@ -116,7 +116,7 @@ type ClientEventListeners = { [E in keyof ClientEventMap]: Array<(...args: Clien
 export interface SubscriptionListener {
     /** A report after the first one, which the `subscribe` result carries. */
     report(data: SubscriptionReportData): void;
-    /** The subscription ended without `unsubscribe`, or the connection to the server was lost. */
+    /** The subscription ended without `unsubscribe`, the connection to the server was lost, or {@link MatterClient.disconnect} was called. */
     ended?(): void;
 }
 

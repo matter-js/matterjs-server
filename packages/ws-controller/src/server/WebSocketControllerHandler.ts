@@ -220,7 +220,7 @@ function statusResponseOf(error: unknown): ReceivedStatusResponseError | undefin
     return error instanceof Error ? statusResponseOf(error.cause) : undefined;
 }
 
-/** A device announces for at most 48 hours (Extended Announcement, Matter Core spec 5.4.2.3.3). */
+/** 48 hours, the longest a device announces for commissioning (Extended Announcement, Matter Core spec 5.4.2.3.3). */
 const MAX_DISCOVERY_TIMEOUT_S = 48 * 60 * 60;
 
 function discoveryTimeoutOf(seconds: unknown): Duration | undefined {

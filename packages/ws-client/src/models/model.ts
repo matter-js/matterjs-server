@@ -962,8 +962,8 @@ export interface APICommands {
             wifi_credentials_id?: string;
             thread_dataset_id?: string;
             /**
-             * Schema 14. Seconds to find the device and establish PASE with it, at most 172800 (48 hours); matter.js searches 3 minutes
-             * without it.
+             * Schema 14. Seconds to find the device and establish PASE with it, at most 172800 (48 hours, the longest a device
+             * announces for commissioning); matter.js searches 3 minutes without it.
              */
             discovery_timeout_s?: number;
         };

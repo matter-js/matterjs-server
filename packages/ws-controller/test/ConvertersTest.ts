@@ -35,8 +35,11 @@ import {
     convertWebsocketDataToMatter,
     convertWebSocketTagBasedToMatter,
     pathStatusOf,
+    splitAttributePath,
+    splitEventPath,
     statusPathOf,
 } from "../src/server/Converters.js";
+import { ServerError, ServerErrorCode } from "../src/types/WebSocketMessageTypes.js";
 
 describe("convertWebSocketTagBasedToMatter", () => {
     const clusterEntry = ClusterMap[Thermostat.Cluster.id];
@@ -396,6 +399,51 @@ describe("path status helpers", () => {
             status: Status.Failure,
             cluster_status: 0,
         });
+    });
+});
+
+describe("path splitting", () => {
+    function errorOf(split: () => unknown) {
+        try {
+            split();
+        } catch (error) {
+            return error;
+        }
+        return undefined;
+    }
+
+    it("names the event id when an event path has an invalid one", () => {
+        const error = errorOf(() => splitEventPath("1/59/32768"));
+
+        expect(error).instanceOf(ServerError);
+        if (error instanceof ServerError) {
+            expect(error.code).equals(ServerErrorCode.InvalidArguments);
+            expect(error.message).contains("Invalid event ID");
+            expect(error.message).not.contains("attribute");
+        }
+    });
+
+    it("names the attribute id when an attribute path has an invalid one", () => {
+        const error = errorOf(() => splitAttributePath("1/6/32768"));
+
+        expect(error).instanceOf(ServerError);
+        if (error instanceof ServerError) {
+            expect(error.message).contains("Invalid attribute ID");
+        }
+    });
+
+    it("reads the wildcard values and non-numeric parts as wildcards", () => {
+        expect(splitEventPath("65535/4294967295/4294967295")).deep.equals({
+            endpointId: undefined,
+            clusterId: undefined,
+            eventId: undefined,
+        });
+        expect(splitAttributePath("*/6/*")).deep.equals({
+            endpointId: undefined,
+            clusterId: 6,
+            attributeId: undefined,
+        });
+        expect(splitEventPath("1/59/1")).deep.equals({ endpointId: 1, clusterId: 59, eventId: 1 });
     });
 });
 

@@ -157,7 +157,8 @@ if (options.dryRun) {
     process.exit(0);
 }
 
-// npm's description of this invocation, which would point nested npm runs at this project; user npm config passes.
+// npm's description of this invocation, which would point nested npm runs at this project. Other npm_config_*
+// settings and the PATH npm extended with node_modules/.bin pass.
 const NPM_INVOCATION_ENV =
     /^(npm_lifecycle_|npm_package_|npm_command$|npm_execpath$|npm_node_execpath$|npm_config_local_prefix$|npm_config_user_agent$|INIT_CWD$)/;
 const baseEnv = Object.fromEntries(Object.entries(process.env).filter(([key]) => !NPM_INVOCATION_ENV.test(key)));

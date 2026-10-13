@@ -330,7 +330,8 @@ Using manual pairing code (network only):
 ```
 
 `discovery_timeout_s` (optional, schema 14) limits, in seconds, how long the server has to find the device and to set
-up the PASE session with it. Allowed are numbers above 0 up to 172800 (48 hours, the longest a device announces);
+up the PASE session with it. Allowed are numbers above 0 up to 172800 (48 hours, the longest a device announces for
+commissioning);
 `null` counts as not given. Without it matter.js searches for 3 minutes. The commissioning steps after PASE are not
 limited. A device found too late to finish PASE is reported the same way as one never found: `NodeCommissionFailed`
 with `reason` `not-discovered`.
@@ -608,20 +609,23 @@ numeric Matter status code in `status` (as in the `write_attribute` result) and 
 }
 ```
 
-At least one attribute or event path is required. `fabric_filtered` defaults to `true`, the Matter default (unlike
-`read_attribute`, which defaults to `false`). `event_min` becomes the EventFilter of the request; without it the
+At least one attribute or event path is required. `fabric_filtered` defaults to `true` (unlike `read_attribute`,
+which defaults to `false`). Matter has no default: FabricFiltered is a mandatory field of the request, and `true` is
+the default of chip-tool and the Python controller. `event_min` becomes the EventFilter of the request; without it the
 request has no event filter, also for a node with the server's own subscription, and returns every event the device
 still holds on the requested paths. The request goes to the device as given: unlike `read_attribute`, it is not
 split into batches and the server adds no data version filters of its own. For a LIT ICD with this controller
 registered, matter.js holds the request while the device sleeps and sends it at the next check-in, as it does for
-every other request; the request fails if the device does not check in in time.
+`write_attribute` and `device_command` (`subscribe` is sent at once); the request fails if the device does not check
+in in time.
 
 Side effects on all clients: matter.js merges the read attribute values into the node state, which sends the usual
 `attribute_updated` events to every listening client, but only when `fabric_filtered` is `true`, the default.
 matter.js applies a read only when its fabric filter matches the node's subscription settings, which the server
-leaves at fabric-filtered, whether or not the node currently has the server's own subscription. With auto
-subscription on, the server forwards changes of a node only once its subscription has been active since the server
-started, so a read of a node that has not been subscribed yet sends neither event. Every event the read returns is also sent to every listening client as
+leaves at fabric-filtered, whether or not the node currently has the server's own subscription. Without
+`--disable-auto-subscription`, the server forwards changes of a node only once its subscription has been active since
+the server started, so a read of a node that has not been subscribed yet sends neither event. With
+`--disable-auto-subscription` the server forwards changes of every node from the start. Every event the read returns is also sent to every listening client as
 `node_event` and added to the event history, whatever `fabric_filtered` is and without a check against events
 already seen. A read with event paths and a low or no `event_min` therefore replays old events (for example button
 presses) to all clients, Home Assistant included, as if they were new.
@@ -701,7 +705,8 @@ connection closes, when the node is removed, and when the server shuts down. It 
 reporting (no report within the max interval plus a response margin) or when another subscription of this
 controller to the node is made with `keep_subscriptions` `false` or left out, from any connection. Every end the
 connection did not ask for, including node removal, is announced with `subscription_ended`; `unsubscribe` and
-closing the connection are not.
+closing the connection are not. A server shutdown is announced only with `server_shutdown`: the server closes the
+connections before it ends their subscriptions, so no `subscription_ended` is sent.
 
 The server only learns that a subscription ended on the device when the local subscription times out or matter.js
 closes it. A device that dropped the subscription (for example after a reboot) is noticed at the latest after the
@@ -750,9 +755,10 @@ need it, such as `register_icd`, work from then on. If the node's subscription i
 once. It fails with an error, and the node stays switched on with matter.js trying to subscribe in the background,
 when:
 
-- matter.js finds the device unreachable while waiting: `NodeNotResolving` (4). Only a new finding counts: a node
-  that was already marked unreachable before, for example after a failed `read`, is tried again and only fails here
-  when that try fails too.
+- matter.js finds the device unreachable while waiting: `NodeNotResolving` (4). Only a new finding counts: for a
+  node that was already marked unreachable before, for example after a failed `read`, a failed try does not change
+  that mark, so the command does not fail with `NodeNotResolving` and fails with `NodeNotReady` after the 4 minutes
+  15 seconds below unless the subscription comes up.
 - the subscription is not active within 4 minutes 15 seconds, the time matter.js allows a CASE connection while
   commissioning: `NodeNotReady` (3)
 - the node is removed while waiting: `NodeNotExists` (5)
@@ -1086,10 +1092,11 @@ This should be the last resort to try to get an ICD device in LIT mode connected
 }
 ```
 
-A LIT peer re-registers automatically once subscribed. With `--disable-auto-subscription` the server only drops the
-local registration and does not reconnect, unless `enable_auto_subscription` switched the server's own subscription
-to the node on; the device registers again only through `register_icd`, which needs the server's own subscription
-and so fails for a node without it. A subscription opened with `subscribe` does not count.
+A LIT peer re-registers automatically once the server's own subscription to it is active. With
+`--disable-auto-subscription` the server only drops the local registration and does not reconnect, unless
+`enable_auto_subscription` switched the server's own subscription to the node on. For a node without it, the device
+registers again once `enable_auto_subscription` makes that subscription active; `register_icd` fails until then. A
+subscription opened with `subscribe` does not count.
 
 ### Camera Streaming (schema 14+)
 
@@ -2281,7 +2288,7 @@ This API is designed to be compatible with the [Python Matter Server](https://gi
 
 | Command | Status | Notes |
 |---------|--------|-------|
-| `subscribe_attribute` | Not supported | Answers `InvalidCommand`. The server subscribes to all attributes on its own; use `subscribe` (schema 14) for a subscription of your own |
+| `subscribe_attribute` | Not supported | Answers `InvalidCommand`. The server subscribes to all attributes on its own (unless it runs with `--disable-auto-subscription`); use `subscribe` (schema 14) for a subscription of your own |
 
 ### Matter.js-Only Commands
 
