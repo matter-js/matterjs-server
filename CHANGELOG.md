@@ -24,7 +24,6 @@ This page shows a detailed overview of the changes between versions without the 
 - Enhancement: (@RaHehl) `open_commissioning_window` also returns `discriminator`, `vendor_id`, `product_id` and `commissioning_timeout` (seconds) as reported by matter.js, so clients can hand the data to another ecosystem without decoding the QR code.
 - Enhancement: `--port 0` binds a free port, and the startup log line `Webserver listening on …` shows the bound port
 - Fix: Identical commands sent in parallel are combined only when they come from the same connection, so two clients sending the same command each reach the device
-- Fix: A wrong pairing code is reported as such instead of as a generic commissioning failure, so a client can ask for the code again
 - Enhancement: Error responses carry the Matter status the device answered with (`status`, `cluster_status`), commissioning errors a `reason`, and `write_attribute` results the cluster-specific status
 - Breaking: In `@matter-server/ws-controller`, `ServerError.nodeCommissionFailed` takes the failure reason as second argument. In `@matter-server/ws-client`, the unsupported `subscribe_attribute` command is no longer part of `APICommands`
 - Enhancement: Dashboard network view uses the Thread 1.4 role names: a Thread Router is shown as "Mesh Extender" and a REED as "Standby Mesh Extender". External (non-fabric) neighbors, whose role is only inferred from rx-on-when-idle, are now labeled "Always-on device" instead of a routing role. Wire values and the `ThreadRoutingRole` enum keep the Matter spec names

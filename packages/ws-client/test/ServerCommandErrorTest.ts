@@ -39,6 +39,15 @@ describe("ServerCommandError details", () => {
         expect(error.errorCode).to.equal(102);
     });
 
+    it("keeps the device status next to the parsed details", () => {
+        const error = new ServerCommandError(FEATURE_DETAILS, CAMERA_STREAM_INCOMPATIBLE_ERROR_CODE, {
+            status: 135,
+            clusterStatus: 2,
+        });
+        if (!error.hasDetails(CAMERA_STREAM_INCOMPATIBLE_ERROR_CODE)) return expect.fail("details not parsed");
+        expect([error.details.reason, error.status, error.clusterStatus]).to.deep.equal(["feature", 135, 2]);
+    });
+
     it("parses error 102 into its reason's shape", () => {
         const error = new ServerCommandError(FEATURE_DETAILS, CAMERA_STREAM_INCOMPATIBLE_ERROR_CODE);
         const details = detailsOf(error, CAMERA_STREAM_INCOMPATIBLE_ERROR_CODE);

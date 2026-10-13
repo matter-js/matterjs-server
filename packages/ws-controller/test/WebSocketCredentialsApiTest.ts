@@ -149,11 +149,8 @@ function makeStubController(
 
     const stubCommandHandler = {
         events: stubEvents,
-        handleInvoke:
-            commandHandler?.handleInvoke ??
-            (async () => {
-                return {};
-            }),
+        // matter.js answers a status-only command with undefined.
+        handleInvoke: commandHandler?.handleInvoke ?? (async () => undefined),
         handleWriteAttribute:
             commandHandler?.handleWriteAttribute ??
             (async () => {

@@ -581,7 +581,7 @@ numeric Matter status code in `status` (as in the `write_attribute` result) and 
 }
 ```
 
-**read** - Read attributes and events in one Matter Read request
+**read** *(schema 14+)* - Read attributes and events in one Matter Read request
 
 ```json
 {
@@ -633,7 +633,7 @@ Response:
 }
 ```
 
-**subscribe** - Open a Matter subscription for this connection
+**subscribe** *(schema 14+)* - Open a Matter subscription for this connection
 
 ```json
 {
@@ -696,7 +696,7 @@ The server only learns that a subscription ended on the device when the local su
 closes it. A device that dropped the subscription (for example after a reboot) is noticed at the latest after the
 max interval plus a response margin; until then the subscription still looks active.
 
-**unsubscribe** - End a subscription of this connection
+**unsubscribe** *(schema 14+)* - End a subscription of this connection
 
 ```json
 {
@@ -1930,7 +1930,7 @@ Format: `[node_id, "endpoint/cluster/attribute", value]`
 
 ### Subscription Events
 
-**subscription_report** - A report after the priming report of a subscription opened with `subscribe` (schema 14)
+**subscription_report** *(schema 14+)* - A report after the priming report of a subscription opened with `subscribe`
 
 Sent only to the connection that opened the subscription, also when it has not called `start_listening`.
 
@@ -1953,7 +1953,7 @@ and its outgoing queue passes the limit, the oldest queued events are dropped, r
 therefore arrive after its `unsubscribe` response or after its `subscription_ended`. Ignore reports for
 subscription ids you no longer track.
 
-**subscription_ended** - A subscription opened with `subscribe` ended without `unsubscribe` (schema 14)
+**subscription_ended** *(schema 14+)* - A subscription opened with `subscribe` ended without `unsubscribe`
 
 Sent only to the owning connection, for example when the node was removed or the device stopped reporting.
 

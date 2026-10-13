@@ -2202,11 +2202,11 @@ export class WebSocketControllerHandler implements WebServerHandler {
             return {};
         }
 
-        const responseModel = clusterData.commands[commandName.toLowerCase()]!.responseModel;
-        if (responseModel === undefined) {
-            return null;
-        }
-        return convertMatterToWebSocketNameBased(value, responseModel, clusterData.model);
+        return convertMatterToWebSocketNameBased(
+            value,
+            clusterData.commands[commandName.toLowerCase()]!.responseModel,
+            clusterData.model,
+        );
     }
 
     /**
