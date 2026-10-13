@@ -627,6 +627,19 @@ describe("auto subscription setting", () => {
             expect(hasActiveSubscription(controller)).equals(false);
         });
 
+        it("stays off when switched off just before an ICD registration resync", async () => {
+            const controller = await commissioned(true);
+            await enable(controller);
+
+            const disabling = controller.handler.setAutoSubscription(NODE_ID, false);
+            const resyncing = controller.handler.resyncIcd(NODE_ID);
+            await MockTime.resolve(Promise.all([disabling, resyncing]), { macrotasks: true });
+            await settle();
+
+            expect(peerOf(controller).stateOf(NetworkClient).autoSubscribe).equals(false);
+            expect(hasActiveSubscription(controller)).equals(false);
+        });
+
         it("fails at once when an ICD registration resync cannot switch the subscription back on", async () => {
             const controller = await commissioned(true);
             refuseSubscriptions();
@@ -658,6 +671,7 @@ describe("auto subscription setting", () => {
             expect(String(resync)).contains("Refused by the test");
             expectServerError(outcome, ServerErrorCode.NodeNotReady);
             expect(String(outcome)).contains("Refused by the test");
+            expect(peer.stateOf(NetworkClient).autoSubscribe).equals(false);
             await pending;
         });
 

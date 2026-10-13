@@ -391,8 +391,8 @@ export class ControllerCommandHandler {
     #pendingLazyPopulate = new Set<NodeId>();
     /** Failure callbacks of the enable_auto_subscription calls still waiting for the node's subscription. */
     readonly #autoSubscribeWaiters = new WeakMap<ClientNode, Set<(error: Error) => void>>();
-    /** Counts setAutoSubscription calls per node, so {@link resyncIcd} does not undo one made while it runs. */
-    readonly #autoSubscribeRequests = new WeakMap<ClientNode, number>();
+    /** The setting of the last setAutoSubscription call, set before it reaches the node. */
+    readonly #autoSubscribeRequested = new WeakMap<ClientNode, boolean>();
     /** In-flight invokes per dedup scope; a scope dropped by its owner takes its entries with it. */
     readonly #inFlightInvokes = new WeakMap<object, Map<string, Promise<unknown>>>();
     events = {
@@ -2227,19 +2227,18 @@ export class ControllerCommandHandler {
 
     /**
      * Drop the local ICD registration and reconnect; a LIT peer re-registers automatically once subscribed.
-     * With auto subscription disabled, and not enabled for the node, only the local registration is dropped. A
-     * {@link setAutoSubscription} call for the node while this runs decides the final setting.
+     * With auto subscription disabled, and not enabled for the node, only the local registration is dropped. The last
+     * {@link setAutoSubscription} call for the node decides the final setting, also one made while this runs.
      */
     async resyncIcd(nodeId: NodeId): Promise<void> {
         const node = this.#nodes.get(nodeId);
         await node.act(agent => agent.get(IcdClient).forget());
-        if (this.#autoSubscriptionDisabled && !this.#autoSubscribes(node)) {
+        if (!this.#keepsAutoSubscription(node)) {
             return;
         }
         // Tearing the sustained subscription down and back up is what forces the re-registration.
-        const requests = this.#autoSubscribeRequests.get(node);
         await node.set({ network: { autoSubscribe: false } });
-        if (this.#autoSubscribeRequests.get(node) !== requests) {
+        if (!this.#keepsAutoSubscription(node)) {
             return;
         }
         try {
@@ -2268,7 +2267,7 @@ export class ControllerCommandHandler {
             );
         }
         const node = this.#nodes.get(nodeId);
-        this.#autoSubscribeRequests.set(node, (this.#autoSubscribeRequests.get(node) ?? 0) + 1);
+        this.#autoSubscribeRequested.set(node, enabled);
         if (!enabled) {
             this.#failAutoSubscribeWaiters(
                 node,
@@ -2288,10 +2287,17 @@ export class ControllerCommandHandler {
         waiters.add(settle);
         const observers = new ObserverGroup();
         observers.on(node.eventsOf(NetworkClient).subscriptionStatusChanged, isActive => {
-            // matter.js also reports a subscription closed during its retry backoff as active.
-            if (isActive && this.#autoSubscribes(node)) {
-                settle(undefined);
+            if (!isActive) {
+                return;
             }
+            // matter.js also reports a subscription closed during its retry backoff as active.
+            Promise.resolve(node.act(agent => agent.get(NetworkClient).subscriptionActive))
+                .then(active => {
+                    if (active) {
+                        settle(undefined);
+                    }
+                })
+                .catch(error => logger.warn(`Failed to check the subscription of node ${nodeId}:`, error));
         });
         // Only a change counts: an older unreachable mark stays until a session comes up and says nothing about now.
         observers.on(node.lifecycle.connectionStateChanged, state => {
@@ -2318,7 +2324,7 @@ export class ControllerCommandHandler {
         try {
             await node.set({ network: { autoSubscribe: true } });
             if (await node.act(agent => agent.get(NetworkClient).subscriptionActive)) {
-                return;
+                settle(undefined);
             }
             const error = await outcome;
             if (error !== undefined) {
@@ -2329,6 +2335,10 @@ export class ControllerCommandHandler {
             observers.close();
             abort.close();
         }
+    }
+
+    #keepsAutoSubscription(node: ClientNode) {
+        return !this.#autoSubscriptionDisabled || this.#autoSubscribeRequested.get(node) === true;
     }
 
     #failAutoSubscribeWaiters(node: ClientNode, error: Error) {
