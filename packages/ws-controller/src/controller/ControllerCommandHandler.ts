@@ -389,8 +389,10 @@ export class ControllerCommandHandler {
     #nodeUpdateDeadlines = new Map<NodeId, number>();
     /** Nodes with a lazy getNodeDetails populate in flight, so concurrent reads emit node_updated once. */
     #pendingLazyPopulate = new Set<NodeId>();
-    /** Nodes whose subscription {@link resyncIcd} switches off and on; an enable waiting on them ignores the off. */
-    readonly #resubscribing = new Set<NodeId>();
+    /** Failure callbacks of the enable_auto_subscription calls still waiting for the node's subscription. */
+    readonly #autoSubscribeWaiters = new WeakMap<ClientNode, Set<(error: Error) => void>>();
+    /** Counts setAutoSubscription calls per node, so {@link resyncIcd} does not undo one made while it runs. */
+    readonly #autoSubscribeRequests = new WeakMap<ClientNode, number>();
     /** In-flight invokes per dedup scope; a scope dropped by its owner takes its entries with it. */
     readonly #inFlightInvokes = new WeakMap<object, Map<string, Promise<unknown>>>();
     events = {
@@ -2223,7 +2225,8 @@ export class ControllerCommandHandler {
 
     /**
      * Drop the local ICD registration and reconnect; a LIT peer re-registers automatically once subscribed.
-     * With auto subscription disabled, and not enabled for the node, only the local registration is dropped.
+     * With auto subscription disabled, and not enabled for the node, only the local registration is dropped. A
+     * {@link setAutoSubscription} call for the node while this runs decides the final setting.
      */
     async resyncIcd(nodeId: NodeId): Promise<void> {
         const node = this.#nodes.get(nodeId);
@@ -2232,12 +2235,19 @@ export class ControllerCommandHandler {
             return;
         }
         // Tearing the sustained subscription down and back up is what forces the re-registration.
-        this.#resubscribing.add(nodeId);
+        const requests = this.#autoSubscribeRequests.get(node);
+        await node.set({ network: { autoSubscribe: false } });
+        if (this.#autoSubscribeRequests.get(node) !== requests) {
+            return;
+        }
         try {
-            await node.set({ network: { autoSubscribe: false } });
             await node.set({ network: { autoSubscribe: true } });
-        } finally {
-            this.#resubscribing.delete(nodeId);
+        } catch (error) {
+            this.#failAutoSubscribeWaiters(
+                node,
+                ServerError.nodeNotReady(nodeId, error instanceof Error ? error : undefined),
+            );
+            throw error;
         }
     }
 
@@ -2246,7 +2256,8 @@ export class ControllerCommandHandler {
      * not kept across a restart. Enabling resolves once the subscription is active and ends the node's client
      * subscriptions, because the server's subscription does not keep other subscriptions. It fails when matter.js finds
      * the device unreachable while waiting, after {@link DEFAULT_CASE_CONNECTION_TIMEOUT}, or when the node is removed,
-     * switched off again or the handler closes. Except when switched off, the setting stays enabled and matter.js keeps trying.
+     * switched off with this method or the handler closes. Except when switched off, the setting stays enabled and
+     * matter.js keeps trying.
      */
     async setAutoSubscription(nodeId: NodeId, enabled: boolean): Promise<void> {
         if (!this.#autoSubscriptionDisabled) {
@@ -2255,22 +2266,29 @@ export class ControllerCommandHandler {
             );
         }
         const node = this.#nodes.get(nodeId);
+        this.#autoSubscribeRequests.set(node, (this.#autoSubscribeRequests.get(node) ?? 0) + 1);
         if (!enabled) {
+            this.#failAutoSubscribeWaiters(
+                node,
+                ServerError.nodeNotReady(nodeId, new Error("auto subscription was disabled while waiting")),
+            );
             await node.set({ network: { autoSubscribe: false } });
             return;
         }
 
         let settle!: (error: Error | undefined) => void;
         const outcome = new Promise<Error | undefined>(resolve => (settle = resolve));
+        let waiters = this.#autoSubscribeWaiters.get(node);
+        if (waiters === undefined) {
+            waiters = new Set();
+            this.#autoSubscribeWaiters.set(node, waiters);
+        }
+        waiters.add(settle);
         const observers = new ObserverGroup();
         observers.on(node.eventsOf(NetworkClient).subscriptionStatusChanged, isActive => {
-            if (isActive) {
+            // matter.js also reports a subscription closed during its retry backoff as active.
+            if (isActive && this.#autoSubscribes(node)) {
                 settle(undefined);
-            }
-        });
-        observers.on(node.eventsOf(NetworkClient).autoSubscribe$Changed, autoSubscribe => {
-            if (!autoSubscribe && !this.#resubscribing.has(nodeId)) {
-                settle(ServerError.nodeNotReady(nodeId, new Error("auto subscription was disabled while waiting")));
             }
         });
         // Only a change counts: an older unreachable mark stays until a session comes up and says nothing about now.
@@ -2305,8 +2323,15 @@ export class ControllerCommandHandler {
                 throw error;
             }
         } finally {
+            waiters.delete(settle);
             observers.close();
             abort.close();
+        }
+    }
+
+    #failAutoSubscribeWaiters(node: ClientNode, error: Error) {
+        for (const fail of this.#autoSubscribeWaiters.get(node) ?? []) {
+            fail(error);
         }
     }
 

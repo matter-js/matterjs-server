@@ -558,6 +558,7 @@ describe("auto subscription setting", () => {
             const error = await MockTime.resolve(pending);
             expectServerError(error, ServerErrorCode.NodeNotReady);
             expect(String(error)).contains("disabled while waiting");
+            expect(peerOf(controller).stateOf(NetworkClient).autoSubscribe).equals(false);
         });
 
         it("keeps waiting while the ICD registration is resynced and resolves once the subscription is active", async () => {
@@ -575,6 +576,89 @@ describe("auto subscription setting", () => {
 
             expect(await MockTime.resolve(pending, { macrotasks: true })).undefined;
             expect(await subscriptionActive(controller)).equals(true);
+        });
+
+        function pendingEnable(controller: RunningController) {
+            return controller.handler.setAutoSubscription(NODE_ID, true).then(
+                () => undefined,
+                (error: unknown) => error,
+            );
+        }
+
+        it("keeps waiting while two ICD registration resyncs run at once and resolves once the subscription is active", async () => {
+            const controller = await commissioned(true);
+            const acceptSubscriptions = refuseSubscriptions();
+            const pending = pendingEnable(controller);
+            await settle();
+
+            await MockTime.resolve(
+                Promise.all([controller.handler.resyncIcd(NODE_ID), controller.handler.resyncIcd(NODE_ID)]),
+                { macrotasks: true },
+            );
+            acceptSubscriptions();
+            await settle();
+
+            expect(await MockTime.resolve(pending, { macrotasks: true })).undefined;
+            expect(await subscriptionActive(controller)).equals(true);
+        });
+
+        it("stays off when switched off while an ICD registration resync runs", async () => {
+            const controller = await commissioned(true);
+            refuseSubscriptions();
+            const pending = pendingEnable(controller);
+            await settle();
+            const peer = peerOf(controller);
+            let disabling: Promise<void> | undefined;
+            peer.eventsOf(NetworkClient).autoSubscribe$Changed.on(autoSubscribe => {
+                if (!autoSubscribe && disabling === undefined) {
+                    disabling = controller.handler.setAutoSubscription(NODE_ID, false);
+                }
+            });
+
+            await MockTime.resolve(controller.handler.resyncIcd(NODE_ID), { macrotasks: true });
+            expect(disabling).not.undefined;
+            await MockTime.resolve(disabling, { macrotasks: true });
+            await settle();
+
+            const error = await MockTime.resolve(pending);
+            expectServerError(error, ServerErrorCode.NodeNotReady);
+            expect(String(error)).contains("disabled while waiting");
+            expect(peer.stateOf(NetworkClient).autoSubscribe).equals(false);
+            expect(hasActiveSubscription(controller)).equals(false);
+        });
+
+        it("fails at once when an ICD registration resync cannot switch the subscription back on", async () => {
+            const controller = await commissioned(true);
+            refuseSubscriptions();
+            let outcome: unknown = "pending";
+            const pending = controller.handler.setAutoSubscription(NODE_ID, true).then(
+                () => {
+                    outcome = undefined;
+                },
+                (error: unknown) => {
+                    outcome = error;
+                },
+            );
+            await settle();
+            const peer = peerOf(controller);
+            const set = peer.set.bind(peer);
+            let calls = 0;
+            peer.set = async values => {
+                if (++calls === 2) {
+                    throw new Error("Refused by the test");
+                }
+                return set(values);
+            };
+
+            const resync = await MockTime.resolve(controller.handler.resyncIcd(NODE_ID), { macrotasks: true }).then(
+                () => undefined,
+                (error: unknown) => error,
+            );
+
+            expect(String(resync)).contains("Refused by the test");
+            expectServerError(outcome, ServerErrorCode.NodeNotReady);
+            expect(String(outcome)).contains("Refused by the test");
+            await pending;
         });
 
         it("closes the subscription by the time disabling resolves", async () => {
