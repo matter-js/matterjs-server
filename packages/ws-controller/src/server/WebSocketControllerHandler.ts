@@ -1313,7 +1313,11 @@ export class WebSocketControllerHandler implements WebServerHandler {
                     throw ServerError.invalidArguments("filter required for filter_type 3 (vendor ID)");
                 commissionRequest = { ...baseRequest, passcode: setup_pin_code, vendorId: filter };
                 break;
-            case 4: // Device type - not directly supported, fall back to no filter
+            case 4: // Device type
+                if (filter === undefined)
+                    throw ServerError.invalidArguments("filter required for filter_type 4 (device type)");
+                commissionRequest = { ...baseRequest, passcode: setup_pin_code, deviceType: filter };
+                break;
             case 0: // No filter
             default:
                 // Discover any commissionable device with the passcode

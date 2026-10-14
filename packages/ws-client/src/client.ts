@@ -79,9 +79,9 @@ export interface CommissionWithCodeOptions {
 
 /** Options for {@link MatterClient.commissionOnNetwork}. */
 export interface CommissionOnNetworkOptions {
-    /** Discovery filter type: 0=None, 1=ShortDiscriminator, 2=LongDiscriminator, 3=VendorId. 4 is accepted but does not filter. */
+    /** Discovery filter type: 0=None, 1=ShortDiscriminator, 2=LongDiscriminator, 3=VendorId, 4=DeviceType. */
     filterType?: number;
-    /** Filter value (discriminator or vendor ID depending on `filterType`). */
+    /** Filter value (discriminator, vendor ID or device type depending on `filterType`). */
     filter?: number;
     /** Direct IP address of the device (schema 6). */
     ipAddr?: string;

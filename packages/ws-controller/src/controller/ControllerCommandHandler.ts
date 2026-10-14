@@ -1747,6 +1747,7 @@ export class ControllerCommandHandler {
         let longDiscriminator: number | undefined = undefined;
         let productId: number | undefined = undefined;
         let vendorId: VendorId | undefined = undefined;
+        let deviceType: number | undefined = undefined;
 
         if ("manualCode" in data && data.manualCode.length > 0) {
             const pairingCodeCodec = decodePairingCode(() => ManualPairingCodeCodec.decode(data.manualCode));
@@ -1773,6 +1774,8 @@ export class ControllerCommandHandler {
             } else if ("vendorId" in data) {
                 vendorId = VendorId(data.vendorId);
                 productId = data.productId;
+            } else if ("deviceType" in data) {
+                deviceType = data.deviceType;
             }
             // If none of the above, discovers any commissionable device
         } else {
@@ -1794,6 +1797,7 @@ export class ControllerCommandHandler {
             // Discovery searches by discriminator; matter.js uses vendor and product to pass over a device advertising others.
             ...(vendorId !== undefined ? { vendorId } : {}),
             ...(vendorId !== undefined && productId !== undefined ? { productId } : {}),
+            ...(deviceType !== undefined ? { deviceType } : {}),
             discoveryCapabilities: {
                 ble: this.bleEnabled && !onNetworkOnly,
                 onIpNetwork: true,

@@ -1064,6 +1064,27 @@ describe("WebSocket Credentials API", () => {
             expect(request).to.not.have.property("productId");
         });
 
+        it("searches commission_on_network filter_type 4 by device type", async () => {
+            const [request] = await requestsFor("commission_on_network", {
+                setup_pin_code: 20202021,
+                filter_type: 4,
+                filter: 0x0100,
+            });
+
+            expect(request).to.deep.include({ passcode: 20202021, deviceType: 0x0100 });
+        });
+
+        it("refuses commission_on_network filter_type 4 without a filter", async () => {
+            const requests = await requestsFor("commission_on_network", { setup_pin_code: 20202021, filter_type: 4 });
+            const failure = await h.handle("commission_on_network", { setup_pin_code: 20202021, filter_type: 4 }).then(
+                () => "",
+                (error: unknown) => String(error),
+            );
+
+            expect(requests).to.deep.equal([]);
+            expect(failure).to.contain("filter required for filter_type 4");
+        });
+
         it("accepts 172800 seconds, the longest a device announces for commissioning", async () => {
             const [request] = await requestsFor("commission_with_code", {
                 code: "MT:Y.K90AFN00KA0648G00",

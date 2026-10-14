@@ -12,6 +12,7 @@ import {
     QrPairingCodeCodec,
 } from "@matter/main/types";
 import { Endpoint } from "@matter/node";
+import { OnOffLightDevice } from "@matter/node/devices/on-off-light";
 import {
     CommissioningError,
     CommissioningTimeoutError,
@@ -206,6 +207,36 @@ describe("commissionNode", () => {
                 "attestation-rejected",
             ]);
             expect(handler.isNodeIdInUse(NODE_ID)).equals(false);
+        });
+    });
+
+    describe("device type filter", () => {
+        // Characterization: also passes without the device type filter.
+        it("commissions a device advertising the device type", async () => {
+            const { passcode } = device.state.commissioning;
+
+            const { nodeId } = await commissioning(() =>
+                handler.commissionNode({ nodeId: NODE_ID, passcode, deviceType: OnOffLightDevice.deviceType }),
+            );
+
+            expect(nodeId).equals(NODE_ID);
+        });
+
+        it("passes over a device advertising another device type", async () => {
+            const { passcode } = device.state.commissioning;
+
+            const error = await failureOf(() =>
+                commissioning(() =>
+                    handler.commissionNode({
+                        nodeId: NODE_ID,
+                        passcode,
+                        deviceType: OnOffLightDevice.deviceType + 1,
+                        discoveryTimeout: Seconds(10),
+                    }),
+                ),
+            );
+
+            expect([error.code, error.reason]).deep.equals([ServerErrorCode.NodeCommissionFailed, "not-discovered"]);
         });
     });
 

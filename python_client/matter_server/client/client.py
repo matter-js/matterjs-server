@@ -243,9 +243,9 @@ class MatterClient:
         NOTE: For advanced usecases only, use `commission_with_code`
         for regular commissioning.
 
-        ``filter_type`` (1=ShortDiscriminator, 2=LongDiscriminator, 3=VendorId) and ``filter`` select
-        the device to commission; they are sent only when given. ``filter_type`` 0 means no filter;
-        4 (DeviceType) is accepted but does not filter either.
+        ``filter_type`` (1=ShortDiscriminator, 2=LongDiscriminator, 3=VendorId, 4=DeviceType) and
+        ``filter`` select the device to commission; they are sent only when given. ``filter_type`` 0
+        means no filter.
         ``discovery_timeout_s`` is as for ``commission_with_code`` and needs schema 14.
 
         Returns basic MatterNodeData once complete.

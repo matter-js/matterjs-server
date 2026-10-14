@@ -24,6 +24,7 @@ This page shows a detailed overview of the changes between versions without the 
 - Enhancement: (@RaHehl) `open_commissioning_window` also returns `discriminator`, `vendor_id`, `product_id` and `commissioning_timeout` (seconds) as reported by matter.js, so clients can hand the data to another ecosystem without decoding the QR code.
 - Enhancement: `--port 0` binds a free port, and the startup log line `Webserver listening on …` shows the bound port
 - Fix: Commissioning with a pairing code that names a vendor and product passes over a device whose advertisement names another vendor or product, so a code for one device no longer onboards another sharing its discriminator
+- Fix: `commission_on_network` with `filter_type` 4 searches by device type; it commissioned any device that accepted the setup code
 - Fix: `commission_on_network` with `filter_type` 3 (vendor) finds devices of that vendor again; it searched for product 0, which no real device advertises. With `ip_addr` the device at that address is commissioned without a vendor check, as before
 - Fix: Identical commands sent in parallel are combined only when they come from the same connection and have the same `timed_request_timeout_ms` and `interaction_timeout_ms`, so two clients sending the same command each reach the device
 - Fix: `device_command` applies `interaction_timeout_ms`; the server ignored it, so it gave up on a command that the device takes longer to process than the default response time. A value that is not an integer from 0 to 86400000 is refused with error 8

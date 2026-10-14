@@ -53,6 +53,7 @@ export type CommissioningRequest = {
     | { passcode: number; vendorId: number; productId?: number }
     | { passcode: number; shortDiscriminator: number }
     | { passcode: number; longDiscriminator: number }
+    | { passcode: number; deviceType: number }
     | { passcode: number } // Discover any commissionable device
 );
 

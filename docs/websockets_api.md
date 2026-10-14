@@ -358,6 +358,7 @@ Filter types:
 - `1` - Short discriminator
 - `2` - Long discriminator
 - `3` - Vendor ID
+- `4` - Device type
 
 `discovery_timeout_s` works as for `commission_with_code`. The attempt at `ip_addr` keeps the PASE limit of matter.js;
 the timeout applies to the discovery that follows when that attempt fails.
