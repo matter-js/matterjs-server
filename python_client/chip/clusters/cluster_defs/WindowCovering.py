@@ -39,6 +39,8 @@ class WindowCovering(Cluster):
                 ClusterObjectFieldDescriptor(Label="wagoTravelTimeUp", Tag=0x15340001, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="wagoTravelTimeDown", Tag=0x15340002, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="wagoSlatRotationTime", Tag=0x15340003, Type=typing.Optional[uint]),
+                ClusterObjectFieldDescriptor(Label="wagoManualMode", Tag=0x15340004, Type=typing.Optional[bool]),
+                ClusterObjectFieldDescriptor(Label="wagoBlindType", Tag=0x15340005, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="generatedCommandList", Tag=0x0000FFF8, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="acceptedCommandList", Tag=0x0000FFF9, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="attributeList", Tag=0x0000FFFB, Type=typing.List[uint]),
@@ -63,6 +65,8 @@ class WindowCovering(Cluster):
     wagoTravelTimeUp: typing.Optional[uint] = None
     wagoTravelTimeDown: typing.Optional[uint] = None
     wagoSlatRotationTime: typing.Optional[uint] = None
+    wagoManualMode: typing.Optional[bool] = None
+    wagoBlindType: typing.Optional[uint] = None
     generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])
     acceptedCommandList: typing.List[uint] = field(default_factory=lambda: [])
     attributeList: typing.List[uint] = field(default_factory=lambda: [])
@@ -516,6 +520,38 @@ class WindowCovering(Cluster):
             @ChipUtility.classproperty
             def attribute_id(cls) -> int:
                 return 0x15340003
+
+            @ChipUtility.classproperty
+            def attribute_type(cls) -> ClusterObjectFieldDescriptor:
+                return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
+
+            value: typing.Optional[uint] = None
+
+        @dataclass
+        class WagoManualMode(ClusterAttributeDescriptor):
+            @ChipUtility.classproperty
+            def cluster_id(cls) -> int:
+                return 0x00000102
+
+            @ChipUtility.classproperty
+            def attribute_id(cls) -> int:
+                return 0x15340004
+
+            @ChipUtility.classproperty
+            def attribute_type(cls) -> ClusterObjectFieldDescriptor:
+                return ClusterObjectFieldDescriptor(Type=typing.Optional[bool])
+
+            value: typing.Optional[bool] = None
+
+        @dataclass
+        class WagoBlindType(ClusterAttributeDescriptor):
+            @ChipUtility.classproperty
+            def cluster_id(cls) -> int:
+                return 0x00000102
+
+            @ChipUtility.classproperty
+            def attribute_id(cls) -> int:
+                return 0x15340005
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:

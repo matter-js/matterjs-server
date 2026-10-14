@@ -9925,6 +9925,20 @@ export const clusters: Record<number, ClusterDescription> = {
                 "label": "WagoSlatRotationTime",
                 "type": "Optional[uint32]",
                 "writable": true
+            },
+            "355729412": {
+                "id": 355729412,
+                "cluster_id": 258,
+                "label": "WagoManualMode",
+                "type": "Optional[bool]",
+                "writable": true
+            },
+            "355729413": {
+                "id": 355729413,
+                "cluster_id": 258,
+                "label": "WagoBlindType",
+                "type": "Optional[uint8]",
+                "writable": true
             }
         },
         "commands": {
@@ -18754,6 +18768,13 @@ export const clusters: Record<number, ClusterDescription> = {
                 "id": 22,
                 "cluster_id": 302775297,
                 "label": "LowPowerMode",
+                "type": "Optional[unknown]",
+                "writable": true
+            },
+            "4100": {
+                "id": 4100,
+                "cluster_id": 302775297,
+                "label": "IndicatorEnable",
                 "type": "Optional[unknown]",
                 "writable": true
             },
