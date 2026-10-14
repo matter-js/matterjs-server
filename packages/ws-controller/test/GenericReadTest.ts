@@ -156,6 +156,22 @@ describe("generic read", () => {
         expect(eventChanges).deep.equals([]);
     });
 
+    it("returns the data version of each reported cluster, which a later read can filter on", async () => {
+        const first = await read({ nodeId: NODE_ID, attributePaths: ["1/6/0"] });
+        const version = first.data_versions?.["1/6"];
+        expect(version).a("number");
+
+        const second = await read({
+            nodeId: NODE_ID,
+            attributePaths: ["1/6/0"],
+            dataVersionFilters: [{ path: "1/6", dataVersion: version ?? -1 }],
+        });
+
+        expect(first.attributes).deep.equals({ "1/6/0": false });
+        expect(second.attributes).deep.equals({});
+        expect(second.data_versions).undefined;
+    });
+
     it("reads events alone", async () => {
         const captured = captureReads(site.peer);
 

@@ -435,6 +435,8 @@ export interface InteractionReportData {
     events: Array<MatterNodeEvent>;
     attribute_status?: { [path: string]: PathStatus };
     event_status?: { [path: string]: PathStatus };
+    /** Schema 15. The data version of each cluster with a reported attribute value, keyed by `endpoint/cluster`. */
+    data_versions?: { [path: string]: number };
 }
 
 export interface CameraResolution {

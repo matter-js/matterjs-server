@@ -841,13 +841,16 @@ class InteractionReport:
     """Result of `read`, and the shape of every report of a subscription.
 
     `attributes` is keyed by attribute path as in `read_attribute`. The status maps are keyed by the
-    path in the request format and are `None` when the device returned no status.
+    path in the request format and are `None` when the device returned no status. `data_versions`
+    (schema 15) holds the data version of each cluster with a reported attribute value, keyed by
+    `endpoint/cluster`.
     """
 
     attributes: dict[str, Any]
     events: list[MatterNodeEvent]
     attribute_status: dict[str, PathStatus] | None = None
     event_status: dict[str, PathStatus] | None = None
+    data_versions: dict[str, int] | None = None
 
 
 @dataclass(kw_only=True)

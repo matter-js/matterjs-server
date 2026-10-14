@@ -631,14 +631,18 @@ Values in the results and reports have the same shape as in `read_attribute` (at
 (events). When the device answers a path with a status instead of data (for example an unsupported attribute),
 the path is listed in `attribute_status` or `event_status`, keyed by the path in the request format, with the
 numeric Matter status code in `status` (as in the `write_attribute` result) and the cluster-specific code in
-`cluster_status` when the device sent one. Both fields are left out when there is no status:
+`cluster_status` when the device sent one. Both fields are left out when there is no status. From schema 15,
+`data_versions` holds the data version the device reported for each cluster with an attribute value in the result,
+keyed by `endpoint/cluster`, the form `data_version_filters` takes; it is left out when no attribute value was
+reported:
 
 ```json
 {
   "attributes": { "1/6/0": true },
   "events": [],
   "attribute_status": { "1/6/9999": { "status": 134 }, "1/1234/0": { "status": 195 } },
-  "event_status": { "1/69/5": { "status": 199 } }
+  "event_status": { "1/69/5": { "status": 199 } },
+  "data_versions": { "1/6": 2771420034 }
 }
 ```
 
@@ -743,7 +747,7 @@ Response:
 `subscription_id` is the SubscriptionId the device assigned. Each device assigns its own ids, so two nodes can use the
 same one: a subscription is named by `node_id` and `subscription_id` together, in `unsubscribe` and in the events. The
 rest of the result is the priming report, in the shape of the `read` result (`attributes`, `events`,
-`attribute_status`, `event_status`). Later reports follow as `subscription_report` events after this response. All
+`attribute_status`, `event_status`, `data_versions`). Later reports follow as `subscription_report` events after this response. All
 reports have the same side effects on all clients as `read`: `attribute_updated` to every listening client, only when
 `fabric_filtered` is `true`, the default. Reported events reach only this subscription's reports, not `node_event` or
 the event history.
@@ -2018,7 +2022,7 @@ Sent only to the connection that opened the subscription, also when it has not c
 }
 ```
 
-`attributes`, `events`, `attribute_status` and `event_status` have the shapes of the `read` result.
+`attributes`, `events`, `attribute_status`, `event_status` and `data_versions` have the shapes of the `read` result.
 
 Like `node_event`, `subscription_report` is queued under backpressure: when a connection does not read fast enough
 and its outgoing queue passes the limit, the oldest queued events are dropped, reports included.

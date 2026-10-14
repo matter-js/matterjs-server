@@ -18,6 +18,8 @@ Minimum supported: 11.
   flow_type, discovery_capabilities, discriminator, setup_pin_code, tlv_data? }] }` or `{ type: "manual",
   short_discriminator, setup_pin_code, vendor_id?, product_id? }`. Decodes a code as `commission_with_code` does, without
   contacting a device. An undecodable code fails with `InvalidArguments` and `reason` `invalid-payload`.
+- **`data_versions`** in the `read` and `subscribe` results and in `subscription_report`: `{ "endpoint/cluster":
+  data_version }` for each cluster with a reported attribute value, left out when there is none.
 - **`subscribe`** sends only the data version filters the caller gives, as `read` does, so the priming report holds
   every requested cluster the caller does not filter. Before, the server added the data versions it knew.
 

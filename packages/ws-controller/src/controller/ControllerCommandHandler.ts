@@ -1354,6 +1354,8 @@ export class ControllerCommandHandler {
                     case "attr-value": {
                         const { pathStr, value } = this.#convertAttributeToWebSocket(entry.path, entry.value);
                         report.attributes[pathStr] = value;
+                        report.data_versions ??= {};
+                        report.data_versions[`${entry.path.endpointId}/${entry.path.clusterId}`] = entry.version;
                         break;
                     }
                     case "event-value":

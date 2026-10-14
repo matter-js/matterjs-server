@@ -150,6 +150,7 @@ async def test_read_parses_the_report() -> None:
             "events": [_EVENT],
             "attribute_status": {"1/6/9999": {"status": 134}, "1/1234/0": {"status": 195, "cluster_status": 3}},
             "event_status": {"1/69/5": {"status": 199}},
+            "data_versions": {"1/6": 2771420034, "0/40": 7},
         }
     )
     report = await client.read(1, attribute_paths=["*/*/*"])
@@ -158,6 +159,7 @@ async def test_read_parses_the_report() -> None:
     assert report.events == [MatterNodeEvent(**_EVENT)]
     assert report.attribute_status == {"1/6/9999": PathStatus(134), "1/1234/0": PathStatus(195, 3)}
     assert report.event_status == {"1/69/5": PathStatus(199)}
+    assert report.data_versions == {"1/6": 2771420034, "0/40": 7}
 
 
 async def test_read_without_status_maps() -> None:

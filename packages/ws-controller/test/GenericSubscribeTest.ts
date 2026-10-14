@@ -170,6 +170,7 @@ describe("generic subscribe", () => {
             expect(subscription.nodeId).equals(NODE_ID);
             expect(subscription.id).a("number");
             expect(subscription.priming.attributes).deep.equals({ "1/6/0": false });
+            expect(Object.keys(subscription.priming.data_versions ?? {})).deep.equals(["1/6"]);
             expect(record.reports.length).equals(0);
 
             await site.light.setStateOf(OnOffServer, { onOff: true });
