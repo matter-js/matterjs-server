@@ -787,9 +787,12 @@ describe("auto subscription setting", () => {
             });
 
             async function started(disableAutoSubscription: boolean) {
+                // Online, the vendor info preload fetches from the DCL, and stop() waits for it on a mock clock.
                 const controller = await createMatterController({
                     disableAutoSubscription,
                     disableThreadDiagnostics: false,
+                    dclOffline: true,
+                    disableDclSeed: false,
                 });
                 await MockTime.resolve(controller.commandHandler.events.started.emit(), { macrotasks: true });
                 return controller;
