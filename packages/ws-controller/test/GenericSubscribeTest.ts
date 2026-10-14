@@ -153,7 +153,7 @@ describe("generic subscribe", () => {
             expect(captured.map(({ keepSubscriptions }) => keepSubscriptions)).deep.equals([false, true, false]);
         });
 
-        it("returns the priming report and forwards later changes, next to the usual change events", async () => {
+        it("returns the priming report and forwards later changes, with attribute but no node event changes", async () => {
             const record = recorder();
             const attributeChanges = new Array<AttributeChange>();
             const eventChanges = new Array<EventChange>();
@@ -186,7 +186,7 @@ describe("generic subscribe", () => {
             expect(
                 attributeChanges.some(({ path, value }) => path.attributeId === 0 && path.clusterId === 6 && value),
             ).equals(true);
-            expect(eventChanges.some(({ path }) => path.clusterId === 69 && path.eventId === 0)).equals(true);
+            expect(eventChanges).deep.equals([]);
         });
 
         it("reports the status of an unsupported path in the priming report", async () => {

@@ -627,10 +627,9 @@ matter.js applies a read only when its fabric filter matches the node's subscrip
 leaves at fabric-filtered, whether or not the node currently has the server's own subscription. Without
 `--disable-auto-subscription`, the server forwards changes of a node only once its subscription has been active since
 the server started, so a read of a node that has not been subscribed yet sends neither event. With
-`--disable-auto-subscription` the server forwards changes of every node from the start. Every event the read returns is also sent to every listening client as
-`node_event` and added to the event history, whatever `fabric_filtered` is and without a check against events
-already seen. A read with event paths and a low or no `event_min` therefore replays old events (for example button
-presses) to all clients, Home Assistant included, as if they were new.
+`--disable-auto-subscription` the server forwards changes of every node from the start. The events the read returns
+are only in its response: they are not sent as `node_event`, not added to the event history, and do not change the
+event number the server's own subscription resumes from.
 
 Response:
 
@@ -699,8 +698,8 @@ same one: a subscription is named by `node_id` and `subscription_id` together, i
 rest of the result is the priming report, in the shape of the `read` result (`attributes`, `events`,
 `attribute_status`, `event_status`). Later reports follow as `subscription_report` events after this response. All
 reports have the same side effects on all clients as `read`: `attribute_updated` to every listening client, only when
-`fabric_filtered` is `true`, the default, and every reported event as `node_event` to every listening client and into
-the event history, whatever `fabric_filtered` is and without a check against events already seen.
+`fabric_filtered` is `true`, the default. Reported events reach only this subscription's reports, not `node_event` or
+the event history.
 
 A subscription belongs to the connection that opened it. It ends when the connection sends `unsubscribe`, when the
 connection closes, when the node is removed, and when the server shuts down. It also ends when the device stops

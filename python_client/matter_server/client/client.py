@@ -700,7 +700,7 @@ class MatterClient:
 
         At least one attribute or event path is needed. An argument left ``None`` is not sent;
         the server then reads fabric-filtered and applies no event filter. Events the read
-        returns are also sent to every listening client as ``node_event``.
+        returns are only in the result, not sent as ``node_event``.
 
         Requires schema 14.
         """

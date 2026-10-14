@@ -9,6 +9,7 @@ import { Read } from "@matter/main/protocol";
 import { Status } from "@matter/main/types";
 import { BooleanStateServer } from "@matter/node/behaviors/boolean-state";
 import { OnOffServer } from "@matter/node/behaviors/on-off";
+import { EventChange } from "../src/controller/PeerChangeBus.js";
 import { ServerError, ServerErrorCode, TEST_NODE_START } from "../src/types/WebSocketMessageTypes.js";
 import { HandlerSite, NODE_ID } from "./support/HandlerSite.js";
 import { InteractionWsHarness } from "./support/InteractionWsHarness.js";
@@ -140,6 +141,19 @@ describe("generic read", () => {
         expect(stateChange?.node_id).equals(NODE_ID);
         expect(stateChange?.endpoint_id).equals(1);
         expect(stateChange?.data).deep.equals({ stateValue: true });
+    });
+
+    it("does not send the events it returns as node events", async () => {
+        const eventChanges = new Array<EventChange>();
+        site.handler.events.eventChanged.on((_nodeId, change) => {
+            eventChanges.push(change);
+        });
+        await site.light.setStateOf(BooleanStateServer, { stateValue: true });
+
+        const { events } = await read({ nodeId: NODE_ID, eventPaths: [{ path: "1/69/0" }] });
+
+        expect(events.some(event => event.cluster_id === 69 && event.event_id === 0)).equals(true);
+        expect(eventChanges).deep.equals([]);
     });
 
     it("reads events alone", async () => {
