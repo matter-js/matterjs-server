@@ -147,10 +147,6 @@ class MatterClient:
         Optionally filter by specific events or node attributes.
         Returns:
             function to unsubscribe.
-
-        NOTE: To receive attribute changed events,
-        you must also register the attributes to subscribe to
-        with the `subscribe_attributes` method.
         """
         # for fast lookups we create a key based on the filters, allowing
         # a "catch all" with a wildcard (*).
@@ -799,13 +795,16 @@ class MatterClient:
             raise
 
     def _end_abandoned_subscription(self, node_id: int, subscription_id: int) -> None:
+        if self._stop_called:
+            # The server ends the subscriptions of a closed connection itself.
+            return
+
         async def end() -> None:
             try:
                 await self.send_command(
                     APICommand.UNSUBSCRIBE, require_schema=14, node_id=node_id, subscription_id=subscription_id
                 )
             except asyncio.CancelledError:
-                # disconnect() cancels it; the server ends the subscription when the connection closes.
                 self.logger.debug("Ending subscription %s of node %s was cancelled", subscription_id, node_id)
                 raise
             except Exception as err:
@@ -1270,14 +1269,25 @@ class MatterClient:
         listeners = list(self._subscription_listeners.items())
         self._subscription_listeners.clear()
         for (node_id, subscription_id), listener in listeners:
-            # Every listener must learn of the end; a raising one must not starve the rest or fail disconnect().
-            try:
-                listener(
-                    EventType.SUBSCRIPTION_ENDED,
-                    SubscriptionEndedData(node_id=node_id, subscription_id=subscription_id),
-                )
-            except Exception:
-                self.logger.exception("Subscription listener for %s/%s failed on end", node_id, subscription_id)
+            self._call_subscription_listener(
+                listener,
+                EventType.SUBSCRIPTION_ENDED,
+                SubscriptionEndedData(node_id=node_id, subscription_id=subscription_id),
+            )
+
+    def _call_subscription_listener(
+        self,
+        listener: SubscriptionListener,
+        event: EventType,
+        data: SubscriptionReportData | SubscriptionEndedData,
+    ) -> None:
+        # A raising listener must not starve the other listeners, end the message loop or fail disconnect().
+        try:
+            listener(event, data)
+        except Exception:
+            self.logger.exception(
+                "Subscription listener for %s/%s failed on %s", data.node_id, data.subscription_id, event.value
+            )
 
     def _handle_incoming_message(self, msg: MessageType) -> None:
         """
@@ -1408,13 +1418,13 @@ class MatterClient:
             report = dataclass_from_dict(SubscriptionReportData, msg.data)
             self._signal_event(EventType.SUBSCRIPTION_REPORT, data=report, node_id=report.node_id)
             if listener := self._subscription_listeners.get((report.node_id, report.subscription_id)):
-                listener(EventType.SUBSCRIPTION_REPORT, report)
+                self._call_subscription_listener(listener, EventType.SUBSCRIPTION_REPORT, report)
             return
         if msg.event == EventType.SUBSCRIPTION_ENDED:
             ended = dataclass_from_dict(SubscriptionEndedData, msg.data)
             self._signal_event(EventType.SUBSCRIPTION_ENDED, data=ended, node_id=ended.node_id)
             if listener := self._subscription_listeners.pop((ended.node_id, ended.subscription_id), None):
-                listener(EventType.SUBSCRIPTION_ENDED, ended)
+                self._call_subscription_listener(listener, EventType.SUBSCRIPTION_ENDED, ended)
             return
         if msg.event in NODE_SCOPED_CAMERA_EVENTS:
             payload: Any = msg.data

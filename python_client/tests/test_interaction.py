@@ -638,7 +638,7 @@ async def test_a_raising_listener_on_disconnect_does_not_starve_the_others(caplo
         await client.disconnect()
 
     assert ended == [(EventType.SUBSCRIPTION_ENDED, 8)]
-    assert "listener for 1/7 failed on end" in caplog.text
+    assert "listener for 1/7 failed on subscription_ended" in caplog.text
     assert client._subscription_listeners == {}
 
 
@@ -698,3 +698,42 @@ async def test_disconnect_during_cleanup_unsubscribe_logs_no_warning(caplog: pyt
     await asyncio.wait_for(asyncio.gather(*client._background_tasks, return_exceptions=True), 1)
 
     assert not [record for record in caplog.records if record.levelno >= logging.WARNING]
+
+
+async def test_a_raising_listener_on_a_report_keeps_the_client_running(caplog: pytest.LogCaptureFixture) -> None:
+    client, sent = _manual_client()
+
+    def raising(_event: EventType, _data: Any) -> None:
+        raise RuntimeError("listener failed")
+
+    task = asyncio.create_task(client.subscribe(1, 0, 60, attribute_paths=["1/6/0"], listener=raising))
+    _respond(client, await _next(sent), _SUBSCRIBED)
+    await asyncio.wait_for(task, 1)
+    client.connection.receive_message_or_raise = AsyncMock(
+        side_effect=[
+            SuccessResultMessage(message_id="start", result=[]),
+            _report(1, 7),
+            _ended(1, 7),
+            ConnectionClosed("done"),
+        ]
+    )
+
+    with caplog.at_level(logging.ERROR):
+        await asyncio.wait_for(client.start_listening(), 1)
+
+    assert "listener for 1/7 failed on subscription_report" in caplog.text
+    assert "listener for 1/7 failed on subscription_ended" in caplog.text
+
+
+async def test_subscribe_cancelled_while_disconnecting_sends_no_unsubscribe() -> None:
+    client, sent = _manual_client()
+    task = asyncio.create_task(client.subscribe(1, 0, 60, attribute_paths=["1/6/0"]))
+    _respond(client, await _next(sent), _SUBSCRIBED)
+    task.cancel()
+
+    await client.disconnect()
+
+    with pytest.raises(asyncio.CancelledError):
+        await asyncio.wait_for(task, 1)
+    assert sent.empty()
+    assert not client._background_tasks
