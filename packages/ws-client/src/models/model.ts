@@ -1646,9 +1646,9 @@ export type OnboardingPayloadResult =
           type: "manual";
           short_discriminator: number;
           setup_pin_code: number;
-          /** Only in the 21-digit form. */
+          /** Only in the 21-digit form, and left out where it says 0. */
           vendor_id?: number;
-          /** Only in the 21-digit form. */
+          /** Only in the 21-digit form, and left out where it says 0. */
           product_id?: number;
       };
 

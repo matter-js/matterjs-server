@@ -10,7 +10,7 @@ On connection, the server immediately sends a `server_info` message with fabric 
 {
   "fabric_id": 1234567890,
   "compressed_fabric_id": 9876543210,
-  "schema_version": 14,
+  "schema_version": 15,
   "min_supported_schema_version": 11,
   "sdk_version": "matter-server/1.1.7 (matter.js/0.17.5-alpha)",
   "wifi_credentials_set": true,
@@ -402,7 +402,7 @@ Response for a QR code, one entry per payload, so a code that concatenates sever
 user-intent, 2 custom. `discovery_capabilities` is the bitmask as encoded in the payload. `tlv_data` holds the TLV data
 appended to the payload as hex, and is only present when the payload carries some.
 
-Response for a manual pairing code; `vendor_id` and `product_id` only for the 21-digit form:
+Response for a manual pairing code; `vendor_id` and `product_id` only for the 21-digit form, and left out where it says 0:
 
 ```json
 { "type": "manual", "short_discriminator": 15, "setup_pin_code": 20202021 }
@@ -2047,7 +2047,7 @@ Sent only to the owning connection, for example when the node was removed or the
   "data": {
     "fabric_id": 1234567890,
     "compressed_fabric_id": 9876543210,
-    "schema_version": 14,
+    "schema_version": 15,
     "min_supported_schema_version": 11,
     "sdk_version": "matter-server/1.1.7 (matter.js/0.17.5-alpha)",
     "wifi_credentials_set": true,
@@ -2232,7 +2232,7 @@ cluster definition.
 
 ## Schema Version
 
-The current schema version is **14** (minimum supported **11**). Commands and events added in the current schema are marked **(schema 14+)** below; see [the schema changelog](websocket-api-schema-changelog.md) for what each version added. The server reports `schema_version` and `min_supported_schema_version` in the initial connection message and via `server_info`. Clients should verify that the server's `schema_version` is within their supported range.
+The current schema version is **15** (minimum supported **11**). Commands and events are marked with the schema that added them, for example **(schema 15+)**; see [the schema changelog](websocket-api-schema-changelog.md) for what each version added. The server reports `schema_version` and `min_supported_schema_version` in the initial connection message and via `server_info`. Clients should verify that the server's `schema_version` is within their supported range.
 
 ## BigInt Handling
 
@@ -2369,6 +2369,7 @@ These commands are available only in the Matter.js server and not in the Python 
 | `unsubscribe` | End a subscription opened with `subscribe` (schema 14+) |
 | `enable_auto_subscription` | Switch the server's own subscription to one node on, with `--disable-auto-subscription` (schema 14+) |
 | `disable_auto_subscription` | Switch the server's own subscription to one node off again (schema 14+) |
+| `parse_onboarding_payload` | Decode a QR code or manual pairing code without contacting a device (schema 15+) |
 
 ### Data Differences
 

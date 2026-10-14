@@ -903,7 +903,10 @@ class QrOnboardingPayloadResult:
 
 @dataclass
 class ManualOnboardingPayloadResult:
-    """Result of `parse_onboarding_payload` for a manual pairing code; vendor and product only in the 21-digit form."""
+    """Result of `parse_onboarding_payload` for a manual pairing code.
+
+    `vendor_id`/`product_id` are set only by the 21-digit form, and are None where it says 0.
+    """
 
     type: str
     short_discriminator: int
