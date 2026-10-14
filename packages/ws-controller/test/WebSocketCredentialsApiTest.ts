@@ -1085,6 +1085,39 @@ describe("WebSocket Credentials API", () => {
             expect(failure).to.contain("filter required for filter_type 4");
         });
 
+        for (const [filterType, field] of [
+            [1, "shortDiscriminator"],
+            [2, "longDiscriminator"],
+            [3, "vendorId"],
+        ] as const) {
+            it(`searches commission_on_network filter_type ${filterType} by ${field} and requires its filter`, async () => {
+                const [request] = await requestsFor("commission_on_network", {
+                    setup_pin_code: 20202021,
+                    filter_type: filterType,
+                    filter: 15,
+                });
+                const failure = await h
+                    .handle("commission_on_network", { setup_pin_code: 20202021, filter_type: filterType })
+                    .then(
+                        () => "",
+                        (error: unknown) => String(error),
+                    );
+
+                expect(request).to.deep.include({ passcode: 20202021, [field]: 15 });
+                expect(failure).to.contain(`filter required for filter_type ${filterType}`);
+            });
+        }
+
+        it("ignores the filter of commission_on_network filter_type 0", async () => {
+            const [request] = await requestsFor("commission_on_network", {
+                setup_pin_code: 20202021,
+                filter_type: 0,
+                filter: 15,
+            });
+
+            expect(request).to.not.have.any.keys("shortDiscriminator", "longDiscriminator", "vendorId", "deviceType");
+        });
+
         it("accepts 172800 seconds, the longest a device announces for commissioning", async () => {
             const [request] = await requestsFor("commission_with_code", {
                 code: "MT:Y.K90AFN00KA0648G00",
@@ -2421,6 +2454,41 @@ describe("groupcast on the generic commands", () => {
             await h.close();
         }
     });
+
+    for (const [stated, expected] of [
+        [0, Millis(0)],
+        [86_400_000, Millis(86_400_000)],
+        [null, undefined],
+    ] as const) {
+        it(`passes interaction_timeout_ms ${String(stated)} of a device_command on`, async () => {
+            const invokes = new Array<InvokeRequest>();
+            const h = await createHarness(undefined, {
+                handleInvoke: async data => {
+                    invokes.push(data);
+                    return undefined;
+                },
+            });
+            try {
+                const answer = await answerFor(
+                    h,
+                    "device_command",
+                    {
+                        node_id: 1,
+                        endpoint_id: 1,
+                        cluster_id: 6,
+                        command_name: "toggle",
+                        payload: {},
+                        interaction_timeout_ms: stated,
+                    },
+                    `unicast-invoke-interaction-timeout-bound-${String(stated)}`,
+                );
+                expect(answer.error_code).to.equal(undefined);
+                expect(invokes.map(({ interactionTimeoutMs }) => interactionTimeoutMs)).deep.equals([expected]);
+            } finally {
+                await h.close();
+            }
+        });
+    }
 
     for (const stated of [-1, 1.5, "5000", 86_400_001]) {
         it(`refuses interaction_timeout_ms ${JSON.stringify(stated)} on a device_command`, async () => {
