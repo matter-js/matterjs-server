@@ -110,6 +110,8 @@ OHF extensions; python-matter-server codes stop at 11. Each carries JSON details
   connection that opened it. The opt-in now happens before the command runs, so the camera's first
   answer is no longer lost.
 - **`device_command` with `EndSession`** also produces `camera_session_ended`.
+- **`device_command` `interaction_timeout_ms`** is applied to the command; before, the server accepted
+  it and ignored it. A value that is not an integer from 0 to 86400000 is refused with error 8.
 - **`args`** — every command treats a missing or `null` `args` as no arguments, and refuses a
   non-object `args` with error 8.
 - **`node_id`** — every command that targets a node refuses a `node_id` that can never name one (a

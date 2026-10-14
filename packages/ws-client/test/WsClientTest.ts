@@ -257,6 +257,8 @@ describe("ws-client", () => {
                     () => client.read({ node_id: 1, attribute_paths: ["1/6/0"] }),
                     () => client.subscribe(LIGHT_ON_OFF, recorder().listener),
                     () => client.unsubscribe(1, 7),
+                    () => client.enableAutoSubscription(1),
+                    () => client.disableAutoSubscription(1),
                 ]) {
                     let refusal: unknown;
                     try {
@@ -267,6 +269,211 @@ describe("ws-client", () => {
                     expect(refusal).to.be.instanceOf(InvalidServerVersion);
                 }
                 expect(server.getReceivedCommands().map(({ message }) => message.command)).to.deep.equal([]);
+            });
+
+            it("sends enable and disable auto subscription for the node", async () => {
+                const received = new Array<unknown>();
+                server.onCommand("enable_auto_subscription", args => {
+                    received.push(args);
+                    return null;
+                });
+                server.onCommand("disable_auto_subscription", args => {
+                    received.push(args);
+                    return null;
+                });
+                await client.connect();
+
+                await client.enableAutoSubscription(5n);
+                await client.disableAutoSubscription(6);
+
+                expect(server.getReceivedCommands().map(({ message }) => message.command)).to.deep.equal([
+                    "enable_auto_subscription",
+                    "disable_auto_subscription",
+                ]);
+                expect(received).to.deep.equal([{ node_id: 5 }, { node_id: 6 }]);
+            });
+
+            it("sends discovery_timeout_s of commissionWithCode and refuses it below schema 14", async () => {
+                const received = new Array<unknown>();
+                server.onCommand("commission_with_code", args => {
+                    received.push(args);
+                    return { node_id: 3 };
+                });
+                await client.connect();
+                await client.commissionWithCode("MT:X", true, { discoveryTimeoutS: 600 });
+                await client.commissionWithCode("MT:X", true);
+
+                expect(received).to.deep.equal([
+                    { code: "MT:X", network_only: true, discovery_timeout_s: 600 },
+                    { code: "MT:X", network_only: true },
+                ]);
+
+                await server.stop();
+                server = new MockMatterServer({ serverInfo: { schema_version: 13 } });
+                await server.start();
+                client = new MatterClient(server.url, createNodeWebSocket);
+                await client.connect();
+                let refusal: unknown;
+                try {
+                    await client.commissionWithCode("MT:X", true, { discoveryTimeoutS: 600 });
+                } catch (error) {
+                    refusal = error;
+                }
+                expect(refusal).to.be.instanceOf(InvalidServerVersion);
+                expect(server.getReceivedCommands()).to.deep.equal([]);
+            });
+
+            it("sends the commissionOnNetwork arguments and returns a node", async () => {
+                const received = new Array<unknown>();
+                server.onCommand("commission_on_network", args => {
+                    received.push(args);
+                    return { node_id: 3 };
+                });
+                await client.connect();
+                const node = await client.commissionOnNetwork(20202021, {
+                    filterType: 2,
+                    filter: 3840,
+                    ipAddr: "192.168.1.100",
+                    discoveryTimeoutS: 600,
+                });
+                await client.commissionOnNetwork(20202021);
+
+                expect(node.node_id).equals(3);
+                expect(received).to.deep.equal([
+                    {
+                        setup_pin_code: 20202021,
+                        filter_type: 2,
+                        filter: 3840,
+                        ip_addr: "192.168.1.100",
+                        discovery_timeout_s: 600,
+                    },
+                    { setup_pin_code: 20202021 },
+                ]);
+            });
+
+            it("commissionOnNetwork applies its timeout option", async () => {
+                server.onCommand("commission_on_network", () => new Promise(resolve => setTimeout(resolve, 300)));
+                await client.connect();
+
+                let timeoutError: unknown;
+                try {
+                    await client.commissionOnNetwork(20202021, { timeout: 20 });
+                } catch (error) {
+                    timeoutError = error;
+                }
+                expect(timeoutError).to.be.instanceOf(CommandTimeoutError);
+            });
+
+            it("commissionOnNetwork works below schema 14 unless discoveryTimeoutS is set", async () => {
+                await server.stop();
+                server = new MockMatterServer({ serverInfo: { schema_version: 13 } });
+                server.onCommand("commission_on_network", () => ({ node_id: 3 }));
+                await server.start();
+                client = new MatterClient(server.url, createNodeWebSocket);
+                await client.connect();
+
+                await client.commissionOnNetwork(20202021, { filterType: 1, filter: 15 });
+                expect(server.getReceivedCommands()).to.have.length(1);
+
+                let refusal: unknown;
+                try {
+                    await client.commissionOnNetwork(20202021, { discoveryTimeoutS: 600 });
+                } catch (error) {
+                    refusal = error;
+                }
+                expect(refusal).to.be.instanceOf(InvalidServerVersion);
+                expect(server.getReceivedCommands()).to.have.length(1);
+            });
+
+            it("commissionOnNetwork refuses ipAddr below schema 6", async () => {
+                await server.stop();
+                server = new MockMatterServer({ serverInfo: { schema_version: 5 } });
+                server.onCommand("commission_on_network", () => ({ node_id: 3 }));
+                await server.start();
+                client = new MatterClient(server.url, createNodeWebSocket);
+                await client.connect();
+
+                await client.commissionOnNetwork(20202021);
+                let refusal: unknown;
+                try {
+                    await client.commissionOnNetwork(20202021, { ipAddr: "192.168.1.100" });
+                } catch (error) {
+                    refusal = error;
+                }
+                expect(refusal).to.be.instanceOf(InvalidServerVersion);
+                expect(server.getReceivedCommands()).to.have.length(1);
+            });
+
+            it("plain commissionWithCode passes the gate on a schema 13 server", async () => {
+                await server.stop();
+                server = new MockMatterServer({ serverInfo: { schema_version: 13 } });
+                server.onCommand("commission_with_code", () => ({ node_id: 3 }));
+                await server.start();
+                client = new MatterClient(server.url, createNodeWebSocket);
+                await client.connect();
+
+                const node = await client.commissionWithCode("MT:X", true);
+                expect(node.node_id).equals(3);
+            });
+
+            it("deviceCommand sends the timeouts from an options object and keeps the numeric timeout form", async () => {
+                const received = new Array<unknown>();
+                server.onCommand("device_command", args => {
+                    received.push(args);
+                    return null;
+                });
+                await client.connect();
+
+                await client.deviceCommand(
+                    1,
+                    1,
+                    6,
+                    "On",
+                    {},
+                    {
+                        timedRequestTimeoutMs: 5000,
+                        interactionTimeoutMs: 30000,
+                    },
+                );
+                await client.deviceCommand(1, 1, 6, "Off", undefined, 1000);
+
+                server.onCommand("device_command", () => new Promise(resolve => setTimeout(resolve, 300)));
+                let timeoutError: unknown;
+                try {
+                    await client.deviceCommand(1, 1, 6, "On", {}, { timeout: 20 });
+                } catch (error) {
+                    timeoutError = error;
+                }
+                expect(timeoutError).to.be.instanceOf(CommandTimeoutError);
+
+                let numericTimeoutError: unknown;
+                try {
+                    await client.deviceCommand(1, 1, 6, "On", {}, 20);
+                } catch (error) {
+                    numericTimeoutError = error;
+                }
+                expect(numericTimeoutError).to.be.instanceOf(CommandTimeoutError);
+
+                expect(received).to.deep.equal([
+                    {
+                        node_id: 1,
+                        endpoint_id: 1,
+                        cluster_id: 6,
+                        command_name: "On",
+                        payload: {},
+                        response_type: null,
+                        timed_request_timeout_ms: 5000,
+                        interaction_timeout_ms: 30000,
+                    },
+                    {
+                        node_id: 1,
+                        endpoint_id: 1,
+                        cluster_id: 6,
+                        command_name: "Off",
+                        payload: {},
+                        response_type: null,
+                    },
+                ]);
             });
 
             function recorder() {

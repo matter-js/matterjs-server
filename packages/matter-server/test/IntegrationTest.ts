@@ -1452,7 +1452,10 @@ describe("Integration Test", function () {
             // that will be destroyed mid-way. 12 seconds gives a safe margin.
             await new Promise(r => setTimeout(r, 12_000));
 
-            const node = await client.commissionOnNetwork(DEVICE_PASSCODE, 2, DEVICE_DISCRIMINATOR);
+            const node = await client.commissionOnNetwork(DEVICE_PASSCODE, {
+                filterType: 2,
+                filter: DEVICE_DISCRIMINATOR,
+            });
             const networkNodeId = node.node_id;
 
             console.log("Node commissioned via network:", networkNodeId);

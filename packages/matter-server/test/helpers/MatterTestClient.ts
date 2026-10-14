@@ -85,24 +85,6 @@ export class MatterTestClient extends MatterClient {
     }
 
     /**
-     * Commission a device on the network with a setup PIN code.
-     */
-    async commissionOnNetwork(
-        setupPinCode: number,
-        filterType?: number,
-        filter?: number,
-        ipAddr?: string,
-    ): Promise<MatterNode> {
-        const data = await this.sendCommand("commission_on_network", 0, {
-            setup_pin_code: setupPinCode,
-            filter_type: filterType,
-            filter,
-            ip_addr: ipAddr,
-        });
-        return new MatterNode(data);
-    }
-
-    /**
      * Set Thread operational dataset (alias with different name).
      */
     async setThreadDataset(dataset: string): Promise<void> {

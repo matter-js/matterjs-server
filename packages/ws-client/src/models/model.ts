@@ -972,9 +972,9 @@ export interface APICommands {
     commission_on_network: {
         requestArgs: {
             setup_pin_code: number;
-            /** Discovery filter type: 0=None, 1=ShortDiscriminator, 2=LongDiscriminator, 3=VendorId, 4=DeviceType */
+            /** Discovery filter type: 0=None, 1=ShortDiscriminator, 2=LongDiscriminator, 3=VendorId. 4 is accepted but does not filter. */
             filter_type?: number;
-            /** Filter value (discriminator, vendor ID, or device type depending on filter_type) */
+            /** Filter value (discriminator or vendor ID depending on filter_type) */
             filter?: number;
             /** Direct IP address for commissioning */
             ip_addr?: string;

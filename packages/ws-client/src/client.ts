@@ -71,6 +71,32 @@ export interface CommissionWithCodeOptions {
     wifiCredentialsId?: string;
     /** Stored Thread dataset id to use (schema 12; omit for the reserved `default` entry). */
     threadDatasetId?: string;
+    /** Schema 14. Seconds the server looks for the device and sets up PASE; see the API docs for the limit. */
+    discoveryTimeoutS?: number;
+    /** Per-call command timeout in ms (overrides {@link MatterClient.commandTimeout}). */
+    timeout?: number;
+}
+
+/** Options for {@link MatterClient.commissionOnNetwork}. */
+export interface CommissionOnNetworkOptions {
+    /** Discovery filter type: 0=None, 1=ShortDiscriminator, 2=LongDiscriminator, 3=VendorId. 4 is accepted but does not filter. */
+    filterType?: number;
+    /** Filter value (discriminator or vendor ID depending on `filterType`). */
+    filter?: number;
+    /** Direct IP address of the device (schema 6). */
+    ipAddr?: string;
+    /** Schema 14. Seconds the server looks for the device and sets up PASE; see the API docs for the limit. */
+    discoveryTimeoutS?: number;
+    /** Per-call command timeout in ms (overrides {@link MatterClient.commandTimeout}). */
+    timeout?: number;
+}
+
+/** Options for {@link MatterClient.deviceCommand}. */
+export interface DeviceCommandOptions {
+    /** Timeout for timed interactions, as required by some commands (door lock). */
+    timedRequestTimeoutMs?: number;
+    /** Time the device may take to process the command. */
+    interactionTimeoutMs?: number;
     /** Per-call command timeout in ms (overrides {@link MatterClient.commandTimeout}). */
     timeout?: number;
 }
@@ -262,14 +288,32 @@ export class MatterClient {
         const usesIds = opts.wifiCredentialsId !== undefined || opts.threadDatasetId !== undefined;
         const data = await this.sendCommand(
             "commission_with_code",
-            usesIds ? 12 : 0,
+            opts.discoveryTimeoutS !== undefined ? 14 : usesIds ? 12 : 0,
             {
                 code,
                 network_only: networkOnly,
                 wifi_credentials_id: opts.wifiCredentialsId,
                 thread_dataset_id: opts.threadDatasetId,
+                discovery_timeout_s: opts.discoveryTimeoutS,
             },
             opts.timeout,
+        );
+        return new MatterNode(data);
+    }
+
+    /** Commissions a device that is already on the network, found by setup PIN code and optional filter or IP. */
+    async commissionOnNetwork(setupPinCode: number, options: CommissionOnNetworkOptions = {}): Promise<MatterNode> {
+        const data = await this.sendCommand(
+            "commission_on_network",
+            options.discoveryTimeoutS !== undefined ? 14 : options.ipAddr !== undefined ? 6 : 0,
+            {
+                setup_pin_code: setupPinCode,
+                filter_type: options.filterType,
+                filter: options.filter,
+                ip_addr: options.ipAddr,
+                discovery_timeout_s: options.discoveryTimeoutS,
+            },
+            options.timeout,
         );
         return new MatterNode(data);
     }
@@ -512,6 +556,19 @@ export class MatterClient {
         await this.sendCommand("unsubscribe", 14, { node_id: nodeId, subscription_id: subscriptionId }, timeout);
     }
 
+    /**
+     * Schema 14. Switches the server's own subscription to the node on; see the API docs for when this fails. Only
+     * available with the server running with auto subscription disabled.
+     */
+    async enableAutoSubscription(nodeId: number | bigint, timeout?: number): Promise<void> {
+        await this.sendCommand("enable_auto_subscription", 14, { node_id: nodeId }, timeout);
+    }
+
+    /** Schema 14. Switches the server's own subscription to the node off. Only available with auto subscription disabled. */
+    async disableAutoSubscription(nodeId: number | bigint, timeout?: number): Promise<void> {
+        await this.sendCommand("disable_auto_subscription", 14, { node_id: nodeId }, timeout);
+    }
+
     async writeAttribute(
         nodeId: number | bigint,
         attributePath: string,
@@ -612,9 +669,10 @@ export class MatterClient {
         endpointId: number,
         clusterId: number,
         commandName: string,
-        payload: Record<string, unknown> = {},
-        timeout?: number,
+        payload?: Record<string, unknown>,
+        optsOrTimeout?: number | DeviceCommandOptions,
     ): Promise<unknown> {
+        const opts = typeof optsOrTimeout === "number" ? { timeout: optsOrTimeout } : (optsOrTimeout ?? {});
         return await this.sendCommand(
             "device_command",
             0,
@@ -623,10 +681,12 @@ export class MatterClient {
                 endpoint_id: endpointId,
                 cluster_id: clusterId,
                 command_name: commandName,
-                payload,
+                payload: payload ?? {},
                 response_type: null,
+                timed_request_timeout_ms: opts.timedRequestTimeoutMs,
+                interaction_timeout_ms: opts.interactionTimeoutMs,
             },
-            timeout,
+            opts.timeout,
         );
     }
 
