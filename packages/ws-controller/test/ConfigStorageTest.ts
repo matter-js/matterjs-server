@@ -147,6 +147,30 @@ describe("ConfigStorage", () => {
         });
     });
 
+    describe("legacy node import marker", () => {
+        it("remembers each storage scope whose nodes it imported", async () => {
+            const open = persistentConfig();
+            const first = await open();
+            expect(first.config.hasImportedLegacyNodes("server")).to.be.false;
+            await first.config.markLegacyNodesImported("server");
+            await first.config.close();
+
+            const second = await open();
+            try {
+                // Survives a restart or the import runs again, bringing back peers removed since.
+                expect(second.config.hasImportedLegacyNodes("server")).to.be.true;
+                expect(second.config.hasImportedLegacyNodes("server-2-fff1")).to.be.false;
+
+                // Both, not just the most recent: one scope's import must not re-open another's.
+                await second.config.markLegacyNodesImported("server-2-fff1");
+                expect(second.config.hasImportedLegacyNodes("server")).to.be.true;
+                expect(second.config.hasImportedLegacyNodes("server-2-fff1")).to.be.true;
+            } finally {
+                await second.config.close();
+            }
+        });
+    });
+
     describe("legacy retirement marker", () => {
         it("tracks an outstanding retirement per storage scope", async () => {
             const config = await createConfig();

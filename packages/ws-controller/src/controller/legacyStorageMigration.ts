@@ -151,15 +151,28 @@ export async function migrateLegacyControllerCredentials(env: Environment, id: s
 }
 
 /**
+ * Where the one-shot import of the nodes a python-matter-server install left behind records that it has
+ * run for a storage scope.
+ */
+export interface LegacyNodeImportMarker {
+    hasImportedLegacyNodes(scope: string): boolean;
+
+    markLegacyNodesImported(scope: string): Promise<void>;
+}
+
+/**
  * Step 2: migrate cached per-node data (`node-<id>` attribute trees + the `commissionedNodes` list) into the
  * current per-peer store layout, and register each peer. Must run after the controller ServerNode is constructed
  * (so its fabric is loaded) but before it goes online. Non-destructive — old data is left in place for
  * {@link cleanupLegacyStorage}. Idempotent (skips peers that already exist); a peer that fails to migrate is
- * skipped without aborting the rest and its partially-written store is cleared. Returns migrated counts.
+ * skipped without aborting the rest and its partially-written store is cleared.
+ *
+ * `found` counts the peers the legacy source lists, whether or not this run had anything left to do with
+ * them. It is how a caller tells a store that has legacy data from one that never had any.
  */
 export async function migrateLegacyCommissionedNodes(
     node: ServerNode,
-): Promise<{ nodes: number; endpoints: number; failed: number }> {
+): Promise<{ found: number; nodes: number; endpoints: number; failed: number }> {
     const serverStore = node.env.get(ServerNodeStore);
     const baseStorage = serverStore.storage;
     const nodesCtx = baseStorage.createContext("nodes");
@@ -168,7 +181,7 @@ export async function migrateLegacyCommissionedNodes(
     // look at, so a resume after a partial run isn't skipped.
     if (!(await nodesCtx.has("commissionedNodes"))) {
         logger.debug("No former commissioned nodes to migrate.");
-        return { nodes: 0, endpoints: 0, failed: 0 };
+        return { found: 0, nodes: 0, endpoints: 0, failed: 0 };
     }
     const commissioned = await nodesCtx.get<LegacyCommissionedNode[]>("commissionedNodes", []);
     if (commissioned.length === 0) {
@@ -176,7 +189,7 @@ export async function migrateLegacyCommissionedNodes(
         // store as initialised, so the key alone does not mean there is anything to migrate — and
         // continuing warns about a missing fabric on every first start.
         logger.debug("Former commissioned node list is empty, nothing to migrate.");
-        return { nodes: 0, endpoints: 0, failed: 0 };
+        return { found: 0, nodes: 0, endpoints: 0, failed: 0 };
     }
 
     // A migrated Era-B store carries exactly one fabric. Anything else (no fabric yet, or an unexpected
@@ -185,7 +198,7 @@ export async function migrateLegacyCommissionedNodes(
     const fabrics = await baseStorage.createContext("fabrics").get<LegacyFabricRecord[]>("fabrics", []);
     if (fabrics.length !== 1) {
         logger.warn(`Skipping legacy node migration: expected exactly one migrated fabric, found ${fabrics.length}`);
-        return { nodes: 0, endpoints: 0, failed: commissioned.length };
+        return { found: commissioned.length, nodes: 0, endpoints: 0, failed: commissioned.length };
     }
     const fabricIndex = FabricIndex(fabrics[0].fabricIndex);
 
@@ -262,7 +275,7 @@ export async function migrateLegacyCommissionedNodes(
         }
     }
 
-    return { nodes: migratedNodes, endpoints: migratedEndpoints, failed: failedNodes };
+    return { found: commissioned.length, nodes: migratedNodes, endpoints: migratedEndpoints, failed: failedNodes };
 }
 
 /**

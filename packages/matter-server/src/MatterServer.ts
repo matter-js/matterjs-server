@@ -243,11 +243,17 @@ async function start() {
 /**
  * Whether everything the legacy file holds has arrived.
  *
- * Every node in it has to be one the controller now knows, by id: a device commissioned since would
- * otherwise make up the numbers for one that never migrated, and that one's only remaining copy is what
- * the retirement deletes.
+ * The import's own record answers it, because that record is taken before anything can be removed again.
+ * Asking the node ids instead would keep a node decommissioned after the import missing for good, and
+ * block the retirement on every later start. Without the record, every node in the file has to be one the
+ * controller knows: a device commissioned since would otherwise make up the numbers for one that never
+ * migrated, and that one's only remaining copy is what the retirement deletes.
  */
 function legacyImportIsComplete() {
+    if (controller !== undefined && config.hasImportedLegacyNodes(controller.serverId)) {
+        return true;
+    }
+
     const missing = missingLegacyNodes(legacyData.serverFile, controller?.commandHandler.getNodeIds() ?? []);
     if (missing.length === 0) {
         return true;

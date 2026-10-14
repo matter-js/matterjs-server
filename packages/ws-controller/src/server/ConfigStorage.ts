@@ -45,6 +45,7 @@ interface ConfigData {
     wifiCredentials?: string;
     threadDataset?: string;
     peerSettingsRepairedFor?: string[];
+    legacyNodesImportedFor?: string[];
     legacyRetirementPendingFor?: string[];
 }
 
@@ -61,6 +62,7 @@ export class ConfigStorage {
         wifiCredentials: undefined,
         threadDataset: undefined,
         peerSettingsRepairedFor: undefined,
+        legacyNodesImportedFor: undefined,
         legacyRetirementPendingFor: undefined,
     };
     #additionalWifiCredentials: WifiCredentialEntry[] = new Array<WifiCredentialEntry>();
@@ -128,6 +130,9 @@ export class ConfigStorage {
             ? await this.#configStore.get<string | string[]>("peerSettingsRepairedFor", [])
             : undefined;
         const peerSettingsRepairedFor = typeof storedRepairs === "string" ? [storedRepairs] : storedRepairs;
+        const legacyNodesImportedFor = (await this.#configStore.has("legacyNodesImportedFor"))
+            ? await this.#configStore.get<string[]>("legacyNodesImportedFor", [])
+            : undefined;
         const storedPending = (await this.#configStore.has("legacyRetirementPendingFor"))
             ? await this.#configStore.get<string | string[]>("legacyRetirementPendingFor", [])
             : undefined;
@@ -139,6 +144,7 @@ export class ConfigStorage {
             wifiCredentials,
             threadDataset,
             peerSettingsRepairedFor,
+            legacyNodesImportedFor,
             legacyRetirementPendingFor,
         });
 
@@ -174,6 +180,21 @@ export class ConfigStorage {
     }
     get nextNodeId() {
         return this.#data.nextNodeId;
+    }
+
+    /**
+     * Whether the python-matter-server node list of this storage scope has already been imported. The
+     * import is one-shot: its source is only retired afterwards, and stays in place when that fails.
+     */
+    hasImportedLegacyNodes(scope: string) {
+        return this.#data.legacyNodesImportedFor?.includes(scope) === true;
+    }
+
+    async markLegacyNodesImported(scope: string) {
+        if (this.hasImportedLegacyNodes(scope)) {
+            return;
+        }
+        await this.set({ legacyNodesImportedFor: [...(this.#data.legacyNodesImportedFor ?? []), scope] });
     }
 
     hasRepairedPeerSettings(scope: string) {

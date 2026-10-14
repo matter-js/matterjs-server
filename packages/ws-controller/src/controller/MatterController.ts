@@ -388,6 +388,7 @@ export class MatterController {
             serverVersion: this.#serverVersion,
             enableOtaProvider: !this.#disableOtaProvider,
             peerSettingsRepair: this.#config,
+            legacyNodeImport: this.#config,
         });
     }
 

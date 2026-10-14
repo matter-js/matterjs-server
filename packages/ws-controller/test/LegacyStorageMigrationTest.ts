@@ -19,7 +19,7 @@ import { FabricId, NodeId, VendorId } from "@matter/main/types";
 import { ServerNode, ServerNodeStore } from "@matter/node";
 import { PeerAddress } from "@matter/protocol";
 import { createControllerNode } from "../src/controller/ControllerNode.js";
-import { migrateLegacyCommissionedNodes } from "../src/controller/legacyStorageMigration.js";
+import { LegacyNodeImportMarker, migrateLegacyCommissionedNodes } from "../src/controller/legacyStorageMigration.js";
 
 const SERVER_ID = "server";
 
@@ -36,7 +36,7 @@ function testEnvironment() {
     return env;
 }
 
-async function createNode(env: Environment) {
+async function createNode(env: Environment, legacyNodeImport?: LegacyNodeImportMarker) {
     return createControllerNode({
         environment: env,
         id: SERVER_ID,
@@ -45,7 +45,21 @@ async function createNode(env: Environment) {
         adminFabricLabel: "test-fabric",
         serverVersion: "1.0.0",
         enableOtaProvider: false,
+        legacyNodeImport,
     });
+}
+
+/** Records the scopes it was told about, the way ConfigStorage persists them. */
+function importMarker() {
+    return {
+        scopes: new Array<string>(),
+        hasImportedLegacyNodes(scope: string) {
+            return this.scopes.includes(scope);
+        },
+        async markLegacyNodesImported(scope: string) {
+            this.scopes.push(scope);
+        },
+    };
 }
 
 /**
@@ -110,6 +124,16 @@ async function storedFabricCount(env: Environment) {
 const LEGACY_ENDPOINT = "0";
 const LEGACY_CLUSTER = "29";
 const LEGACY_ATTRIBUTE = "1";
+
+/** The list a fresh install is initialised with. */
+async function seedEmptyLegacyList(env: Environment) {
+    const mgr = await env.get(StorageService).open(SERVER_ID);
+    try {
+        await mgr.createContext("nodes").set("commissionedNodes", []);
+    } finally {
+        await mgr.close();
+    }
+}
 
 /** Write a commissioned node the way python-matter-server's import left it. */
 async function seedLegacyPeer(env: Environment, nodeId: number, attributeValue: SupportedStorageTypes) {
@@ -300,6 +324,7 @@ describe("migrateLegacyCommissionedNodes", () => {
         try {
             // The controller already migrated it during construction, so a second pass has nothing to do.
             expect(await migrateLegacyCommissionedNodes(controller.node)).deep.equals({
+                found: 1,
                 nodes: 0,
                 endpoints: 0,
                 failed: 0,
@@ -307,6 +332,63 @@ describe("migrateLegacyCommissionedNodes", () => {
             expect(controller.node.peers.commissioned.length).equals(1);
         } finally {
             await controller.node.close();
+        }
+    });
+
+    it("imports a node list once and leaves a decommissioned peer gone", async () => {
+        const marker = importMarker();
+        const first = await createNode(env, marker);
+        await first.node.close();
+        await seedLegacyPeer(env, 5, 42);
+
+        const second = await createNode(env, marker);
+        const peerAddress = PeerAddress({ fabricIndex: second.fabric.fabricIndex, nodeId: NodeId(5n) });
+        const peer = second.node.peers.get(peerAddress);
+        expect(peer).not.undefined;
+        expect(marker.scopes).deep.equals([SERVER_ID]);
+        await peer!.delete();
+        await second.node.close();
+
+        // The legacy source still lists the peer: it is only retired once the import is behind us, and
+        // the removal must not be undone by a start that happens before that.
+        const third = await createNode(env, marker);
+        try {
+            expect(third.node.peers.get(peerAddress)).undefined;
+        } finally {
+            await third.node.close();
+        }
+    });
+
+    // The injector writes an empty list on a fresh install, so the key alone does not mean there is
+    // anything to import.
+    it("stays open to an import when the legacy list is empty", async () => {
+        const marker = importMarker();
+        const first = await createNode(env, marker);
+        await first.node.close();
+        await seedEmptyLegacyList(env);
+
+        const second = await createNode(env, marker);
+        await second.node.close();
+
+        expect(marker.scopes).deep.equals([]);
+    });
+
+    it("stays open to an import when the store never had legacy data", async () => {
+        const marker = importMarker();
+        const first = await createNode(env, marker);
+        await first.node.close();
+
+        expect(marker.scopes).deep.equals([]);
+
+        // The server is started on a fresh storage path before the legacy data is injected into it.
+        await seedLegacyPeer(env, 5, 42);
+        const second = await createNode(env, marker);
+        try {
+            expect(second.node.peers.get(PeerAddress({ fabricIndex: second.fabric.fabricIndex, nodeId: NodeId(5n) })))
+                .not.undefined;
+            expect(marker.scopes).deep.equals([SERVER_ID]);
+        } finally {
+            await second.node.close();
         }
     });
 
@@ -323,6 +405,7 @@ describe("migrateLegacyCommissionedNodes", () => {
             // Reported as failed rather than skipped silently: the caller keeps the legacy source when
             // anything failed, and these peers still have to come across on a later start.
             expect(await migrateLegacyCommissionedNodes(controller.node)).deep.equals({
+                found: 2,
                 nodes: 0,
                 endpoints: 0,
                 failed: 2,
