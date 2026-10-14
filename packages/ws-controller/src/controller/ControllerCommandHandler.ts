@@ -453,6 +453,11 @@ export class ControllerCommandHandler {
         return node.stateOf(NetworkClient).autoSubscribe;
     }
 
+    /** Also true while a switch of the setting is still being applied, so a client subscription never runs beside it. */
+    #autoSubscribesOrWill(node: ClientNode): boolean {
+        return this.#autoSubscribes(node) || this.#autoSubscribeRequested.get(node) === true;
+    }
+
     /** Format a NodeId as a PeerAddress string for logging. */
     formatNode(nodeId: NodeId): string {
         const fabricIndex = this.#fabric.fabricIndex;
@@ -1283,7 +1288,7 @@ export class ControllerCommandHandler {
         }
         checkInteractionRequest(request);
         const node = this.#nodes.get(nodeId);
-        if (this.#autoSubscribes(node)) {
+        if (this.#autoSubscribesOrWill(node)) {
             throw ServerError.invalidArguments(
                 `Node ${nodeId} has auto subscription enabled; subscribe requires disable_auto_subscription first`,
             );
@@ -1312,7 +1317,7 @@ export class ControllerCommandHandler {
             throw new InternalError(`Subscription ${active.subscriptionId} became active without a priming report`);
         }
         // Auto subscription enabled while this was being set up would leave both subscriptions running.
-        if (this.#autoSubscribes(node)) {
+        if (this.#autoSubscribesOrWill(node)) {
             active.close();
             throw ServerError.invalidArguments(
                 `Node ${nodeId} had its auto subscription enabled while subscribing; the subscription was closed`,
@@ -2308,7 +2313,14 @@ export class ControllerCommandHandler {
             handler: reason => settle(reason),
         });
         try {
-            await node.set({ network: { autoSubscribe: true } });
+            try {
+                await node.set({ network: { autoSubscribe: true } });
+            } catch (error) {
+                if (this.#autoSubscribeRequested.get(node) === true) {
+                    this.#autoSubscribeRequested.set(node, this.#autoSubscribes(node));
+                }
+                throw error;
+            }
             if (await node.act(agent => agent.get(NetworkClient).subscriptionActive)) {
                 settle(undefined);
             }

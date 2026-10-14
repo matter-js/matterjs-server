@@ -437,6 +437,44 @@ describe("auto subscription setting", () => {
             };
         }
 
+        it("refuses a client subscription while enabling is still being applied", async () => {
+            const controller = await commissioned(true);
+            const pending = enable(controller);
+
+            const subscribe = await MockTime.resolve(
+                controller.handler.subscribe(
+                    { nodeId: NODE_ID, attributePaths: ["1/6/0"], minInterval: 0, maxInterval: 60 },
+                    { report: () => {}, closed: () => {} },
+                ),
+                { macrotasks: true },
+            ).then(
+                () => undefined,
+                (error: unknown) => error,
+            );
+            await pending;
+
+            expectServerError(subscribe, ServerErrorCode.InvalidArguments);
+            expect(subscriptionsOnDevice).equals(1);
+        });
+
+        it("does not keep the auto subscription it could not switch on", async () => {
+            const controller = await commissioned(true);
+            const peer = peerOf(controller);
+            const set = peer.set.bind(peer);
+            peer.set = async () => {
+                throw new Error("Refused by the test");
+            };
+
+            const failure = await enableFailure(controller);
+            peer.set = set;
+            await MockTime.resolve(controller.handler.resyncIcd(NODE_ID), { macrotasks: true });
+            await settle();
+
+            expect(String(failure)).contains("Refused by the test");
+            expect(peer.stateOf(NetworkClient).autoSubscribe).equals(false);
+            expect(subscriptionsOnDevice).equals(0);
+        });
+
         it("resolves once the subscription is active", async () => {
             const controller = await commissioned(true);
 
