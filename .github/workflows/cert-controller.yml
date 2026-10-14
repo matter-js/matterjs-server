@@ -21,7 +21,8 @@ concurrency:
 
 jobs:
     cert:
-        runs-on: ubuntu-latest
+        # chip-cert-bins, the CHIP apps npm run cert uses on Linux, is published for linux/arm64 only.
+        runs-on: ubuntu-24.04-arm
         timeout-minutes: 90
         env:
             # The matterjs-server adapter is not in matter.js main yet.
