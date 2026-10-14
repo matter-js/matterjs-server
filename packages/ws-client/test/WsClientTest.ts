@@ -450,6 +450,28 @@ describe("ws-client", () => {
                 expect(node.node_id).equals(3);
             });
 
+            it("deviceCommand sends a command without options and without payload", async () => {
+                const received = new Array<unknown>();
+                server.onCommand("device_command", args => {
+                    received.push(args);
+                    return null;
+                });
+                await client.connect();
+
+                await client.deviceCommand(1, 1, 6, "Toggle");
+
+                expect(received).to.deep.equal([
+                    {
+                        node_id: 1,
+                        endpoint_id: 1,
+                        cluster_id: 6,
+                        command_name: "Toggle",
+                        payload: {},
+                        response_type: null,
+                    },
+                ]);
+            });
+
             it("deviceCommand sends the timeouts from an options object and keeps the numeric timeout form", async () => {
                 const received = new Array<unknown>();
                 server.onCommand("device_command", args => {

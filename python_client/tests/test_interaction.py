@@ -697,9 +697,11 @@ async def test_disconnect_during_cleanup_unsubscribe_logs_no_warning(caplog: pyt
     _respond(client, subscribe, _SUBSCRIBED)
     await _next(sent)
 
+    cleanup = list(client._background_tasks)
     await client.disconnect()
-    await asyncio.wait_for(asyncio.gather(*client._background_tasks, return_exceptions=True), 1)
+    await asyncio.wait_for(asyncio.gather(*cleanup, return_exceptions=True), 1)
 
+    assert cleanup and all(task.cancelled() for task in cleanup)
     assert not [record for record in caplog.records if record.levelno >= logging.WARNING]
 
 
