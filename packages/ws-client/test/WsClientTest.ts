@@ -589,7 +589,11 @@ describe("ws-client", () => {
                 const own = recorder();
 
                 const error = await client.subscribe(LIGHT_ON_OFF, own.listener, 10).catch((error: unknown) => error);
-                await new Promise(resolve => setTimeout(resolve, 100));
+                const unsubscribed = () =>
+                    server.getReceivedCommands().some(({ message }) => message.command === "unsubscribe");
+                for (let waited = 0; !unsubscribed() && waited < 2000; waited += 10) {
+                    await new Promise(resolve => setTimeout(resolve, 10));
+                }
                 server.sendEvent("subscription_report", { node_id: 1, subscription_id: 7, ...EMPTY_REPORT });
                 await eventsArrived();
 
