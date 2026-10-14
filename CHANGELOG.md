@@ -58,6 +58,8 @@ This page shows a detailed overview of the changes between versions without the 
 - Enhancement: Adds the IKEA thermostat ValveCalibration vendor cluster (0x117cfc01) to the custom cluster and a Dashboard panel
 - Enhancement: (@lboue) Allows creating temporary/expiring PIN users (UserType=ExpiringUser) and configuring the lock's ExpiringUserTimeout to the Dashboard DoorLock cluster panel
 - Enhancement: (@RAR) Adds the vendor clusters of the Aqara Spatial Multi-Sensor FP400 (AmbientSensingConfiguration 0x115ffc0a with detection zones, RadarSensingUnion 0x115ffc0b, OccupantLocation 0x115ffc0c with the target position event) to the custom cluster definitions and the Python client
+- Enhancement: (@Leo2442926161) Adds the `indicatorEnable` attribute to the Heiman custom cluster to switch the device LED indicator on or off
+- Enhancement: Adds the WAGO Home Blind Control `WagoBlindType` (roller shutter or venetian blind) and `WagoManualMode` attributes to the Window Covering cluster
 - Enhancement: Node data carries `endpoint_parents`, the direct parent of each endpoint as matter.js resolves it. The Python client and the Dashboard use it instead of deriving the parents from the Descriptor PartsLists, and keep deriving them for servers that do not send it
 - Adjustment: Commands that target a node refuse a `node_id` that can never name one (CAT, PAKE, Unspecified, reserved ranges) with error 8 instead of `NODE_NOT_EXISTS`, and only the Temporary Local range is routed to imported test nodes
 - Adjustment: Every command treats a missing or `null` `args` as no arguments and refuses a non-object with error 8
@@ -65,6 +67,7 @@ This page shows a detailed overview of the changes between versions without the 
 - Adjustment: A node's availability follows its connection state. The former 3-minute grace period after a connection loss is gone, so an unreachable node is reported as soon as matter.js gives up on reaching it rather than after a fixed timer on top
 - Adjustment: Structured values of clusters, attributes and events the server does not know are sent keyed by their TLV tags instead of as `null`
 - Adjustment: Dashboard network view uses the Thread 1.4 role names
+- Fix: The Dashboard shows the data type of custom cluster attributes and of attributes of derived clusters (Mode clusters, Bridged Device Basic Information) instead of `unknown`
 - Fix: `webrtc_callback` events the camera sends while `send_webrtc_provider_command` is still running are no longer lost
 - Fix: A re-offer (`ProvideOffer` naming an existing session) through `send_webrtc_provider_command` no longer ends the session it renegotiates
 - Fix: `device_command` with `EndSession` updates the server's session records for that camera only, and a WebRTC callback with an invalid endpoint id no longer blocks the event for other listeners
@@ -85,6 +88,9 @@ This page shows a detailed overview of the changes between versions without the 
 - Fix: The node snapshot that carries a new endpoint is sent before the `endpoint_added` event, so a client that looks the new endpoint up in its node model finds it; an endpoint removed again before that snapshot is built is not announced
 - Fix: A removed endpoint leaves the attribute cache when its removal is announced, and `get_node` waits for a cache rebuild that is already running, so a read after a structure change returns the current structure
 - Fix: An endpoint removed while the server rebuilds its node data no longer comes back in the rebuilt node data
+- Fix: An attribute a device removes (for example in a firmware update) is dropped from the node data. Clients get an `attribute_updated` event with a `null` value and a `node_updated` event without the attribute
+- Fix: An attribute the device no longer has when the server rebuilds the node data (after a restart, a reconnect or a structure change) is also sent as `attribute_updated` with a `null` value, so clients that merge `node_updated` into their data no longer keep the old value
+- Fix: A node that gains or loses custom cluster attributes or Thread diagnostics without reconnecting, for example when a bridge adds a device, is polled for the new set after the structure change, not only after the next reconnect
 - Fix: A node is reported as a bridge when any endpoint carries the Aggregator device type, not only endpoint 1
 - Fix: (reported by @lboue) Python client resolves each endpoint to its closest parent endpoint, available as `MatterNode.get_closest_compose_parent()`; `get_compose_parent()` keeps returning the composed device an endpoint belongs to, now at any depth and independent of the endpoint order. A Bridged Node below a nested Aggregator is reachable through the new `MatterNode.get_bridge_parent()` and `get_bridge_child_ids()`. Children of an Aggregator that do not carry the Bridged Node device type are not treated as bridged devices
 - Fix: Python client keeps an endpoint, its device types and its parent until `endpoint_removed` arrives, also when a node snapshot no longer reports them, so a subscriber handling the removal still resolves the endpoint to its device. Removing a device also removes its parts. Before, Home Assistant could fail with `KeyError` or remove the bridge's own device when the parts of a bridged device were removed

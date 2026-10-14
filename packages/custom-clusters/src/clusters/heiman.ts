@@ -37,6 +37,9 @@ export class HeimanCluster {
     @attribute(0x0016, uint8, writable)
     lowPowerMode?: number;
 
+    @attribute(0x1004, uint8, writable)
+    indicatorEnable?: number;
+
     /**
      * This command is used for muting sensor for a specific period if there is an alarm, like a fire alarm.
      */

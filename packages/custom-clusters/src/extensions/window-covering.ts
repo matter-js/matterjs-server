@@ -13,6 +13,9 @@ import { clusterExtension } from "./extension.js";
  * WAGO (vendor ID 0x1534/5428), as found on the WAGO Home Blind Control (2757-1105/2757-1106): the travel times
  * correspond to the reference times used for positioning the covering. The device re-measures them on every full
  * end-to-end travel, so their values may change without an explicit write.
+ *
+ * The blind type was added in firmware 2.1.0; the standard Type attribute stays at "Tilt blind lift and tilt" and the
+ * feature map keeps Tilt in both modes, so the vendor attribute is the only indicator of the configured blind type.
  */
 clusterExtension(WindowCovering.id, [
     {
@@ -35,5 +38,19 @@ clusterExtension(WindowCovering.id, [
         type: "uint32",
         access: "RW VM",
         details: "Time for a full slat rotation, in milliseconds.",
+    },
+    {
+        id: 0x15340004,
+        name: "WagoManualMode",
+        type: "bool",
+        access: "RW VM",
+        details: "Manual/automatic toggle of the WAGO Home app; true selects manual.",
+    },
+    {
+        id: 0x15340005,
+        name: "WagoBlindType",
+        type: "uint8",
+        access: "RW VM",
+        details: "Type of covering driven by the device: 0 = roller shutter, 1 = venetian blind.",
     },
 ]);

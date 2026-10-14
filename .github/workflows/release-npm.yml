@@ -107,8 +107,42 @@ jobs:
                   echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
                   echo "Detected version: ${VERSION}"
 
+                  # Prerelease dev number is the PR merge time (UTC, YYYYMMDDHHMM), so several
+                  # releases per day get distinct PyPI versions and a re-run computes the same one.
+                  determine_pep440() {
+                    local merged_at=""
+                    if [[ "$VERSION" == *-* ]]; then
+                      merged_at=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json mergedAt --jq '.mergedAt')
+                    fi
+                    PEP440=$(VERSION="$VERSION" MERGED_AT="$merged_at" python3 -c "
+                  import re, os
+                  from datetime import datetime, timezone
+                  v = os.environ['VERSION']
+                  m = re.match(r'^(\d+\.\d+\.\d+)(?:-(.+))?$', v)
+                  if not m:
+                      raise SystemExit(f'Invalid version format: {v!r}')
+                  base, pre = m.group(1), m.group(2)
+                  if pre:
+                      pm = re.match(r'^(alpha|beta|rc)(?:\.(\d+))?(-\d+)?', pre)
+                      if not pm:
+                          raise SystemExit(f'Invalid prerelease format: {v!r}')
+                      t = {'alpha':'a','beta':'b','rc':'rc'}[pm.group(1)]
+                      n = pm.group(2) or '0'
+                      d = ''
+                      if pm.group(3):
+                          merged = datetime.fromisoformat(os.environ['MERGED_AT'].replace('Z', '+00:00'))
+                          d = '.dev' + merged.astimezone(timezone.utc).strftime('%Y%m%d%H%M')
+                      print(f'{base}{t}{n}{d}')
+                  else:
+                      print(base)
+                  ")
+                    echo "PEP 440 version: ${PEP440}"
+                    echo "pep440_version=${PEP440}" >> "$GITHUB_OUTPUT"
+                  }
+
                   if [[ "$MERGE_RESULT" == "merged" ]]; then
                     echo "PR just merged — all publish steps needed"
+                    determine_pep440
                     echo "pr_merged=true" >> "$GITHUB_OUTPUT"
                     echo "npm_needed=true" >> "$GITHUB_OUTPUT"
                     echo "pypi_needed=true" >> "$GITHUB_OUTPUT"
@@ -146,22 +180,7 @@ jobs:
                     echo "npm_needed=true" >> "$GITHUB_OUTPUT"
                   fi
 
-                  # Check PyPI (needs semver → PEP 440 conversion)
-                  PEP440=$(VERSION="$VERSION" python3 -c "
-                  import re, os
-                  v = os.environ['VERSION']
-                  m = re.match(r'^(\d+\.\d+\.\d+)(?:-(.+))?$', v)
-                  base, pre = m.group(1), m.group(2)
-                  if pre:
-                      pm = re.match(r'(alpha|beta|rc)(?:\.(\d+))?(?:-(\d+))?', pre)
-                      t = {'alpha':'a','beta':'b','rc':'rc'}[pm.group(1)]
-                      n = pm.group(2) or '0'
-                      d = f'.dev{pm.group(3)}' if pm.group(3) else ''
-                      print(f'{base}{t}{n}{d}')
-                  else:
-                      print(base)
-                  ")
-                  echo "PEP 440 version: ${PEP440}"
+                  determine_pep440
                   if curl -sf "https://pypi.org/pypi/matter-python-client/${PEP440}/json" >/dev/null 2>&1; then
                     echo "PyPI (matter-python-client): already published"
                     echo "pypi_needed=false" >> "$GITHUB_OUTPUT"
@@ -245,48 +264,19 @@ jobs:
               if: steps.publish_tasks.outputs.pr_merged == 'true' && (steps.publish_tasks.outputs.pypi_needed == 'true' || steps.publish_tasks.outputs.pypi_ble_proxy_needed == 'true')
               run: pip install build tomli tomli-w
 
-            - name: Convert version to PEP 440 and set in pyproject.toml files
+            - name: Set PEP 440 version in pyproject.toml files
               if: steps.publish_tasks.outputs.pr_merged == 'true' && (steps.publish_tasks.outputs.pypi_needed == 'true' || steps.publish_tasks.outputs.pypi_ble_proxy_needed == 'true')
-              id: python_version
               shell: python
               env:
-                  SEMVER_VERSION: ${{ steps.version.outputs.result }}
+                  PEP440_VERSION: ${{ steps.publish_tasks.outputs.pep440_version }}
                   PYPI_NEEDED: ${{ steps.publish_tasks.outputs.pypi_needed }}
                   PYPI_BLE_PROXY_NEEDED: ${{ steps.publish_tasks.outputs.pypi_ble_proxy_needed }}
               run: |
-                  import re, os, tomli, tomli_w
+                  import os, tomli, tomli_w
 
-                  version = os.environ["SEMVER_VERSION"]
-
-                  # Convert semver to PEP 440
-                  match = re.match(r'^(\d+\.\d+\.\d+)(?:-(.+))?$', version)
-                  if not match:
-                      raise SystemExit(
-                          f"Invalid SEMVER_VERSION format: {version!r}. "
-                          "Expected 'MAJOR.MINOR.PATCH' or 'MAJOR.MINOR.PATCH-prerelease'."
-                      )
-                  base = match.group(1)
-                  prerelease = match.group(2)
-
-                  if prerelease:
-                      # Expected: alpha.N-YYYYMMDD[-sha] or beta.N-YYYYMMDD[-sha] or rc.N-...
-                      pre_match = re.match(r'^(alpha|beta|rc)(?:\.(\d+))?(?:-(\d+))?', prerelease)
-                      if not pre_match:
-                          raise SystemExit(
-                              f"Invalid prerelease format in SEMVER_VERSION: {version!r}. "
-                              "Expected 'alpha[.N][-DATE]', 'beta[.N][-DATE]', or 'rc[.N][-DATE]'."
-                          )
-                      pre_type = pre_match.group(1)
-                      pre_num = pre_match.group(2) or "0"
-                      date_str = pre_match.group(3)
-                      pep440_pre = {'alpha': 'a', 'beta': 'b', 'rc': 'rc'}[pre_type]
-                      pep440_version = f"{base}{pep440_pre}{pre_num}"
-                      if date_str:
-                          pep440_version = f"{pep440_version}.dev{date_str}"
-                  else:
-                      pep440_version = base
-
-                  print(f"Semver: {version} -> PEP 440: {pep440_version}")
+                  pep440_version = os.environ["PEP440_VERSION"]
+                  if not pep440_version:
+                      raise SystemExit("PEP 440 version missing from publish_tasks outputs")
 
                   def _patch(path: str) -> None:
                       with open(path, "rb") as f:
@@ -299,9 +289,6 @@ jobs:
                       _patch("python_client/pyproject.toml")
                   if os.environ.get("PYPI_BLE_PROXY_NEEDED") == "true":
                       _patch("python_ble_proxy/pyproject.toml")
-
-                  with open(os.environ["GITHUB_OUTPUT"], "a") as f:
-                      f.write(f"pep440_version={pep440_version}\n")
 
             - name: Build Python client package
               if: steps.publish_tasks.outputs.pr_merged == 'true' && steps.publish_tasks.outputs.pypi_needed == 'true'

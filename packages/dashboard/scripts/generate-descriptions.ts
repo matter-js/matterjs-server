@@ -5,7 +5,7 @@
  */
 
 import { decamelize } from "@matter/main";
-import { AttributeModel, CommandModel, Matter } from "@matter/main/model";
+import { AttributeModel, CommandModel, ElementTag, Matter, ValueModel } from "@matter/main/model";
 import { writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -62,7 +62,7 @@ interface ClusterAttributeDescription {
     id: number;
     cluster_id: number;
     label: string;
-    type: string;
+    type?: string;
     writable: boolean;
 }
 
@@ -98,17 +98,32 @@ interface SemanticTagNamespaceDescription {
     tags: { [tag_id: string]: SemanticTagDescription };
 }
 
+/** Decorator-defined and derived-cluster attributes state no `type`; it comes from their base. */
+function typeNameOf(model: ValueModel): string | undefined {
+    const visited = new Set<ValueModel>();
+    for (let current: ValueModel | undefined = model; current !== undefined; current = current.base) {
+        if (visited.has(current)) return undefined;
+        visited.add(current);
+        if (current.type !== undefined) return current.type;
+        if (current.tag === ElementTag.Datatype) return current.name;
+    }
+    return undefined;
+}
+
 /**
  * Convert a matter.js type to a display-friendly type string.
  */
-function getTypeString(attr: AttributeModel): string {
-    const type = attr.type ?? "unknown";
+function getTypeString(attr: AttributeModel): string | undefined {
+    const type = typeNameOf(attr);
+    if (type === undefined) {
+        if (attr.isDeprecated || attr.isDisallowed) return undefined;
+        throw new Error(`Attribute ${attr.parent?.name}.${attr.name} has no resolvable type`);
+    }
     const metatype = attr.metabase?.metatype;
 
-    // Handle list types
-    if (type === "list" && attr.members.length > 0) {
-        const entryType = attr.members.at(0)!.type ?? "any";
-        return `List[${entryType}]`;
+    if (type === "list") {
+        const entry = attr.listEntry;
+        return `List[${(entry && typeNameOf(entry)) ?? "any"}]`;
     }
 
     // Handle nullable/optional
@@ -244,7 +259,7 @@ export interface ClusterAttributeDescription {
     id: number;
     cluster_id: number;
     label: string;
-    type: string;
+    type?: string;
     writable: boolean;
 }
 

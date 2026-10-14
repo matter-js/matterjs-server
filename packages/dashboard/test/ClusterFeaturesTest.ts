@@ -76,3 +76,32 @@ describe("generated cluster feature bits", () => {
         expect(active.map(f => f.code)).to.deep.equal(["HEAT", "COOL", "AUTO", "MSCH", "PRES", "TEVT", "TSUGGEST"]);
     });
 });
+
+describe("generated attribute types", () => {
+    it("resolves a type for every attribute", () => {
+        const unresolved = Object.values(clusters).flatMap(cluster =>
+            Object.values(cluster.attributes)
+                .filter(attribute => attribute.type?.includes("unknown"))
+                .map(attribute => `${cluster.label}.${attribute.label}`),
+        );
+        expect(unresolved).to.deep.equal([]);
+    });
+
+    it("takes the type of a custom cluster attribute from its datatype", () => {
+        expect(clusters[0x120bfc01].attributes[0x1004].type).to.equal("Optional[uint8]");
+    });
+
+    it("takes the type of a derived cluster attribute from its base cluster", () => {
+        expect(clusters[0x54].attributes[0x01].type).to.equal("uint8");
+        expect(clusters[0x54].attributes[0x00].type).to.equal("List[ModeOptionStruct]");
+    });
+
+    it("keeps the label of a deprecated attribute that has no type", () => {
+        expect(clusters[0x101].attributes[0x34]).to.deep.equal({
+            id: 0x34,
+            cluster_id: 0x101,
+            label: "SecurityLevel",
+            writable: false,
+        });
+    });
+});

@@ -124,6 +124,7 @@ def test_heiman_short_attribute_ids():
     assert HeimanCluster.Attributes.SirenActive.attribute_id == 0x0014
     assert HeimanCluster.Attributes.AlarmMute.attribute_id == 0x0015
     assert HeimanCluster.Attributes.LowPowerMode.attribute_id == 0x0016
+    assert HeimanCluster.Attributes.IndicatorEnable.attribute_id == 0x1004
 
 
 def test_polling_removed():
@@ -181,10 +182,18 @@ def test_wago_window_covering_extension_attributes_exist() -> None:
     assert attrs.WagoTravelTimeUp.attribute_id == 0x15340001
     assert attrs.WagoTravelTimeDown.attribute_id == 0x15340002
     assert attrs.WagoSlatRotationTime.attribute_id == 0x15340003
+    assert attrs.WagoManualMode.attribute_id == 0x15340004
+    assert attrs.WagoBlindType.attribute_id == 0x15340005
     assert attrs.WagoTravelTimeUp.cluster_id == 0x0102
 
     fields = clusters.WindowCovering.__dataclass_fields__
-    for name in ("wagoTravelTimeUp", "wagoTravelTimeDown", "wagoSlatRotationTime"):
+    for name in (
+        "wagoTravelTimeUp",
+        "wagoTravelTimeDown",
+        "wagoSlatRotationTime",
+        "wagoManualMode",
+        "wagoBlindType",
+    ):
         assert name in fields, f"WindowCovering missing '{name}'"
 
     tags = {
@@ -193,6 +202,8 @@ def test_wago_window_covering_extension_attributes_exist() -> None:
     assert tags["wagoTravelTimeUp"] == 0x15340001
     assert tags["wagoTravelTimeDown"] == 0x15340002
     assert tags["wagoSlatRotationTime"] == 0x15340003
+    assert tags["wagoManualMode"] == 0x15340004
+    assert tags["wagoBlindType"] == 0x15340005
 
 
 def test_aqara_fp400_clusters():
