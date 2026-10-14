@@ -1,0 +1,49 @@
+# Runs the matter.js controller certification suite against this server (npm run cert).
+name: Controller certification tests
+
+on:
+    workflow_dispatch:
+        inputs:
+            matterjs-ref:
+                description: "matter.js branch, tag or commit with the certification suite"
+                required: false
+                default: "feat/cert-matterjs-server-controller"
+            tc:
+                description: "Single test case, for example TC-IDM-2.1 (empty: whole suite)"
+                required: false
+                default: ""
+    push:
+        branches: ["ci/cert-dut"]
+
+concurrency:
+    group: ${{ github.ref }}-cert-controller
+    cancel-in-progress: true
+
+jobs:
+    cert:
+        runs-on: ubuntu-latest
+        timeout-minutes: 90
+        env:
+            # The matterjs-server adapter is not in matter.js main yet.
+            MATTERJS_REF: ${{ inputs.matterjs-ref || 'feat/cert-matterjs-server-controller' }}
+            TC: ${{ inputs.tc }}
+        steps:
+            - uses: actions/checkout@v7
+            - name: Prepare environment
+              uses: ./.github/actions/prepare-env
+            - name: Run certification tests
+              run: |
+                  if [ -n "$TC" ]; then
+                      npm run cert -- --tc "$TC"
+                  else
+                      npm run cert
+                  fi
+            - name: Upload evidence
+              if: always()
+              uses: actions/upload-artifact@v4
+              with:
+                  name: cert-evidence
+                  path: |
+                      .cert/evidence
+                      .cert/matter.js/support/chip-testing/build/cert-evidence
+                  if-no-files-found: warn
