@@ -619,21 +619,26 @@ async def test_connection_loss_ends_every_listener() -> None:
     assert client._subscription_listeners == {}
 
 
-async def test_a_raising_listener_on_disconnect_surfaces_after_the_connection_closed() -> None:
+async def test_a_raising_listener_on_disconnect_does_not_starve_the_others(caplog: pytest.LogCaptureFixture) -> None:
     client, sent = _manual_client()
+    ended: list[tuple[EventType, int]] = []
 
-    def listener(_event: EventType, _data: Any) -> None:
+    def raising(_event: EventType, _data: Any) -> None:
         raise RuntimeError("listener failed")
 
-    task = asyncio.create_task(client.subscribe(1, 0, 60, attribute_paths=["1/6/0"], listener=listener))
-    _respond(client, await _next(sent), _SUBSCRIBED)
-    await asyncio.wait_for(task, 1)
+    def recording(event: EventType, data: Any) -> None:
+        ended.append((event, data.subscription_id))
 
-    connection_disconnect = client.connection.disconnect
-    assert isinstance(connection_disconnect, AsyncMock)
-    with pytest.raises(RuntimeError, match="listener failed"):
+    for listener, subscription_id in ((raising, 7), (recording, 8)):
+        task = asyncio.create_task(client.subscribe(1, 0, 60, attribute_paths=["1/6/0"], listener=listener))
+        _respond(client, await _next(sent), {**_SUBSCRIBED, "subscription_id": subscription_id})
+        await asyncio.wait_for(task, 1)
+
+    with caplog.at_level(logging.ERROR):
         await client.disconnect()
-    connection_disconnect.assert_awaited_once()
+
+    assert ended == [(EventType.SUBSCRIPTION_ENDED, 8)]
+    assert "listener for 1/7 failed on end" in caplog.text
     assert client._subscription_listeners == {}
 
 

@@ -1270,9 +1270,14 @@ class MatterClient:
         listeners = list(self._subscription_listeners.items())
         self._subscription_listeners.clear()
         for (node_id, subscription_id), listener in listeners:
-            listener(
-                EventType.SUBSCRIPTION_ENDED, SubscriptionEndedData(node_id=node_id, subscription_id=subscription_id)
-            )
+            # Every listener must learn of the end; a raising one must not starve the rest or fail disconnect().
+            try:
+                listener(
+                    EventType.SUBSCRIPTION_ENDED,
+                    SubscriptionEndedData(node_id=node_id, subscription_id=subscription_id),
+                )
+            except Exception:
+                self.logger.exception("Subscription listener for %s/%s failed on end", node_id, subscription_id)
 
     def _handle_incoming_message(self, msg: MessageType) -> None:
         """
