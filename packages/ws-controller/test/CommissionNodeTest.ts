@@ -4,7 +4,18 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Crypto, FabricId, MockCrypto, NodeId, Seconds, ServerNode, VendorId } from "@matter/main";
+import {
+    Crypto,
+    DeviceNotDiscoveredError,
+    DiscoveryIncompleteError,
+    FabricId,
+    MockCrypto,
+    NoDiscoveryTransportError,
+    NodeId,
+    Seconds,
+    ServerNode,
+    VendorId,
+} from "@matter/main";
 import {
     CommissioningFlowType,
     DiscoveryCapabilitiesSchema,
@@ -438,6 +449,15 @@ describe("commissionFailureOf", () => {
     it("names an attestation rejection before any other cause", () => {
         const rejected = new CommissioningError("rejected", { cause: new PasscodeMismatchError() });
         expect(commissionFailureOf(rejected, true).reason).equals("attestation-rejected");
+    });
+
+    it("names a device found but not reached in time a timeout, and one never found not discovered", () => {
+        expect(commissionFailureOf(new DiscoveryIncompleteError("cut off"), false).reason).equals("timeout");
+        expect(commissionFailureOf(new DeviceNotDiscoveredError("none"), false).reason).equals("not-discovered");
+    });
+
+    it("names a missing discovery transport other", () => {
+        expect(commissionFailureOf(new NoDiscoveryTransportError("no BLE"), false).reason).equals("other");
     });
 
     it("names anything else other", () => {

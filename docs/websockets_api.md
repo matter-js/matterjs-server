@@ -65,8 +65,8 @@ Optional fields of an error response (schema 14):
   stays as it was.
 - `reason`: why commissioning failed, with every `NodeCommissionFailed` error of `commission_with_code` and
   `commission_on_network`, and with a pairing code that cannot be decoded: `not-discovered` (no matching device was
-  found, or the attempts ended without a recorded error; when an attempt failed with an error, the reason is `timeout`
-  if one timed out, otherwise `other`), `passcode-mismatch` (the device rejected the pairing
+  found. A device that was found but not reached in time gives `timeout`. An attempt that failed with an error gives
+  `timeout` if it timed out, otherwise `other`), `passcode-mismatch` (the device rejected the pairing
   code), `invalid-payload` (the pairing code could not be decoded; `error_code` is `InvalidArguments`),
   `attestation-rejected` (the device certificates were not accepted), `timeout` (the device stopped answering or
   commissioning took too long), `other`. Other argument errors carry no `reason`.
@@ -333,8 +333,8 @@ Using manual pairing code (network only):
 up the PASE session with it. Allowed are numbers above 0 up to 172800 (48 hours, the longest a device announces for
 commissioning);
 `null` counts as not given. Without it matter.js searches for 3 minutes. The commissioning steps after PASE are not
-limited. A device found too late to finish PASE is reported the same way as one never found: `NodeCommissionFailed`
-with `reason` `not-discovered`.
+limited. A device that is found but not reached in time fails with `NodeCommissionFailed` and `reason` `timeout`; a device
+never found, with `reason` `not-discovered`.
 
 **commission_on_network** - Commission a device already on the network
 

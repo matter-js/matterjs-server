@@ -11,6 +11,8 @@ import {
     camelize,
     causedBy,
     DiscoveryError,
+    DiscoveryIncompleteError,
+    NoDiscoveryTransportError,
     ClientNode,
     CommissioningClient,
     Duration,
@@ -60,6 +62,7 @@ import {
     PeerSet,
     Read,
     ReadResult,
+    ResultStatus,
     Specifier,
     Subscribe,
     Write,
@@ -78,7 +81,6 @@ import {
     QrPairingCodeCodec,
     SpecificationVersion,
     Status,
-    ReceivedStatusResponseError,
     StatusResponseError,
     VendorId,
 } from "@matter/main/types";
@@ -309,8 +311,11 @@ export function commissionFailureOf(error: unknown, attestationRejected: boolean
             "The pairing code does not match the device. Check the code and commission again.",
         );
     }
-    if (causedBy(error, TimeoutError, CommissioningTimeoutError)) {
+    if (causedBy(error, TimeoutError, CommissioningTimeoutError, DiscoveryIncompleteError)) {
         return failed("timeout");
+    }
+    if (causedBy(error, NoDiscoveryTransportError)) {
+        return failed("other");
     }
     if (causedBy(error, DiscoveryError)) {
         return failed("not-discovered");
@@ -1556,11 +1561,7 @@ export class ControllerCommandHandler {
                 switch (entry.kind) {
                     case "cmd-status":
                         if (entry.status !== Status.Success) {
-                            const message =
-                                Status[entry.status] === undefined
-                                    ? `Unknown status response (code ${entry.status})`
-                                    : StatusResponseError.create(entry.status, undefined, entry.clusterStatus).message;
-                            throw new ReceivedStatusResponseError(message, entry.status, entry.clusterStatus);
+                            throw ResultStatus.errorOf(entry);
                         }
                         return;
 
@@ -2280,17 +2281,9 @@ export class ControllerCommandHandler {
         waiters.add(settle);
         const observers = new ObserverGroup();
         observers.on(node.eventsOf(NetworkClient).subscriptionStatusChanged, isActive => {
-            if (!isActive) {
-                return;
+            if (isActive) {
+                settle(undefined);
             }
-            // matter.js also reports a subscription closed during its retry backoff as active.
-            Promise.resolve(node.act(agent => agent.get(NetworkClient).subscriptionActive))
-                .then(active => {
-                    if (active) {
-                        settle(undefined);
-                    }
-                })
-                .catch(error => logger.warn(`Failed to check the subscription of node ${nodeId}:`, error));
         });
         // Only a change counts: an older unreachable mark stays until a session comes up and says nothing about now.
         observers.on(node.lifecycle.connectionStateChanged, state => {
