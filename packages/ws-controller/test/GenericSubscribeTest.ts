@@ -5,7 +5,7 @@
  */
 
 import { ClientNode, InternalError, NodeId, Seconds, SessionsBehavior } from "@matter/main";
-import { Subscribe } from "@matter/main/protocol";
+import { ClientSubscribe } from "@matter/main/protocol";
 import { Status } from "@matter/main/types";
 import { BooleanStateServer } from "@matter/node/behaviors/boolean-state";
 import { OnOffServer } from "@matter/node/behaviors/on-off";
@@ -17,7 +17,7 @@ import { InteractionWsHarness } from "./support/InteractionWsHarness.js";
 
 /** Snapshots the filters too: matter.js appends the data versions it knows to the request's own filter array. */
 function captureSubscribes(peer: ClientNode) {
-    const captured = new Array<Subscribe>();
+    const captured = new Array<ClientSubscribe>();
     const interaction = peer.interaction;
     const subscribe = interaction.subscribe.bind(interaction);
     interaction.subscribe = (request, session) => {
@@ -128,6 +128,7 @@ describe("generic subscribe", () => {
             expect(request.minIntervalFloor).equals(Seconds(1));
             expect(request.maxIntervalCeiling).equals(Seconds(30));
             expect(request.keepSubscriptions).equals(false);
+            expect(request.includeKnownVersions).equals(true);
             expect(request.isFabricFiltered).equals(false);
             expect(request.dataVersionFilters).deep.equals([{ path: { endpointId: 1, clusterId: 6 }, dataVersion: 5 }]);
             expect(request.eventFilters).deep.equals([{ eventMin: 3n }]);

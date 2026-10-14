@@ -271,6 +271,40 @@ describe("ws-client", () => {
                 expect(server.getReceivedCommands().map(({ message }) => message.command)).to.deep.equal([]);
             });
 
+            it("sends parseOnboardingPayload on schema 15 and refuses it below", async () => {
+                await server.stop();
+                server = new MockMatterServer({ serverInfo: { schema_version: 15 } });
+                server.onCommand("parse_onboarding_payload", () => ({
+                    type: "manual",
+                    short_discriminator: 15,
+                    setup_pin_code: 20202021,
+                }));
+                await server.start();
+                client = new MatterClient(server.url, createNodeWebSocket);
+                await client.connect();
+
+                const parsed = await client.parseOnboardingPayload("34970112332");
+
+                expect(parsed).to.deep.equal({ type: "manual", short_discriminator: 15, setup_pin_code: 20202021 });
+                expect(server.getReceivedCommands().map(({ message }) => message.args)).to.deep.equal([
+                    { code: "34970112332" },
+                ]);
+
+                await server.stop();
+                server = new MockMatterServer({ serverInfo: { schema_version: 14 } });
+                await server.start();
+                client = new MatterClient(server.url, createNodeWebSocket);
+                await client.connect();
+                let refusal: unknown;
+                try {
+                    await client.parseOnboardingPayload("34970112332");
+                } catch (error) {
+                    refusal = error;
+                }
+                expect(refusal).to.be.instanceOf(InvalidServerVersion);
+                expect(server.getReceivedCommands()).to.deep.equal([]);
+            });
+
             it("sends enable and disable auto subscription for the node", async () => {
                 const received = new Array<unknown>();
                 server.onCommand("enable_auto_subscription", args => {

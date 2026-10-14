@@ -10,6 +10,17 @@ The server-side constants live in `packages/ws-controller/src/server/WebSocketCo
 (`SCHEMA_VERSION`, `MIN_SUPPORTED_SCHEMA_VERSION`). Versions predating this document are not
 listed retroactively; entries start at the first version maintained here.
 
+## Schema 15
+
+Minimum supported: 11.
+
+- **New command `parse_onboarding_payload`** `{ code }` → `{ type: "qr", payloads: [{ version, vendor_id?, product_id?,
+  flow_type, discovery_capabilities, discriminator, setup_pin_code, tlv_data? }] }` or `{ type: "manual",
+  short_discriminator, setup_pin_code, vendor_id?, product_id? }`. Decodes a code as `commission_with_code` does, without
+  contacting a device. An undecodable code fails with `InvalidArguments` and `reason` `invalid-payload`.
+- **`subscribe`** sends only the data version filters the caller gives, as `read` does, so the priming report holds
+  every requested cluster the caller does not filter. Before, the server added the data versions it knew.
+
 ## Schema 14
 
 Minimum supported: 11 (older clients keep working with the pre-14 command shapes).

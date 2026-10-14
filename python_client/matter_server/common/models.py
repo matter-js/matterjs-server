@@ -85,6 +85,7 @@ class APICommand(str, Enum):
     UNSUBSCRIBE = "unsubscribe"  # schema 14+
     ENABLE_AUTO_SUBSCRIPTION = "enable_auto_subscription"  # schema 14+
     DISABLE_AUTO_SUBSCRIPTION = "disable_auto_subscription"  # schema 14+
+    PARSE_ONBOARDING_PAYLOAD = "parse_onboarding_payload"  # schema 15+
 
 
 EventCallBackType = Callable[[EventType, Any], None]
@@ -876,3 +877,36 @@ class SubscriptionEndedData:
 
 
 SubscriptionListener = Callable[[EventType, SubscriptionReportData | SubscriptionEndedData], None]
+
+
+@dataclass
+class QrOnboardingPayload:
+    """One payload of a QR code; `vendor_id`/`product_id` are None where the payload says 0."""
+
+    version: int
+    flow_type: int
+    discovery_capabilities: int
+    discriminator: int
+    setup_pin_code: int
+    vendor_id: int | None = None
+    product_id: int | None = None
+    tlv_data: str | None = None
+
+
+@dataclass
+class QrOnboardingPayloadResult:
+    """Result of `parse_onboarding_payload` for a QR code: one entry per payload it carries."""
+
+    type: str
+    payloads: list[QrOnboardingPayload]
+
+
+@dataclass
+class ManualOnboardingPayloadResult:
+    """Result of `parse_onboarding_payload` for a manual pairing code; vendor and product only in the 21-digit form."""
+
+    type: str
+    short_discriminator: int
+    setup_pin_code: int
+    vendor_id: int | None = None
+    product_id: int | None = None

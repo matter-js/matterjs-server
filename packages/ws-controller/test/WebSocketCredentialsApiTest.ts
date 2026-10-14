@@ -996,12 +996,12 @@ describe("WebSocket Credentials API", () => {
         expect(def?.extPanId).to.equal(def?.extPanId?.toUpperCase());
     });
 
-    it("server_info reports schema 14 / min 11", async () => {
+    it("server_info reports schema 15 / min 11", async () => {
         const info = await h.handle<{ schema_version: number; min_supported_schema_version: number }>(
             "server_info",
             {},
         );
-        expect(info.schema_version).to.equal(14);
+        expect(info.schema_version).to.equal(15);
         expect(info.min_supported_schema_version).to.equal(11);
     });
 

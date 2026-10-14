@@ -93,6 +93,8 @@ Beyond the `python-matter-server` API, the client exposes commands the Matter.js
   `unsubscribe` and logs a failure of that call. `subscribe`, `unsubscribe` and the two auto
   subscription methods need a server running with auto subscription disabled.
 - `commission_with_code` and `commission_on_network` take `discovery_timeout_s` (schema 14+)
+- `parse_onboarding_payload` — decodes a QR code or manual pairing code without contacting a device and returns
+  `QrOnboardingPayloadResult` or `ManualOnboardingPayloadResult` (schema 15+)
 - `camera_get_capabilities`, `camera_start_stream`, `camera_provide_answer`,
   `camera_provide_ice_candidates`, `camera_stop_stream`, `camera_snapshot`, `camera_release_stream`
   — the camera API (schema 14+). `camera_get_capabilities`, `camera_start_stream`, `camera_stop_stream`

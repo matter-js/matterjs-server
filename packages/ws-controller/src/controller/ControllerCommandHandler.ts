@@ -60,11 +60,11 @@ import {
     PasscodeMismatchError,
     PeerAddress,
     PeerSet,
+    PlainClientSubscribe,
     Read,
     ReadResult,
     ResultStatus,
     Specifier,
-    Subscribe,
     Write,
 } from "@matter/main/protocol";
 import {
@@ -77,8 +77,6 @@ import {
     EventNumber,
     EventPath,
     GroupId,
-    ManualPairingCodeCodec,
-    QrPairingCodeCodec,
     SpecificationVersion,
     Status,
     StatusResponseError,
@@ -134,7 +132,6 @@ import {
     CommissionFailureReason,
     NodePingResult,
     ServerError,
-    ServerErrorCode,
     UpdateSource,
 } from "../types/WebSocketMessageTypes.js";
 import { isBridgeNode } from "../util/bridgeDetection.js";
@@ -146,6 +143,7 @@ import type { ControllerResources } from "./ControllerNode.js";
 import { CustomClusterPoller } from "./CustomClusterPoller.js";
 import { NodeAttributeReader } from "./NodeProcessor.js";
 import { Nodes } from "./Nodes.js";
+import { decodeManualCode, decodeQrCode } from "./onboardingPayload.js";
 import { AttributeChange, EventChange, PeerChangeBus } from "./PeerChangeBus.js";
 import { ThreadDetailsPoller } from "./ThreadDetailsPoller.js";
 import { pushNodeTime, TimeSyncInvokers } from "./timeSyncCommands.js";
@@ -275,20 +273,6 @@ class UnreachedAddressError extends Error {
 }
 
 const UNSCOPED_INVOKES = {};
-
-function decodePairingCode<T>(decode: () => T): T {
-    try {
-        return decode();
-    } catch (error) {
-        const cause = error instanceof Error ? error : undefined;
-        throw new ServerError(
-            ServerErrorCode.InvalidArguments,
-            `Invalid pairing code: ${cause?.message ?? String(error)}`,
-            cause,
-            "invalid-payload",
-        );
-    }
-}
 
 /**
  * The `NodeCommissionFailed` error for a failed commissioning, with a `reason` a client can act on. With
@@ -1295,8 +1279,9 @@ export class ControllerCommandHandler {
         }
 
         let priming: InteractionReport | undefined;
-        const subscribe: Subscribe = {
+        const subscribe: PlainClientSubscribe = {
             ...this.#readOf(request),
+            includeKnownVersions: true,
             keepSubscriptions: request.keepSubscriptions ?? false,
             minIntervalFloor: Seconds(minInterval),
             maxIntervalCeiling: Seconds(maxInterval),
@@ -1745,13 +1730,13 @@ export class ControllerCommandHandler {
         let deviceType: number | undefined = undefined;
 
         if ("manualCode" in data && data.manualCode.length > 0) {
-            const pairingCodeCodec = decodePairingCode(() => ManualPairingCodeCodec.decode(data.manualCode));
+            const pairingCodeCodec = decodeManualCode(data.manualCode);
             shortDiscriminator = pairingCodeCodec.shortDiscriminator;
             longDiscriminator = undefined;
             passcode = pairingCodeCodec.passcode;
             ({ vendorId, productId } = pairingCodeCodec);
         } else if ("qrCode" in data && data.qrCode.length > 0) {
-            const pairingCodeCodec = decodePairingCode(() => QrPairingCodeCodec.decode(data.qrCode));
+            const pairingCodeCodec = decodeQrCode(data.qrCode);
             // TODO handle the case where multiple devices are included
             longDiscriminator = pairingCodeCodec[0].discriminator;
             shortDiscriminator = undefined;

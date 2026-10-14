@@ -46,6 +46,7 @@ from matter_server.common.models import (
     EventType,
     IcdStateData,
     InteractionReport,
+    ManualOnboardingPayloadResult,
     MatterNodeData,
     MatterNodeEvent,
     MatterSoftwareVersion,
@@ -53,6 +54,7 @@ from matter_server.common.models import (
     NetworkTopology,
     NodePingResult,
     OtaUploadTicket,
+    QrOnboardingPayloadResult,
     ResultMessageBase,
     ServerDiagnostics,
     ServerInfoMessage,
@@ -844,6 +846,16 @@ class MatterClient:
         Requires schema 14.
         """
         await self.send_command(APICommand.ENABLE_AUTO_SUBSCRIPTION, require_schema=14, node_id=node_id)
+
+    async def parse_onboarding_payload(self, code: str) -> QrOnboardingPayloadResult | ManualOnboardingPayloadResult:
+        """Decode a QR code payload (``MT:...``) or a manual pairing code without contacting any device.
+
+        Requires schema 15.
+        """
+        data = await self.send_command(APICommand.PARSE_ONBOARDING_PAYLOAD, require_schema=15, code=code)
+        if data["type"] == "qr":
+            return dataclass_from_dict(QrOnboardingPayloadResult, data)
+        return dataclass_from_dict(ManualOnboardingPayloadResult, data)
 
     async def disable_auto_subscription(self, node_id: int) -> None:
         """Switch the server's own subscription to a node off again.

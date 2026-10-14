@@ -19,8 +19,11 @@ from matter_server.common.models import (
     EventMessage,
     EventType,
     InteractionReport,
+    ManualOnboardingPayloadResult,
     MatterNodeEvent,
     PathStatus,
+    QrOnboardingPayload,
+    QrOnboardingPayloadResult,
     ServerInfoMessage,
     SubscribeResult,
     SubscriptionEndedData,
@@ -737,3 +740,40 @@ async def test_subscribe_cancelled_while_disconnecting_sends_no_unsubscribe() ->
         await asyncio.wait_for(task, 1)
     assert sent.empty()
     assert not client._background_tasks
+
+
+async def test_parse_onboarding_payload_returns_the_qr_payloads() -> None:
+    payload = {
+        "version": 0,
+        "vendor_id": 65521,
+        "product_id": 32768,
+        "flow_type": 0,
+        "discovery_capabilities": 4,
+        "discriminator": 3840,
+        "setup_pin_code": 20202021,
+        "tlv_data": "152c000341424318",
+    }
+    client, sent = _wire_client(15, {"type": "qr", "payloads": [payload]})
+
+    result = await client.parse_onboarding_payload("MT:Y.K90AFN00KA064IJ3P027M30PKC42O0")
+
+    assert result == QrOnboardingPayloadResult(type="qr", payloads=[QrOnboardingPayload(**payload)])
+    assert [(message.command, message.args) for message in sent] == [
+        (APICommand.PARSE_ONBOARDING_PAYLOAD, {"code": "MT:Y.K90AFN00KA064IJ3P027M30PKC42O0"})
+    ]
+
+
+async def test_parse_onboarding_payload_returns_a_manual_code() -> None:
+    client, _ = _wire_client(15, {"type": "manual", "short_discriminator": 15, "setup_pin_code": 20202021})
+
+    result = await client.parse_onboarding_payload("34970112332")
+
+    assert result == ManualOnboardingPayloadResult(type="manual", short_discriminator=15, setup_pin_code=20202021)
+
+
+async def test_parse_onboarding_payload_is_refused_below_schema_15() -> None:
+    client, sent = _wire_client(14)
+
+    with pytest.raises(ServerVersionTooOld):
+        await client.parse_onboarding_payload("34970112332")
+    assert sent == []

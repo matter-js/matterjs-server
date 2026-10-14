@@ -983,6 +983,11 @@ export interface APICommands {
         };
         response: MatterNodeData;
     };
+    /** Schema 15. Decodes a QR code payload or a manual pairing code without contacting any device. */
+    parse_onboarding_payload: {
+        requestArgs: { code: string };
+        response: OnboardingPayloadResult;
+    };
     set_wifi_credentials: {
         requestArgs: { ssid: string; credentials: string; id?: string };
         response: Record<string, never>;
@@ -1616,6 +1621,36 @@ export type EventMessage =
 export interface ResultMessageBase {
     message_id: string;
 }
+
+/** One payload of a QR code, as `parse_onboarding_payload` decodes it. */
+export interface QrOnboardingPayload {
+    version: number;
+    /** Left out when the payload says 0 (unspecified). */
+    vendor_id?: number;
+    /** Left out when the payload says 0 (unspecified). */
+    product_id?: number;
+    /** 0 standard, 1 user-intent, 2 custom. */
+    flow_type: number;
+    /** The discovery capabilities bitmask as encoded in the payload. */
+    discovery_capabilities: number;
+    discriminator: number;
+    setup_pin_code: number;
+    /** The TLV data appended to the payload, as hex; only when the payload carries some. */
+    tlv_data?: string;
+}
+
+/** Result of `parse_onboarding_payload`. */
+export type OnboardingPayloadResult =
+    | { type: "qr"; payloads: QrOnboardingPayload[] }
+    | {
+          type: "manual";
+          short_discriminator: number;
+          setup_pin_code: number;
+          /** Only in the 21-digit form. */
+          vendor_id?: number;
+          /** Only in the 21-digit form. */
+          product_id?: number;
+      };
 
 /** Why commissioning failed; sent with `commission_with_code` and `commission_on_network` errors. */
 export type CommissionFailureReason =

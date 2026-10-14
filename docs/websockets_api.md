@@ -364,6 +364,53 @@ Filter types:
 `discovery_timeout_s` works as for `commission_with_code`. The attempt at `ip_addr` keeps the PASE limit of matter.js;
 the timeout applies to the discovery that follows when that attempt fails.
 
+**parse_onboarding_payload** *(schema 15+)* - Decode a QR code payload or a manual pairing code
+
+Decodes the code the way `commission_with_code` reads it, without contacting any device and without changing any
+state.
+
+```json
+{
+  "message_id": "1",
+  "command": "parse_onboarding_payload",
+  "args": { "code": "MT:Y.K90AFN00KA0648G00" }
+}
+```
+
+- `code` (required, string): a QR code payload (starting with `MT:`) or an 11- or 21-digit manual pairing code.
+
+Response for a QR code, one entry per payload, so a code that concatenates several payloads returns several:
+
+```json
+{
+  "type": "qr",
+  "payloads": [
+    {
+      "version": 0,
+      "vendor_id": 65521,
+      "product_id": 32768,
+      "flow_type": 0,
+      "discovery_capabilities": 4,
+      "discriminator": 3840,
+      "setup_pin_code": 20202021
+    }
+  ]
+}
+```
+
+`vendor_id` and `product_id` are left out where the payload says 0 (unspecified). `flow_type` is 0 standard, 1
+user-intent, 2 custom. `discovery_capabilities` is the bitmask as encoded in the payload. `tlv_data` holds the TLV data
+appended to the payload as hex, and is only present when the payload carries some.
+
+Response for a manual pairing code; `vendor_id` and `product_id` only for the 21-digit form:
+
+```json
+{ "type": "manual", "short_discriminator": 15, "setup_pin_code": 20202021 }
+```
+
+A code that cannot be decoded fails with `InvalidArguments` (8) and `reason` `invalid-payload`, as in
+`commission_with_code`. A missing or non-string `code` fails with `InvalidArguments` without `reason`.
+
 **open_commissioning_window** - Open commissioning window to share a device
 
 Open a commissioning window to allow another controller to commission a device already on this controller.
@@ -677,9 +724,8 @@ Arguments are those of `read` plus:
   those of other connections; each one that was opened with `subscribe` then arrives as `subscription_ended` at its
   connection. `true` keeps them.
 
-The server adds the data versions it already knows for the requested clusters to the request's data version
-filters (matter.js does this for every subscription), so the priming report can leave out clusters that did not
-change.
+Only the data version filters the caller gives are sent, as for `read` (schema 15; before, the server added the data
+versions it already knew, so the priming report could leave out clusters that did not change).
 
 Response:
 

@@ -13,6 +13,7 @@ import {
     ClusterId,
     Duration,
     FabricIndex,
+    InternalError,
     Logger,
     LogLevel,
     Millis,
@@ -49,6 +50,7 @@ import { rejectUnknownKeys, toNodeIdValue } from "../camera/wireArgumentChecks.j
 import { ControllerCommandHandler } from "../controller/ControllerCommandHandler.js";
 import { MatterController, registerThreadCredentialsFromHex } from "../controller/MatterController.js";
 import type { TopologyNodeSource } from "../controller/NetworkTopologyService.js";
+import { decodeOnboardingPayload, isQrCode } from "../controller/onboardingPayload.js";
 import { TestNodeCommandHandler } from "../controller/TestNodeCommandHandler.js";
 import { dropWebRtcSessionTracking, invokeEndSession } from "../controller/webRtcSessionTracking.js";
 import { VendorIds } from "../data/VendorIDs.js";
@@ -105,7 +107,7 @@ function isIdentityConflict(error: unknown): boolean {
 /** Maximum number of events to keep in the history buffer */
 const EVENT_HISTORY_SIZE = 25;
 
-const SCHEMA_VERSION = 14;
+const SCHEMA_VERSION = 15;
 /** One day; matter.js adds the value to its response timeout, and Node.js fires timers past 2^31-1 ms at once. */
 const MAX_INTERACTION_TIMEOUT_MS = 86_400_000;
 const MIN_SUPPORTED_SCHEMA_VERSION = 11;
@@ -894,6 +896,9 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 case "commission_on_network":
                     result = await this.#handleCommissionOnNetwork(args);
                     break;
+                case "parse_onboarding_payload":
+                    result = this.#handleParseOnboardingPayload(args);
+                    break;
                 case "get_icd_state":
                     result = await this.#handleGetIcdState(args);
                     break;
@@ -1234,7 +1239,6 @@ export class WebSocketControllerHandler implements WebServerHandler {
     async #handleCommissionWithCode(args: ArgsOf<"commission_with_code">): Promise<ResponseOf<"commission_with_code">> {
         const { code, network_only, wifi_credentials_id, thread_dataset_id } = args;
         const discoveryTimeout = discoveryTimeoutOf(args.discovery_timeout_s);
-        const isQrCode = code.startsWith("MT:");
 
         const wifiId = wifi_credentials_id ?? ConfigStorage.DEFAULT_CREDENTIAL_ID;
         const threadId = thread_dataset_id ?? ConfigStorage.DEFAULT_CREDENTIAL_ID;
@@ -1273,12 +1277,46 @@ export class WebSocketControllerHandler implements WebServerHandler {
             nodeId,
             onNetworkOnly: network_only,
             discoveryTimeout,
-            ...(isQrCode ? { qrCode: code } : { manualCode: code }),
+            ...(isQrCode(code) ? { qrCode: code } : { manualCode: code }),
             wifiCredentials,
             threadCredentials,
         }));
 
         return this.#collectNodeDetails(nodeId);
+    }
+
+    #handleParseOnboardingPayload(args: ArgsOf<"parse_onboarding_payload">): ResponseOf<"parse_onboarding_payload"> {
+        const { code } = args;
+        if (typeof code !== "string") {
+            throw ServerError.invalidArguments("parse_onboarding_payload requires code as a string");
+        }
+        const decoded = decodeOnboardingPayload(code);
+        if (decoded.type === "manual") {
+            const { shortDiscriminator, passcode, vendorId, productId } = decoded.payload;
+            if (shortDiscriminator === undefined) {
+                throw new InternalError("A decoded manual pairing code has no short discriminator");
+            }
+            return {
+                type: "manual",
+                short_discriminator: shortDiscriminator,
+                setup_pin_code: passcode,
+                vendor_id: vendorId,
+                product_id: productId,
+            };
+        }
+        return {
+            type: "qr",
+            payloads: decoded.payloads.map(payload => ({
+                version: payload.version,
+                vendor_id: payload.vendorId,
+                product_id: payload.productId,
+                flow_type: payload.flowType,
+                discovery_capabilities: payload.discoveryCapabilities,
+                discriminator: payload.discriminator,
+                setup_pin_code: payload.passcode,
+                tlv_data: payload.tlvData === undefined ? undefined : Bytes.toHex(payload.tlvData),
+            })),
+        };
     }
 
     async #handleCommissionOnNetwork(

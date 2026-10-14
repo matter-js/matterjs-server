@@ -156,8 +156,8 @@ export interface InteractionSubscription {
     readonly id: number;
     readonly nodeId: NodeId;
     /**
-     * The first report; later reports reach the listener. matter.js adds the data versions it knows, so clusters that
-     * did not change are left out.
+     * The first report; later reports reach the listener. Only the caller's data version filters are sent, so every
+     * requested cluster the caller does not filter is in it.
      */
     readonly priming: InteractionReport;
     close(): void;
