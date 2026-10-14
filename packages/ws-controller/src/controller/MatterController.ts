@@ -93,8 +93,8 @@ export interface MatterControllerOptions {
     disableDclSeed?: boolean;
     /**
      * Never contact the DCL or GitHub for attestation certificates and run no certificate updates or revocation checks;
-     * the trust store is the bundled seed plus certificates stored by earlier runs. Vendor information and OTA update
-     * queries still use the network DCL.
+     * the trust store is the bundled seed plus certificates stored by earlier runs. Vendor information comes from the
+     * seed and storage, and OTA update checks do not query the DCL.
      */
     dclOffline?: boolean;
     /** Server ID for storage. Default is "server", but may be "server-<hex(fabricId)>-<hex(vendorId)>" for multi-fabric support */
@@ -413,6 +413,7 @@ export class MatterController {
             enableOtaProvider: !this.#disableOtaProvider,
             peerSettingsRepair: this.#config,
             disableAutoSubscription: this.#disableAutoSubscription,
+            dcl: { acceptTestCertificates: this.#enableTestNetDcl, offline: this.#dclOffline },
         });
     }
 
@@ -433,14 +434,6 @@ export class MatterController {
             });
 
             this.#commandHandler.events.started.once(async () => {
-                if (this.#stopped) return;
-                controller.node.behaviors.require(DclBehavior);
-                await controller.node.setStateOf(DclBehavior, {
-                    fetchTestCertificates: true,
-                    acceptTestCertificates: this.#enableTestNetDcl,
-                    offline: this.#dclOffline,
-                });
-                // Re-check after the await — stop() may have run during it; don't start work that outlives teardown.
                 if (this.#stopped) return;
 
                 const initPromises = new Array<Promise<unknown>>();

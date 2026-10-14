@@ -767,6 +767,18 @@ describe("auto subscription setting", () => {
             expect(services.map(service => service.offline)).deep.equals([true, true, true]);
         });
 
+        it("runs the OTA provider's DCL service offline with dclOffline", async () => {
+            const controller = await createMatterController({
+                dclOffline: true,
+                disableDclSeed: false,
+                disableOtaProvider: false,
+            });
+
+            const service = await MockTime.resolve(controller.otaUpdateService(), { macrotasks: true });
+
+            expect(service.offline).equals(true);
+        });
+
         describe("Border Router discovery", () => {
             let starts: number;
             let restoreStart: () => void;

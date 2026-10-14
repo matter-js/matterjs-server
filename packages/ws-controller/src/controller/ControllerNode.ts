@@ -6,6 +6,7 @@
 
 import {
     ControllerBehavior,
+    DclBehavior,
     Endpoint,
     Environment,
     FabricId,
@@ -22,7 +23,7 @@ import { applyAutoSubscribe, PeerSettingsRepairMarker, repairRestoredPeers } fro
 
 // A controller joins fabrics, it does not serve groupcast, and the Groupcast listener would pull in the
 // Auxiliary ACL feature with it.
-const ControllerRootEndpoint = ServerNode.RootEndpointWithoutGroupcast.with(ControllerBehavior);
+const ControllerRootEndpoint = ServerNode.RootEndpointWithoutGroupcast.with(ControllerBehavior, DclBehavior);
 type ControllerRootEndpoint = typeof ControllerRootEndpoint;
 
 /**
@@ -66,6 +67,12 @@ export interface ControllerNodeOptions {
 
     /** Applied to every stored peer on each build, in both directions. Defaults to false. */
     disableAutoSubscription?: boolean;
+
+    /**
+     * DCL settings, in place before any endpoint is added: the OTA provider creates its DCL service while it is added,
+     * and matter.js reads `offline` only when a service is created.
+     */
+    dcl?: { acceptTestCertificates: boolean; offline: boolean };
 }
 
 export interface ControllerResources {
@@ -118,6 +125,7 @@ export async function createControllerNode(options: ControllerNodeOptions): Prom
         // A controller is never itself commissionable, and subscription persistence is a device feature.
         commissioning: { enabled: false },
         subscriptions: { persistenceEnabled: false },
+        dcl: { fetchTestCertificates: true, ...options.dcl },
     });
 
     try {
