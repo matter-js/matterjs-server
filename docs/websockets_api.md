@@ -747,8 +747,8 @@ Response:
 `subscription_id` is the SubscriptionId the device assigned. Each device assigns its own ids, so two nodes can use the
 same one: a subscription is named by `node_id` and `subscription_id` together, in `unsubscribe` and in the events. The
 rest of the result is the priming report, in the shape of the `read` result (`attributes`, `events`,
-`attribute_status`, `event_status`, `data_versions`). Later reports follow as `subscription_report` events after this response. All
-reports have the same side effects on all clients as `read`: `attribute_updated` to every listening client, only when
+`attribute_status`, `event_status`, `data_versions`). Later reports follow as `subscription_report` events after this
+response. All reports have the same side effects on all clients as `read`: `attribute_updated` to every listening client, only when
 `fabric_filtered` is `true`, the default. Reported events reach only this subscription's reports, not `node_event` or
 the event history.
 
