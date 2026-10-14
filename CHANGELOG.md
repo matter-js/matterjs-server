@@ -53,6 +53,7 @@ This page shows a detailed overview of the changes between versions without the 
 - Adjustment: A node's availability follows its connection state. The former 3-minute grace period after a connection loss is gone, so an unreachable node is reported as soon as matter.js gives up on reaching it rather than after a fixed timer on top
 - Adjustment: Dashboard network view uses the Thread 1.4 role names
 - Fix: The Dashboard shows the data type of custom cluster attributes and of attributes of derived clusters (Mode clusters, Bridged Device Basic Information) instead of `unknown`
+- Fix: `write_attribute`, `set_acl_entry` and `set_node_binding` always send the write to the node and report the node's answer, also when the value equals the current one
 - Fix: `webrtc_callback` events the camera sends while `send_webrtc_provider_command` is still running are no longer lost
 - Fix: A re-offer (`ProvideOffer` naming an existing session) through `send_webrtc_provider_command` no longer ends the session it renegotiates
 - Fix: `device_command` with `EndSession` updates the server's session records for that camera only, and a WebRTC callback with an invalid endpoint id no longer blocks the event for other listeners

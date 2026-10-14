@@ -494,9 +494,12 @@ Wildcard (all attributes from OnOff cluster):
 }
 ```
 
-Response: one entry for the path written, `[{ "Path": { ... }, "Status": 0 }]`. `Status` is the write
-status where one was returned; a write to an imported test node and a write matter.js resolves from its
-own cache both report `0` without a device having answered.
+Response: one entry for the path written, `[{ "Path": { ... }, "Status": 0 }]`. Every call sends a write
+request to the node, also when the value equals the cached one, and `Status` is the status the node
+answered. A value of the wrong type, outside the attribute's constraints or missing a mandatory field is
+refused before sending, with `Status` `141` (INVALID_DATA_TYPE), `135` (CONSTRAINT_ERROR) or `128`
+(INVALID_ACTION). A write to an imported test node reports
+`0` without a device having answered.
 
 A `node_id` in the Group Node ID range multicasts the write to the group. The endpoint must then be the
 wildcard — `"*/6/16385"` — because a groupcast carries no endpoint: each node's own group table decides
@@ -667,6 +670,10 @@ Entry fields:
 - `subjects`: Array of NodeIds or GroupIds (or null)
 - `targets`: Optional target restrictions (or null) - each target has `cluster`, `endpoint`, `device_type` fields
 
+Response: one entry, `[{ "path": { "endpoint_id": 0, "cluster_id": 31, "attribute_id": 0 }, "status": 0 }]`, with the
+status the node answered. Every call sends the write to the node, also when the entries equal the current ones. A
+subject that names the node itself is left out, because a node always has access to itself.
+
 **set_node_binding** - Set bindings on a node endpoint
 
 ```json
@@ -686,6 +693,9 @@ Entry fields:
   }
 }
 ```
+
+Response: one entry for the Binding attribute of `endpoint`, with the status the node answered. Every call sends the
+write to the node, also when the bindings equal the current ones.
 
 ### Firmware Updates
 
