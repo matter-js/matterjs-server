@@ -39,6 +39,8 @@ describe("clusterExtension", () => {
                 [0x15340001, "WagoTravelTimeUp", "uint32", "O", true],
                 [0x15340002, "WagoTravelTimeDown", "uint32", "O", true],
                 [0x15340003, "WagoSlatRotationTime", "uint32", "O", true],
+                [0x15340004, "WagoManualMode", "bool", "O", true],
+                [0x15340005, "WagoBlindType", "uint8", "O", true],
             ]);
         });
     });
