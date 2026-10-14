@@ -4,9 +4,15 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { computeCompressedNodeId, Crypto, Environment, LegacyServerFile } from "@matter-server/ws-controller";
+import {
+    computeCompressedNodeId,
+    Crypto,
+    Environment,
+    LegacyFabricConfigData,
+    LegacyServerFile,
+} from "@matter-server/ws-controller";
 import { NodeJsCrypto } from "@matter/nodejs";
-import { access, copyFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { access, chmod, copyFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -407,19 +413,61 @@ describe("LegacyDataLoader", () => {
             expect(await retireLegacyFiles(env, legacyDir, fabricConfig)).to.deep.equal([]);
         });
 
-        it("keeps chip.json while another fabric still has to be imported from it", async () => {
-            const { legacyDir, fabricConfig, serverFileName } = await seedLegacyDir("retire-multi-fabric", false);
-            // chip.json carries every fabric, and the one left behind imports its credentials from it.
+        /** A second fabric in chip.json, and the name its own server file would have. */
+        async function secondFabric(fabricConfig: LegacyFabricConfigData) {
+            const other = { ...fabricConfig, fabricId: BigInt(fabricConfig.fabricId) + 1n };
             const chipConfig = {
                 getFabricIndices: () => [1, 2],
-                getFabricConfig: (index: number) =>
-                    index === 1 ? fabricConfig : { ...fabricConfig, fabricId: BigInt(fabricConfig.fabricId) + 1n },
+                getFabricConfig: (index: number) => (index === 1 ? fabricConfig : other),
             } as unknown as ChipConfigData;
+            const serverFileName = `${await computeCompressedNodeId(env.get(Crypto), other.fabricId, other.rootPublicKey)}.json`;
+            return { chipConfig, serverFileName };
+        }
+
+        it("keeps chip.json while another fabric still has to be imported from it", async () => {
+            const { legacyDir, fabricConfig, serverFileName } = await seedLegacyDir("retire-multi-fabric", false);
+            const { chipConfig, serverFileName: otherFileName } = await secondFabric(fabricConfig);
+            await copyFile(FIXTURE_SERVER_JSON, join(legacyDir, otherFileName));
 
             const retired = await retireLegacyFiles(env, legacyDir, fabricConfig, chipConfig);
 
             expect(retired).to.deep.equal([serverFileName]);
             expect(await exists(join(legacyDir, "chip.json"))).to.be.true;
+        });
+
+        // The credentials of a fabric are in chip.json alone, so a fabric can be listed there with no
+        // server file of its own and still have everything to lose.
+        it("keeps chip.json for another fabric that has no server file at all", async () => {
+            const { legacyDir, fabricConfig } = await seedLegacyDir("retire-fabric-no-file", false);
+            const { chipConfig } = await secondFabric(fabricConfig);
+
+            const retired = await retireLegacyFiles(env, legacyDir, fabricConfig, chipConfig);
+
+            expect(retired).to.not.include("chip.json");
+            expect(await exists(join(legacyDir, "chip.json"))).to.be.true;
+        });
+
+        // chip.json lists every fabric it ever held, retired ones included, so presence there cannot decide
+        // this: the last fabric to migrate would keep the file forever.
+        it("retires chip.json once every other fabric has been retired", async () => {
+            const { legacyDir, fabricConfig } = await seedLegacyDir("retire-last-fabric", false);
+            const { chipConfig, serverFileName: otherFileName } = await secondFabric(fabricConfig);
+            await copyFile(FIXTURE_SERVER_JSON, join(legacyDir, `${otherFileName}.migrated`));
+
+            const retired = await retireLegacyFiles(env, legacyDir, fabricConfig, chipConfig);
+
+            expect(retired).to.include("chip.json");
+        });
+
+        // A backup alone is enough for the loader to import a fabric from, so it counts as retired too.
+        it("retires chip.json when another fabric only retired a backup", async () => {
+            const { legacyDir, fabricConfig } = await seedLegacyDir("retire-last-fabric-backup", false);
+            const { chipConfig, serverFileName: otherFileName } = await secondFabric(fabricConfig);
+            await copyFile(FIXTURE_SERVER_JSON, join(legacyDir, `${otherFileName}.backup.migrated`));
+
+            const retired = await retireLegacyFiles(env, legacyDir, fabricConfig, chipConfig);
+
+            expect(retired).to.include("chip.json");
         });
 
         it("reports a file it could not rename, so the caller keeps the imported storage", async () => {
@@ -428,6 +476,46 @@ describe("LegacyDataLoader", () => {
             await mkdir(join(legacyDir, `${serverFileName}.migrated`), { recursive: true });
 
             await expect(retireLegacyFiles(env, legacyDir, fabricConfig)).rejectedWith(/Could not retire/);
+        });
+
+        // chip.json is what the next start reads the fabric from, so it has to outlive a failed server file.
+        it("leaves chip.json in place when a server file cannot be renamed", async () => {
+            const { legacyDir, fabricConfig, serverFileName } = await seedLegacyDir("retire-order", false);
+            await mkdir(join(legacyDir, `${serverFileName}.migrated`), { recursive: true });
+
+            await expect(retireLegacyFiles(env, legacyDir, fabricConfig)).rejectedWith(/Could not retire/);
+
+            expect(await exists(join(legacyDir, "chip.json"))).to.be.true;
+        });
+
+        // The main file renamed and the backup left behind: the backup holds an older copy of data that
+        // is already imported, and loading it would bring removed nodes back.
+        it("leaves a retired fabric unimportable even when a backup stayed behind", async () => {
+            const { legacyDir, fabricConfig, serverFileName } = await seedLegacyDir("retire-stale-backup", true);
+            await mkdir(join(legacyDir, `${serverFileName}.backup.migrated`), { recursive: true });
+
+            await expect(retireLegacyFiles(env, legacyDir, fabricConfig)).rejectedWith(/Could not retire/);
+            expect(await exists(join(legacyDir, `${serverFileName}.backup`))).to.be.true;
+
+            const reloaded = await loadLegacyData(env, legacyDir, {
+                vendorId: FIXTURE_VENDOR_ID,
+                fabricId: FIXTURE_FABRIC_ID,
+            });
+            expect(reloaded.serverFile).to.be.undefined;
+        });
+
+        it("reports a file it cannot even look at", async function () {
+            if (process.getuid?.() === 0) {
+                this.skip(); // root ignores the directory mode this relies on
+            }
+            const { legacyDir, fabricConfig } = await seedLegacyDir("retire-unreadable", false);
+
+            await chmod(legacyDir, 0o000);
+            try {
+                await expect(retireLegacyFiles(env, legacyDir, fabricConfig)).rejectedWith(/Could not retire/);
+            } finally {
+                await chmod(legacyDir, 0o755);
+            }
         });
     });
 });

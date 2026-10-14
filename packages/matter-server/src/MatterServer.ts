@@ -229,7 +229,7 @@ async function start() {
 
     // Only once the server is up: a start that fails leaves the source untouched and simply retries.
     // Detached from the start path so retiring a large node file cannot delay coming up.
-    if (config.legacyRetirementPendingFor === controller.serverId) {
+    if (config.hasLegacyRetirementPending(controller.serverId)) {
         finishLegacyRetirement(legacyData.fabricConfig).catch(error =>
             logger.warn("Could not finish retiring legacy python-matter-server data:", error),
         );
@@ -240,26 +240,33 @@ async function start() {
     }
 }
 
+/**
+ * Whether everything the legacy file holds has arrived.
+ *
+ * Every node in it has to be one the controller now knows, by id: a device commissioned since would
+ * otherwise make up the numbers for one that never migrated, and that one's only remaining copy is what
+ * the retirement deletes.
+ */
+function legacyImportIsComplete() {
+    const missing = missingLegacyNodes(legacyData.serverFile, controller?.commandHandler.getNodeIds() ?? []);
+    if (missing.length === 0) {
+        return true;
+    }
+    logger.warn(
+        `Keeping legacy data: node(s) ${missing.join(", ")} from the legacy file are unknown to the ` +
+            `controller. The next start retries the migration.`,
+    );
+    return false;
+}
+
 /** Put the python-matter-server import behind us, once everything it held has arrived. */
 async function retireLegacyData(fabricConfig: NonNullable<LegacyData["fabricConfig"]>) {
-    if (controller === undefined) {
+    if (controller === undefined || !legacyImportIsComplete()) {
         return;
     }
 
-    // Every node in the file being retired has to be one the controller now knows, by id: a device
-    // commissioned since would otherwise make up the numbers for one that never migrated, and that one's
-    // only remaining copy is what this deletes.
-    const missing = missingLegacyNodes(legacyData.serverFile, controller.commandHandler.getNodeIds());
-    if (missing.length > 0) {
-        logger.warn(
-            `Keeping legacy data: node(s) ${missing.join(", ")} from the legacy file are unknown to the ` +
-                `controller. The next start retries the migration.`,
-        );
-        return;
-    }
-
-    await config.setLegacyRetirementPendingFor(controller.serverId);
-    await finishLegacyRetirement(fabricConfig);
+    await config.markLegacyRetirementPending(controller.serverId);
+    await retireLegacySources(fabricConfig);
 }
 
 /**
@@ -275,6 +282,20 @@ async function finishLegacyRetirement(fabricConfig: LegacyData["fabricConfig"]) 
         return;
     }
 
+    // Sources still under their original name mean this start imported them again, so the import has to
+    // be complete once more before the cleanup drops the storage it is recognised by. A peer that failed
+    // to migrate this time would otherwise lose its only remaining copy.
+    if (legacyData.serverFile !== undefined && !legacyImportIsComplete()) {
+        return;
+    }
+    await retireLegacySources(fabricConfig);
+}
+
+async function retireLegacySources(fabricConfig: LegacyData["fabricConfig"]) {
+    if (controller === undefined) {
+        return;
+    }
+
     if (fabricConfig !== undefined) {
         const retired = await retireLegacyFiles(env, cliOptions.storagePath, fabricConfig, legacyData.chipConfig);
         if (retired.length > 0) {
@@ -286,7 +307,7 @@ async function finishLegacyRetirement(fabricConfig: LegacyData["fabricConfig"]) 
         // what gets it another attempt; clearing it here would strand the imported storage.
         return;
     }
-    await config.setLegacyRetirementPendingFor(undefined);
+    await config.clearLegacyRetirementPending(controller.serverId);
 }
 
 async function stop() {

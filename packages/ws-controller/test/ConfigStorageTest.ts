@@ -146,4 +146,57 @@ describe("ConfigStorage", () => {
             }
         });
     });
+
+    describe("legacy retirement marker", () => {
+        it("tracks an outstanding retirement per storage scope", async () => {
+            const config = await createConfig();
+            try {
+                await config.markLegacyRetirementPending("server");
+                await config.markLegacyRetirementPending("server-2-fff1");
+
+                // A start against one fabric must not drop the unfinished job of the other: its source
+                // files are gone by then, so nothing else would ever pick it up again.
+                await config.clearLegacyRetirementPending("server");
+
+                expect(config.hasLegacyRetirementPending("server")).to.be.false;
+                expect(config.hasLegacyRetirementPending("server-2-fff1")).to.be.true;
+            } finally {
+                await config.close();
+            }
+        });
+
+        it("keeps an outstanding retirement across a restart", async () => {
+            const open = persistentConfig();
+            const first = await open();
+            await first.config.markLegacyRetirementPending("server");
+            await first.config.close();
+
+            const second = await open();
+            try {
+                expect(second.config.hasLegacyRetirementPending("server")).to.be.true;
+            } finally {
+                await second.config.close();
+            }
+        });
+
+        it("reads a scope stored by a version that recorded only one", async () => {
+            const open = persistentConfig();
+            const first = await open();
+            await first.config.close();
+            // The shape written before this server could run against more than one fabric. Left as a bare
+            // string, every scope whose name it contains reports pending and clearing it throws.
+            first.storage["values"] = { ...first.storage["values"], legacyRetirementPendingFor: "server-2-fff1" };
+
+            const second = await open();
+            try {
+                expect(second.config.hasLegacyRetirementPending("server-2-fff1")).to.be.true;
+                expect(second.config.hasLegacyRetirementPending("server")).to.be.false;
+
+                await second.config.clearLegacyRetirementPending("server-2-fff1");
+                expect(second.config.hasLegacyRetirementPending("server-2-fff1")).to.be.false;
+            } finally {
+                await second.config.close();
+            }
+        });
+    });
 });

@@ -45,7 +45,7 @@ interface ConfigData {
     wifiCredentials?: string;
     threadDataset?: string;
     peerSettingsRepairedFor?: string[];
-    legacyRetirementPendingFor?: string;
+    legacyRetirementPendingFor?: string[];
 }
 
 export class ConfigStorage {
@@ -128,9 +128,10 @@ export class ConfigStorage {
             ? await this.#configStore.get<string | string[]>("peerSettingsRepairedFor", [])
             : undefined;
         const peerSettingsRepairedFor = typeof storedRepairs === "string" ? [storedRepairs] : storedRepairs;
-        const legacyRetirementPendingFor = (await this.#configStore.has("legacyRetirementPendingFor"))
-            ? await this.#configStore.get<string>("legacyRetirementPendingFor", "")
+        const storedPending = (await this.#configStore.has("legacyRetirementPendingFor"))
+            ? await this.#configStore.get<string | string[]>("legacyRetirementPendingFor", [])
             : undefined;
+        const legacyRetirementPendingFor = typeof storedPending === "string" ? [storedPending] : storedPending;
         await this.set({
             fabricLabel,
             nextNodeId,
@@ -180,17 +181,31 @@ export class ConfigStorage {
     }
 
     /**
-     * Storage scope whose python-matter-server source was being retired when the last start ended, or
-     * undefined when there is nothing outstanding. Set before the first irreversible step, so a start that
-     * dies part-way through can finish the job — the files it would otherwise be recognised by are already
-     * gone by then. Scoped, because a server started against a different fabric retires different data.
+     * Whether the python-matter-server source of this storage scope was being retired when a start ended.
+     * Marked before the first irreversible step, so a start that dies part-way through can finish the job —
+     * the files it would otherwise be recognised by are already gone by then.
+     *
+     * Per scope, and more than one can be outstanding: a server started against another fabric retires
+     * other data, and must not drop a job it knows nothing about.
      */
-    get legacyRetirementPendingFor() {
-        return this.#data.legacyRetirementPendingFor;
+    hasLegacyRetirementPending(scope: string) {
+        return this.#data.legacyRetirementPendingFor?.includes(scope) === true;
     }
 
-    async setLegacyRetirementPendingFor(scope: string | undefined) {
-        await this.set({ legacyRetirementPendingFor: scope });
+    async markLegacyRetirementPending(scope: string) {
+        if (this.hasLegacyRetirementPending(scope)) {
+            return;
+        }
+        await this.set({ legacyRetirementPendingFor: [...(this.#data.legacyRetirementPendingFor ?? []), scope] });
+    }
+
+    async clearLegacyRetirementPending(scope: string) {
+        if (!this.hasLegacyRetirementPending(scope)) {
+            return;
+        }
+        await this.set({
+            legacyRetirementPendingFor: this.#data.legacyRetirementPendingFor?.filter(pending => pending !== scope),
+        });
     }
 
     async markPeerSettingsRepaired(scope: string) {

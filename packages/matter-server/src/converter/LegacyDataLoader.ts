@@ -295,7 +295,12 @@ export async function loadLegacyData(
 
     // Try to load the server data file (with backup fallback like Python)
     const backupFilePath = `${serverFilePath}.backup`;
-    const filesToTry = [serverFilePath, backupFilePath];
+    const filesToTry = [serverFilePath];
+    // A retired main file means this fabric was already imported, and the backup is an older copy of the
+    // same data: loading it would import nodes that have been removed since.
+    if (!(await fileExists(`${serverFilePath}${MIGRATED_SUFFIX}`))) {
+        filesToTry.push(backupFilePath);
+    }
 
     for (const filePath of filesToTry) {
         const isBackup = filePath === backupFilePath;
@@ -433,6 +438,15 @@ export async function saveLegacyServerFile(
 /** Suffix given to python-matter-server files once their contents live in the current storage. */
 const MIGRATED_SUFFIX = ".migrated";
 
+async function fileExists(path: string) {
+    try {
+        await access(path);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
 /**
  * Retire the python-matter-server source files after their contents have been imported.
  *
@@ -447,38 +461,55 @@ export async function retireLegacyFiles(
     chipConfig?: ChipConfigData,
 ): Promise<string[]> {
     const crypto = env.get(Crypto);
-    const compressedFabricId = await computeCompressedNodeId(crypto, fabricConfig.fabricId, fabricConfig.rootPublicKey);
-    const serverFileName = `${compressedFabricId}.json`;
-
-    // chip.json holds every fabric, and each one is imported by its own server instance against its own
-    // server file. Renaming it while another fabric is still in it would leave that fabric with no
-    // credentials to import from.
-    const otherFabrics = (chipConfig?.getFabricIndices() ?? []).filter(
-        fabricIndex => chipConfig?.getFabricConfig(fabricIndex)?.fabricId !== fabricConfig.fabricId,
-    );
-    const names = [serverFileName, `${serverFileName}.backup`];
-    if (otherFabrics.length === 0) {
-        names.unshift("chip.json");
-    } else {
-        logger.info(`Keeping chip.json: ${otherFabrics.length} other fabric(s) still have to be migrated`);
-    }
+    const serverFileNameOf = async (config: LegacyFabricConfigData) =>
+        `${await computeCompressedNodeId(crypto, config.fabricId, config.rootPublicKey)}.json`;
+    const serverFileName = await serverFileNameOf(fabricConfig);
 
     const retired = new Array<string>();
     const failed = new Array<string>();
-    for (const name of names) {
+    async function retire(name: string) {
         const from = join(storagePath, name);
-        try {
-            await access(from);
-        } catch {
-            continue; // Never existed, or a previous run already retired it.
-        }
         try {
             await rename(from, `${from}${MIGRATED_SUFFIX}`);
             retired.push(name);
         } catch (error) {
+            if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+                return; // Never existed, or a previous run already retired it.
+            }
             logger.warn(`Could not retire legacy file ${name}: ${error}`);
             failed.push(name);
         }
+    }
+
+    await retire(serverFileName);
+    await retire(`${serverFileName}.backup`);
+
+    // chip.json holds the credentials of every fabric, and each one is imported by its own server
+    // instance. Retiring it while another fabric still has to import leaves that fabric no credentials,
+    // and every device on it unreachable. Only that fabric's own retired file proves it is past that: it
+    // can be listed in chip.json with no node file of its own, and a retired fabric stays listed there.
+    const pendingFabrics = new Array<string>();
+    for (const fabricIndex of chipConfig?.getFabricIndices() ?? []) {
+        const other = chipConfig?.getFabricConfig(fabricIndex);
+        if (other === undefined || other.fabricId === fabricConfig.fabricId) {
+            continue;
+        }
+        const otherFileName = await serverFileNameOf(other);
+        const retiredElsewhere =
+            (await fileExists(join(storagePath, `${otherFileName}${MIGRATED_SUFFIX}`))) ||
+            (await fileExists(join(storagePath, `${otherFileName}.backup${MIGRATED_SUFFIX}`)));
+        if (!retiredElsewhere) {
+            pendingFabrics.push(otherFileName);
+        }
+    }
+    if (pendingFabrics.length > 0) {
+        logger.info(`Keeping chip.json: ${pendingFabrics.length} other fabric(s) still have to be migrated`);
+    } else if (failed.length > 0) {
+        // The next start reads the fabric from chip.json, and needs it to work out which files this
+        // retirement still has to rename.
+        logger.info("Keeping chip.json: the retirement of this fabric is unfinished");
+    } else {
+        await retire("chip.json");
     }
     // A file still under its original name is one the next start imports again, so the retirement is not
     // done and the caller must not drop the storage the import is recognised by.
