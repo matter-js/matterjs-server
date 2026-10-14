@@ -2,7 +2,7 @@
 /**
  * Run the matter.js controller certification suite against this server.
  *
- * Usage: npm run cert -- [--tc TC-IDM-2.1] [--matterjs-ref <ref>] [--dry-run]
+ * Usage: npm run cert -- [--tc TC-IDM-2.1] [--matterjs-ref <ref>] [--device chip-local|matterjs] [--dry-run]
  * See DEVELOPMENT.md ("Certification tests") for flags, environment and prerequisites.
  * The RUN_CERT_TEST_* variables exist for testing the runner only.
  */
@@ -24,6 +24,7 @@ const COMMIT_PATTERN = /^[0-9a-f]{7,40}$/;
 const FULL_SHA_PATTERN = /^[0-9a-f]{40}$/;
 const TC_PATTERN = /^TC-[A-Za-z0-9.\-_]+$/;
 const REF_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._/-]*$/;
+const DEVICES = ["chip-local", "matterjs"];
 // Dev builds are versioned <semver>-<yyyymmdd>-<commit>
 const DEV_VERSION_PATTERN = /-\d{8}-([0-9a-f]{7,40})$/;
 
@@ -33,7 +34,7 @@ function fail(message) {
 }
 
 function parseArgs(argv) {
-    const options = { dryRun: false, tc: undefined, ref: undefined };
+    const options = { dryRun: false, tc: undefined, ref: undefined, device: "chip-local" };
     for (let i = 0; i < argv.length; i++) {
         const arg = argv[i];
         const [flag, inlineValue] = arg.startsWith("--") ? arg.split(/=(.*)/s, 2) : [arg];
@@ -52,6 +53,9 @@ function parseArgs(argv) {
                 break;
             case "--matterjs-ref":
                 options.ref = value();
+                break;
+            case "--device":
+                options.device = value();
                 break;
             default:
                 fail(`unknown argument ${arg}`);
@@ -75,15 +79,15 @@ function resolveRef(options) {
     return ref;
 }
 
-function platformEnv() {
+// The matterjs test devices run in this process tree; only the CHIP apps of chip-local come from the platform.
+function platformEnv(device) {
     const platform = process.env.RUN_CERT_TEST_PLATFORM ?? process.platform;
+    if (platform !== "linux" && platform !== "darwin") return fail(`unsupported platform ${platform}`);
+    if (device === "matterjs") return {};
     if (platform === "linux") return { MATTER_CHIP_BINS_SOURCE: "cert-bins" };
-    if (platform === "darwin") {
-        const appDir = process.env.MATTER_CERT_APP_DIR;
-        if (!appDir) fail("MATTER_CERT_APP_DIR must point to the local chip apps on macOS");
-        return { MATTER_CERT_APP_DIR: appDir };
-    }
-    return fail(`unsupported platform ${platform}`);
+    const appDir = process.env.MATTER_CERT_APP_DIR;
+    if (!appDir) fail("MATTER_CERT_APP_DIR must point to the local chip apps on macOS");
+    return { MATTER_CERT_APP_DIR: appDir };
 }
 
 // The checkout must end detached at the current remote state of the ref. GitHub serves a fetch by sha only for a
@@ -123,7 +127,7 @@ function buildSteps(options, ref, extraEnv) {
     const env = {
         MATTER_CERT_CONTROLLER: "matterjs-server",
         MATTER_CERT_SERVER_ENTRY: SERVER_ENTRY,
-        MATTER_CERT_DEVICE: "chip-local",
+        MATTER_CERT_DEVICE: options.device,
         MATTER_CERT_EVIDENCE_DIR: resolve(CERT_DIR, "evidence"),
         ...extraEnv,
     };
@@ -146,8 +150,11 @@ const options = parseArgs(process.argv.slice(2));
 if (options.tc !== undefined && !TC_PATTERN.test(options.tc)) {
     fail(`invalid --tc "${options.tc}", expected e.g. TC-IDM-2.1`);
 }
+if (!DEVICES.includes(options.device)) {
+    fail(`invalid --device "${options.device}", expected ${DEVICES.join(" or ")}`);
+}
 const ref = resolveRef(options);
-let steps = buildSteps(options, ref, platformEnv());
+let steps = buildSteps(options, ref, platformEnv(options.device));
 if (process.env.RUN_CERT_TEST_SOURCE_ONLY) {
     steps = steps.filter(({ step }) => step === "clone" || step.startsWith("fetch") || step === "checkout");
 }

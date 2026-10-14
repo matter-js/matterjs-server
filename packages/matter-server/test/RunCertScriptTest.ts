@@ -165,6 +165,15 @@ describe("utils/run-cert.mjs", function () {
         expect(result.stdout).to.equal("");
     });
 
+    it("runs the matterjs test devices without CHIP apps on any supported platform", () => {
+        for (const env of new Array<Record<string, string>>({}, { RUN_CERT_TEST_PLATFORM: "darwin" })) {
+            const test = find(plan(["--device", "matterjs"], env), "test");
+            expect(test.env?.MATTER_CERT_DEVICE).to.equal("matterjs");
+            expect(test.env).to.not.have.property("MATTER_CHIP_BINS_SOURCE");
+            expect(test.env).to.not.have.property("MATTER_CERT_APP_DIR");
+        }
+    });
+
     it("narrows the spec with --tc", () => {
         const test = find(plan(["--tc", "TC-IDM-2.1"]), "test");
         expect(test.command).to.equal("npx");
@@ -183,6 +192,8 @@ describe("utils/run-cert.mjs", function () {
             [["--tc"], {}, "--tc needs a value"],
             [["--frobnicate"], {}, "unknown argument --frobnicate"],
             [[], { RUN_CERT_TEST_PLATFORM: "win32" }, "unsupported platform win32"],
+            [["--device", "matterjs"], { RUN_CERT_TEST_PLATFORM: "win32" }, "unsupported platform win32"],
+            [["--device", "chip"], {}, 'invalid --device "chip"'],
         ] satisfies [string[], Record<string, string>, string][]) {
             const result = runCert(["--dry-run", ...args], { RUN_CERT_TEST_PLATFORM: "linux", ...env });
             expect(result.status, message).to.equal(2);

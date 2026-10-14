@@ -21,8 +21,7 @@ concurrency:
 
 jobs:
     cert:
-        # chip-cert-bins, the CHIP apps npm run cert uses on Linux, is published for linux/arm64 only.
-        runs-on: ubuntu-24.04-arm
+        runs-on: ubuntu-latest
         timeout-minutes: 90
         env:
             # The matterjs-server adapter is not in matter.js main yet.
@@ -34,10 +33,11 @@ jobs:
               uses: ./.github/actions/prepare-env
             - name: Run certification tests
               run: |
+                  # The chip-local apps (cert-bins) need an arm64 harness image, which the runners lack.
                   if [ -n "$TC" ]; then
-                      npm run cert -- --tc "$TC"
+                      npm run cert -- --device matterjs --tc "$TC"
                   else
-                      npm run cert
+                      npm run cert -- --device matterjs
                   fi
             - name: Upload evidence
               if: always()

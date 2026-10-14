@@ -100,7 +100,7 @@ The script connects to the server, sends the command, and keeps the connection o
 `npm run cert` runs the matter.js controller certification suite (`support/chip-testing/test/cert`) against this server as the device-under-test controller. The matter.js adapter starts the server itself with a temporary storage path and a free port, so your normal storage is not touched.
 
 ```bash
-npm run cert -- [--tc TC-IDM-2.1] [--matterjs-ref <ref>] [--dry-run]
+npm run cert -- [--tc TC-IDM-2.1] [--matterjs-ref <ref>] [--device chip-local|matterjs] [--dry-run]
 ```
 
 The matterjs-server adapter is not in matter.js `main` yet, and the default ref below does not contain it. Until it is merged, pass `--matterjs-ref feat/cert-matterjs-server-controller`; otherwise every test fails at collection with `Unknown MATTER_CERT_CONTROLLER`.
@@ -110,12 +110,15 @@ Steps: build this repo, clone (or fetch) matter.js into `.cert/matter.js` (git-i
 - `--tc <id>`: run only `test/cert/<id>.test.ts` (default: the whole suite). The id is `TC-` followed by letters, digits, `.`, `-` or `_`, for example `TC-IDM-2.1`.
 - `--matterjs-ref <ref>`: matter.js branch, tag or commit to test. Overrides the `MATTERJS_REF` environment variable. Default: the commit of the pinned `@matter/main` dev version, or the tag `v<version>` for an exact release version. A version range (`^0.17.0`) is not a valid ref and is refused; pass `--matterjs-ref` then.
 - `--dry-run`: print the planned steps as one JSON object per line and run nothing. It still checks the arguments, the ref and the platform, and on macOS that `MATTER_CERT_APP_DIR` is set.
-- `MATTER_CERT_APP_DIR` (macOS only, required): directory with the locally built CHIP example apps.
+- `--device <chip-local|matterjs>`: the test devices the suite commissions (default `chip-local`). `chip-local` runs
+  the CHIP example apps; `matterjs` runs matter.js test devices and needs no CHIP apps, so neither the `cert-bins`
+  image nor `MATTER_CERT_APP_DIR`.
+- `MATTER_CERT_APP_DIR` (macOS only, required with `chip-local`): directory with the locally built CHIP example apps.
 - Evidence is written to `.cert/evidence`.
 - The checkout always ends detached at the current remote state of the ref (branch, tag or commit), discarding changes to tracked files in `.cert/matter.js`; untracked files stay. A ref of 7 to 40 lowercase hex characters is taken as a commit sha: all branches and tags are fetched, and tags moved upstream are updated. A short commit sha must be reachable from a remote branch or tag; only a full 40-character sha can be fetched on its own.
 - `RUN_CERT_TEST_PLATFORM=linux|darwin`, `RUN_CERT_TEST_DIR`, `RUN_CERT_TEST_MATTERJS_URL`, `RUN_CERT_TEST_PACKAGE_JSON` and `RUN_CERT_TEST_SOURCE_ONLY=1` are for testing the runner only.
 
-Prerequisites: on Linux, Docker running, because the CHIP binaries are extracted from the `cert-bins` image. On macOS the locally built CHIP apps in `MATTER_CERT_APP_DIR` run as host processes.
+Prerequisites: Docker running, for the test harness containers; on Linux with `chip-local` the CHIP binaries are also extracted from the `cert-bins` image. On macOS with `chip-local` the locally built CHIP apps in `MATTER_CERT_APP_DIR` run as host processes.
 
 ## Websocket commands
 
