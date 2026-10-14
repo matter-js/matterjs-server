@@ -64,12 +64,14 @@ Optional fields of an error response (schema 14):
   those failures carry no `status`. Neither do arguments the server rejects before anything is sent. `error_code`
   stays as it was.
 - `reason`: why commissioning failed, with every `NodeCommissionFailed` error of `commission_with_code` and
-  `commission_on_network`, and with a pairing code that cannot be decoded: `not-discovered` (no matching device was
-  found. A device that was found but not reached in time gives `timeout`. An attempt that failed with an error gives
-  `timeout` if it timed out, otherwise `other`), `passcode-mismatch` (the device rejected the pairing
-  code), `invalid-payload` (the pairing code could not be decoded; `error_code` is `InvalidArguments`),
-  `attestation-rejected` (the device certificates were not accepted), `timeout` (the device stopped answering or
-  commissioning took too long), `other`. Other argument errors carry no `reason`.
+  `commission_on_network`, and with a pairing code that cannot be decoded. Other argument errors carry no `reason`.
+  - `not-discovered`: no matching device was found.
+  - `passcode-mismatch`: the device rejected the pairing code.
+  - `invalid-payload`: the pairing code could not be decoded; `error_code` is `InvalidArguments`.
+  - `attestation-rejected`: the device certificates were not accepted.
+  - `timeout`: a device was found but not reached in time, an attempt to reach it timed out, the device stopped
+    answering, or commissioning took too long.
+  - `other`: anything else, for example an attempt that failed with an error other than a timeout.
 
 ## Commands
 
@@ -331,14 +333,13 @@ Using manual pairing code (network only):
 
 `discovery_timeout_s` (optional, schema 14) limits, in seconds, how long the server has to find the device and to set
 up the PASE session with it. Allowed are numbers above 0 up to 172800 (48 hours, the longest a device announces for
-commissioning);
-`null` counts as not given. Without it matter.js searches for 3 minutes. The commissioning steps after PASE are not
+commissioning); `null` counts as not given. Without it matter.js searches for 3 minutes. The commissioning steps after PASE are not
 limited. A device that is found but not reached in time fails with `NodeCommissionFailed` and `reason` `timeout`; a device
 never found, with `reason` `not-discovered`.
 
 **commission_on_network** - Commission a device already on the network
 
-Commission using setup PIN code with optional filtering by discriminator or vendor ID.
+Commission using setup PIN code with optional filtering by discriminator, vendor ID, product or device type.
 
 ```json
 {
@@ -626,7 +627,7 @@ Side effects on all clients: matter.js merges the read attribute values into the
 matter.js applies a read only when its fabric filter matches the node's subscription settings, which the server
 leaves at fabric-filtered, whether or not the node currently has the server's own subscription. Without
 `--disable-auto-subscription`, the server forwards changes of a node only once its subscription has been active since
-the server started, so a read of a node that has not been subscribed yet sends neither event. With
+the server started, so a read of a node that has not been subscribed yet sends no `attribute_updated`. With
 `--disable-auto-subscription` the server forwards changes of every node from the start. The events the read returns
 are only in its response: they are not sent as `node_event`, not added to the event history, and do not change the
 event number the server's own subscription resumes from.
@@ -750,7 +751,7 @@ setting is not kept: every start switches all nodes off again. Switching a node 
 nothing.
 
 The server's subscription asks the device only for events after the highest event number matter.js has received
-from the node so far, through any read or subscription.
+from the node through the server's own subscription or the read after commissioning.
 
 `enable_auto_subscription` returns `null` once the server's subscription to the node is active, so commands that
 need it, such as `register_icd`, work from then on. If the node's subscription is already active, it returns at
@@ -822,7 +823,7 @@ Command with parameters (e.g., move to level):
 Optional parameters:
 - `response_type`: Client SDK type hint (currently ignored by the server)
 - `timed_request_timeout_ms`: Timeout for timed interactions (required for some commands like door lock)
-- `interaction_timeout_ms`: Time in milliseconds the device may take to process the command, an integer from 0 to 86400000 (one day); otherwise the request fails with `InvalidArguments`. Over UDP it replaces the default expected processing time of 2 seconds in the response timeout; over TCP and BLE the response timeout is the larger of 30 seconds and this value
+- `interaction_timeout_ms`: Time in milliseconds the device may take to process the command, an integer from 0 to 86400000 (one day); otherwise the request fails with `InvalidArguments`. Over UDP it replaces the default expected processing time of 2 seconds in the response timeout; over TCP and BLE the response timeout is the larger of 30 seconds and this value, plus 5 seconds
 
 A `node_id` in the Group Node ID range multicasts the command to the group. `endpoint_id` must then be
 absent or `null`, because a groupcast carries no endpoint: each node's own group table decides which of

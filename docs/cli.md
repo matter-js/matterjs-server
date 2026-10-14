@@ -89,8 +89,8 @@ also for those switched on with `enable_auto_subscription`:
 - the OTA provider does not check the DCL for updates on its own (otherwise 5 to 10 minutes after the start and
   then every 24 hours); matter.js only offers updates to nodes with the server's own subscription, so for other nodes
   `check_node_update` returns `null` and `update_node` fails, unless an update was found while the node was still
-  subscribed. Stored OTA files that no
-  node needs anymore are not deleted either, because that cleanup runs with the update check.
+  subscribed. Stored OTA files that no node needs anymore are not deleted either, because that cleanup runs with the
+  update check.
 - Thread Border Routers are not discovered and probed for a REST API until a client sends
   `get_thread_border_routers`, `get_thread_diagnostics` or `get_network_topology`; from then on discovery keeps
   running and every newly found Border Router is probed

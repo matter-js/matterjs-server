@@ -71,7 +71,10 @@ export interface CommissionWithCodeOptions {
     wifiCredentialsId?: string;
     /** Stored Thread dataset id to use (schema 12; omit for the reserved `default` entry). */
     threadDatasetId?: string;
-    /** Schema 14. Seconds the server looks for the device and sets up PASE; see the API docs for the limit. */
+    /**
+     * Schema 14. Seconds the server looks for the device and sets up PASE; see the API docs for the limit. The call
+     * still ends after `timeout`, so a long value needs a larger `timeout` too.
+     */
     discoveryTimeoutS?: number;
     /** Per-call command timeout in ms (overrides {@link MatterClient.commandTimeout}). */
     timeout?: number;
@@ -85,7 +88,10 @@ export interface CommissionOnNetworkOptions {
     filter?: number;
     /** Direct IP address of the device (schema 6). */
     ipAddr?: string;
-    /** Schema 14. Seconds the server looks for the device and sets up PASE; see the API docs for the limit. */
+    /**
+     * Schema 14. Seconds the server looks for the device and sets up PASE; see the API docs for the limit. The call
+     * still ends after `timeout`, so a long value needs a larger `timeout` too.
+     */
     discoveryTimeoutS?: number;
     /** Per-call command timeout in ms (overrides {@link MatterClient.commandTimeout}). */
     timeout?: number;

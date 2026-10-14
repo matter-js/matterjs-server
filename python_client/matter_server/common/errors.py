@@ -15,7 +15,8 @@ class MatterError(Exception):
     """Generic Matter exception.
 
     `status` and `cluster_status` hold the Matter status the device answered with, when the server reports the
-    failure as one; `reason` is the commissioning failure reason. All are set from the server's error reply.
+    failure as one; `reason` is the commissioning failure reason, or for a camera error the reason from its details. All
+    are set from the server's error reply.
     """
 
     error_code = 0
