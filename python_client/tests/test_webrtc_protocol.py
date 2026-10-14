@@ -83,6 +83,7 @@ def _signalling_client(schema_version: int) -> MatterClient:
     """A client that reports a schema version and answers every command with None."""
     client = MatterClient.__new__(MatterClient)
     client._result_futures = {}
+    client._result_hooks = {}
     client._loop = asyncio.get_running_loop()
     connection = MagicMock()
     connection.connected = True

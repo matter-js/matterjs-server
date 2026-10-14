@@ -28,6 +28,8 @@ class EventType(Enum):
     NETWORK_TOPOLOGY_UPDATED = "network_topology_updated"  # schema 13+
     CAMERA_SESSION_ENDED = "camera_session_ended"  # schema 14+
     CAMERA_STREAM_EVICTED = "camera_stream_evicted"  # schema 14+
+    SUBSCRIPTION_REPORT = "subscription_report"  # schema 14+
+    SUBSCRIPTION_ENDED = "subscription_ended"  # schema 14+
 
 
 class APICommand(str, Enum):
@@ -78,6 +80,11 @@ class APICommand(str, Enum):
     CAMERA_STOP_STREAM = "camera_stop_stream"  # schema 14+
     CAMERA_SNAPSHOT = "camera_snapshot"  # schema 14+
     CAMERA_RELEASE_STREAM = "camera_release_stream"  # schema 14+
+    READ = "read"  # schema 14+
+    SUBSCRIBE = "subscribe"  # schema 14+
+    UNSUBSCRIBE = "unsubscribe"  # schema 14+
+    ENABLE_AUTO_SUBSCRIPTION = "enable_auto_subscription"  # schema 14+
+    DISABLE_AUTO_SUBSCRIPTION = "disable_auto_subscription"  # schema 14+
 
 
 EventCallBackType = Callable[[EventType, Any], None]
@@ -799,3 +806,73 @@ class CameraOccupyingStream:
     kind: str
     stream_id: int
     reference_count: int
+
+
+class EventPath(TypedDict):
+    """Event path of a `read`: "endpoint/cluster/event", wildcards allowed."""
+
+    path: str
+
+
+class SubscribeEventPath(EventPath, total=False):
+    """Event path of a `subscribe`; `is_urgent` is the IsUrgent flag of that path."""
+
+    is_urgent: bool
+
+
+class DataVersionFilter(TypedDict):
+    """Skip a cluster whose data version is still `data_version`; `path` is "endpoint/cluster", both concrete."""
+
+    path: str
+    data_version: int
+
+
+@dataclass
+class PathStatus:
+    """Matter status the device returned for one path; `cluster_status` is the cluster-specific one."""
+
+    status: int
+    cluster_status: int | None = None
+
+
+@dataclass
+class InteractionReport:
+    """Result of `read`, and the shape of every report of a subscription.
+
+    `attributes` is keyed by attribute path as in `read_attribute`. The status maps are keyed by the
+    path in the request format and are `None` when the device returned no status.
+    """
+
+    attributes: dict[str, Any]
+    events: list[MatterNodeEvent]
+    attribute_status: dict[str, PathStatus] | None = None
+    event_status: dict[str, PathStatus] | None = None
+
+
+@dataclass(kw_only=True)
+class SubscribeResult(InteractionReport):
+    """Result of `subscribe`: the priming report plus the id the device assigned.
+
+    A subscription id is unique only per node; name a subscription by `node_id` and `subscription_id`.
+    """
+
+    subscription_id: int
+
+
+@dataclass(kw_only=True)
+class SubscriptionReportData(InteractionReport):
+    """Payload of the `subscription_report` event."""
+
+    node_id: int
+    subscription_id: int
+
+
+@dataclass
+class SubscriptionEndedData:
+    """Payload of the `subscription_ended` event."""
+
+    node_id: int
+    subscription_id: int
+
+
+SubscriptionListener = Callable[[EventType, SubscriptionReportData | SubscriptionEndedData], None]

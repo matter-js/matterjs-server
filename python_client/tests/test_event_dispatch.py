@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
@@ -12,6 +13,10 @@ from matter_server.common.models import (
     CameraStreamEvictedData,
     EventMessage,
     EventType,
+    MatterNodeEvent,
+    PathStatus,
+    SubscriptionEndedData,
+    SubscriptionReportData,
 )
 
 
@@ -82,6 +87,71 @@ def test_node_scoped_camera_event_is_withheld_from_another_node(
     event_type: EventType, data: dict, expected: object
 ) -> None:
     """The node id routes the event rather than merely travelling with it."""
+    client = _make_client()
+    received: list[tuple[object, object]] = []
+    client.subscribe_events(lambda event, payload: received.append((event, payload)), node_filter=8)
+
+    client._handle_event_message(EventMessage(event=event_type, data=data))
+
+    assert received == []
+
+
+_SUBSCRIPTION_EVENT: dict[str, Any] = {
+    "node_id": 7,
+    "endpoint_id": 1,
+    "cluster_id": 59,
+    "event_id": 1,
+    "event_number": 121,
+    "priority": 1,
+    "timestamp": 1704067200000,
+    "timestamp_type": 1,
+    "data": {"newPosition": 1},
+}
+
+_SUBSCRIPTION_EVENTS = [
+    (
+        EventType.SUBSCRIPTION_REPORT,
+        {
+            "node_id": 7,
+            "subscription_id": 42,
+            "attributes": {"1/6/0": True},
+            "events": [_SUBSCRIPTION_EVENT],
+            "attribute_status": {"1/6/9999": {"status": 134}},
+        },
+        SubscriptionReportData(
+            node_id=7,
+            subscription_id=42,
+            attributes={"1/6/0": True},
+            events=[MatterNodeEvent(**_SUBSCRIPTION_EVENT)],
+            attribute_status={"1/6/9999": PathStatus(134)},
+        ),
+    ),
+    (
+        EventType.SUBSCRIPTION_ENDED,
+        {"node_id": 7, "subscription_id": 42},
+        SubscriptionEndedData(node_id=7, subscription_id=42),
+    ),
+]
+
+
+@pytest.mark.parametrize(("event_type", "data", "expected"), _SUBSCRIPTION_EVENTS)
+def test_subscription_event_reaches_a_node_filtered_subscriber(
+    event_type: EventType, data: dict, expected: object
+) -> None:
+    """Subscription events carry node_id, so per-node subscribers receive them as dataclasses."""
+    client = _make_client()
+    received: list[tuple[object, object]] = []
+    client.subscribe_events(lambda event, payload: received.append((event, payload)), node_filter=7)
+
+    client._handle_event_message(EventMessage(event=event_type, data=data))
+
+    assert received == [(event_type, expected)]
+
+
+@pytest.mark.parametrize(("event_type", "data", "expected"), _SUBSCRIPTION_EVENTS)
+def test_subscription_event_is_withheld_from_another_node(
+    event_type: EventType, data: dict, expected: object
+) -> None:
     client = _make_client()
     received: list[tuple[object, object]] = []
     client.subscribe_events(lambda event, payload: received.append((event, payload)), node_filter=8)

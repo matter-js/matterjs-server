@@ -62,6 +62,7 @@ def _gated_client(schema_version: int) -> MatterClient:
     client.connection = connection
     client._loop = asyncio.get_running_loop()
     client._result_futures = {}
+    client._result_hooks = {}
     return client
 
 

@@ -78,6 +78,21 @@ Beyond the `python-matter-server` API, the client exposes commands the Matter.js
   then streams the bytes to `POST /ota-upload/<upload_id>`. Raises `OtaUploadError` (code 101) for a
   corrupt image, an expired/spent id, or disabled OTA support.
 - `get_icd_state`, `register_icd`, `unregister_icd`, `resync_icd` — ICD Check-In registration
+- `read`, `subscribe`, `unsubscribe`, `enable_auto_subscription`, `disable_auto_subscription` — Matter
+  read and subscribe requests with explicit paths (schema 14+). `read` returns an `InteractionReport`,
+  `subscribe` a `SubscribeResult` (the priming report plus `subscription_id`). A subscription is named by
+  `node_id` and `subscription_id` together. Later reports arrive as `subscription_report` events
+  (`SubscriptionReportData`), an end the caller did not ask for as `subscription_ended`
+  (`SubscriptionEndedData`); both go only to the connection that subscribed and reach `node_filter`
+  subscribers. Pass `listener` to `subscribe` to get every event of that one subscription, including those
+  the server sends right behind the response. The listener gets no further calls once `unsubscribe` is
+  called. When the connection is lost or `disconnect` is called, the listener receives a
+  `subscription_ended` that the client builds itself, because the server ends the subscription without
+  sending one; `node_filter` subscribers do not get it. If a `subscribe` call is cancelled or times out
+  (for example in `asyncio.wait_for`) before it returns, the client ends that subscription with
+  `unsubscribe` and logs a failure of that call. `subscribe`, `unsubscribe` and the two auto
+  subscription methods need a server running with auto subscription disabled.
+- `commission_with_code` and `commission_on_network` take `discovery_timeout_s` (schema 14+)
 - `camera_get_capabilities`, `camera_start_stream`, `camera_provide_answer`,
   `camera_provide_ice_candidates`, `camera_stop_stream`, `camera_snapshot`, `camera_release_stream`
   — the camera API (schema 14+). `camera_get_capabilities`, `camera_start_stream`, `camera_stop_stream`
