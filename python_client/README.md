@@ -93,6 +93,10 @@ Beyond the `python-matter-server` API, the client exposes commands the Matter.js
   `unsubscribe` and logs a failure of that call. `subscribe`, `unsubscribe` and the two auto
   subscription methods need a server running with auto subscription disabled.
 - `commission_with_code` and `commission_on_network` take `discovery_timeout_s` (schema 14+)
+- `send_batched_device_commands` — sends `(endpoint_id, command)` pairs to one node in a single InvokeRequest and returns
+  one `BatchedCommandResult` per command (schema 14+)
+- `write_attribute` takes `*` as the endpoint to write all endpoints of the node that have the attribute, and
+  `timed_request_timeout_ms` for a timed write (schema 14+)
 - `parse_onboarding_payload` — decodes a QR code or manual pairing code without contacting a device and returns
   `QrOnboardingPayloadResult` or `ManualOnboardingPayloadResult` (schema 14+)
 - `camera_get_capabilities`, `camera_start_stream`, `camera_provide_answer`,

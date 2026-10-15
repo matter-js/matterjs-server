@@ -2438,6 +2438,7 @@ These commands are available only in the Matter.js server and not in the Python 
 | `enable_auto_subscription` | Switch the server's own subscription to one node on, with `--disable-auto-subscription` (schema 14+) |
 | `disable_auto_subscription` | Switch the server's own subscription to one node off again (schema 14+) |
 | `parse_onboarding_payload` | Decode a QR code or manual pairing code without contacting a device (schema 14+) |
+| `batched_device_commands` | Send several commands to one node in a single InvokeRequest (schema 14+) |
 
 ### Data Differences
 
