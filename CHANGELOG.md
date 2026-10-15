@@ -16,7 +16,7 @@ This page shows a detailed overview of the changes between versions without the 
     - The TypeScript client's `ServerCommandError` carries typed error details (`details`, `hasDetails(code)`); the Python client has typed camera methods, results, events and errors
     - The dashboard's camera view uses the new camera API
         - Talks back to cameras that support two-way audio (needs HTTPS or localhost for the microphone)
-- Breaking: `@matter-server/ws-controller`: `ServerError.nodeCommissionFailed` takes the failure reason as second argument, and `splitAttributePath` throws a `ServerError` with `InvalidArguments` for an invalid id. `@matter-server/ws-client`: `APICommands` no longer lists the unsupported `subscribe_attribute`
+- Breaking: Library API: `ServerError.nodeCommissionFailed` (`@matter-server/ws-controller`) takes the failure reason as second argument, and `APICommands` (`@matter-server/ws-client`) no longer lists the unsupported `subscribe_attribute`
 - Enhancement: `nodes_changed` events carry a detail naming the node they concern (`reason`, `nodeId`, and `attributeKey` for attribute updates). A listener interested in one node can skip events for other nodes. Listeners that take no argument are unaffected. `addEventListener` only accepts the known event names, so TypeScript code that passes a `string` must narrow it first
 - Enhancement: Update matter.js to the latest 0.18.0 nightly
     - Adds support for Matter 1.6.1 (including Python client)
@@ -30,7 +30,7 @@ This page shows a detailed overview of the changes between versions without the 
 - Enhancement: `commission_with_code` and `commission_on_network` take an optional `discovery_timeout_s`, including ws-client and Python client support; the Python client also takes `filter_type` and `filter` on `commission_on_network`
 - Enhancement: Error responses carry the device's Matter status (`status`, `cluster_status`), commissioning errors a `reason`, and `write_attribute` results the cluster-specific status, including ws-client and Python client support
 - Enhancement: Adds the WebSocket command `batched_device_commands` to send several commands to one node in a single InvokeRequest, including ws-client and Python client support
-- Enhancement: Adds the attributes of the CHIP UnitTesting test cluster (0xFFF1FC05) that the controller certification suite uses to the custom clusters, including Python client support
+- Enhancement: Supports the attributes of the CHIP UnitTesting test cluster (0xFFF1FC05) that the controller certification suite uses, including Python client support
 - Enhancement: `write_attribute` takes a wildcard endpoint to write all endpoints of a node in one request, and `timed_request_timeout_ms` for a timed write, including ws-client and Python client support
 - Enhancement: The ws-client has `commissionOnNetwork`, and `deviceCommand` takes an options object with `timedRequestTimeoutMs` and `interactionTimeoutMs` (a number still sets the client timeout)
 - Enhancement: `--port 0` binds a free port, shown in the startup log line `Webserver listening on …`
@@ -75,10 +75,8 @@ This page shows a detailed overview of the changes between versions without the 
 - Fix: A wrong pairing code is reported as such instead of as a generic commissioning failure, so a client can ask for the code again. A pairing code that cannot be decoded fails with `InvalidArguments`
 - Fix: Commissioning with a pairing code that names a vendor and product skips a device whose advertisement names another vendor or product
 - Fix: `commission_on_network` respects `filter_type` 3 (vendor) and 4 (device type)
-- Fix: `device_command` respects `interaction_timeout_ms`
-- Fix: `device_command` refuses a command the cluster does not have, or fields that cannot be encoded, with error 8
-- Fix: `device_command` respects `timed_request_timeout_ms` 0
-- Fix: Identical parallel commands are combined only within one connection and with the same timeouts, so every client's command reaches the device
+- Fix: `device_command` respects `interaction_timeout_ms` and a `timed_request_timeout_ms` of 0, and refuses a command the cluster does not have or fields that cannot be encoded with error 8
+- Fix: Identical commands sent in parallel by different clients each reach the device
 - Fix: `read_attribute` and `write_attribute` refuse a path with an id that is invalid for its kind (for example cluster 32768) with `InvalidArguments`
 - Fix: Dashboard shows manufacturer-specific enum values (vendor mode tags, operational and error states, closure errors) as "Manufacturer 0x…"
 - Fix: (@RAR) List values of decorator-defined custom clusters are converted in both directions, so bytes inside a list (Aqara `SetZones`) reach the device as bytes instead of strings. The same fix sends `SupportedModes` of the derived Mode clusters (RVC Run/Clean, Dishwasher, Laundry Washer, Oven, Microwave Oven, Refrigerator, Device Energy Management, EVSE and Water Heater Mode) keyed by tag like every other attribute value, instead of keyed by field name
