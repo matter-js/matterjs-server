@@ -593,12 +593,13 @@ Schema 14 options:
 
 Response: one entry per endpoint the device answered for (one for a specific endpoint, one per endpoint reached for a
 wildcard endpoint, none when a wildcard reaches no endpoint), with its Matter status in `Status` and, when the device
-sent one, the cluster-specific status in `ClusterStatus` (schema 14). A list written in several chunks still gets one
-entry per endpoint, with the first failing chunk's status. The status is usually the device's answer, but can also
-come from matter.js before anything is sent, for example `INVALID_ACTION` (0x80) for a struct missing a mandatory
-field. For a wildcard endpoint, a value matter.js cannot encode fails with `InvalidArguments`, and a status for the
-whole Write is an error reply. A write to an imported test node reports `0` without a device having answered; a test
-node takes no wildcard endpoint.
+sent one, the cluster-specific status in `ClusterStatus` (schema 14). Every call sends a write request to the node,
+also when the value equals the current one. A list written in several chunks still gets one entry per endpoint, with
+the first failing chunk's status. A value of the wrong type, outside the attribute's constraints or missing a mandatory
+field fails with `Status` `141` (INVALID_DATA_TYPE), `135` (CONSTRAINT_ERROR) or `128` (INVALID_ACTION). For a
+wildcard endpoint, a value matter.js cannot encode fails with `InvalidArguments` instead, and a status for the whole
+Write is an error reply. A write to an imported test node reports `0` without a device having answered; a test node
+takes no wildcard endpoint.
 
 A write to a specific endpoint without `timed_request_timeout_ms` also updates the node data at once. A wildcard or
 timed write changes the node data only with the device's next report, so without a subscription it stays unchanged
@@ -1060,6 +1061,10 @@ Entry fields:
 - `subjects`: Array of NodeIds or GroupIds (or null)
 - `targets`: Optional target restrictions (or null) - each target has `cluster`, `endpoint`, `device_type` fields
 
+Response: one entry, `[{ "path": { "endpoint_id": 0, "cluster_id": 31, "attribute_id": 0 }, "status": 0 }]`, with the
+status the node answered. Every call sends the write to the node, also when the entries equal the current ones. A
+subject that names the node itself is left out, because a node always has access to itself.
+
 **set_node_binding** - Set bindings on a node endpoint
 
 ```json
@@ -1079,6 +1084,9 @@ Entry fields:
   }
 }
 ```
+
+Response: one entry for the Binding attribute of `endpoint`, with the status the node answered. Every call sends the
+write to the node, also when the bindings equal the current ones.
 
 ### Firmware Updates
 

@@ -49,10 +49,14 @@ export class TestSite {
         return node;
     }
 
-    async startPair() {
+    startPair() {
+        return this.startPairWith(device => device.add(OnOffLightDevice.with(BooleanStateServer), { id: "light" }));
+    }
+
+    async startPairWith<E>(addLight: (device: ServerNode) => Promise<E>) {
         const controller = await this.addController();
         const device = await this.#addNode({ id: "device" });
-        const light = await device.add(OnOffLightDevice.with(BooleanStateServer), { id: "light" });
+        const light = await addLight(device);
 
         await device.start();
         await controller.start();

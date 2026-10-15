@@ -58,6 +58,7 @@ This page shows a detailed overview of the changes between versions without the 
 - Enhancement: (@Leo2442926161) Adds the `indicatorEnable` attribute to the Heiman custom cluster to switch the device LED indicator on or off
 - Enhancement: Adds the WAGO Home Blind Control `WagoBlindType` (roller shutter or venetian blind) and `WagoManualMode` attributes to the Window Covering cluster
 - Enhancement: Node data carries `endpoint_parents`, the direct parent of each endpoint as matter.js resolves it. The Python client and the Dashboard use it instead of deriving the parents from the Descriptor PartsLists, and keep deriving them for servers that do not send it
+- Enhancement: The env var `MATTER_LOG_FORMAT` (`ansi` or `plain`) sets the console log format. The Docker image defaults to `ansi`; otherwise colors are used only when the output is a terminal
 - Adjustment: Commands that target a node refuse a `node_id` that can never name one (CAT, PAKE, Unspecified, reserved ranges) with error 8 instead of `NODE_NOT_EXISTS`, and only the Temporary Local range is routed to imported test nodes
 - Adjustment: Every command treats a missing or `null` `args` as no arguments and refuses a non-object with error 8
 - Adjustment: `send_webrtc_provider_command` checks `node_id`, `endpoint_id` and every payload field against the cluster definition and refuses a bad one with error 8 instead of failing later or silently dropping data. It accepts the documented `ice_servers` shape and the key spellings `webrtc_callback` uses, and no longer drops streams before the camera's first report
@@ -65,6 +66,7 @@ This page shows a detailed overview of the changes between versions without the 
 - Adjustment: Dashboard network view uses the Thread 1.4 role names
 - Adjustment: `device_command` refuses an invalid `timed_request_timeout_ms` or `interaction_timeout_ms` with error 8
 - Adjustment: Structured values of clusters, attributes and events the server does not know are sent keyed by their TLV tags instead of as `null`
+- Adjustment: `write_attribute`, `set_acl_entry` and `set_node_binding` always send the write to the node and report the node's answer, also when the value equals the current one
 - Fix: The Dashboard shows the data type of custom cluster attributes and of attributes of derived clusters (Mode clusters, Bridged Device Basic Information) instead of `unknown`
 - Fix: `webrtc_callback` events the camera sends while `send_webrtc_provider_command` is still running are no longer lost
 - Fix: A re-offer (`ProvideOffer` naming an existing session) through `send_webrtc_provider_command` no longer ends the session it renegotiates
