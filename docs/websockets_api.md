@@ -588,8 +588,8 @@ Schema 14 options:
   request; the device decides which endpoints it reaches. A wildcard cluster or attribute is refused with
   `InvalidArguments`, and so is a path to a node that is not three segments of digits or `*`.
 - `timed_request_timeout_ms`: sends the write as a timed write with this timeout, an integer from 0 to 65535;
-  otherwise the request fails with `InvalidArguments`. As for `device_command`, 0 means no timed request. Without
-  it, a write is timed only when the attribute requires it.
+  otherwise the request fails with `InvalidArguments`. 0 counts as not given. Without it, a write is timed only when
+  the attribute requires it.
 
 Response: one entry per endpoint the device answered for (one for a specific endpoint, one per endpoint reached for a
 wildcard endpoint, none when a wildcard reaches no endpoint), with its Matter status in `Status` and, when the device
@@ -897,7 +897,7 @@ Command with parameters (e.g., move to level):
 
 Optional parameters:
 - `response_type`: Client SDK type hint (currently ignored by the server)
-- `timed_request_timeout_ms`: Timeout for timed interactions (required for some commands like door lock), an integer from 0 to 65535; otherwise the request fails with `InvalidArguments`. As in python-matter-server, 0 means no timed request
+- `timed_request_timeout_ms`: Timeout for timed interactions (required for some commands like door lock), an integer from 0 to 65535; otherwise the request fails with `InvalidArguments`. 0 counts as not given: no timed request, unless the command requires one
 - `interaction_timeout_ms`: Time in milliseconds the device may take to process the command, an integer from 0 to 2^53-1; otherwise the request fails with `InvalidArguments`. Over UDP it replaces the default expected processing time of 2 seconds in the response timeout; over TCP and BLE the response timeout is the larger of 30 seconds and this value, plus 5 seconds
 
 A `node_id` in the Group Node ID range multicasts the command to the group. `endpoint_id` must then be
@@ -932,7 +932,7 @@ never keyed fails with error 0 and a message naming the group.
 The commands go to the device in one InvokeRequest, in the given order, each with its own CommandRef (a batch of one
 command carries none, as the spec allows). The request is never split and never combined with other commands, and
 identical batches are not de-duplicated. Each command takes
-the fields of `device_command`; `payload` may be left out. `timed_request_timeout_ms` (0 to 65535, 0 means none)
+the fields of `device_command`; `payload` may be left out. `timed_request_timeout_ms` (0 to 65535, 0 counts as not given)
 sends one Timed Request for the whole batch; without it, the batch is timed only when one of its commands requires it.
 `interaction_timeout_ms` is the time the device may take to process the batch, as in `device_command`.
 

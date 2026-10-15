@@ -353,13 +353,13 @@ interface PythonType {
     needsFactory: boolean;
 }
 
+/** The metatype "float" alone cannot tell `single` from `double`. */
+const FLOAT_TYPES = new Set(["single", "double"]);
+
 /**
  * Type name of a model. Decorator-defined models (custom clusters) carry the type
  * as an `operationalBase` datatype instead of a `type` string.
  */
-/** The metatype "float" alone cannot tell `single` from `double`. */
-const FLOAT_TYPES = new Set(["single", "double"]);
-
 function typeNameOf(model: ValueModel): string | undefined {
     const type = (model as any).type as string | undefined;
     if (type !== undefined) return type;

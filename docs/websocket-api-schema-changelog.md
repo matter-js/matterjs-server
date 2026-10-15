@@ -123,7 +123,7 @@ OHF extensions; python-matter-server codes stop at 11. Each carries JSON details
   encode, with `InvalidArguments`; before, it failed with `UnknownError`.
 - **`write_attribute`** takes `*` as the endpoint for a unicast node and writes every endpoint that has the
   attribute in one Write request; the result has one entry per endpoint the device answered for. The new
-  `timed_request_timeout_ms` (0 to 65535; 0 means no timed request) sends a timed write. A wildcard cluster or
+  `timed_request_timeout_ms` (0 to 65535; 0 counts as not given) sends a timed write. A wildcard cluster or
   attribute stays refused, and so does a malformed path to a node (only digits or `*` per segment, three segments).
 - **`device_command` `timed_request_timeout_ms`** that is not an integer from 0 to 65535 is refused with error 8;
   before, such a value was ignored and the command was sent without a timed request.
