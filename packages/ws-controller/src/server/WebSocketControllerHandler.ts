@@ -110,6 +110,8 @@ const EVENT_HISTORY_SIZE = 25;
 const SCHEMA_VERSION = 14;
 /** One day; matter.js adds the value to its response timeout, and Node.js fires timers past 2^31-1 ms at once. */
 const MAX_INTERACTION_TIMEOUT_MS = 86_400_000;
+/** The Timeout field of a Matter TimedRequest is a uint16. */
+const MAX_TIMED_REQUEST_TIMEOUT_MS = 0xffff;
 const MIN_SUPPORTED_SCHEMA_VERSION = 11;
 
 // Issuing any of these (schema 12) proves the connection is Thread-aware, so it opts the connection
@@ -1314,7 +1316,6 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 discovery_capabilities: payload.discoveryCapabilities,
                 discriminator: payload.discriminator,
                 setup_pin_code: payload.passcode,
-                tlv_data: payload.tlvData === undefined ? undefined : Bytes.toHex(payload.tlvData),
             })),
         };
     }
@@ -1696,18 +1697,17 @@ export class WebSocketControllerHandler implements WebServerHandler {
         if (endpointId === undefined || endpointId === null) {
             throw ServerError.invalidArguments("device_command requires endpoint_id unless node_id is a Group Node ID");
         }
-        if (
-            interactionTimeoutMs !== undefined &&
-            interactionTimeoutMs !== null &&
-            !(
-                Number.isInteger(interactionTimeoutMs) &&
-                interactionTimeoutMs >= 0 &&
-                interactionTimeoutMs <= MAX_INTERACTION_TIMEOUT_MS
-            )
-        ) {
-            throw ServerError.invalidArguments(
-                `interaction_timeout_ms must be an integer from 0 to ${MAX_INTERACTION_TIMEOUT_MS}`,
-            );
+        for (const [name, stated, max] of [
+            ["timed_request_timeout_ms", timedInteractionTimeoutMs, MAX_TIMED_REQUEST_TIMEOUT_MS],
+            ["interaction_timeout_ms", interactionTimeoutMs, MAX_INTERACTION_TIMEOUT_MS],
+        ] as const) {
+            if (
+                stated !== undefined &&
+                stated !== null &&
+                !(Number.isInteger(stated) && stated >= 0 && stated <= max)
+            ) {
+                throw ServerError.invalidArguments(`${name} must be an integer from 0 to ${max}`);
+            }
         }
 
         const camelizedCommand = camelize(commandName);

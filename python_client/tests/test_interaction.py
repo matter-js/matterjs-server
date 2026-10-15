@@ -756,11 +756,10 @@ async def test_parse_onboarding_payload_returns_the_qr_payloads() -> None:
         "discovery_capabilities": 4,
         "discriminator": 3840,
         "setup_pin_code": 20202021,
-        "tlv_data": "152c000341424318",
     }
     client, sent = _wire_client(14, {"type": "qr", "payloads": [payload]})
 
-    result = await client.parse_onboarding_payload("MT:Y.K90AFN00KA064IJ3P027M30PKC42O0")
+    result = await client.parse_onboarding_payload("MT:Y.K90AFN00KA0648G00")
 
     assert result == QrOnboardingPayloadResult(
         type="qr",
@@ -773,12 +772,11 @@ async def test_parse_onboarding_payload_returns_the_qr_payloads() -> None:
                 discovery_capabilities=4,
                 discriminator=3840,
                 setup_pin_code=20202021,
-                tlv_data="152c000341424318",
             )
         ],
     )
     assert [(message.command, message.args) for message in sent] == [
-        (APICommand.PARSE_ONBOARDING_PAYLOAD, {"code": "MT:Y.K90AFN00KA064IJ3P027M30PKC42O0"})
+        (APICommand.PARSE_ONBOARDING_PAYLOAD, {"code": "MT:Y.K90AFN00KA0648G00"})
     ]
 
 

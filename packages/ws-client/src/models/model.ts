@@ -1637,8 +1637,6 @@ export interface QrOnboardingPayload {
     discovery_capabilities: number;
     discriminator: number;
     setup_pin_code: number;
-    /** The TLV data appended to the payload, as hex; only when the payload carries some. */
-    tlv_data?: string;
 }
 
 /** Result of `parse_onboarding_payload`. */

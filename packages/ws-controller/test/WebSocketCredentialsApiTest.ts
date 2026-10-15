@@ -2455,12 +2455,15 @@ describe("groupcast on the generic commands", () => {
         }
     });
 
-    for (const [stated, expected] of [
-        [0, Millis(0)],
-        [86_400_000, Millis(86_400_000)],
-        [null, undefined],
+    for (const [name, stated, expected] of [
+        ["timed_request_timeout_ms", 0, Millis(0)],
+        ["timed_request_timeout_ms", 65_535, Millis(65_535)],
+        ["timed_request_timeout_ms", null, undefined],
+        ["interaction_timeout_ms", 0, Millis(0)],
+        ["interaction_timeout_ms", 86_400_000, Millis(86_400_000)],
+        ["interaction_timeout_ms", null, undefined],
     ] as const) {
-        it(`passes interaction_timeout_ms ${String(stated)} of a device_command on`, async () => {
+        it(`passes ${name} ${String(stated)} of a device_command on`, async () => {
             const invokes = new Array<InvokeRequest>();
             const h = await createHarness(undefined, {
                 handleInvoke: async data => {
@@ -2478,20 +2481,33 @@ describe("groupcast on the generic commands", () => {
                         cluster_id: 6,
                         command_name: "toggle",
                         payload: {},
-                        interaction_timeout_ms: stated,
+                        [name]: stated,
                     },
-                    `unicast-invoke-interaction-timeout-bound-${String(stated)}`,
+                    `unicast-invoke-${name}-bound-${String(stated)}`,
                 );
                 expect(answer.error_code).to.equal(undefined);
-                expect(invokes.map(({ interactionTimeoutMs }) => interactionTimeoutMs)).deep.equals([expected]);
+                expect(
+                    invokes.map(({ timedInteractionTimeoutMs, interactionTimeoutMs }) =>
+                        name === "timed_request_timeout_ms" ? timedInteractionTimeoutMs : interactionTimeoutMs,
+                    ),
+                ).deep.equals([expected]);
             } finally {
                 await h.close();
             }
         });
     }
 
-    for (const stated of [-1, 1.5, "5000", 86_400_001]) {
-        it(`refuses interaction_timeout_ms ${JSON.stringify(stated)} on a device_command`, async () => {
+    for (const [name, stated] of [
+        ["timed_request_timeout_ms", -1],
+        ["timed_request_timeout_ms", 1.5],
+        ["timed_request_timeout_ms", "1000"],
+        ["timed_request_timeout_ms", 65_536],
+        ["interaction_timeout_ms", -1],
+        ["interaction_timeout_ms", 1.5],
+        ["interaction_timeout_ms", "5000"],
+        ["interaction_timeout_ms", 86_400_001],
+    ] as const) {
+        it(`refuses ${name} ${JSON.stringify(stated)} on a device_command`, async () => {
             const h = await createHarness(undefined, {
                 handleInvoke: async () => {
                     throw new Error("invoke must not be reached");
@@ -2507,12 +2523,12 @@ describe("groupcast on the generic commands", () => {
                         cluster_id: 6,
                         command_name: "toggle",
                         payload: {},
-                        interaction_timeout_ms: stated,
+                        [name]: stated,
                     },
-                    `unicast-invoke-interaction-timeout-${String(stated)}`,
+                    `unicast-invoke-${name}-${String(stated)}`,
                 );
                 expect(answer.error_code).to.equal(8);
-                expect(answer.details).to.contain("interaction_timeout_ms");
+                expect(answer.details).to.contain(name);
             } finally {
                 await h.close();
             }

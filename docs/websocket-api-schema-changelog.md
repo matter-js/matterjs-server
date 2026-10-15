@@ -114,6 +114,8 @@ OHF extensions; python-matter-server codes stop at 11. Each carries JSON details
   searched for any device. Without `filter` it is refused with error 8.
 - **`device_command` `interaction_timeout_ms`** is applied to the command; before, the server accepted
   it and ignored it. A value that is not an integer from 0 to 86400000 is refused with error 8.
+- **`device_command` `timed_request_timeout_ms`** that is not an integer from 0 to 65535 is refused with error 8;
+  before, such a value was ignored and the command was sent without a timed request.
 - **`args`** — every command treats a missing or `null` `args` as no arguments, and refuses a
   non-object `args` with error 8.
 - **`node_id`** — every command that targets a node refuses a `node_id` that can never name one (a
@@ -140,7 +142,7 @@ OHF extensions; python-matter-server codes stop at 11. Each carries JSON details
 ### Commissioning
 
 - **New command `parse_onboarding_payload`** `{ code }` → `{ type: "qr", payloads: [{ version, vendor_id?, product_id?,
-  flow_type, discovery_capabilities, discriminator, setup_pin_code, tlv_data? }] }` or `{ type: "manual",
+  flow_type, discovery_capabilities, discriminator, setup_pin_code }] }` or `{ type: "manual",
   short_discriminator, setup_pin_code, vendor_id?, product_id? }`. Decodes a code as `commission_with_code` does, without
   contacting a device. An undecodable code fails with `InvalidArguments` and `reason` `invalid-payload`.
 - **Optional `discovery_timeout_s` on `commission_with_code` and `commission_on_network`**: how long, in seconds, to find the device and set up PASE with it (above 0, at most 172800; `null` counts as not given). Without it matter.js searches for 3 minutes. The commissioning steps after PASE are not limited, and on `commission_on_network` the attempt at `ip_addr` keeps the matter.js PASE limit.

@@ -893,7 +893,6 @@ class QrOnboardingPayload:
     setup_pin_code: int
     vendor_id: int | None = None
     product_id: int | None = None
-    tlv_data: str | None = None
 
 
 @dataclass

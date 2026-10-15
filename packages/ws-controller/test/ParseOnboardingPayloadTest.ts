@@ -39,13 +39,10 @@ describe("parse_onboarding_payload over WebSocket", () => {
         expect(response.result).deep.equals({ type: "qr", payloads: [QR_PAYLOAD] });
     });
 
-    it("returns the TLV data of a QR code as hex", async () => {
+    it("leaves out the TLV data of a QR code", async () => {
         const response = await parse("MT:Y.K90AFN00KA064IJ3P027M30PKC42O0");
 
-        expect(response.result).deep.equals({
-            type: "qr",
-            payloads: [{ ...QR_PAYLOAD, tlv_data: "152c000341424318" }],
-        });
+        expect(response.result).deep.equals({ type: "qr", payloads: [QR_PAYLOAD] });
     });
 
     it("returns every payload of a concatenated QR code", async () => {

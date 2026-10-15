@@ -399,8 +399,8 @@ Response for a QR code, one entry per payload, so a code that concatenates sever
 ```
 
 `vendor_id` and `product_id` are left out where the payload says 0 (unspecified). `flow_type` is 0 standard, 1
-user-intent, 2 custom. `discovery_capabilities` is the bitmask as encoded in the payload. `tlv_data` holds the TLV data
-appended to the payload as hex, and is only present when the payload carries some.
+user-intent, 2 custom. `discovery_capabilities` is the bitmask as encoded in the payload. TLV data appended to the
+payload is not returned.
 
 Response for a manual pairing code; `vendor_id` and `product_id` only for the 21-digit form, and left out where it says 0:
 
@@ -872,7 +872,7 @@ Command with parameters (e.g., move to level):
 
 Optional parameters:
 - `response_type`: Client SDK type hint (currently ignored by the server)
-- `timed_request_timeout_ms`: Timeout for timed interactions (required for some commands like door lock)
+- `timed_request_timeout_ms`: Timeout for timed interactions (required for some commands like door lock), an integer from 0 to 65535; otherwise the request fails with `InvalidArguments`
 - `interaction_timeout_ms`: Time in milliseconds the device may take to process the command, an integer from 0 to 86400000 (one day); otherwise the request fails with `InvalidArguments`. Over UDP it replaces the default expected processing time of 2 seconds in the response timeout; over TCP and BLE the response timeout is the larger of 30 seconds and this value, plus 5 seconds
 
 A `node_id` in the Group Node ID range multicasts the command to the group. `endpoint_id` must then be
