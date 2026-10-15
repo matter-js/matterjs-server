@@ -76,6 +76,7 @@ RUN \
 # See docs/docker.md for full list of available environment variables
 ENV LOG_LEVEL=info
 ENV STORAGE_PATH=/data
+ENV MATTER_LOG_FORMAT=ansi
 
 # Data volume for persistent storage
 VOLUME ["/data"]

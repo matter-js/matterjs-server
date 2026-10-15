@@ -9,6 +9,7 @@ This page shows a detailed overview of the changes between versions without the 
 
 ## **WORK IN PROGRESS**
 
+- Enhancement: The Docker image logs to the console with ANSI colors again. Set `MATTER_LOG_FORMAT=plain` for uncolored logs
 - Feature: Introduces Websocket Schema version 14 (backward compatible), detectable with `server_info.schema_version >= 14`. Details are in [docs/websockets_api.md](docs/websockets_api.md#camera-streaming-schema-14) and [docs/websocket-api-schema-changelog.md](docs/websocket-api-schema-changelog.md)
     - Adds a camera API that handles stream management and WebRTC sessions for the client, see[docs/CAMERA_LIMITATIONS.md](docs/CAMERA_LIMITATIONS.md) for information on defaults and known camera quirks. The Matter commands through `send_webrtc_provider_command` and `device_command` stay available
     - `camera_start_stream` asks the camera to play the client's audio only with `talkback: true`; otherwise the server makes the offer's audio sections not send
