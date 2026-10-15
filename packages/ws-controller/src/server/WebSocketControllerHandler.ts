@@ -108,8 +108,7 @@ function isIdentityConflict(error: unknown): boolean {
 const EVENT_HISTORY_SIZE = 25;
 
 const SCHEMA_VERSION = 14;
-/** One day; matter.js adds the value to its response timeout, and Node.js fires timers past 2^31-1 ms at once. */
-const MAX_INTERACTION_TIMEOUT_MS = 86_400_000;
+const MAX_INTERACTION_TIMEOUT_MS = Number.MAX_SAFE_INTEGER;
 /** The Timeout field of a Matter TimedRequest is a uint16. */
 const MAX_TIMED_REQUEST_TIMEOUT_MS = 0xffff;
 const MIN_SUPPORTED_SCHEMA_VERSION = 11;

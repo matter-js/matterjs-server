@@ -2460,7 +2460,7 @@ describe("groupcast on the generic commands", () => {
         ["timed_request_timeout_ms", 65_535, Millis(65_535)],
         ["timed_request_timeout_ms", null, undefined],
         ["interaction_timeout_ms", 0, Millis(0)],
-        ["interaction_timeout_ms", 86_400_000, Millis(86_400_000)],
+        ["interaction_timeout_ms", Number.MAX_SAFE_INTEGER, Millis(Number.MAX_SAFE_INTEGER)],
         ["interaction_timeout_ms", null, undefined],
     ] as const) {
         it(`passes ${name} ${String(stated)} of a device_command on`, async () => {
@@ -2505,7 +2505,7 @@ describe("groupcast on the generic commands", () => {
         ["interaction_timeout_ms", -1],
         ["interaction_timeout_ms", 1.5],
         ["interaction_timeout_ms", "5000"],
-        ["interaction_timeout_ms", 86_400_001],
+        ["interaction_timeout_ms", Number.MAX_SAFE_INTEGER + 1],
     ] as const) {
         it(`refuses ${name} ${JSON.stringify(stated)} on a device_command`, async () => {
             const h = await createHarness(undefined, {

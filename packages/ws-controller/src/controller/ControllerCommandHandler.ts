@@ -622,8 +622,6 @@ export class ControllerCommandHandler {
                 return;
             }
 
-            // Access the SoftwareUpdateManager behavior events dynamically
-            // Using 'any' because SoftwareUpdateManager is not directly exported from @matter/node
             const softwareUpdateManagerEvents = await otaProvider.act(agent => agent.get(SoftwareUpdateManager).events);
             if (softwareUpdateManagerEvents === undefined) {
                 logger.info("SoftwareUpdateManager not available");

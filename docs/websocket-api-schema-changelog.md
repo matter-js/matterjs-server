@@ -113,7 +113,7 @@ OHF extensions; python-matter-server codes stop at 11. Each carries JSON details
 - **`commission_on_network` `filter_type` 4** searches by the device type in `filter`; before, it
   searched for any device. Without `filter` it is refused with error 8.
 - **`device_command` `interaction_timeout_ms`** is applied to the command; before, the server accepted
-  it and ignored it. A value that is not an integer from 0 to 86400000 is refused with error 8.
+  it and ignored it. Anything other than an integer from 0 to 2^53-1 is refused with error 8.
 - **`device_command` `timed_request_timeout_ms`** that is not an integer from 0 to 65535 is refused with error 8;
   before, such a value was ignored and the command was sent without a timed request.
 - **`args`** — every command treats a missing or `null` `args` as no arguments, and refuses a
@@ -149,6 +149,8 @@ OHF extensions; python-matter-server codes stop at 11. Each carries JSON details
 - **Optional `discovery_timeout_s` on `commission_with_code` and `commission_on_network`**: how long, in seconds, to find the device and set up PASE with it (above 0, at most 172800; `null` counts as not given). Without it matter.js searches for 3 minutes. The commissioning steps after PASE are not limited, and on `commission_on_network` the attempt at `ip_addr` keeps the matter.js PASE limit.
 
 ### Subscriptions and generic read
+
+Meant only for the special `--disable-auto-subscription` mode, not for normal operation; the server's own subscription is much more reliable.
 
 - **New command `read`** → `{ attributes, events, attribute_status?, event_status? }`. One Matter Read request with `attribute_paths`, `event_paths` (`[{ path }]`, `path` is `endpoint/cluster/event`), `event_min`, `fabric_filtered` (default `true`) and `data_version_filters` (`[{ path: "endpoint/cluster", data_version }]`). Without `event_min` the request has no event filter and returns all events the device holds. Refused with `InvalidArguments` before anything is sent: an argument of the wrong type, a malformed path or invalid id, no path, `event_min` or `data_version` out of range, `event_min` without `event_paths` and a non-empty `data_version_filters` without `attribute_paths`. `attributes` uses the `read_attribute` shape, `events` the `node_event` shape. `attribute_status` / `event_status` map each path the device answered with a status to `{ status, cluster_status? }` (numeric Matter status codes) and are left out when there is none.
 - **New command `subscribe`** → `{ subscription_id, attributes, events, attribute_status?, event_status? }`: the id and the priming report in the `read` result shape. The `read` arguments plus `min_interval` / `max_interval` (seconds), `is_urgent` per event path and `keep_subscriptions` (default `false`, passed to the device as given; `false`, also when left out, ends all other subscriptions of this controller to the same node, including those of other connections, which arrive as `subscription_ended` at their connections). Only available when the server runs with `--disable-auto-subscription` and the node's auto subscription is off, otherwise `InvalidArguments`. `subscription_id` is the SubscriptionId the device assigned. The `read` refusals apply, and intervals outside 0 to 65535 or `max_interval` below `min_interval` are refused with `InvalidArguments` too. The subscription belongs to the connection that opened it and ends with `unsubscribe`, when that connection closes, when the node is removed or when the server shuts down.

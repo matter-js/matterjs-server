@@ -27,13 +27,27 @@ const ControllerRootEndpoint = ServerNode.RootEndpointWithoutGroupcast.with(Cont
 type ControllerRootEndpoint = typeof ControllerRootEndpoint;
 
 /**
- * Skips the periodic DCL update check, which also announces consented updates to the devices, and with it the cleanup
- * of stored OTA files no node needs anymore. `check_node_update` and `update_node` go through `queryUpdates` and
- * `forceUpdate`. matter.js only offers updates to a node with the server's own subscription, so for any other node
- * `check_node_update` returns `null` and `update_node` fails, unless an update was found while it was subscribed.
+ * With `checkOnRequestOnly`, skips the periodic DCL update check, which also announces consented updates to the
+ * devices, and with it the cleanup of stored OTA files no node needs anymore. `check_node_update` and `update_node` go
+ * through `queryUpdates` and `forceUpdate`. matter.js only offers updates to a node with the server's own
+ * subscription, so for any other node `check_node_update` returns `null` and `update_node` fails, unless an update was
+ * found while it was subscribed.
  */
-class OnRequestSoftwareUpdateManager extends SoftwareUpdateManager {
-    override async checkForUpdates() {}
+class ServerSoftwareUpdateManager extends SoftwareUpdateManager {
+    declare state: ServerSoftwareUpdateManager.State;
+
+    override async checkForUpdates() {
+        if (this.state.checkOnRequestOnly) {
+            return;
+        }
+        await super.checkForUpdates();
+    }
+}
+
+namespace ServerSoftwareUpdateManager {
+    export class State extends SoftwareUpdateManager.State {
+        checkOnRequestOnly = false;
+    }
 }
 
 /**
@@ -131,12 +145,10 @@ export async function createControllerNode(options: ControllerNodeOptions): Prom
     try {
         const otaProvider = options.enableOtaProvider
             ? await node.add(
-                  new Endpoint(
-                      options.disableAutoSubscription
-                          ? OtaProviderEndpoint.with(OnRequestSoftwareUpdateManager)
-                          : OtaProviderEndpoint,
-                      { id: "ota-provider" },
-                  ),
+                  new Endpoint(OtaProviderEndpoint.with(ServerSoftwareUpdateManager), {
+                      id: "ota-provider",
+                      softwareupdates: { checkOnRequestOnly: options.disableAutoSubscription ?? false },
+                  }),
               )
             : undefined;
         const webRtcRequestor = await node.add(new Endpoint(CameraControllerEndpoint, { id: "camera-controller" }));

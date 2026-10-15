@@ -607,6 +607,12 @@ them: the server subscribes to every node on its own. `subscribe`, `unsubscribe`
 they fail with `InvalidArguments`, before anything is sent to a device. `subscribe` also fails this way for a node
 whose auto subscription was switched on with `enable_auto_subscription`. `read` works in both modes.
 
+> [!WARNING]
+> These commands are meant only for the special `--disable-auto-subscription` mode, for example certification
+> testing. Do not use them in normal operation: the server's own subscription is much more reliable. It keeps the
+> node data and events up to date, so clients read current values from the node data, and it is set up again after a
+> connection loss.
+
 Paths:
 
 - Attribute paths use the [attribute path format](#attribute-path-format) of `read_attribute`, wildcards included.
@@ -874,7 +880,7 @@ Command with parameters (e.g., move to level):
 Optional parameters:
 - `response_type`: Client SDK type hint (currently ignored by the server)
 - `timed_request_timeout_ms`: Timeout for timed interactions (required for some commands like door lock), an integer from 0 to 65535; otherwise the request fails with `InvalidArguments`
-- `interaction_timeout_ms`: Time in milliseconds the device may take to process the command, an integer from 0 to 86400000 (one day); otherwise the request fails with `InvalidArguments`. Over UDP it replaces the default expected processing time of 2 seconds in the response timeout; over TCP and BLE the response timeout is the larger of 30 seconds and this value, plus 5 seconds
+- `interaction_timeout_ms`: Time in milliseconds the device may take to process the command, an integer from 0 to 2^53-1; otherwise the request fails with `InvalidArguments`. Over UDP it replaces the default expected processing time of 2 seconds in the response timeout; over TCP and BLE the response timeout is the larger of 30 seconds and this value, plus 5 seconds
 
 A `node_id` in the Group Node ID range multicasts the command to the group. `endpoint_id` must then be
 absent or `null`, because a groupcast carries no endpoint: each node's own group table decides which of
