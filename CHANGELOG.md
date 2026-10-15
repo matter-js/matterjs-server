@@ -29,6 +29,9 @@ This page shows a detailed overview of the changes between versions without the 
 - Enhancement: Adds CLI flag `--dcl-offline` (env `DCL_OFFLINE`): the server never contacts the DCL, uses the bundled DCL data and stored certificates, and skips revocation checks
 - Enhancement: `commission_with_code` and `commission_on_network` take an optional `discovery_timeout_s`, including ws-client and Python client support; the Python client also takes `filter_type` and `filter` on `commission_on_network`
 - Enhancement: Error responses carry the device's Matter status (`status`, `cluster_status`), commissioning errors a `reason`, and `write_attribute` results the cluster-specific status, including ws-client and Python client support
+- Enhancement: Adds the WebSocket command `batched_device_commands` to send several commands to one node in a single InvokeRequest, including ws-client and Python client support
+- Enhancement: Adds the attributes of the CHIP UnitTesting test cluster (0xFFF1FC05) that the controller certification suite uses to the custom clusters, including Python client support
+- Enhancement: `write_attribute` takes a wildcard endpoint to write all endpoints of a node in one request, and `timed_request_timeout_ms` for a timed write, including ws-client and Python client support
 - Enhancement: The ws-client has `commissionOnNetwork`, and `deviceCommand` takes an options object with `timedRequestTimeoutMs` and `interactionTimeoutMs` (a number still sets the client timeout)
 - Enhancement: `--port 0` binds a free port, shown in the startup log line `Webserver listening on …`
 - Enhancement: Dashboard network view uses the Thread 1.4 role names: a Thread Router is shown as "Mesh Extender" and a REED as "Standby Mesh Extender". External (non-fabric) neighbors, whose role is only inferred from rx-on-when-idle, are now labeled "Always-on device" instead of a routing role. Wire values and the `ThreadRoutingRole` enum keep the Matter spec names
@@ -73,6 +76,8 @@ This page shows a detailed overview of the changes between versions without the 
 - Fix: Commissioning with a pairing code that names a vendor and product skips a device whose advertisement names another vendor or product
 - Fix: `commission_on_network` respects `filter_type` 3 (vendor) and 4 (device type)
 - Fix: `device_command` respects `interaction_timeout_ms`
+- Fix: `device_command` refuses a command the cluster does not have, or fields that cannot be encoded, with error 8
+- Fix: `device_command` respects `timed_request_timeout_ms` 0
 - Fix: Identical parallel commands are combined only within one connection and with the same timeouts, so every client's command reaches the device
 - Fix: `read_attribute` and `write_attribute` refuse a path with an id that is invalid for its kind (for example cluster 32768) with `InvalidArguments`
 - Fix: Dashboard shows manufacturer-specific enum values (vendor mode tags, operational and error states, closure errors) as "Manufacturer 0x…"

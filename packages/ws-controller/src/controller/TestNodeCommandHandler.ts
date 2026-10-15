@@ -6,10 +6,13 @@
 
 import { isTestNodeId } from "@matter-server/ws-client";
 import { Logger, NodeId, Observable } from "@matter/main";
+import { Status } from "@matter/main/types";
 import { parseBigIntAwareJson, splitAttributePath } from "../server/Converters.js";
 import {
     AttributeResponseStatus,
     AttributesData,
+    BatchedInvokeRequest,
+    BatchedInvokeResult,
     InvokeRequest,
     MatterNodeData,
     NodeCommandHandler,
@@ -184,19 +187,23 @@ export class TestNodeCommandHandler implements NodeCommandHandler {
      * Write an attribute to a test node.
      * Logs the write and returns success (no actual write occurs).
      */
-    async handleWriteAttribute(data: WriteAttributeRequest): Promise<AttributeResponseStatus> {
+    async handleWriteAttribute(data: WriteAttributeRequest): Promise<AttributeResponseStatus[]> {
         const { nodeId, endpointId, clusterId, attributeId, value } = data;
 
         logger.debug(
-            `write_attribute for test node ${nodeId} on ${endpointId}/${clusterId}/${attributeId} - value: ${JSON.stringify(value)}`,
+            `write_attribute for test node ${nodeId} on ${endpointId ?? "*"}/${clusterId}/${attributeId} - value: ${JSON.stringify(value)}`,
         );
 
-        return {
-            endpointId,
-            clusterId,
-            attributeId,
-            status: 0, // Success
-        };
+        if (endpointId === undefined) {
+            throw ServerError.invalidArguments("write_attribute to a test node needs a specific endpoint");
+        }
+        return [{ endpointId, clusterId, attributeId, status: 0 }];
+    }
+
+    /** Answers success for every command of the batch, like {@link handleInvoke} for one. */
+    async handleBatchedInvoke(data: BatchedInvokeRequest): Promise<BatchedInvokeResult> {
+        logger.debug(`batched_device_commands for test node ${data.nodeId} - ${data.commands.length} command(s)`);
+        return data.commands.map(() => ({ status: Status.Success }));
     }
 
     /**

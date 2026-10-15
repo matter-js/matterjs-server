@@ -78,8 +78,10 @@ import {
     EventPath,
     GroupId,
     SpecificationVersion,
+    ReceivedStatusResponseError,
     Status,
     StatusResponseError,
+    ValidationError,
     VendorId,
 } from "@matter/main/types";
 import { CommissioningDiscovery, Endpoint, ServerNode } from "@matter/node";
@@ -120,6 +122,8 @@ import {
     OpenCommissioningWindowRequest,
     OpenCommissioningWindowResponse,
     WriteAttributeRequest,
+    BatchedInvokeRequest,
+    BatchedInvokeResult,
 } from "../types/CommandHandler.js";
 import {
     AccessControlEntry,
@@ -132,6 +136,7 @@ import {
     CommissionFailureReason,
     NodePingResult,
     ServerError,
+    ServerErrorCode,
     UpdateSource,
 } from "../types/WebSocketMessageTypes.js";
 import { isBridgeNode } from "../util/bridgeDetection.js";
@@ -261,6 +266,18 @@ export interface ControllerCommandHandlerOptions {
  * Cast: matter.js types the `ClusterType(model)` overload as `object`, but a `ClusterMap` model always
  * carries the id `ClusterLike` requires.
  */
+/** A field value matter.js refuses while encoding is a bad argument of the caller, not a server failure. */
+function invokeRequestOf(definition: Invoke.Definition) {
+    try {
+        return Invoke(definition);
+    } catch (error) {
+        if (error instanceof ValidationError) {
+            throw new ServerError(ServerErrorCode.InvalidArguments, `Invalid command fields: ${error.message}`, error);
+        }
+        throw error;
+    }
+}
+
 function clusterSpecifierOf(entry: ClusterMapEntry): Specifier.ClusterLike {
     return ClusterType(entry.model) as Specifier.ClusterLike;
 }
@@ -1503,9 +1520,12 @@ export class ControllerCommandHandler {
         return this.#fabric.label;
     }
 
-    async handleWriteAttribute(data: WriteAttributeRequest): Promise<AttributeResponseStatus> {
-        const { nodeId, endpointId, clusterId, attributeId } = data;
-        let { value } = data;
+    /**
+     * A concrete, untimed write goes through the node's state, which also updates the node data at once. A wildcard
+     * endpoint or a timed write is sent as a plain Write; the node data then changes only with the next report.
+     */
+    async handleWriteAttribute(data: WriteAttributeRequest): Promise<AttributeResponseStatus[]> {
+        const { nodeId, endpointId, clusterId, attributeId, timedInteractionTimeoutMs } = data;
 
         const clusterEntry = ClusterMap[clusterId];
         const attributeModel = clusterEntry?.attributes[attributeId];
@@ -1513,18 +1533,71 @@ export class ControllerCommandHandler {
             throw ServerError.invalidArguments(`Attribute ${attributeId} on cluster ${clusterId} unknown`);
         }
 
-        value = convertWebSocketTagBasedToMatter(value, attributeModel, clusterEntry.model);
-
+        const value = convertWebSocketTagBasedToMatter(data.value, attributeModel, clusterEntry.model);
         const attributeName = attributeModel.propertyName;
-        logger.info(`Writing attribute ${clusterId}.${attributeName} (${clusterId}.${attributeId}) with value`, value);
-        const { status, clusterStatus } = await this.#writeAttribute(
-            nodeId,
-            endpointId,
-            clusterId,
-            attributeModel.propertyName,
+        logger.info(
+            `Writing attribute ${clusterId}.${attributeName} (${endpointId ?? "*"}/${clusterId}/${attributeId}) with value`,
             value,
         );
-        return { attributeId, clusterId, endpointId, status, clusterStatus };
+
+        if (endpointId !== undefined && timedInteractionTimeoutMs === undefined) {
+            const { status, clusterStatus } = await this.#writeAttribute(
+                nodeId,
+                endpointId,
+                clusterId,
+                attributeName,
+                value,
+            );
+            return [{ attributeId, clusterId, endpointId, status, clusterStatus }];
+        }
+        if (endpointId !== undefined) {
+            this.#clusterEndpoint(nodeId, endpointId, clusterEntry.model.propertyName);
+        }
+
+        const attribute = { cluster: clusterSpecifierOf(clusterEntry), attributes: attributeName, value };
+        try {
+            const write = Write(
+                {
+                    timed: timedInteractionTimeoutMs !== undefined,
+                    timeout: timedInteractionTimeoutMs,
+                    // A device expands a wildcard path per endpoint, which leaves list append chunks without a base.
+                    chunkLists: endpointId !== undefined,
+                },
+                Write.Attribute(endpointId === undefined ? attribute : { ...attribute, endpoint: endpointId }),
+            );
+            const results = await this.#nodes.get(nodeId).interaction.write(write);
+
+            // A chunked list write answers once per chunk; report each endpoint once, its first failure if any.
+            const byEndpoint = new Map<number, AttributeResponseStatus>();
+            for (const { path, status, clusterStatus } of results) {
+                const known = byEndpoint.get(path.endpointId);
+                if (known === undefined || (known.status === Status.Success && status !== Status.Success)) {
+                    byEndpoint.set(path.endpointId, {
+                        endpointId: path.endpointId,
+                        clusterId: path.clusterId,
+                        attributeId: path.attributeId,
+                        status,
+                        clusterStatus,
+                    });
+                }
+            }
+            return [...byEndpoint.values()];
+        } catch (error) {
+            if (!(error instanceof StatusResponseError)) {
+                throw error;
+            }
+            if (endpointId !== undefined) {
+                return [{ endpointId, clusterId, attributeId, status: error.code, clusterStatus: error.clusterCode }];
+            }
+            if (error instanceof ReceivedStatusResponseError) {
+                throw error;
+            }
+            throw new ServerError(
+                ServerErrorCode.InvalidArguments,
+                `Invalid value for ${attributeName}: ${error.message}`,
+                error,
+            );
+        }
     }
 
     async #invokeCommand<const C extends Specifier.ClusterLike>(
@@ -1541,10 +1614,7 @@ export class ControllerCommandHandler {
         request: Invoke.CommandRequest<C>,
         options: Omit<Invoke.Definition, "commands"> = {},
     ) {
-        const invoke = Invoke({
-            commands: [request],
-            ...options,
-        });
+        const invoke = invokeRequestOf({ commands: [request], ...options });
         for await (const data of node.interaction.invoke(invoke)) {
             for (const entry of data) {
                 // We send only one command, so we only get one response back
@@ -1568,7 +1638,9 @@ export class ControllerCommandHandler {
     }
 
     /** Resolves once the packet is sent: no node answers. Each node's group table decides which endpoints act. */
-    async handleGroupWriteAttribute(data: Omit<WriteAttributeRequest, "endpointId">): Promise<void> {
+    async handleGroupWriteAttribute(
+        data: Omit<WriteAttributeRequest, "endpointId" | "timedInteractionTimeoutMs">,
+    ): Promise<void> {
         const { nodeId, clusterId, attributeId } = data;
 
         const clusterEntry = ClusterMap[clusterId];
@@ -1640,6 +1712,96 @@ export class ControllerCommandHandler {
         });
     }
 
+    /** Checks that the node has the command and converts its fields from the WebSocket form. */
+    #commandRequestOf(
+        nodeId: NodeId,
+        endpointId: EndpointNumber,
+        clusterId: ClusterId,
+        commandName: string,
+        commandData: unknown,
+    ) {
+        const clusterEntry = ClusterMap[clusterId];
+        if (!clusterEntry) {
+            throw ServerError.invalidArguments(`Cluster Id "${clusterId}" unknown`);
+        }
+        const clusterName = clusterEntry.model.propertyName;
+        const command = camelize(commandName);
+        const endpoint = this.#clusterEndpoint(nodeId, endpointId, clusterName);
+        const commands = (endpoint.commands as Record<string, Record<string, unknown>>)[clusterName];
+        const model = clusterEntry.commands[command.toLowerCase()];
+        if (!model || !commands[command]) {
+            throw ServerError.invalidArguments(`Command "${command}" does not exist on cluster "${clusterName}"`);
+        }
+
+        let fields = commandData;
+        if (isObject(fields)) {
+            fields =
+                Object.keys(fields).length === 0
+                    ? undefined
+                    : convertCommandDataToMatter(fields, model, clusterEntry.model);
+        }
+        return { cluster: clusterSpecifierOf(clusterEntry), clusterName, command, fields };
+    }
+
+    /**
+     * Sends all commands in one InvokeRequest, never split and never combined with other invokes, so a device sees
+     * exactly the batch the client asked for.
+     */
+    async handleBatchedInvoke(data: BatchedInvokeRequest): Promise<BatchedInvokeResult> {
+        const { nodeId, commands, timedInteractionTimeoutMs, interactionTimeoutMs } = data;
+        if (commands.length === 0) {
+            throw ServerError.invalidArguments("batched_device_commands needs at least one command");
+        }
+        const requests = commands.map(({ endpointId, clusterId, commandName, data }, commandRef) => {
+            const { cluster, command, fields } = this.#commandRequestOf(
+                nodeId,
+                endpointId,
+                clusterId,
+                commandName,
+                data,
+            );
+            return { endpoint: endpointId, cluster, command, fields, commandRef };
+        });
+
+        const node = this.#nodes.get(nodeId);
+        const { peerAddress } = node;
+        const peer = peerAddress === undefined ? undefined : this.#peers?.get(peerAddress);
+        const reported = peer?.sessionParameters.maxPathsPerInvoke;
+        const maxPathsPerInvoke = reported ?? 1;
+        if (requests.length > maxPathsPerInvoke) {
+            const source = reported === undefined ? "reports no MaxPathsPerInvoke, so the spec default" : "reports";
+            throw ServerError.invalidArguments(
+                `batched_device_commands has ${requests.length} commands, but node ${this.formatNode(nodeId)} ${source} allows at most ${maxPathsPerInvoke} per invoke`,
+            );
+        }
+
+        const invoke = invokeRequestOf({
+            commands: requests,
+            // `timed: false` would also drop the timed request a command requires on its own.
+            ...(timedInteractionTimeoutMs !== undefined && { timed: true, timeout: timedInteractionTimeoutMs }),
+            expectedProcessingTime: interactionTimeoutMs,
+        });
+        const answers = new Map<number | undefined, BatchedInvokeResult[number]>();
+        for await (const chunk of node.interaction.invoke({ ...invoke, batchDuration: false })) {
+            for (const entry of chunk) {
+                answers.set(
+                    entry.commandRef,
+                    entry.kind === "cmd-status"
+                        ? { status: entry.status, clusterStatus: entry.clusterStatus }
+                        : { status: Status.Success, data: entry.data },
+                );
+            }
+        }
+        // matter.js answers every command, with NoCommandResponse for one the device left out.
+        return requests.map(({ commandRef }) => {
+            const answer = answers.get(commandRef);
+            if (answer === undefined) {
+                throw new InternalError(`No answer for command ${commandRef} of a batched invoke`);
+            }
+            return answer;
+        });
+    }
+
     async handleInvoke(data: InvokeRequest): Promise<unknown> {
         const {
             nodeId,
@@ -1648,30 +1810,10 @@ export class ControllerCommandHandler {
             timedInteractionTimeoutMs: timedRequestTimeoutMs,
             interactionTimeoutMs,
         } = data;
-        let { data: commandData } = data;
 
-        const clusterEntry = ClusterMap[clusterId];
-        if (!clusterEntry) {
-            throw ServerError.invalidArguments(`Cluster Id "${clusterId}" unknown`);
-        }
-        const clusterName = clusterEntry.model.propertyName;
-        const commandName = camelize(data.commandName);
-        const endpoint = this.#clusterEndpoint(nodeId, endpointId, clusterName);
-        const commands = (endpoint.commands as Record<string, Record<string, unknown>>)[clusterName];
-        if (!commands[commandName]) {
-            throw ServerError.invalidArguments(`Command "${commandName}" does not exist on cluster "${clusterName}"`);
-        }
-
-        if (isObject(commandData)) {
-            if (Object.keys(commandData).length === 0) {
-                commandData = undefined;
-            } else {
-                const model = clusterEntry.commands[commandName.toLowerCase()];
-                if (model) {
-                    commandData = convertCommandDataToMatter(commandData, model, clusterEntry.model);
-                }
-            }
-        }
+        const request = this.#commandRequestOf(nodeId, endpointId, clusterId, data.commandName, data.data);
+        const { command: commandName, fields: commandData } = request;
+        const clusterName = request.clusterName;
 
         // Build dedup key from validated/converted fields
         const serializedData = commandData !== undefined ? toBigIntAwareJson(commandData) : "";
@@ -1692,19 +1834,13 @@ export class ControllerCommandHandler {
             return existing;
         }
 
-        const cluster = clusterSpecifierOf(clusterEntry);
-
         // Execute and track the command
         const invokePromise = this.#invokeCommand(
             this.#nodes.get(nodeId),
+            { endpoint: endpointId, cluster: request.cluster, command: commandName, fields: commandData },
             {
-                endpoint: endpointId,
-                cluster,
-                command: commandName,
-                fields: commandData,
-            },
-            {
-                timeout: timedRequestTimeoutMs !== undefined ? Millis(timedRequestTimeoutMs) : undefined,
+                // matter.js sends a timed request only for a non-zero timeout unless `timed` says so.
+                ...(timedRequestTimeoutMs !== undefined && { timed: true, timeout: Millis(timedRequestTimeoutMs) }),
                 expectedProcessingTime: interactionTimeoutMs !== undefined ? Millis(interactionTimeoutMs) : undefined,
             },
         );

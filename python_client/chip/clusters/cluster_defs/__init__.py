@@ -135,6 +135,7 @@ from .TlsCertificateManagement import TlsCertificateManagement
 from .TlsClientManagement import TlsClientManagement
 from .TotalVolatileOrganicCompoundsConcentrationMeasurement import TotalVolatileOrganicCompoundsConcentrationMeasurement
 from .UnitLocalization import UnitLocalization
+from .UnitTestingCluster import UnitTestingCluster
 from .UserLabel import UserLabel
 from .ValveConfigurationAndControl import ValveConfigurationAndControl
 from .WagoCluster import WagoCluster
@@ -286,6 +287,7 @@ __all__ = [
     "TlsClientManagement",
     "TotalVolatileOrganicCompoundsConcentrationMeasurement",
     "UnitLocalization",
+    "UnitTestingCluster",
     "UserLabel",
     "ValveConfigurationAndControl",
     "WagoCluster",

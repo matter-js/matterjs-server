@@ -582,10 +582,27 @@ Wildcard (all attributes from OnOff cluster):
 }
 ```
 
-Response: one entry for the path written, with its Matter status in `Status` and, when the device sent one, the
-cluster-specific status in `ClusterStatus` (schema 14). The status is usually the device's answer, but can also come
-from matter.js before anything is sent, for example `CONSTRAINT_ERROR` (0x87) for a value out of range. A write to an
-imported test node and a write matter.js resolves from its own cache both report `0` without a device having answered.
+Schema 14 options:
+
+- `*` as the endpoint (`"*/6/16385"`) writes the attribute on every endpoint of the node that has it, in one Write
+  request; the device decides which endpoints it reaches. A wildcard cluster or attribute is refused with
+  `InvalidArguments`.
+- `timed_request_timeout_ms`: sends the write as a timed write with this timeout, an integer from 0 to 65535;
+  otherwise the request fails with `InvalidArguments`. Without it, a write is timed only when the attribute requires
+  it.
+
+Response: one entry per endpoint the device answered for (one for a specific endpoint, one per endpoint reached for a
+wildcard endpoint, none when a wildcard reaches no endpoint), with its Matter status in `Status` and, when the device
+sent one, the cluster-specific status in `ClusterStatus` (schema 14). A list written in several chunks still gets one
+entry per endpoint, with the first failing chunk's status. The status is usually the device's answer, but can also
+come from matter.js before anything is sent, for example `INVALID_ACTION` (0x80) for a struct missing a mandatory
+field. For a wildcard endpoint, a value matter.js cannot encode fails with `InvalidArguments`, and a status for the
+whole Write is an error reply. A write to an imported test node reports `0` without a device having answered; a test
+node takes no wildcard endpoint.
+
+A write to a specific endpoint without `timed_request_timeout_ms` also updates the node data at once. A wildcard or
+timed write changes the node data only with the device's next report, so without a subscription it stays unchanged
+until the next read.
 
 ```json
 [{ "Path": { "EndpointId": 1, "ClusterId": 6, "AttributeId": 16385 }, "Status": 0 }]
@@ -597,7 +614,7 @@ which of its endpoints the write reaches. The response is `null`, not a status l
 sent with the response suppressed, so no node answers and there is no status to report. Nothing reports
 back, so a groupcast write that every node rejects — a read-only attribute, an attribute none of them
 has — is answered exactly like one they all applied. A wildcard cluster or attribute is refused for a
-group as it is for a node.
+group as it is for a node, and so is `timed_request_timeout_ms`.
 
 ### Subscriptions and generic read
 
@@ -894,6 +911,46 @@ controller's fabric. This server has no command to provision one yet, so a group
 never keyed fails with error 0 and a message naming the group.
 
 ### Node Management
+
+**batched_device_commands** *(schema 14+)* - Send several commands to one node in a single InvokeRequest
+
+```json
+{
+  "message_id": "1",
+  "command": "batched_device_commands",
+  "args": {
+    "node_id": 1,
+    "commands": [
+      { "endpoint_id": 1, "cluster_id": 6, "command_name": "On", "payload": {} },
+      { "endpoint_id": 2, "cluster_id": 6, "command_name": "Toggle" }
+    ],
+    "timed_request_timeout_ms": 500,
+    "interaction_timeout_ms": 3000
+  }
+}
+```
+
+The commands go to the device in one InvokeRequest, in the given order, each with its own CommandRef (a batch of one
+command carries none, as the spec allows). The request is never split and never combined with other commands, and
+identical batches are not de-duplicated. Each command takes
+the fields of `device_command`; `payload` may be left out. `timed_request_timeout_ms` (0 to 65535) sends one Timed
+Request for the whole batch; without it, the batch is timed only when one of its commands requires it.
+`interaction_timeout_ms` is the time the device may take to process the batch, as in `device_command`.
+
+Refused with `InvalidArguments` before anything is sent: an empty or missing `commands` list, a command with missing or
+wrongly typed fields, a command the node's endpoint or the server's model does not have, a payload matter.js cannot
+encode, more commands than the node accepts per invoke (its MaxPathsPerInvoke, or 1 when the node reports none; the
+message names the limit), an invalid timeout, and a Group Node ID. A WebRTC `EndSession` sent in a batch does not update
+the server's session records; send it with `device_command`.
+
+Response: one entry per command, in request order, with the Matter status (`0` for success), the cluster-specific
+status when the device sent one, and the command's response payload when it has one. A command the device did not
+answer has status `NO_COMMAND_RESPONSE` (0xCC). One command failing does not fail the request; a transport, session or
+timeout failure, or a response payload matter.js cannot decode, fails the whole request with the usual error.
+
+```json
+[{ "status": 0 }, { "status": 1, "cluster_status": 3 }]
+```
 
 **interview_node** - Re-interview a node (refresh its data)
 

@@ -102,13 +102,9 @@ describe("write_attribute results", () => {
 
     it("carry the cluster status when the device returned one", async () => {
         const client = await harness.connect();
-        harness.writeResult = {
-            endpointId: 1,
-            clusterId: ON_OFF_CLUSTER,
-            attributeId: 0,
-            status: Status.Failure,
-            clusterStatus: 2,
-        };
+        harness.writeResult = [
+            { endpointId: 1, clusterId: ON_OFF_CLUSTER, attributeId: 0, status: Status.Failure, clusterStatus: 2 },
+        ];
 
         const reply = await client.command("write_attribute", { node_id: 1, attribute_path: "1/6/0", value: true });
 

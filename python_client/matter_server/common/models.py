@@ -50,6 +50,7 @@ class APICommand(str, Enum):
     DISCOVER = "discover"
     INTERVIEW_NODE = "interview_node"
     DEVICE_COMMAND = "device_command"
+    BATCHED_DEVICE_COMMANDS = "batched_device_commands"  # schema 14+
     REMOVE_NODE = "remove_node"
     GET_VENDOR_NAMES = "get_vendor_names"
     READ_ATTRIBUTE = "read_attribute"
@@ -880,6 +881,15 @@ class SubscriptionEndedData:
 
 
 SubscriptionListener = Callable[[EventType, SubscriptionReportData | SubscriptionEndedData], None]
+
+
+@dataclass
+class BatchedCommandResult:
+    """The device's answer to one command of `batched_device_commands`; `status` 0 is success."""
+
+    status: int
+    cluster_status: int | None = None
+    response: Any = None
 
 
 @dataclass

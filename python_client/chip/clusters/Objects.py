@@ -167,6 +167,7 @@ __all__ = [
     "TlsClientManagement",
     "TotalVolatileOrganicCompoundsConcentrationMeasurement",
     "UnitLocalization",
+    "UnitTestingCluster",
     "UserLabel",
     "ValveConfigurationAndControl",
     "WagoCluster",

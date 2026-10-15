@@ -1282,14 +1282,39 @@ export interface APICommands {
         };
         response: AttributesData;
     };
+    /**
+     * Schema 14. Sends all commands to the node in one InvokeRequest, in the given order, never split and never combined
+     * with other commands. Not for groups.
+     */
+    batched_device_commands: {
+        requestArgs: {
+            node_id: number | bigint;
+            /** At most as many commands as the node accepts per invoke (its MaxPathsPerInvoke). */
+            commands: Array<{ endpoint_id: number; cluster_id: number; command_name: string; payload?: unknown }>;
+            /** Sends the batch after one Timed Request with this timeout (0 to 65535). */
+            timed_request_timeout_ms?: number | null;
+            /** Time the device may take to process the batch. */
+            interaction_timeout_ms?: number | null;
+        };
+        /** One entry per command, in request order; a command's failure does not fail the request. */
+        response: BatchedCommandResult[];
+    };
     write_attribute: {
         requestArgs: {
             node_id: number | bigint;
-            /** `endpoint/cluster/attribute`. Use `*` as the endpoint when `node_id` is a Group Node ID. */
+            /**
+             * `endpoint/cluster/attribute`. `*` as the endpoint writes every endpoint of the node that has the attribute
+             * (schema 14), and is required when `node_id` is a Group Node ID.
+             */
             attribute_path: string;
             value: unknown;
+            /** Schema 14. Sends the write as a timed write with this timeout (0 to 65535); unicast only. */
+            timed_request_timeout_ms?: number | null;
         };
-        /** The node's write status, one entry for the path written; `null` for a groupcast (no node answers). */
+        /**
+         * The node's write status per path it answered for: one entry for a specific endpoint, one per endpoint reached
+         * for a wildcard endpoint. `null` for a groupcast (no node answers).
+         */
         response: Array<{
             Path: { EndpointId: number; ClusterId: number; AttributeId: number };
             Status: number;
@@ -1622,6 +1647,15 @@ export type EventMessage =
 
 export interface ResultMessageBase {
     message_id: string;
+}
+
+/** The device's answer to one command of `batched_device_commands`. */
+export interface BatchedCommandResult {
+    /** Matter status; 0 for success. */
+    status: number;
+    cluster_status?: number;
+    /** The command's response payload, when it has one. */
+    response?: unknown;
 }
 
 /** One payload of a QR code, as `parse_onboarding_payload` decodes it. */

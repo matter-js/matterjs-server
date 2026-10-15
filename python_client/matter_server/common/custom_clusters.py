@@ -11,6 +11,7 @@ from chip.clusters.cluster_defs.InovelliCluster import InovelliCluster
 from chip.clusters.cluster_defs.NeoCluster import NeoCluster
 from chip.clusters.cluster_defs.TclDehumidifierCluster import TclDehumidifierCluster
 from chip.clusters.cluster_defs.ThirdRealityMeteringCluster import ThirdRealityMeteringCluster
+from chip.clusters.cluster_defs.UnitTestingCluster import UnitTestingCluster
 from chip.clusters.cluster_defs.WagoCluster import WagoCluster
 
 ALL_CUSTOM_CLUSTERS: dict = {
@@ -25,6 +26,7 @@ ALL_CUSTOM_CLUSTERS: dict = {
     NeoCluster.id: NeoCluster,
     TclDehumidifierCluster.id: TclDehumidifierCluster,
     ThirdRealityMeteringCluster.id: ThirdRealityMeteringCluster,
+    UnitTestingCluster.id: UnitTestingCluster,
     WagoCluster.id: WagoCluster,
 }
 
@@ -41,5 +43,6 @@ __all__ = [
     "NeoCluster",
     "TclDehumidifierCluster",
     "ThirdRealityMeteringCluster",
+    "UnitTestingCluster",
     "WagoCluster",
 ]

@@ -18,11 +18,23 @@ export type AttributeResponseStatus = {
 
 export type WriteAttributeRequest = {
     nodeId: NodeId;
-    endpointId: EndpointNumber;
+    /** Leave out to write the attribute on every endpoint of the node that has it. */
+    endpointId?: EndpointNumber;
     clusterId: ClusterId;
     attributeId: AttributeId;
     value: unknown;
+    timedInteractionTimeoutMs?: Duration;
 };
+
+export type BatchedInvokeRequest = {
+    nodeId: NodeId;
+    commands: Array<{ endpointId: EndpointNumber; clusterId: ClusterId; commandName: string; data: unknown }>;
+    timedInteractionTimeoutMs?: Duration;
+    interactionTimeoutMs?: Duration;
+};
+
+/** One entry per command of a {@link BatchedInvokeRequest}, in request order. */
+export type BatchedInvokeResult = Array<{ status: Status; clusterStatus?: number; data?: unknown }>;
 
 export type InvokeRequest = {
     nodeId: NodeId;
@@ -187,7 +199,9 @@ export interface NodeCommandHandler {
     /**
      * Write an attribute to a node.
      */
-    handleWriteAttribute(data: WriteAttributeRequest): Promise<AttributeResponseStatus>;
+    handleWriteAttribute(data: WriteAttributeRequest): Promise<AttributeResponseStatus[]>;
+
+    handleBatchedInvoke(data: BatchedInvokeRequest): Promise<BatchedInvokeResult>;
 
     /**
      * Invoke a command on a node.

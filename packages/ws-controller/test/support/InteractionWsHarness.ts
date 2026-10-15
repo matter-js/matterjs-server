@@ -120,7 +120,7 @@ export class InteractionWsHarness {
     readonly subscriptions = new Array<FakeSubscription>();
     readonly invokeRequests = new Array<InvokeRequest>();
     invokeError?: Error;
-    writeResult: AttributeResponseStatus = { endpointId: 1, clusterId: 6, attributeId: 0, status: 0 };
+    writeResult: AttributeResponseStatus[] = [{ endpointId: 1, clusterId: 6, attributeId: 0, status: 0 }];
     primingReport: InteractionReport = { attributes: {}, events: [] };
     /** Reported through the listener before the subscription resolves. */
     earlyReport?: InteractionReport;

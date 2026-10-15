@@ -16,6 +16,7 @@ from matter_server.common.const import SCHEMA_VERSION
 from matter_server.common.errors import CameraStreamIncompatible, IcdMultiAdmin, NodeCommissionFailed
 from matter_server.common.models import (
     APICommand,
+    BatchedCommandResult,
     CommandMessage,
     ErrorResultMessage,
     MessageType,
@@ -168,6 +169,53 @@ async def test_write_attribute_sends_tag_keyed_value() -> None:
             "4": 2100,
             "5": True,
         },
+    )
+
+
+async def test_write_attribute_sends_timed_request_timeout_with_schema_14() -> None:
+    client = MatterClient(ws_server_url="ws://example.invalid/ws", aiohttp_session=MagicMock())
+    client.send_command = AsyncMock(return_value=[])
+
+    await client.write_attribute(
+        node_id=1, attribute_path="*/6/16385", value=5, timed_request_timeout_ms=2000
+    )
+
+    client.send_command.assert_awaited_once_with(
+        APICommand.WRITE_ATTRIBUTE,
+        require_schema=14,
+        node_id=1,
+        attribute_path="*/6/16385",
+        value=5,
+        timed_request_timeout_ms=2000,
+    )
+
+
+async def test_send_batched_device_commands_sends_one_request_and_parses_results() -> None:
+    client = MatterClient(ws_server_url="ws://example.invalid/ws", aiohttp_session=MagicMock())
+    client.send_command = AsyncMock(
+        return_value=[{"status": 0}, {"status": 1, "cluster_status": 3, "response": {"a": 1}}]
+    )
+
+    results = await client.send_batched_device_commands(
+        node_id=1,
+        commands=[(1, clusters.OnOff.Commands.On()), (2, clusters.OnOff.Commands.Toggle())],
+        timed_request_timeout_ms=500,
+    )
+
+    assert results == [
+        BatchedCommandResult(status=0),
+        BatchedCommandResult(status=1, cluster_status=3, response={"a": 1}),
+    ]
+    client.send_command.assert_awaited_once_with(
+        APICommand.BATCHED_DEVICE_COMMANDS,
+        require_schema=14,
+        node_id=1,
+        commands=[
+            {"endpoint_id": 1, "cluster_id": 6, "command_name": "On", "payload": {}},
+            {"endpoint_id": 2, "cluster_id": 6, "command_name": "Toggle", "payload": {}},
+        ],
+        timed_request_timeout_ms=500,
+        interaction_timeout_ms=None,
     )
 
 

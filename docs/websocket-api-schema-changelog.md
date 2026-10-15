@@ -114,6 +114,17 @@ OHF extensions; python-matter-server codes stop at 11. Each carries JSON details
   searched for any device. Without `filter` it is refused with error 8.
 - **`device_command` `interaction_timeout_ms`** is applied to the command; before, the server accepted
   it and ignored it. Anything other than an integer from 0 to 2^53-1 is refused with error 8.
+- **New command `batched_device_commands`** `{ node_id, commands: [{ endpoint_id, cluster_id, command_name, payload? }],
+  timed_request_timeout_ms?, interaction_timeout_ms? }` → `[{ status, cluster_status?, response? }]`, one entry per
+  command in request order. Sends all commands in one InvokeRequest, never split or combined with other commands.
+  Refused with `InvalidArguments` before sending: an empty list, a bad command, more commands than the node's
+  MaxPathsPerInvoke, an invalid timeout or a Group Node ID.
+- **`device_command`** refuses a command that is not in the server's model for the cluster, or fields matter.js cannot
+  encode, with `InvalidArguments`; before, it failed with `UnknownError`. A `timed_request_timeout_ms` of 0 now sends a
+  Timed Request; before, the command was sent untimed.
+- **`write_attribute`** takes `*` as the endpoint for a unicast node and writes every endpoint that has the
+  attribute in one Write request; the result has one entry per endpoint the device answered for. The new
+  `timed_request_timeout_ms` (0 to 65535) sends a timed write. A wildcard cluster or attribute stays refused.
 - **`device_command` `timed_request_timeout_ms`** that is not an integer from 0 to 65535 is refused with error 8;
   before, such a value was ignored and the command was sent without a timed request.
 - **`args`** — every command treats a missing or `null` `args` as no arguments, and refuses a

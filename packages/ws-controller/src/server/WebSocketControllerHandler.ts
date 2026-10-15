@@ -14,6 +14,7 @@ import {
     Duration,
     FabricIndex,
     InternalError,
+    isObject,
     Logger,
     LogLevel,
     Millis,
@@ -111,7 +112,23 @@ const SCHEMA_VERSION = 14;
 const MAX_INTERACTION_TIMEOUT_MS = Number.MAX_SAFE_INTEGER;
 /** The Timeout field of a Matter TimedRequest is a uint16. */
 const MAX_TIMED_REQUEST_TIMEOUT_MS = 0xffff;
+
 const MIN_SUPPORTED_SCHEMA_VERSION = 11;
+
+function isUint(value: unknown, max: number): value is number {
+    return typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= max;
+}
+
+/** Checks the stated value: a timeout of the wrong type must be refused, not dropped. */
+function timeoutArgument(name: string, stated: number | null | undefined, max: number): Duration | undefined {
+    if (stated === undefined || stated === null) {
+        return undefined;
+    }
+    if (!(Number.isInteger(stated) && stated >= 0 && stated <= max)) {
+        throw ServerError.invalidArguments(`${name} must be an integer from 0 to ${max}`);
+    }
+    return Millis(stated);
+}
 
 // Issuing any of these (schema 12) proves the connection is Thread-aware, so it opts the connection
 // in to `thread_diagnostics_updated` — even if the request itself errors. See the schema changelog.
@@ -197,7 +214,7 @@ function extractWebRtcSessionId(payload: unknown): number | undefined {
     return undefined;
 }
 
-const WRITE_WILDCARD_REFUSAL = "write_attribute does not support wildcards in attribute path";
+const WRITE_WILDCARD_REFUSAL = "write_attribute supports a wildcard only for the endpoint in attribute_path";
 
 interface OwnedSubscription {
     connection: WebSocketConnection;
@@ -947,6 +964,9 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 case "device_command":
                     result = await this.#handleDeviceCommand(args, ownerId, connection);
                     break;
+                case "batched_device_commands":
+                    result = await this.#handleBatchedDeviceCommands(args);
+                    break;
                 case "send_webrtc_provider_command":
                     result = await this.#handleSendWebRtcProviderCommand(args);
                     break;
@@ -1580,41 +1600,43 @@ export class WebSocketControllerHandler implements WebServerHandler {
     }
 
     async #handleWriteAttribute(args: ArgsOf<"write_attribute">): Promise<ResponseOf<"write_attribute">> {
-        const { node_id, attribute_path, value } = args;
+        const { node_id, attribute_path, value, timed_request_timeout_ms } = args;
         const { nodeId, group } = this.#targetNodeIdOrGroup(node_id, "write_attribute");
         const { endpointId, clusterId, attributeId } = splitAttributePath(attribute_path);
+        if (clusterId === undefined || attributeId === undefined) {
+            throw ServerError.invalidArguments(WRITE_WILDCARD_REFUSAL);
+        }
 
         if (group) {
-            if (clusterId === undefined || attributeId === undefined) {
-                throw ServerError.invalidArguments(WRITE_WILDCARD_REFUSAL);
-            }
             if (endpointId !== undefined) {
                 throw ServerError.invalidArguments(
                     "write_attribute to a Group Node ID takes a wildcard endpoint in attribute_path: a groupcast carries no endpoint, each node's own group table decides which of its endpoints the write reaches",
                 );
             }
+            if (timed_request_timeout_ms !== undefined && timed_request_timeout_ms !== null) {
+                throw ServerError.invalidArguments("timed_request_timeout_ms cannot accompany a groupcast write");
+            }
             await this.#commandHandler.handleGroupWriteAttribute({ nodeId, clusterId, attributeId, value });
             return null;
         }
 
-        if (endpointId === undefined || clusterId === undefined || attributeId === undefined) {
-            throw ServerError.invalidArguments(WRITE_WILDCARD_REFUSAL);
-        }
-
-        const { status, clusterStatus } = await this.#handlerFor(nodeId).handleWriteAttribute({
+        const results = await this.#handlerFor(nodeId).handleWriteAttribute({
             nodeId,
             endpointId,
             clusterId,
             attributeId,
             value,
+            timedInteractionTimeoutMs: timeoutArgument(
+                "timed_request_timeout_ms",
+                timed_request_timeout_ms,
+                MAX_TIMED_REQUEST_TIMEOUT_MS,
+            ),
         });
-        return [
-            {
-                Path: { EndpointId: endpointId, ClusterId: clusterId, AttributeId: attributeId },
-                Status: status ?? 0,
-                ...(clusterStatus !== undefined && { ClusterStatus: clusterStatus }),
-            },
-        ];
+        return results.map(({ endpointId, clusterId, attributeId, status, clusterStatus }) => ({
+            Path: { EndpointId: endpointId, ClusterId: clusterId, AttributeId: attributeId },
+            Status: status ?? 0,
+            ...(clusterStatus !== undefined && { ClusterStatus: clusterStatus }),
+        }));
     }
 
     async #handleGetVendorNames(args: ArgsOf<"get_vendor_names">): Promise<ResponseOf<"get_vendor_names">> {
@@ -1696,18 +1718,16 @@ export class WebSocketControllerHandler implements WebServerHandler {
         if (endpointId === undefined || endpointId === null) {
             throw ServerError.invalidArguments("device_command requires endpoint_id unless node_id is a Group Node ID");
         }
-        for (const [name, stated, max] of [
-            ["timed_request_timeout_ms", timedInteractionTimeoutMs, MAX_TIMED_REQUEST_TIMEOUT_MS],
-            ["interaction_timeout_ms", interactionTimeoutMs, MAX_INTERACTION_TIMEOUT_MS],
-        ] as const) {
-            if (
-                stated !== undefined &&
-                stated !== null &&
-                !(Number.isInteger(stated) && stated >= 0 && stated <= max)
-            ) {
-                throw ServerError.invalidArguments(`${name} must be an integer from 0 to ${max}`);
-            }
-        }
+        const timedTimeout = timeoutArgument(
+            "timed_request_timeout_ms",
+            timedInteractionTimeoutMs,
+            MAX_TIMED_REQUEST_TIMEOUT_MS,
+        );
+        const interactionTimeout = timeoutArgument(
+            "interaction_timeout_ms",
+            interactionTimeoutMs,
+            MAX_INTERACTION_TIMEOUT_MS,
+        );
 
         const camelizedCommand = camelize(commandName);
         const invoke = (): Promise<unknown> =>
@@ -1717,10 +1737,8 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 clusterId: ClusterId(clusterId),
                 commandName: camelizedCommand,
                 data: payload,
-                timedInteractionTimeoutMs:
-                    typeof timedInteractionTimeoutMs === "number" ? Millis(timedInteractionTimeoutMs) : undefined,
-                interactionTimeoutMs:
-                    typeof interactionTimeoutMs === "number" ? Millis(interactionTimeoutMs) : undefined,
+                timedInteractionTimeoutMs: timedTimeout,
+                interactionTimeoutMs: interactionTimeout,
                 dedupScope: connection,
             });
 
@@ -1757,6 +1775,64 @@ export class WebSocketControllerHandler implements WebServerHandler {
             return null;
         }
         return cmdResult;
+    }
+
+    async #handleBatchedDeviceCommands(
+        args: ArgsOf<"batched_device_commands">,
+    ): Promise<ResponseOf<"batched_device_commands">> {
+        const { node_id, commands, timed_request_timeout_ms, interaction_timeout_ms } = args;
+        const nodeId = this.#targetNodeId(node_id, "batched_device_commands");
+        if (!Array.isArray(commands) || commands.length === 0) {
+            throw ServerError.invalidArguments("batched_device_commands requires a non-empty commands list");
+        }
+        const requested = commands.map((command: unknown, index) => {
+            if (!isObject(command)) {
+                throw ServerError.invalidArguments(`batched_device_commands command ${index} must be an object`);
+            }
+            const { endpoint_id, cluster_id, command_name, payload } = command;
+            if (!isUint(endpoint_id, 0xfffe) || !isUint(cluster_id, 0xffffffff) || typeof command_name !== "string") {
+                throw ServerError.invalidArguments(
+                    `batched_device_commands command ${index} needs endpoint_id, cluster_id and command_name`,
+                );
+            }
+            return {
+                endpointId: EndpointNumber(endpoint_id),
+                // An id outside the cluster ranges is refused as an unknown cluster, not by the constructor.
+                clusterId: ClusterId(cluster_id, false),
+                commandName: command_name,
+                data: payload ?? {},
+            };
+        });
+
+        const results = await this.#handlerFor(nodeId).handleBatchedInvoke({
+            nodeId,
+            commands: requested,
+            timedInteractionTimeoutMs: timeoutArgument(
+                "timed_request_timeout_ms",
+                timed_request_timeout_ms,
+                MAX_TIMED_REQUEST_TIMEOUT_MS,
+            ),
+            interactionTimeoutMs: timeoutArgument(
+                "interaction_timeout_ms",
+                interaction_timeout_ms,
+                MAX_INTERACTION_TIMEOUT_MS,
+            ),
+        });
+        return results.map(({ status, clusterStatus, data }, index) => {
+            const response =
+                data === undefined
+                    ? undefined
+                    : this.#convertCommandDataToWebSocket(
+                          requested[index].clusterId,
+                          requested[index].commandName,
+                          data,
+                      );
+            return {
+                status,
+                ...(clusterStatus !== undefined && { cluster_status: clusterStatus }),
+                ...(response !== undefined && { response }),
+            };
+        });
     }
 
     /**

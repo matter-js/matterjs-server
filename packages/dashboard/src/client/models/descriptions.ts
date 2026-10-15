@@ -19365,6 +19365,77 @@ export const clusters: Record<number, ClusterDescription> = {
         },
         "commands": {},
         "features": {}
+    },
+    "4294048773": {
+        "id": 4294048773,
+        "label": "UnitTestingCluster",
+        "attributes": {
+            "23": {
+                "id": 23,
+                "cluster_id": 4294048773,
+                "label": "FloatSingle",
+                "type": "Optional[single]",
+                "writable": true
+            },
+            "25": {
+                "id": 25,
+                "cluster_id": 4294048773,
+                "label": "OctetString",
+                "type": "Optional[bytes]",
+                "writable": true
+            },
+            "37": {
+                "id": 37,
+                "cluster_id": 4294048773,
+                "label": "StructAttr",
+                "type": "Optional[UnitTestingSimpleStruct]",
+                "writable": true
+            },
+            "42": {
+                "id": 42,
+                "cluster_id": 4294048773,
+                "label": "ListLongOctetString",
+                "type": "List[octstr]",
+                "writable": true
+            },
+            "65528": {
+                "id": 65528,
+                "cluster_id": 4294048773,
+                "label": "GeneratedCommandList",
+                "type": "List[command-id]",
+                "writable": false
+            },
+            "65529": {
+                "id": 65529,
+                "cluster_id": 4294048773,
+                "label": "AcceptedCommandList",
+                "type": "List[command-id]",
+                "writable": false
+            },
+            "65531": {
+                "id": 65531,
+                "cluster_id": 4294048773,
+                "label": "AttributeList",
+                "type": "List[attrib-id]",
+                "writable": false
+            },
+            "65532": {
+                "id": 65532,
+                "cluster_id": 4294048773,
+                "label": "FeatureMap",
+                "type": "map32",
+                "writable": false
+            },
+            "65533": {
+                "id": 65533,
+                "cluster_id": 4294048773,
+                "label": "ClusterRevision",
+                "type": "uint16",
+                "writable": false
+            }
+        },
+        "commands": {},
+        "features": {}
     }
 };
 

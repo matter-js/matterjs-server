@@ -107,6 +107,32 @@ export interface DeviceCommandOptions {
     timeout?: number;
 }
 
+/** One command of {@link MatterClient.batchedDeviceCommands}. */
+export interface BatchedDeviceCommand {
+    endpointId: number;
+    clusterId: number;
+    commandName: string;
+    payload?: Record<string, unknown>;
+}
+
+/** Options for {@link MatterClient.batchedDeviceCommands}. */
+export interface BatchedDeviceCommandsOptions {
+    /** Sends the batch after one Timed Request with this timeout (0 to 65535 ms). */
+    timedRequestTimeoutMs?: number;
+    /** Time the device may take to process the batch. */
+    interactionTimeoutMs?: number;
+    /** Per-call command timeout in ms (overrides {@link MatterClient.commandTimeout}). */
+    timeout?: number;
+}
+
+/** Options for {@link MatterClient.writeAttribute}. */
+export interface WriteAttributeOptions {
+    /** Schema 14. Sends the write as a timed write with this timeout (0 to 65535 ms). */
+    timedRequestTimeoutMs?: number;
+    /** Per-call command timeout in ms (overrides {@link MatterClient.commandTimeout}). */
+    timeout?: number;
+}
+
 /** Options for the credential set/remove commands. */
 export interface CredentialCommandOptions {
     /** Named credential entry id (schema 12); omit for the reserved `default` entry. */
@@ -580,22 +606,24 @@ export class MatterClient {
         await this.sendCommand("disable_auto_subscription", 14, { node_id: nodeId }, timeout);
     }
 
+    /** Writes an attribute; `*` as the endpoint writes every endpoint of the node that has it (schema 14). */
     async writeAttribute(
         nodeId: number | bigint,
         attributePath: string,
         value: unknown,
-        timeout?: number,
+        optsOrTimeout?: number | WriteAttributeOptions,
     ): Promise<ResponseOf<"write_attribute">> {
-        // Write an attribute(value) on a target node.
+        const opts = typeof optsOrTimeout === "number" ? { timeout: optsOrTimeout } : (optsOrTimeout ?? {});
         return await this.sendCommand(
             "write_attribute",
-            0,
+            opts.timedRequestTimeoutMs !== undefined ? 14 : 0,
             {
                 node_id: nodeId,
                 attribute_path: attributePath,
                 value: value,
+                timed_request_timeout_ms: opts.timedRequestTimeoutMs,
             },
-            timeout,
+            opts.timeout,
         );
     }
 
@@ -694,6 +722,33 @@ export class MatterClient {
                 command_name: commandName,
                 payload: payload ?? {},
                 response_type: null,
+                timed_request_timeout_ms: opts.timedRequestTimeoutMs,
+                interaction_timeout_ms: opts.interactionTimeoutMs,
+            },
+            opts.timeout,
+        );
+    }
+
+    /**
+     * Schema 14. Sends all commands to the node in one InvokeRequest, in order, never split and never combined with
+     * other commands. Answers one entry per command; one command failing does not fail the others.
+     */
+    async batchedDeviceCommands(
+        nodeId: number | bigint,
+        commands: BatchedDeviceCommand[],
+        opts: BatchedDeviceCommandsOptions = {},
+    ): Promise<ResponseOf<"batched_device_commands">> {
+        return await this.sendCommand(
+            "batched_device_commands",
+            14,
+            {
+                node_id: nodeId,
+                commands: commands.map(({ endpointId, clusterId, commandName, payload }) => ({
+                    endpoint_id: endpointId,
+                    cluster_id: clusterId,
+                    command_name: commandName,
+                    payload: payload ?? {},
+                })),
                 timed_request_timeout_ms: opts.timedRequestTimeoutMs,
                 interaction_timeout_ms: opts.interactionTimeoutMs,
             },

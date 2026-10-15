@@ -357,6 +357,84 @@ describe("ws-client", () => {
                 expect(server.getReceivedCommands()).to.deep.equal([]);
             });
 
+            it("sends timed_request_timeout_ms of writeAttribute and refuses it below schema 14", async () => {
+                const received = new Array<unknown>();
+                server.onCommand("write_attribute", args => {
+                    received.push(args);
+                    return [];
+                });
+                await client.connect();
+                await client.writeAttribute(1, "*/6/16385", 5, { timedRequestTimeoutMs: 2000 });
+                await client.writeAttribute(1, "1/6/16385", 5, 1000);
+
+                expect(received).to.deep.equal([
+                    { node_id: 1, attribute_path: "*/6/16385", value: 5, timed_request_timeout_ms: 2000 },
+                    { node_id: 1, attribute_path: "1/6/16385", value: 5 },
+                ]);
+
+                await server.stop();
+                server = new MockMatterServer({ serverInfo: { schema_version: 13 } });
+                server.onCommand("write_attribute", () => []);
+                await server.start();
+                client = new MatterClient(server.url, createNodeWebSocket);
+                await client.connect();
+                await client.writeAttribute(1, "1/6/16385", 5);
+                let refusal: unknown;
+                try {
+                    await client.writeAttribute(1, "1/6/16385", 5, { timedRequestTimeoutMs: 2000 });
+                } catch (error) {
+                    refusal = error;
+                }
+                expect(refusal).to.be.instanceOf(InvalidServerVersion);
+                expect(server.getReceivedCommands().map(({ message }) => message.command)).to.deep.equal([
+                    "write_attribute",
+                ]);
+            });
+
+            it("sends batchedDeviceCommands as one request and refuses it below schema 14", async () => {
+                const received = new Array<unknown>();
+                server.onCommand("batched_device_commands", args => {
+                    received.push(args);
+                    return [{ status: 0 }, { status: 1 }];
+                });
+                await client.connect();
+                const results = await client.batchedDeviceCommands(
+                    1,
+                    [
+                        { endpointId: 1, clusterId: 6, commandName: "On" },
+                        { endpointId: 2, clusterId: 6, commandName: "Toggle", payload: { a: 1 } },
+                    ],
+                    { timedRequestTimeoutMs: 500, interactionTimeoutMs: 3000 },
+                );
+
+                expect(results).to.deep.equal([{ status: 0 }, { status: 1 }]);
+                expect(received).to.deep.equal([
+                    {
+                        node_id: 1,
+                        commands: [
+                            { endpoint_id: 1, cluster_id: 6, command_name: "On", payload: {} },
+                            { endpoint_id: 2, cluster_id: 6, command_name: "Toggle", payload: { a: 1 } },
+                        ],
+                        timed_request_timeout_ms: 500,
+                        interaction_timeout_ms: 3000,
+                    },
+                ]);
+
+                await server.stop();
+                server = new MockMatterServer({ serverInfo: { schema_version: 13 } });
+                await server.start();
+                client = new MatterClient(server.url, createNodeWebSocket);
+                await client.connect();
+                let refusal: unknown;
+                try {
+                    await client.batchedDeviceCommands(1, [{ endpointId: 1, clusterId: 6, commandName: "On" }]);
+                } catch (error) {
+                    refusal = error;
+                }
+                expect(refusal).to.be.instanceOf(InvalidServerVersion);
+                expect(server.getReceivedCommands()).to.deep.equal([]);
+            });
+
             it("sends the commissionOnNetwork arguments and returns a node", async () => {
                 const received = new Array<unknown>();
                 server.onCommand("commission_on_network", args => {

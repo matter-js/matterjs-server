@@ -26,6 +26,7 @@ from matter_server.common.helpers.util import (
 )
 from matter_server.common.models import (
     APICommand,
+    BatchedCommandResult,
     CameraAudioHints,
     CameraCapabilities,
     CameraIceServer,
@@ -113,6 +114,11 @@ NODE_SCOPED_CAMERA_EVENTS: Final = frozenset(
 )
 
 # pylint: disable=too-many-public-methods,too-many-locals,too-many-branches
+
+
+def _command_name(command: ClusterCommand) -> str:
+    """Return the wire name of a command: the name of its class."""
+    return type(command).__name__
 
 
 class MatterClient:
@@ -654,22 +660,48 @@ class MatterClient:
         interaction_timeout_ms: int | None = None,
     ) -> Any:
         """Send a command to a Matter node/device."""
-        try:
-            command_name = command.__class__.__name__
-        except AttributeError:
-            # handle case where only the class was provided instead of an instance of it.
-            command_name = command.__name__
         return await self.send_command(
             APICommand.DEVICE_COMMAND,
             node_id=node_id,
             endpoint_id=endpoint_id,
             cluster_id=command.cluster_id,
-            command_name=command_name,
+            command_name=_command_name(command),
             payload=dataclass_to_dict(command),
             response_type=response_type,
             timed_request_timeout_ms=timed_request_timeout_ms,
             interaction_timeout_ms=interaction_timeout_ms,
         )
+
+    async def send_batched_device_commands(
+        self,
+        node_id: int,
+        commands: Sequence[tuple[int, ClusterCommand]],
+        timed_request_timeout_ms: int | None = None,
+        interaction_timeout_ms: int | None = None,
+    ) -> list[BatchedCommandResult]:
+        """Send `(endpoint_id, command)` pairs to one node in a single InvokeRequest.
+
+        The commands go out in the given order, never split and never combined with other
+        commands. The result has one entry per command, in the same order; one command failing
+        does not fail the others. Requires schema 14.
+        """
+        data = await self.send_command(
+            APICommand.BATCHED_DEVICE_COMMANDS,
+            require_schema=14,
+            node_id=node_id,
+            commands=[
+                {
+                    "endpoint_id": endpoint_id,
+                    "cluster_id": command.cluster_id,
+                    "command_name": _command_name(command),
+                    "payload": dataclass_to_dict(command),
+                }
+                for endpoint_id, command in commands
+            ],
+            timed_request_timeout_ms=timed_request_timeout_ms,
+            interaction_timeout_ms=interaction_timeout_ms,
+        )
+        return [dataclass_from_dict(BatchedCommandResult, entry) for entry in cast(list[Any], data)]
 
     async def read_attribute(
         self,
@@ -881,14 +913,24 @@ class MatterClient:
         node_id: int,
         attribute_path: str,
         value: Any,
+        timed_request_timeout_ms: int | None = None,
     ) -> Any:
-        """Write an attribute(value) on a target node."""
+        """Write an attribute(value) on a target node.
+
+        ``*`` as the endpoint in ``attribute_path`` writes every endpoint of the node that has
+        the attribute (schema 14). ``timed_request_timeout_ms`` sends a timed write (schema 14).
+        """
         return await self.send_command(
             APICommand.WRITE_ATTRIBUTE,
-            require_schema=4,
+            require_schema=4 if timed_request_timeout_ms is None else 14,
             node_id=node_id,
             attribute_path=attribute_path,
             value=dataclass_to_tag_dict(value),
+            **(
+                {}
+                if timed_request_timeout_ms is None
+                else {"timed_request_timeout_ms": timed_request_timeout_ms}
+            ),
         )
 
     async def remove_node(self, node_id: int) -> None:
