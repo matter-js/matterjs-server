@@ -9,7 +9,6 @@ This page shows a detailed overview of the changes between versions without the 
 
 ## **WORK IN PROGRESS**
 
-- Enhancement: The Docker image logs to the console with ANSI colors again. Set `MATTER_LOG_FORMAT=plain` for uncolored logs
 - Feature: Introduces Websocket Schema version 14 (backward compatible), detectable with `server_info.schema_version >= 14`. Details are in [docs/websockets_api.md](docs/websockets_api.md#camera-streaming-schema-14) and [docs/websocket-api-schema-changelog.md](docs/websocket-api-schema-changelog.md)
     - Adds a camera API that handles stream management and WebRTC sessions for the client, see[docs/CAMERA_LIMITATIONS.md](docs/CAMERA_LIMITATIONS.md) for information on defaults and known camera quirks. The Matter commands through `send_webrtc_provider_command` and `device_command` stay available
     - `camera_start_stream` asks the camera to play the client's audio only with `talkback: true`; otherwise the server makes the offer's audio sections not send
@@ -47,6 +46,7 @@ This page shows a detailed overview of the changes between versions without the 
 - Enhancement: (@Leo2442926161) Adds the `indicatorEnable` attribute to the Heiman custom cluster to switch the device LED indicator on or off
 - Enhancement: Adds the WAGO Home Blind Control `WagoBlindType` (roller shutter or venetian blind) and `WagoManualMode` attributes to the Window Covering cluster
 - Enhancement: Node data carries `endpoint_parents`, the direct parent of each endpoint as matter.js resolves it. The Python client and the Dashboard use it instead of deriving the parents from the Descriptor PartsLists, and keep deriving them for servers that do not send it
+- Enhancement: The env var `MATTER_LOG_FORMAT` (`ansi` or `plain`) sets the console log format. The Docker image defaults to `ansi`; otherwise colors are used only when the output is a terminal
 - Adjustment: Commands that target a node refuse a `node_id` that can never name one (CAT, PAKE, Unspecified, reserved ranges) with error 8 instead of `NODE_NOT_EXISTS`, and only the Temporary Local range is routed to imported test nodes
 - Adjustment: Every command treats a missing or `null` `args` as no arguments and refuses a non-object with error 8
 - Adjustment: `send_webrtc_provider_command` checks `node_id`, `endpoint_id` and every payload field against the cluster definition and refuses a bad one with error 8 instead of failing later or silently dropping data. It accepts the documented `ice_servers` shape and the key spellings `webrtc_callback` uses, and no longer drops streams before the camera's first report
