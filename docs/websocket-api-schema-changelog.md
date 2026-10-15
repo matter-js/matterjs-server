@@ -118,7 +118,7 @@ OHF extensions; python-matter-server codes stop at 11. Each carries JSON details
   timed_request_timeout_ms?, interaction_timeout_ms? }` → `[{ status, cluster_status?, response? }]`, one entry per
   command in request order. Sends all commands in one InvokeRequest, never split or combined with other commands.
   Refused with `InvalidArguments` before sending: an empty list, a bad command, more commands than the node's
-  MaxPathsPerInvoke, an invalid timeout or a Group Node ID.
+  MaxPathsPerInvoke, an invalid timeout, a Group Node ID or a WebRTC Transport Provider command.
 - **`device_command`** refuses a command that is not in the server's model for the cluster, or fields matter.js cannot
   encode, with `InvalidArguments`; before, it failed with `UnknownError`. A `timed_request_timeout_ms` of 0 now sends a
   Timed Request; before, the command was sent untimed.

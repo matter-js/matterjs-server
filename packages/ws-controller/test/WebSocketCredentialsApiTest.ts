@@ -2826,6 +2826,10 @@ describe("groupcast on the generic commands", () => {
             "a group node id",
             { node_id: GROUP_NODE_ID, commands: [{ endpoint_id: 1, cluster_id: 6, command_name: "On" }] },
         ],
+        [
+            "a WebRTC Transport Provider command",
+            { node_id: 1, commands: [{ endpoint_id: 1, cluster_id: 0x553, command_name: "EndSession", payload: {} }] },
+        ],
     ] as const) {
         it(`refuses batched_device_commands with ${label}`, async () => {
             const h = await createHarness(undefined, {

@@ -1795,6 +1795,12 @@ export class WebSocketControllerHandler implements WebServerHandler {
                     `batched_device_commands command ${index} needs endpoint_id, cluster_id and command_name`,
                 );
             }
+            // The server tracks WebRTC sessions per command, which a batch cannot do.
+            if (cluster_id === WebRtcTransportProvider.id) {
+                throw ServerError.invalidArguments(
+                    `batched_device_commands command ${index}: send WebRTC Transport Provider commands with device_command or send_webrtc_provider_command`,
+                );
+            }
             return {
                 endpointId: EndpointNumber(endpoint_id),
                 // An id outside the cluster ranges is refused as an unknown cluster, not by the constructor.

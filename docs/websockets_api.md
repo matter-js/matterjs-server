@@ -940,8 +940,8 @@ Request for the whole batch; without it, the batch is timed only when one of its
 Refused with `InvalidArguments` before anything is sent: an empty or missing `commands` list, a command with missing or
 wrongly typed fields, a command the node's endpoint or the server's model does not have, a payload matter.js cannot
 encode, more commands than the node accepts per invoke (its MaxPathsPerInvoke, or 1 when the node reports none; the
-message names the limit), an invalid timeout, and a Group Node ID. A WebRTC `EndSession` sent in a batch does not update
-the server's session records; send it with `device_command`.
+message names the limit), an invalid timeout, a Group Node ID, and a WebRTC Transport Provider command, which the
+server tracks per session (send it with `device_command` or `send_webrtc_provider_command`).
 
 Response: one entry per command, in request order, with the Matter status (`0` for success), the cluster-specific
 status when the device sent one, and the command's response payload when it has one. A command the device did not
