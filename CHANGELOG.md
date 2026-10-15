@@ -76,6 +76,7 @@ This page shows a detailed overview of the changes between versions without the 
 - Fix: The Python client delivers `webrtc_callback` and the camera events to subscribers registered with `node_filter`, as Home Assistant does
 - Fix: A wrong pairing code is reported as such instead of as a generic commissioning failure, so a client can ask for the code again. A pairing code that cannot be decoded fails with `InvalidArguments`
 - Fix: Commissioning with a pairing code that names a vendor and product skips a device whose advertisement names another vendor or product
+- Fix: A device that has only its root endpoint is commissioned and reported with its data
 - Fix: `commission_on_network` respects `filter_type` 3 (vendor) and 4 (device type)
 - Fix: `device_command` respects `interaction_timeout_ms`, and refuses a command the cluster does not have or fields that cannot be encoded with error 8
 - Fix: Identical commands sent in parallel by different clients each reach the device
