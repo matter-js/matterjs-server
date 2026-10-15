@@ -10,7 +10,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 const ROOT = resolve(import.meta.dirname, "../../../../..");
-const SCRIPT = resolve(ROOT, "utils/run-cert.mjs");
+const SCRIPT = resolve(ROOT, "cert/run-cert.mjs");
 
 interface PlannedStep {
     step: string;
@@ -46,7 +46,7 @@ function find(steps: PlannedStep[], name: string): PlannedStep {
     return found;
 }
 
-describe("utils/run-cert.mjs", function () {
+describe("cert/run-cert.mjs", function () {
     this.timeout(20_000);
 
     describe("default ref from the @matter/main pin", () => {
@@ -149,6 +149,7 @@ describe("utils/run-cert.mjs", function () {
             MATTER_CERT_DEVICE: "chip-local",
             MATTER_CERT_EVIDENCE_DIR: resolve(ROOT, ".cert/evidence"),
             MATTER_CHIP_BINS_SOURCE: "cert-bins",
+            MATTER_CHIP_PLATFORM: "linux/arm64",
         });
     });
 

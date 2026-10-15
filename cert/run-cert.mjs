@@ -3,7 +3,7 @@
  * Run the matter.js controller certification suite against this server.
  *
  * Usage: npm run cert -- [--tc TC-IDM-2.1] [--matterjs-ref <ref>] [--device chip-local|matterjs] [--dry-run]
- * See DEVELOPMENT.md ("Certification tests") for flags, environment and prerequisites.
+ * See cert/README.md for flags, environment and prerequisites.
  * The RUN_CERT_TEST_* variables exist for testing the runner only.
  */
 
@@ -84,7 +84,8 @@ function platformEnv(device) {
     const platform = process.env.RUN_CERT_TEST_PLATFORM ?? process.platform;
     if (platform !== "linux" && platform !== "darwin") return fail(`unsupported platform ${platform}`);
     if (device === "matterjs") return {};
-    if (platform === "linux") return { MATTER_CHIP_BINS_SOURCE: "cert-bins" };
+    // chip-cert-bins is published for linux/arm64 only, so the harness container must run that platform too.
+    if (platform === "linux") return { MATTER_CHIP_BINS_SOURCE: "cert-bins", MATTER_CHIP_PLATFORM: "linux/arm64" };
     const appDir = process.env.MATTER_CERT_APP_DIR;
     if (!appDir) fail("MATTER_CERT_APP_DIR must point to the local chip apps on macOS");
     return { MATTER_CERT_APP_DIR: appDir };
