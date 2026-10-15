@@ -16,6 +16,7 @@ function nodeWithEndpoints(nodeId: NodeId, endpointNumbers: number[]): ClientNod
         id: `peer-${nodeId}`,
         peerAddress: { fabricIndex: 1, nodeId },
         lifecycle: { isCommissioned: true, isSeeded: true, isReady: true },
+        maybeStateOf: () => ({ vendorId: 0xfff1 }),
         // Iterable and sized, the two things the cache asks of an endpoint collection.
         endpoints: Object.assign(
             endpointNumbers.map(number => ({

@@ -15,6 +15,7 @@ import {
     Observable,
     Time,
 } from "@matter/main";
+import { BasicInformationClient } from "@matter/main/behaviors";
 import { EndpointNumber } from "@matter/main/types";
 import { ClusterMap } from "../model/ModelMapper.js";
 import { buildAttributePath, convertMatterToWebSocketTagBased } from "../server/Converters.js";
@@ -69,7 +70,8 @@ export class AttributeDataCache {
      */
     static hasStructure(node: ClientNode): boolean {
         const { isCommissioned, isReady } = node.lifecycle;
-        return isCommissioned && isReady && node.endpoints.size > 1;
+        // A device may have only its root endpoint, so the read structure shows in BasicInformation, not in the count.
+        return isCommissioned && isReady && node.maybeStateOf(BasicInformationClient) !== undefined;
     }
 
     /** Populates the node's attributes, and does nothing for a node with no structure to read. */

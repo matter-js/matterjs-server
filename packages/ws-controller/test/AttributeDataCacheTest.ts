@@ -12,6 +12,8 @@ type NodeShape = {
     commissioned?: boolean;
     ready?: boolean;
     seeded?: boolean;
+    /** Whether BasicInformation has been read. */
+    basicInformation?: boolean;
     endpointNumbers?: number[];
     /** Owner endpoint number per endpoint number; an endpoint missing here has no owner. */
     owners?: Record<number, number>;
@@ -27,6 +29,7 @@ function clientNode(nodeId: NodeId, shape: NodeShape = {}): ClientNode {
         commissioned = true,
         ready = true,
         seeded = false,
+        basicInformation = true,
         endpointNumbers = [0, 1],
         owners = {},
         unreadable = [],
@@ -54,6 +57,7 @@ function clientNode(nodeId: NodeId, shape: NodeShape = {}): ClientNode {
         id: `peer-${nodeId}`,
         peerAddress: { fabricIndex: 1, nodeId },
         lifecycle: { isCommissioned: commissioned, isReady: ready, isSeeded: seeded },
+        maybeStateOf: () => (basicInformation ? { vendorId: 0xfff1 } : undefined),
         endpoints: Object.assign(endpoints, {
             size: endpoints.length,
             has: (number: number) => endpoints.some(endpoint => endpoint.number === number),
@@ -71,8 +75,14 @@ describe("AttributeDataCache", () => {
             expect(AttributeDataCache.hasStructure(clientNode(NODE_ID, { seeded: false }))).to.equal(true);
         });
 
-        it("rejects a peer that carries nothing but its root endpoint", () => {
-            expect(AttributeDataCache.hasStructure(clientNode(NODE_ID, { endpointNumbers: [0] }))).to.equal(false);
+        it("accepts a device that has only its root endpoint once BasicInformation is read", () => {
+            expect(AttributeDataCache.hasStructure(clientNode(NODE_ID, { endpointNumbers: [0] }))).to.equal(true);
+        });
+
+        it("rejects a peer whose structure has not been read", () => {
+            expect(
+                AttributeDataCache.hasStructure(clientNode(NODE_ID, { endpointNumbers: [0], basicInformation: false })),
+            ).to.equal(false);
         });
 
         it("rejects a node that is not commissioned", () => {
@@ -99,7 +109,7 @@ describe("AttributeDataCache", () => {
         it("caches nothing for a node without a structure", async () => {
             const cache = new AttributeDataCache();
 
-            await cache.add(clientNode(NODE_ID, { endpointNumbers: [0] }));
+            await cache.add(clientNode(NODE_ID, { endpointNumbers: [0], basicInformation: false }));
 
             expect(cache.has(NODE_ID)).to.equal(false);
         });
