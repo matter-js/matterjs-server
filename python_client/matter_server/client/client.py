@@ -850,9 +850,9 @@ class MatterClient:
     async def parse_onboarding_payload(self, code: str) -> QrOnboardingPayloadResult | ManualOnboardingPayloadResult:
         """Decode a QR code payload (``MT:...``) or a manual pairing code without contacting any device.
 
-        Requires schema 15.
+        Requires schema 14.
         """
-        data = await self.send_command(APICommand.PARSE_ONBOARDING_PAYLOAD, require_schema=15, code=code)
+        data = await self.send_command(APICommand.PARSE_ONBOARDING_PAYLOAD, require_schema=14, code=code)
         if data["type"] == "qr":
             return dataclass_from_dict(QrOnboardingPayloadResult, data)
         return dataclass_from_dict(ManualOnboardingPayloadResult, data)

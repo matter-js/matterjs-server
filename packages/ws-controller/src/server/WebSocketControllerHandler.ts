@@ -107,7 +107,7 @@ function isIdentityConflict(error: unknown): boolean {
 /** Maximum number of events to keep in the history buffer */
 const EVENT_HISTORY_SIZE = 25;
 
-const SCHEMA_VERSION = 15;
+const SCHEMA_VERSION = 14;
 /** One day; matter.js adds the value to its response timeout, and Node.js fires timers past 2^31-1 ms at once. */
 const MAX_INTERACTION_TIMEOUT_MS = 86_400_000;
 const MIN_SUPPORTED_SCHEMA_VERSION = 11;

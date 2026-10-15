@@ -570,9 +570,9 @@ export class MatterClient {
         await this.sendCommand("enable_auto_subscription", 14, { node_id: nodeId }, timeout);
     }
 
-    /** Schema 15. Decodes a QR code payload (`MT:…`) or a manual pairing code without contacting any device. */
+    /** Schema 14. Decodes a QR code payload (`MT:…`) or a manual pairing code without contacting any device. */
     async parseOnboardingPayload(code: string, timeout?: number): Promise<ResponseOf<"parse_onboarding_payload">> {
-        return await this.sendCommand("parse_onboarding_payload", 15, { code }, timeout);
+        return await this.sendCommand("parse_onboarding_payload", 14, { code }, timeout);
     }
 
     /** Schema 14. Switches the server's own subscription to the node off. Only available with auto subscription disabled. */

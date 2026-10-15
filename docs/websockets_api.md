@@ -10,7 +10,7 @@ On connection, the server immediately sends a `server_info` message with fabric 
 {
   "fabric_id": 1234567890,
   "compressed_fabric_id": 9876543210,
-  "schema_version": 15,
+  "schema_version": 14,
   "min_supported_schema_version": 11,
   "sdk_version": "matter-server/1.1.7 (matter.js/0.17.5-alpha)",
   "wifi_credentials_set": true,
@@ -364,7 +364,7 @@ Filter types:
 `discovery_timeout_s` works as for `commission_with_code`. The attempt at `ip_addr` keeps the PASE limit of matter.js;
 the timeout applies to the discovery that follows when that attempt fails.
 
-**parse_onboarding_payload** *(schema 15+)* - Decode a QR code payload or a manual pairing code
+**parse_onboarding_payload** *(schema 14+)* - Decode a QR code payload or a manual pairing code
 
 Decodes the code the way `commission_with_code` reads it, without contacting any device and without changing any
 state.
@@ -631,7 +631,7 @@ Values in the results and reports have the same shape as in `read_attribute` (at
 (events). When the device answers a path with a status instead of data (for example an unsupported attribute),
 the path is listed in `attribute_status` or `event_status`, keyed by the path in the request format, with the
 numeric Matter status code in `status` (as in the `write_attribute` result) and the cluster-specific code in
-`cluster_status` when the device sent one. Both fields are left out when there is no status. From schema 15,
+`cluster_status` when the device sent one. Both fields are left out when there is no status.
 `data_versions` holds the data version the device reported for each cluster with an attribute value in the result,
 keyed by `endpoint/cluster`, the form `data_version_filters` takes; it is left out when no attribute value was
 reported:
@@ -728,8 +728,8 @@ Arguments are those of `read` plus:
   those of other connections; each one that was opened with `subscribe` then arrives as `subscription_ended` at its
   connection. `true` keeps them.
 
-Only the data version filters the caller gives are sent, as for `read` (schema 15; before, the server added the data
-versions it already knew, so the priming report could leave out clusters that did not change).
+Only the data version filters the caller gives are sent, as for `read`, so the priming report holds every requested
+cluster the caller does not filter.
 
 Response:
 
@@ -2051,7 +2051,7 @@ Sent only to the owning connection, for example when the node was removed or the
   "data": {
     "fabric_id": 1234567890,
     "compressed_fabric_id": 9876543210,
-    "schema_version": 15,
+    "schema_version": 14,
     "min_supported_schema_version": 11,
     "sdk_version": "matter-server/1.1.7 (matter.js/0.17.5-alpha)",
     "wifi_credentials_set": true,
@@ -2236,7 +2236,7 @@ cluster definition.
 
 ## Schema Version
 
-The current schema version is **15** (minimum supported **11**). Commands and events are marked with the schema that added them, for example **(schema 15+)**; see [the schema changelog](websocket-api-schema-changelog.md) for what each version added. The server reports `schema_version` and `min_supported_schema_version` in the initial connection message and via `server_info`. Clients should verify that the server's `schema_version` is within their supported range.
+The current schema version is **14** (minimum supported **11**). Commands and events are marked with the schema that added them, for example **(schema 14+)**; see [the schema changelog](websocket-api-schema-changelog.md) for what each version added. The server reports `schema_version` and `min_supported_schema_version` in the initial connection message and via `server_info`. Clients should verify that the server's `schema_version` is within their supported range.
 
 ## BigInt Handling
 
@@ -2373,7 +2373,7 @@ These commands are available only in the Matter.js server and not in the Python 
 | `unsubscribe` | End a subscription opened with `subscribe` (schema 14+) |
 | `enable_auto_subscription` | Switch the server's own subscription to one node on, with `--disable-auto-subscription` (schema 14+) |
 | `disable_auto_subscription` | Switch the server's own subscription to one node off again (schema 14+) |
-| `parse_onboarding_payload` | Decode a QR code or manual pairing code without contacting a device (schema 15+) |
+| `parse_onboarding_payload` | Decode a QR code or manual pairing code without contacting a device (schema 14+) |
 
 ### Data Differences
 

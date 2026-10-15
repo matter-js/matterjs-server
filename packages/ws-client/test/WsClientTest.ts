@@ -271,9 +271,9 @@ describe("ws-client", () => {
                 expect(server.getReceivedCommands().map(({ message }) => message.command)).to.deep.equal([]);
             });
 
-            it("sends parseOnboardingPayload on schema 15 and refuses it below", async () => {
+            it("sends parseOnboardingPayload on schema 14 and refuses it below", async () => {
                 await server.stop();
-                server = new MockMatterServer({ serverInfo: { schema_version: 15 } });
+                server = new MockMatterServer({ serverInfo: { schema_version: 14 } });
                 server.onCommand("parse_onboarding_payload", () => ({
                     type: "manual",
                     short_discriminator: 15,
@@ -291,7 +291,7 @@ describe("ws-client", () => {
                 ]);
 
                 await server.stop();
-                server = new MockMatterServer({ serverInfo: { schema_version: 14 } });
+                server = new MockMatterServer({ serverInfo: { schema_version: 13 } });
                 await server.start();
                 client = new MatterClient(server.url, createNodeWebSocket);
                 await client.connect();

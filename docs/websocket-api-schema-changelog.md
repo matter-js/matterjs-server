@@ -10,19 +10,6 @@ The server-side constants live in `packages/ws-controller/src/server/WebSocketCo
 (`SCHEMA_VERSION`, `MIN_SUPPORTED_SCHEMA_VERSION`). Versions predating this document are not
 listed retroactively; entries start at the first version maintained here.
 
-## Schema 15
-
-Minimum supported: 11.
-
-- **New command `parse_onboarding_payload`** `{ code }` → `{ type: "qr", payloads: [{ version, vendor_id?, product_id?,
-  flow_type, discovery_capabilities, discriminator, setup_pin_code, tlv_data? }] }` or `{ type: "manual",
-  short_discriminator, setup_pin_code, vendor_id?, product_id? }`. Decodes a code as `commission_with_code` does, without
-  contacting a device. An undecodable code fails with `InvalidArguments` and `reason` `invalid-payload`.
-- **`data_versions`** in the `read` and `subscribe` results and in `subscription_report`: `{ "endpoint/cluster":
-  data_version }` for each cluster with a reported attribute value, left out when there is none.
-- **`subscribe`** sends only the data version filters the caller gives, as `read` does, so the priming report holds
-  every requested cluster the caller does not filter. Before, the server added the data versions it knew.
-
 ## Schema 14
 
 Minimum supported: 11 (older clients keep working with the pre-14 command shapes).
@@ -152,12 +139,20 @@ OHF extensions; python-matter-server codes stop at 11. Each carries JSON details
 
 ### Commissioning
 
+- **New command `parse_onboarding_payload`** `{ code }` → `{ type: "qr", payloads: [{ version, vendor_id?, product_id?,
+  flow_type, discovery_capabilities, discriminator, setup_pin_code, tlv_data? }] }` or `{ type: "manual",
+  short_discriminator, setup_pin_code, vendor_id?, product_id? }`. Decodes a code as `commission_with_code` does, without
+  contacting a device. An undecodable code fails with `InvalidArguments` and `reason` `invalid-payload`.
 - **Optional `discovery_timeout_s` on `commission_with_code` and `commission_on_network`**: how long, in seconds, to find the device and set up PASE with it (above 0, at most 172800; `null` counts as not given). Without it matter.js searches for 3 minutes. The commissioning steps after PASE are not limited, and on `commission_on_network` the attempt at `ip_addr` keeps the matter.js PASE limit.
 
 ### Subscriptions and generic read
 
 - **New command `read`** → `{ attributes, events, attribute_status?, event_status? }`. One Matter Read request with `attribute_paths`, `event_paths` (`[{ path }]`, `path` is `endpoint/cluster/event`), `event_min`, `fabric_filtered` (default `true`) and `data_version_filters` (`[{ path: "endpoint/cluster", data_version }]`). Without `event_min` the request has no event filter and returns all events the device holds. Refused with `InvalidArguments` before anything is sent: an argument of the wrong type, a malformed path or invalid id, no path, `event_min` or `data_version` out of range, `event_min` without `event_paths` and a non-empty `data_version_filters` without `attribute_paths`. `attributes` uses the `read_attribute` shape, `events` the `node_event` shape. `attribute_status` / `event_status` map each path the device answered with a status to `{ status, cluster_status? }` (numeric Matter status codes) and are left out when there is none.
 - **New command `subscribe`** → `{ subscription_id, attributes, events, attribute_status?, event_status? }`: the id and the priming report in the `read` result shape. The `read` arguments plus `min_interval` / `max_interval` (seconds), `is_urgent` per event path and `keep_subscriptions` (default `false`, passed to the device as given; `false`, also when left out, ends all other subscriptions of this controller to the same node, including those of other connections, which arrive as `subscription_ended` at their connections). Only available when the server runs with `--disable-auto-subscription` and the node's auto subscription is off, otherwise `InvalidArguments`. `subscription_id` is the SubscriptionId the device assigned. The `read` refusals apply, and intervals outside 0 to 65535 or `max_interval` below `min_interval` are refused with `InvalidArguments` too. The subscription belongs to the connection that opened it and ends with `unsubscribe`, when that connection closes, when the node is removed or when the server shuts down.
+- **`data_versions`** in the `read` and `subscribe` results and in `subscription_report`: `{ "endpoint/cluster":
+  data_version }` for each cluster with a reported attribute value, left out when there is none. `subscribe` sends only
+  the data version filters the caller gives, as `read` does, so the priming report holds every requested cluster the
+  caller does not filter.
 - **New command `unsubscribe`** (`{ node_id, subscription_id }`) → `null`. Ids are assigned per device, so the node is part of the name. Only available with `--disable-auto-subscription`. A `subscription_id` that is not an integer from 0 to 2^32-1, and a subscription this connection does not hold under that node and id, give `InvalidArguments`.
 - **New commands `enable_auto_subscription` and `disable_auto_subscription`** (`{ node_id }`) → `null`. Switch the server's own subscription to one node on or off. Only available with `--disable-auto-subscription`, otherwise `InvalidArguments`; not kept across a restart. `enable_auto_subscription` returns once the server's subscription is active and fails with `NodeNotResolving` when matter.js finds the device unreachable while waiting, `NodeNotReady` when the subscription is not active within 4 minutes 15 seconds, `NodeNotExists` when the node is removed meanwhile and `UnknownError` when the server shuts down meanwhile, and the node then stays switched on; it fails with `NodeNotReady` when `disable_auto_subscription` switches the node off meanwhile, also during a `resync_icd`, and when a `resync_icd` meanwhile cannot switch the subscription back on. `disable_auto_subscription` returns once the subscription is closed. Enabling ends the node's subscriptions opened with `subscribe` (`subscription_ended`), and `subscribe` for a node with auto subscription on gives `InvalidArguments`.
 - **New event `subscription_report`** → `{ node_id, subscription_id, attributes, events, attribute_status?, event_status? }`. Sent only to the connection that opened the subscription, whether or not it called `start_listening`; it carries the reports after the priming report, which the `subscribe` response carries.

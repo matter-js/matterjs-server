@@ -435,7 +435,7 @@ export interface InteractionReportData {
     events: Array<MatterNodeEvent>;
     attribute_status?: { [path: string]: PathStatus };
     event_status?: { [path: string]: PathStatus };
-    /** Schema 15. The data version of each cluster with a reported attribute value, keyed by `endpoint/cluster`. */
+    /** Schema 14. The data version of each cluster with a reported attribute value, keyed by `endpoint/cluster`. */
     data_versions?: { [path: string]: number };
 }
 
@@ -985,7 +985,7 @@ export interface APICommands {
         };
         response: MatterNodeData;
     };
-    /** Schema 15. Decodes a QR code payload or a manual pairing code without contacting any device. */
+    /** Schema 14. Decodes a QR code payload or a manual pairing code without contacting any device. */
     parse_onboarding_payload: {
         requestArgs: { code: string };
         response: OnboardingPayloadResult;

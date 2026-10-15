@@ -85,7 +85,7 @@ class APICommand(str, Enum):
     UNSUBSCRIBE = "unsubscribe"  # schema 14+
     ENABLE_AUTO_SUBSCRIPTION = "enable_auto_subscription"  # schema 14+
     DISABLE_AUTO_SUBSCRIPTION = "disable_auto_subscription"  # schema 14+
-    PARSE_ONBOARDING_PAYLOAD = "parse_onboarding_payload"  # schema 15+
+    PARSE_ONBOARDING_PAYLOAD = "parse_onboarding_payload"  # schema 14+
 
 
 EventCallBackType = Callable[[EventType, Any], None]
@@ -842,7 +842,7 @@ class InteractionReport:
 
     `attributes` is keyed by attribute path as in `read_attribute`. The status maps are keyed by the
     path in the request format and are `None` when the device returned no status. `data_versions`
-    (schema 15) holds the data version of each cluster with a reported attribute value, keyed by
+    holds the data version of each cluster with a reported attribute value, keyed by
     `endpoint/cluster`.
     """
 
