@@ -762,7 +762,21 @@ async def test_parse_onboarding_payload_returns_the_qr_payloads() -> None:
 
     result = await client.parse_onboarding_payload("MT:Y.K90AFN00KA064IJ3P027M30PKC42O0")
 
-    assert result == QrOnboardingPayloadResult(type="qr", payloads=[QrOnboardingPayload(**payload)])
+    assert result == QrOnboardingPayloadResult(
+        type="qr",
+        payloads=[
+            QrOnboardingPayload(
+                version=0,
+                vendor_id=65521,
+                product_id=32768,
+                flow_type=0,
+                discovery_capabilities=4,
+                discriminator=3840,
+                setup_pin_code=20202021,
+                tlv_data="152c000341424318",
+            )
+        ],
+    )
     assert [(message.command, message.args) for message in sent] == [
         (APICommand.PARSE_ONBOARDING_PAYLOAD, {"code": "MT:Y.K90AFN00KA064IJ3P027M30PKC42O0"})
     ]
