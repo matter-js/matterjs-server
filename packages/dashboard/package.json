@@ -44,7 +44,7 @@
     },
     "devDependencies": {
         "@babel/preset-env": "^8.0.6",
-        "@matter/main": "0.18.0-alpha.0-20261014-dfdc3df35",
+        "@matter/main": "0.18.0-alpha.0-20261015-9c1725759",
         "@rollup/plugin-babel": "^7.1.0",
         "@rollup/plugin-commonjs": "^29.0.3",
         "@rollup/plugin-json": "^6.1.0",
