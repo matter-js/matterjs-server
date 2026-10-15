@@ -586,10 +586,10 @@ Schema 14 options:
 
 - `*` as the endpoint (`"*/6/16385"`) writes the attribute on every endpoint of the node that has it, in one Write
   request; the device decides which endpoints it reaches. A wildcard cluster or attribute is refused with
-  `InvalidArguments`.
+  `InvalidArguments`, and so is a path to a node that is not three segments of digits or `*`.
 - `timed_request_timeout_ms`: sends the write as a timed write with this timeout, an integer from 0 to 65535;
-  otherwise the request fails with `InvalidArguments`. Without it, a write is timed only when the attribute requires
-  it.
+  otherwise the request fails with `InvalidArguments`. As for `device_command`, 0 means no timed request. Without
+  it, a write is timed only when the attribute requires it.
 
 Response: one entry per endpoint the device answered for (one for a specific endpoint, one per endpoint reached for a
 wildcard endpoint, none when a wildcard reaches no endpoint), with its Matter status in `Status` and, when the device
@@ -897,7 +897,7 @@ Command with parameters (e.g., move to level):
 
 Optional parameters:
 - `response_type`: Client SDK type hint (currently ignored by the server)
-- `timed_request_timeout_ms`: Timeout for timed interactions (required for some commands like door lock), an integer from 0 to 65535; otherwise the request fails with `InvalidArguments`
+- `timed_request_timeout_ms`: Timeout for timed interactions (required for some commands like door lock), an integer from 0 to 65535; otherwise the request fails with `InvalidArguments`. As in python-matter-server, 0 means no timed request
 - `interaction_timeout_ms`: Time in milliseconds the device may take to process the command, an integer from 0 to 2^53-1; otherwise the request fails with `InvalidArguments`. Over UDP it replaces the default expected processing time of 2 seconds in the response timeout; over TCP and BLE the response timeout is the larger of 30 seconds and this value, plus 5 seconds
 
 A `node_id` in the Group Node ID range multicasts the command to the group. `endpoint_id` must then be
@@ -910,8 +910,6 @@ invoked as a timed request, which a groupcast cannot carry.
 Whether a groupcast leaves this server also depends on a group key set existing for the group on the
 controller's fabric. This server has no command to provision one yet, so a groupcast to a group that was
 never keyed fails with error 0 and a message naming the group.
-
-### Node Management
 
 **batched_device_commands** *(schema 14+)* - Send several commands to one node in a single InvokeRequest
 
@@ -934,8 +932,8 @@ never keyed fails with error 0 and a message naming the group.
 The commands go to the device in one InvokeRequest, in the given order, each with its own CommandRef (a batch of one
 command carries none, as the spec allows). The request is never split and never combined with other commands, and
 identical batches are not de-duplicated. Each command takes
-the fields of `device_command`; `payload` may be left out. `timed_request_timeout_ms` (0 to 65535) sends one Timed
-Request for the whole batch; without it, the batch is timed only when one of its commands requires it.
+the fields of `device_command`; `payload` may be left out. `timed_request_timeout_ms` (0 to 65535, 0 means none)
+sends one Timed Request for the whole batch; without it, the batch is timed only when one of its commands requires it.
 `interaction_timeout_ms` is the time the device may take to process the batch, as in `device_command`.
 
 Refused with `InvalidArguments` before anything is sent: an empty or missing `commands` list, a command with missing or
@@ -952,6 +950,8 @@ timeout failure, or a response payload matter.js cannot decode, fails the whole 
 ```json
 [{ "status": 0 }, { "status": 1, "cluster_status": 3 }]
 ```
+
+### Node Management
 
 **interview_node** - Re-interview a node (refresh its data)
 

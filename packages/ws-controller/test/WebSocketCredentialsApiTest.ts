@@ -2464,7 +2464,8 @@ describe("groupcast on the generic commands", () => {
     });
 
     for (const [name, stated, expected] of [
-        ["timed_request_timeout_ms", 0, Millis(0)],
+        // As in python-matter-server, 0 means no timed request.
+        ["timed_request_timeout_ms", 0, undefined],
         ["timed_request_timeout_ms", 65_535, Millis(65_535)],
         ["timed_request_timeout_ms", null, undefined],
         ["interaction_timeout_ms", 0, Millis(0)],
@@ -2626,6 +2627,53 @@ describe("groupcast on the generic commands", () => {
         }
     });
 
+    for (const path of ["*/6/16385", "65535/6/16385"]) {
+        it(`takes ${path} as a wildcard endpoint of a unicast write_attribute`, async () => {
+            const writes = new Array<unknown>();
+            const h = await createHarness(undefined, {
+                handleWriteAttribute: async data => {
+                    writes.push(data);
+                    return [];
+                },
+            });
+            try {
+                const answer = await answerFor(
+                    h,
+                    "write_attribute",
+                    { node_id: 1, attribute_path: path, value: 5 },
+                    `unicast-write-wildcard-${path}`,
+                );
+                expect(answer.error_code).to.equal(undefined);
+                expect(writes).to.have.length(1);
+                expect(writes[0]).to.have.property("endpointId", undefined);
+            } finally {
+                await h.close();
+            }
+        });
+    }
+
+    for (const path of ["1x/6/16385", "null/6/16385", "None/6/16385", "/6/16385", "1/6/16385/x"]) {
+        it(`refuses a unicast write_attribute with the malformed path ${JSON.stringify(path)}`, async () => {
+            const h = await createHarness(undefined, {
+                handleWriteAttribute: async () => {
+                    throw new Error("write must not be reached");
+                },
+            });
+            try {
+                const answer = await answerFor(
+                    h,
+                    "write_attribute",
+                    { node_id: 1, attribute_path: path, value: 5 },
+                    `unicast-write-malformed-${path}`,
+                );
+                expect(answer.error_code).to.equal(8);
+                expect(answer.details).to.contain("attribute_path");
+            } finally {
+                await h.close();
+            }
+        });
+    }
+
     for (const path of ["1/*/16385", "1/6/*"]) {
         it(`refuses a unicast write_attribute with a wildcard in ${path}`, async () => {
             const h = await createHarness(undefined, {
@@ -2649,7 +2697,7 @@ describe("groupcast on the generic commands", () => {
     }
 
     for (const [stated, expected] of [
-        [0, Millis(0)],
+        [0, undefined],
         [65_535, Millis(65_535)],
         [null, undefined],
     ] as const) {
@@ -2742,6 +2790,16 @@ describe("groupcast on the generic commands", () => {
                 },
                 "batched",
             );
+            await answerFor(
+                h,
+                "batched_device_commands",
+                {
+                    node_id: 1,
+                    commands: [{ endpoint_id: 1, cluster_id: 6, command_name: "On" }],
+                    timed_request_timeout_ms: 0,
+                },
+                "batched-untimed",
+            );
             expect(answer.error_code).to.equal(undefined);
             expect(answer.result).to.deep.equal([{ status: 0 }, { status: Status.Failure, cluster_status: 3 }]);
             expect(
@@ -2763,6 +2821,11 @@ describe("groupcast on the generic commands", () => {
                     ],
                     timedInteractionTimeoutMs: Millis(500),
                     interactionTimeoutMs: Millis(3000),
+                },
+                {
+                    commands: [{ endpointId: 1, clusterId: 6, commandName: "On", data: {} }],
+                    timedInteractionTimeoutMs: undefined,
+                    interactionTimeoutMs: undefined,
                 },
             ]);
         } finally {

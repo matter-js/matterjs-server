@@ -337,7 +337,12 @@ export class MatterClient {
     async commissionOnNetwork(setupPinCode: number, options: CommissionOnNetworkOptions = {}): Promise<MatterNode> {
         const data = await this.sendCommand(
             "commission_on_network",
-            options.discoveryTimeoutS !== undefined ? 14 : options.ipAddr !== undefined ? 6 : 0,
+            // An older server ignores filter type 4 and commissions any device with the setup code.
+            options.discoveryTimeoutS !== undefined || options.filterType === 4
+                ? 14
+                : options.ipAddr !== undefined
+                  ? 6
+                  : 0,
             {
                 setup_pin_code: setupPinCode,
                 filter_type: options.filterType,

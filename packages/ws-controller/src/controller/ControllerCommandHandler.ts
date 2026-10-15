@@ -1766,12 +1766,10 @@ export class ControllerCommandHandler {
         const node = this.#nodes.get(nodeId);
         const { peerAddress } = node;
         const peer = peerAddress === undefined ? undefined : this.#peers?.get(peerAddress);
-        const reported = peer?.sessionParameters.maxPathsPerInvoke;
-        const maxPathsPerInvoke = reported ?? 1;
+        const maxPathsPerInvoke = peer?.sessionParameters.maxPathsPerInvoke ?? 1;
         if (requests.length > maxPathsPerInvoke) {
-            const source = reported === undefined ? "reports no MaxPathsPerInvoke, so the spec default" : "reports";
             throw ServerError.invalidArguments(
-                `batched_device_commands has ${requests.length} commands, but node ${this.formatNode(nodeId)} ${source} allows at most ${maxPathsPerInvoke} per invoke`,
+                `batched_device_commands has ${requests.length} commands, but node ${this.formatNode(nodeId)} accepts at most ${maxPathsPerInvoke} per invoke (its MaxPathsPerInvoke, 1 when it reports none)`,
             );
         }
 

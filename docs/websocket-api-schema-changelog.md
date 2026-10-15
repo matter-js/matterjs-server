@@ -120,11 +120,11 @@ OHF extensions; python-matter-server codes stop at 11. Each carries JSON details
   Refused with `InvalidArguments` before sending: an empty list, a bad command, more commands than the node's
   MaxPathsPerInvoke, an invalid timeout, a Group Node ID or a WebRTC Transport Provider command.
 - **`device_command`** refuses a command that is not in the server's model for the cluster, or fields matter.js cannot
-  encode, with `InvalidArguments`; before, it failed with `UnknownError`. A `timed_request_timeout_ms` of 0 now sends a
-  Timed Request; before, the command was sent untimed.
+  encode, with `InvalidArguments`; before, it failed with `UnknownError`.
 - **`write_attribute`** takes `*` as the endpoint for a unicast node and writes every endpoint that has the
   attribute in one Write request; the result has one entry per endpoint the device answered for. The new
-  `timed_request_timeout_ms` (0 to 65535) sends a timed write. A wildcard cluster or attribute stays refused.
+  `timed_request_timeout_ms` (0 to 65535; 0 means no timed request) sends a timed write. A wildcard cluster or
+  attribute stays refused, and so does a malformed path to a node (only digits or `*` per segment, three segments).
 - **`device_command` `timed_request_timeout_ms`** that is not an integer from 0 to 65535 is refused with error 8;
   before, such a value was ignored and the command was sent without a timed request.
 - **`args`** — every command treats a missing or `null` `args` as no arguments, and refuses a

@@ -250,12 +250,13 @@ class MatterClient:
         ``filter_type`` (1=ShortDiscriminator, 2=LongDiscriminator, 3=VendorId, 4=DeviceType) and
         ``filter`` select the device to commission; they are sent only when given. ``filter_type`` 0
         means no filter.
-        ``discovery_timeout_s`` is as for ``commission_with_code`` and needs schema 14.
+        ``filter_type`` 4 and ``discovery_timeout_s`` (as for ``commission_with_code``) need schema 14;
+        an older server ignores ``filter_type`` 4 and commissions any device with the setup code.
 
         Returns basic MatterNodeData once complete.
         """
         require_schema = 6 if ip_addr is not None else None
-        if discovery_timeout_s is not None:
+        if discovery_timeout_s is not None or filter_type == 4:
             require_schema = 14
         data = await self.send_command(
             APICommand.COMMISSION_ON_NETWORK,

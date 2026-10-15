@@ -83,6 +83,7 @@ import {
     convertMatterToWebSocketNameBased,
     convertMatterToWebSocketTagBased,
     parseBigIntAwareJson,
+    isWellFormedPath,
     splitAttributePath,
     toBigIntAwareJson,
 } from "./Converters.js";
@@ -117,6 +118,12 @@ const MIN_SUPPORTED_SCHEMA_VERSION = 11;
 
 function isUint(value: unknown, max: number): value is number {
     return typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= max;
+}
+
+/** As in python-matter-server, a timed request timeout of 0 means no timed request. */
+function timedRequestTimeoutArgument(stated: number | null | undefined): Duration | undefined {
+    const timeout = timeoutArgument("timed_request_timeout_ms", stated, MAX_TIMED_REQUEST_TIMEOUT_MS);
+    return timeout === 0 ? undefined : timeout;
 }
 
 /** Checks the stated value: a timeout of the wrong type must be refused, not dropped. */
@@ -1602,6 +1609,12 @@ export class WebSocketControllerHandler implements WebServerHandler {
     async #handleWriteAttribute(args: ArgsOf<"write_attribute">): Promise<ResponseOf<"write_attribute">> {
         const { node_id, attribute_path, value, timed_request_timeout_ms } = args;
         const { nodeId, group } = this.#targetNodeIdOrGroup(node_id, "write_attribute");
+        // A malformed endpoint would otherwise read as the wildcard and write every endpoint of the node.
+        if (!group && !isWellFormedPath(attribute_path, 3)) {
+            throw ServerError.invalidArguments(
+                'write_attribute needs attribute_path as endpoint/cluster/attribute, each a number or "*"',
+            );
+        }
         const { endpointId, clusterId, attributeId } = splitAttributePath(attribute_path);
         if (clusterId === undefined || attributeId === undefined) {
             throw ServerError.invalidArguments(WRITE_WILDCARD_REFUSAL);
@@ -1626,11 +1639,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
             clusterId,
             attributeId,
             value,
-            timedInteractionTimeoutMs: timeoutArgument(
-                "timed_request_timeout_ms",
-                timed_request_timeout_ms,
-                MAX_TIMED_REQUEST_TIMEOUT_MS,
-            ),
+            timedInteractionTimeoutMs: timedRequestTimeoutArgument(timed_request_timeout_ms),
         });
         return results.map(({ endpointId, clusterId, attributeId, status, clusterStatus }) => ({
             Path: { EndpointId: endpointId, ClusterId: clusterId, AttributeId: attributeId },
@@ -1718,11 +1727,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
         if (endpointId === undefined || endpointId === null) {
             throw ServerError.invalidArguments("device_command requires endpoint_id unless node_id is a Group Node ID");
         }
-        const timedTimeout = timeoutArgument(
-            "timed_request_timeout_ms",
-            timedInteractionTimeoutMs,
-            MAX_TIMED_REQUEST_TIMEOUT_MS,
-        );
+        const timedTimeout = timedRequestTimeoutArgument(timedInteractionTimeoutMs);
         const interactionTimeout = timeoutArgument(
             "interaction_timeout_ms",
             interactionTimeoutMs,
@@ -1813,11 +1818,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
         const results = await this.#handlerFor(nodeId).handleBatchedInvoke({
             nodeId,
             commands: requested,
-            timedInteractionTimeoutMs: timeoutArgument(
-                "timed_request_timeout_ms",
-                timed_request_timeout_ms,
-                MAX_TIMED_REQUEST_TIMEOUT_MS,
-            ),
+            timedInteractionTimeoutMs: timedRequestTimeoutArgument(timed_request_timeout_ms),
             interactionTimeoutMs: timeoutArgument(
                 "interaction_timeout_ms",
                 interaction_timeout_ms,

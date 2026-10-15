@@ -516,6 +516,25 @@ describe("ws-client", () => {
                 expect(server.getReceivedCommands()).to.have.length(1);
             });
 
+            it("commissionOnNetwork refuses filter type 4 below schema 14, but not filter type 3", async () => {
+                await server.stop();
+                server = new MockMatterServer({ serverInfo: { schema_version: 13 } });
+                server.onCommand("commission_on_network", () => ({ node_id: 3 }));
+                await server.start();
+                client = new MatterClient(server.url, createNodeWebSocket);
+                await client.connect();
+
+                await client.commissionOnNetwork(20202021, { filterType: 3, filter: 0xfff1 });
+                let refusal: unknown;
+                try {
+                    await client.commissionOnNetwork(20202021, { filterType: 4, filter: 257 });
+                } catch (error) {
+                    refusal = error;
+                }
+                expect(refusal).to.be.instanceOf(InvalidServerVersion);
+                expect(server.getReceivedCommands()).to.have.length(1);
+            });
+
             it("plain commissionWithCode passes the gate on a schema 13 server", async () => {
                 await server.stop();
                 server = new MockMatterServer({ serverInfo: { schema_version: 13 } });

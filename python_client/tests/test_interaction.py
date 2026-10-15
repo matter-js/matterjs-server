@@ -278,6 +278,17 @@ async def test_commission_on_network_sends_discovery_timeout() -> None:
     assert kwargs["setup_pin_code"] == 20202021
 
 
+@pytest.mark.parametrize(("filter_type", "schema"), [(4, 14), (3, None), (1, None)])
+async def test_commission_on_network_requires_schema_14_for_filter_type_4(
+    filter_type: int, schema: int | None
+) -> None:
+    client = _bare_client(_NODE_DICT)
+    await client.commission_on_network(20202021, filter_type=filter_type, filter=257)
+    _, kwargs = _sent(client)
+    assert kwargs["require_schema"] == schema
+    assert kwargs["filter_type"] == filter_type
+
+
 async def test_commission_on_network_omits_discovery_timeout_when_none() -> None:
     client = _bare_client(_NODE_DICT)
     await client.commission_on_network(20202021, ip_addr="10.0.0.2")
