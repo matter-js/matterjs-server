@@ -14,6 +14,7 @@ import { AccessControlServer } from "@matter/node/behaviors/access-control";
 import { BasicInformationServer } from "@matter/node/behaviors/basic-information";
 import { BindingServer } from "@matter/node/behaviors/binding";
 import { BooleanStateServer } from "@matter/node/behaviors/boolean-state";
+import { OnOffServer } from "@matter/node/behaviors/on-off";
 import { OnOffLightDevice } from "@matter/node/devices/on-off-light";
 import { CameraControllerEndpoint, ControllerCommandHandler } from "../src/controller/ControllerCommandHandler.js";
 import { nodeIdOf } from "../src/util/nodeIdOf.js";
@@ -163,6 +164,19 @@ describe("writeAttribute", () => {
 
         await writeNodeLabel("Hallway");
 
+        // Reports arrive in order: once a later device-side change is reported, the label's report was processed too.
+        const reported = new Promise<void>(resolve =>
+            handler.events.attributeChanged.on((_nodeId, { path }) => {
+                if (path.clusterId === OnOffServer.cluster.id) {
+                    resolve();
+                }
+            }),
+        );
+        await MockTime.resolve(light.setStateOf(OnOffServer, { onOff: !light.stateOf(OnOffServer).onOff }), {
+            macrotasks: true,
+        });
+        await MockTime.resolve(reported, { macrotasks: true });
+
         expect(changes).deep.equals(["Hallway"]);
     });
 
@@ -196,17 +210,22 @@ describe("writeAttribute", () => {
         ]);
     });
 
-    it("writes bindings", async () => {
-        const result = await MockTime.resolve(
-            handler.setNodeBinding(nodeId, LIGHT_ENDPOINT, [
-                { node: 5, group: null, endpoint: 1, cluster: 6 },
-                { node: null, group: 7, endpoint: null, cluster: null },
-            ]),
-            { macrotasks: true },
-        );
+    it("writes bindings, also when they equal the current ones", async () => {
+        const bindingsToWrite = [
+            { node: 5, group: null, endpoint: 1, cluster: 6 },
+            { node: null, group: 7, endpoint: null, cluster: null },
+        ];
 
-        expect(result?.[0].status).equals(Status.Success);
-        expect(writeRequests).equals(1);
+        const first = await MockTime.resolve(handler.setNodeBinding(nodeId, LIGHT_ENDPOINT, bindingsToWrite), {
+            macrotasks: true,
+        });
+        const second = await MockTime.resolve(handler.setNodeBinding(nodeId, LIGHT_ENDPOINT, bindingsToWrite), {
+            macrotasks: true,
+        });
+
+        expect(first?.[0].status).equals(Status.Success);
+        expect(second?.[0].status).equals(Status.Success);
+        expect(writeRequests).equals(2);
         const bindings = light.stateOf(BindingServer).binding;
         expect(bindings.map(({ node, group, endpoint, cluster }) => ({ node, group, endpoint, cluster }))).deep.equals([
             { node: NodeId(5), group: undefined, endpoint: EndpointNumber(1), cluster: ClusterId(6) },
