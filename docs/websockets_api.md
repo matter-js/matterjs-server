@@ -409,7 +409,8 @@ Response for a manual pairing code; `vendor_id` and `product_id` only for the 21
 ```
 
 A code that cannot be decoded fails with `InvalidArguments` (8) and `reason` `invalid-payload`, as in
-`commission_with_code`. A missing or non-string `code` fails with `InvalidArguments` without `reason`.
+`commission_with_code`. A missing or non-string `code` fails with `InvalidArguments` without `reason`. An unexpected
+error while decoding fails with `SDKStackError` (7) without `reason`.
 
 **open_commissioning_window** - Open commissioning window to share a device
 

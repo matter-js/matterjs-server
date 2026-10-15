@@ -4,7 +4,14 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { ManualPairingCodeCodec, ManualPairingData, QrCodeData, QrPairingCodeCodec } from "@matter/main/types";
+import { UnexpectedDataError } from "@matter/main";
+import {
+    ManualPairingCodeCodec,
+    ManualPairingData,
+    QrCodeData,
+    QrPairingCodeCodec,
+    ValidationError,
+} from "@matter/main/types";
 import { ServerError, ServerErrorCode } from "../types/WebSocketMessageTypes.js";
 
 /** A decoded onboarding payload: the payloads of a QR code, or a manual pairing code. */
@@ -34,12 +41,19 @@ function decodePairingCode<T>(decode: () => T): T {
     try {
         return decode();
     } catch (error) {
+        // The decoder sees only values taken from the code, so a ValidationError also means a malformed code.
+        if (error instanceof UnexpectedDataError || error instanceof ValidationError) {
+            throw new ServerError(
+                ServerErrorCode.InvalidArguments,
+                `Invalid pairing code: ${error.message}`,
+                error,
+                "invalid-payload",
+            );
+        }
         const cause = error instanceof Error ? error : undefined;
-        throw new ServerError(
-            ServerErrorCode.InvalidArguments,
-            `Invalid pairing code: ${cause?.message ?? String(error)}`,
+        throw ServerError.sdkStackError(
+            `Could not process the pairing code: ${cause?.message ?? String(error)}`,
             cause,
-            "invalid-payload",
         );
     }
 }

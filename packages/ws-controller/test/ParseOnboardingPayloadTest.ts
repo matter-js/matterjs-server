@@ -4,6 +4,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import { ImplementationError } from "@matter/main";
+import { QrPairingCodeCodec } from "@matter/main/types";
 import { ServerErrorCode } from "../src/types/WebSocketMessageTypes.js";
 import { InteractionWsHarness } from "./support/InteractionWsHarness.js";
 
@@ -81,13 +83,28 @@ describe("parse_onboarding_payload over WebSocket", () => {
     });
 
     it("refuses a code that cannot be decoded with reason invalid-payload", async () => {
-        for (const code of ["MT:invalid", "1234", "34970112333"]) {
+        // 400000000070000327685 states vendor ID 70000, out of range for a VendorId.
+        for (const code of ["MT:invalid", "1234", "34970112333", "400000000070000327685"]) {
             const response = await parse(code);
 
             expect([response.error_code, response.reason], code).deep.equals([
                 ServerErrorCode.InvalidArguments,
                 "invalid-payload",
             ]);
+        }
+    });
+
+    it("fails with SDKStackError, not invalid-payload, when decoding fails for another reason", async () => {
+        QrPairingCodeCodec.decode = () => {
+            throw new ImplementationError("decoder broke");
+        };
+        try {
+            const response = await parse("MT:Y.K90AFN00KA0648G00");
+
+            expect([response.error_code, response.reason]).deep.equals([ServerErrorCode.SDKStackError, undefined]);
+            expect(response.details).equals("Could not process the pairing code: decoder broke");
+        } finally {
+            Reflect.deleteProperty(QrPairingCodeCodec, "decode");
         }
     });
 

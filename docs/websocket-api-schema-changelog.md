@@ -144,7 +144,8 @@ OHF extensions; python-matter-server codes stop at 11. Each carries JSON details
 - **New command `parse_onboarding_payload`** `{ code }` → `{ type: "qr", payloads: [{ version, vendor_id?, product_id?,
   flow_type, discovery_capabilities, discriminator, setup_pin_code }] }` or `{ type: "manual",
   short_discriminator, setup_pin_code, vendor_id?, product_id? }`. Decodes a code as `commission_with_code` does, without
-  contacting a device. An undecodable code fails with `InvalidArguments` and `reason` `invalid-payload`.
+  contacting a device. An undecodable code fails with `InvalidArguments` and `reason` `invalid-payload`; an unexpected
+  error while decoding fails with `SDKStackError`.
 - **Optional `discovery_timeout_s` on `commission_with_code` and `commission_on_network`**: how long, in seconds, to find the device and set up PASE with it (above 0, at most 172800; `null` counts as not given). Without it matter.js searches for 3 minutes. The commissioning steps after PASE are not limited, and on `commission_on_network` the attempt at `ip_addr` keeps the matter.js PASE limit.
 
 ### Subscriptions and generic read
