@@ -85,7 +85,7 @@ class UnitTestingCluster(Cluster):
                         ClusterObjectFieldDescriptor(Label="e", Tag=4, Type=str),
                         ClusterObjectFieldDescriptor(Label="f", Tag=5, Type=UnitTestingCluster.Bitmaps.SimpleBitmap),
                         ClusterObjectFieldDescriptor(Label="g", Tag=6, Type=float32),
-                        ClusterObjectFieldDescriptor(Label="h", Tag=7, Type=float32),
+                        ClusterObjectFieldDescriptor(Label="h", Tag=7, Type=float),
                         ClusterObjectFieldDescriptor(Label="i", Tag=8, Type=typing.Optional[UnitTestingCluster.Enums.TestGlobalEnum]),
                     ])
 
@@ -96,7 +96,7 @@ class UnitTestingCluster(Cluster):
             e: str = ""
             f: UnitTestingCluster.Bitmaps.SimpleBitmap = 0
             g: float32 = 0.0
-            h: float32 = 0.0
+            h: float = 0.0
             i: typing.Optional[UnitTestingCluster.Enums.TestGlobalEnum] = None
 
     class Attributes:

@@ -357,14 +357,19 @@ interface PythonType {
  * Type name of a model. Decorator-defined models (custom clusters) carry the type
  * as an `operationalBase` datatype instead of a `type` string.
  */
+/** The metatype "float" alone cannot tell `single` from `double`. */
+const FLOAT_TYPES = new Set(["single", "double"]);
+
 function typeNameOf(model: ValueModel): string | undefined {
     const type = (model as any).type as string | undefined;
     if (type !== undefined) return type;
     const base = (model as any).operationalBase;
     if (base?.tag !== "datatype") return undefined;
-    // Only named types with a definition (struct fields, enum members) or known signed ints;
+    // Only named types with a definition (struct fields, enum members), known signed ints or the two float sizes;
     // bare bases such as enum8/uint8 keep the metatype-based fallback.
-    if (base.children?.length > 0 || SIGNED_INT_TYPES.has(base.name)) return base.name as string;
+    if (base.children?.length > 0 || SIGNED_INT_TYPES.has(base.name) || FLOAT_TYPES.has(base.name)) {
+        return base.name as string;
+    }
     return undefined;
 }
 
