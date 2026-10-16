@@ -41,8 +41,8 @@ jobs:
             MATTERJS_REF: ${{ inputs.matterjs-ref || 'feat/cert-matterjs-server-controller' }}
             DEVICE: ${{ inputs.device || 'chip-local' }}
             MATTER_CHIP_BINS_TAG: ${{ inputs.chip-bins-tag }}
-            # Lets TC-SC-3.5 and TC-DA-1.9 run instead of skipping themselves.
-            MATTER_CERT_TH_SERVER_APP_PATH: /official-chip-bins/chip-all-clusters-app-nlfaultinject
+            # Lets TC-SC-3.5 and TC-DA-1.9 run instead of skipping themselves; only the chip-local leg has these bins.
+            MATTER_CERT_TH_SERVER_APP_PATH: ${{ (inputs.device || 'chip-local') == 'chip-local' && '/official-chip-bins/chip-all-clusters-app-nlfaultinject' || '' }}
             MATTER_CERT_OTA_FAST_RETRY: "1"
             TC: ${{ inputs.tc }}
         steps:
