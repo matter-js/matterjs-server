@@ -17,7 +17,7 @@ import {
 } from "@matter/main";
 import { GroupKeyManagement } from "@matter/main/clusters/group-key-management";
 import { OnOff } from "@matter/main/clusters/on-off";
-import { FabricManager, NoUsableGroupKeyError } from "@matter/main/protocol";
+import { FabricAuthority, FabricManager, NoUsableGroupKeyError } from "@matter/main/protocol";
 import { MATTER_EPOCH_OFFSET_US } from "@matter/main/types";
 import { GroupKeyManagementServer } from "@matter/node/behaviors/group-key-management";
 import {
@@ -427,6 +427,27 @@ describe("certContext", () => {
             expect(error instanceof Error ? error.message : "").to.contain("Too many groups");
         });
 
+        it("keeps the IANA address of group 1 when a NOC rotation replaces the fabric", async () => {
+            await site.startController(true, { certContextFile: file });
+            const { node, fabric } = site.controller;
+            await MockTime.resolve(
+                node.env
+                    .get(FabricAuthority)
+                    .defaultFabric({ adminFabricLabel: "TestFabric", adminNodeId: NodeId(112233) }),
+                { macrotasks: true },
+            );
+
+            const current = node.env.get(FabricManager).for(fabric.fabricIndex);
+            // matter.js restores the key sets and the group map on the replacement asynchronously
+            for (let i = 0; i < 100 && !current.groups.groupKeyIdMap.has(GroupId(1)); i++) {
+                await new Promise(resolve => setImmediate(resolve));
+            }
+            expect(current).to.not.equal(fabric);
+            expect(current.groups.multicastAddressFor(GroupId(1))).to.equal("ff05::fa");
+            expect(current.groups.multicastAddressFor(GroupId(259))).to.match(/^ff35:/);
+            await groupWrite(1);
+        });
+
         it("replaces the entries of an earlier file and groupcasts with a Unix epoch start time", async () => {
             await site.startController(true, { certContextFile: file });
             await site.stopController();
@@ -475,7 +496,8 @@ describe("certContext", () => {
                 ],
             });
 
-            await applyCertContext(node, fabric, parse(UNIX_EPOCH_FILE));
+            const stopReapplying = await applyCertContext(node, fabric, parse(UNIX_EPOCH_FILE));
+            stopReapplying();
             expect(fabric.groups.multicastAddressFor(GroupId(1))).to.match(/^ff35:/);
 
             const state = node.stateOf(GroupKeyManagementServer);

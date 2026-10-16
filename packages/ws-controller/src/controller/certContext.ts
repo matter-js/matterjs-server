@@ -9,7 +9,7 @@
 
 import { Bytes, Environment, Filesystem, GroupId, Logger, ServerNode } from "@matter/main";
 import { GroupKeyManagement } from "@matter/main/clusters/group-key-management";
-import { Fabric, GroupMulticastPolicy } from "@matter/main/protocol";
+import { Fabric, FabricManager, GroupMulticastPolicy } from "@matter/main/protocol";
 import { MATTER_EPOCH_OFFSET_US } from "@matter/main/types";
 import { GroupKeyManagementServer } from "@matter/node/behaviors/group-key-management";
 import { join } from "node:path";
@@ -293,10 +293,11 @@ export async function loadCertContext(
  * again whenever the fabric is replaced. The fabric's key sets (apart from the implicit IPK) and its group map become
  * exactly the context's; entries of other fabrics stay.
  *
- * The multicast address policy has no persisted form outside Groupcast, so it is set on this fabric object only. A
- * replacement by a new fabric object drops it, so call this after the start-up NOC rotation in `defaultFabric()`.
+ * The multicast address policy has no persisted form outside Groupcast and lives on the fabric object only. A NOC
+ * rotation replaces that object, so the policies are applied again to every replacement until the returned function
+ * stops it.
  */
-export async function applyCertContext(node: ServerNode, fabric: Fabric, context: CertContext) {
+export async function applyCertContext(node: ServerNode, fabric: Fabric, context: CertContext): Promise<() => void> {
     const { fabricIndex } = fabric;
     const { groupKeySets, groupKeyMap } = node.stateOf(GroupKeyManagementServer);
 
@@ -315,6 +316,25 @@ export async function applyCertContext(node: ServerNode, fabric: Fabric, context
         throw new CertContextError(`Cannot install group key configuration: ${errorText(error)}`);
     }
 
+    applyAddressPolicies(fabric, context);
+
+    const { replaced } = node.env.get(FabricManager).events;
+    const reapply = (replacement: Fabric) => {
+        if (replacement.fabricIndex !== fabricIndex) {
+            return;
+        }
+        // Shared Observable: an uncaught throw here aborts the emit and starves the other observers
+        try {
+            applyAddressPolicies(replacement, context);
+        } catch (error) {
+            logger.error(`Cannot apply group address policies to fabric ${fabricIndex}:`, error);
+        }
+    };
+    replaced.on(reapply);
+    return () => replaced.off(reapply);
+}
+
+function applyAddressPolicies(fabric: Fabric, context: CertContext) {
     for (const groupId of [...fabric.groups.multicastPolicy.keys()]) {
         fabric.groups.removeGroupMulticastPolicy(groupId);
     }

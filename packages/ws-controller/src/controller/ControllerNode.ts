@@ -144,6 +144,7 @@ export async function createControllerNode(options: ControllerNodeOptions): Prom
         dcl: { fetchTestCertificates: true, ...options.dcl },
     });
 
+    let stopCertContext: (() => void) | undefined;
     try {
         const otaProvider = options.enableOtaProvider
             ? await node.add(
@@ -168,7 +169,7 @@ export async function createControllerNode(options: ControllerNodeOptions): Prom
         });
 
         if (certContext !== undefined) {
-            await applyCertContext(node, fabric, certContext);
+            stopCertContext = await applyCertContext(node, fabric, certContext);
         }
 
         if (options.peerSettingsRepair !== undefined) {
@@ -176,8 +177,18 @@ export async function createControllerNode(options: ControllerNodeOptions): Prom
         }
         await applyAutoSubscribe(node, !options.disableAutoSubscription);
 
-        return { node, fabric, otaProvider, webRtcRequestor, close: () => node.close() };
+        return {
+            node,
+            fabric,
+            otaProvider,
+            webRtcRequestor,
+            close: () => {
+                stopCertContext?.();
+                return node.close();
+            },
+        };
     } catch (error) {
+        stopCertContext?.();
         // The node already holds the storage lock and the caller has no handle to it yet, so a close that
         // fails has to travel with the original error rather than be logged away.
         try {
