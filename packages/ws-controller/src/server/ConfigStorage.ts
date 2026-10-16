@@ -45,6 +45,8 @@ interface ConfigData {
     wifiCredentials?: string;
     threadDataset?: string;
     peerSettingsRepairedFor?: string[];
+    legacyNodesImportedFor?: string[];
+    legacyRetirementPendingFor?: string[];
 }
 
 export class ConfigStorage {
@@ -60,6 +62,8 @@ export class ConfigStorage {
         wifiCredentials: undefined,
         threadDataset: undefined,
         peerSettingsRepairedFor: undefined,
+        legacyNodesImportedFor: undefined,
+        legacyRetirementPendingFor: undefined,
     };
     #additionalWifiCredentials: WifiCredentialEntry[] = new Array<WifiCredentialEntry>();
     #additionalThreadCredentials: ThreadCredentialEntry[] = new Array<ThreadCredentialEntry>();
@@ -126,6 +130,13 @@ export class ConfigStorage {
             ? await this.#configStore.get<string | string[]>("peerSettingsRepairedFor", [])
             : undefined;
         const peerSettingsRepairedFor = typeof storedRepairs === "string" ? [storedRepairs] : storedRepairs;
+        const legacyNodesImportedFor = (await this.#configStore.has("legacyNodesImportedFor"))
+            ? await this.#configStore.get<string[]>("legacyNodesImportedFor", [])
+            : undefined;
+        const storedPending = (await this.#configStore.has("legacyRetirementPendingFor"))
+            ? await this.#configStore.get<string | string[]>("legacyRetirementPendingFor", [])
+            : undefined;
+        const legacyRetirementPendingFor = typeof storedPending === "string" ? [storedPending] : storedPending;
         await this.set({
             fabricLabel,
             nextNodeId,
@@ -133,6 +144,8 @@ export class ConfigStorage {
             wifiCredentials,
             threadDataset,
             peerSettingsRepairedFor,
+            legacyNodesImportedFor,
+            legacyRetirementPendingFor,
         });
 
         if (await this.#configStore.has("additionalWifiCredentials")) {
@@ -169,8 +182,51 @@ export class ConfigStorage {
         return this.#data.nextNodeId;
     }
 
+    /**
+     * Whether the python-matter-server node list of this storage scope has already been imported. The
+     * import is one-shot: its source is only retired afterwards, and stays in place when that fails.
+     */
+    hasImportedLegacyNodes(scope: string) {
+        return this.#data.legacyNodesImportedFor?.includes(scope) === true;
+    }
+
+    async markLegacyNodesImported(scope: string) {
+        if (this.hasImportedLegacyNodes(scope)) {
+            return;
+        }
+        await this.set({ legacyNodesImportedFor: [...(this.#data.legacyNodesImportedFor ?? []), scope] });
+    }
+
     hasRepairedPeerSettings(scope: string) {
         return this.#data.peerSettingsRepairedFor?.includes(scope) === true;
+    }
+
+    /**
+     * Whether the python-matter-server source of this storage scope was being retired when a start ended.
+     * Marked before the first irreversible step, so a start that dies part-way through can finish the job —
+     * the files it would otherwise be recognised by are already gone by then.
+     *
+     * Per scope, and more than one can be outstanding: a server started against another fabric retires
+     * other data, and must not drop a job it knows nothing about.
+     */
+    hasLegacyRetirementPending(scope: string) {
+        return this.#data.legacyRetirementPendingFor?.includes(scope) === true;
+    }
+
+    async markLegacyRetirementPending(scope: string) {
+        if (this.hasLegacyRetirementPending(scope)) {
+            return;
+        }
+        await this.set({ legacyRetirementPendingFor: [...(this.#data.legacyRetirementPendingFor ?? []), scope] });
+    }
+
+    async clearLegacyRetirementPending(scope: string) {
+        if (!this.hasLegacyRetirementPending(scope)) {
+            return;
+        }
+        await this.set({
+            legacyRetirementPendingFor: this.#data.legacyRetirementPendingFor?.filter(pending => pending !== scope),
+        });
     }
 
     async markPeerSettingsRepaired(scope: string) {

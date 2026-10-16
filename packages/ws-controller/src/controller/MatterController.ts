@@ -388,7 +388,13 @@ export class MatterController {
             serverVersion: this.#serverVersion,
             enableOtaProvider: !this.#disableOtaProvider,
             peerSettingsRepair: this.#config,
+            legacyNodeImport: this.#config,
         });
+    }
+
+    /** Storage scope this controller's data lives under. */
+    get serverId(): string {
+        return this.#serverId;
     }
 
     get commandHandler() {

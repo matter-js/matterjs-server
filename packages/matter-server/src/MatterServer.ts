@@ -21,6 +21,7 @@ import {
     Logger,
     MatterController,
     StorageService,
+    cleanupLegacyStorage,
     WebServerHandler,
     WebSocketControllerHandler,
 } from "@matter-server/ws-controller";
@@ -28,7 +29,7 @@ import { Seconds, Time } from "@matter/main";
 import { Ble } from "@matter/main/protocol";
 import { getCliOptions, getOriginalArgv, type LogLevel as CliLogLevel } from "./cli.js";
 import { controllerOptionsFrom } from "./controller-options.js";
-import { LegacyDataWriter, loadLegacyData, type LegacyData } from "./converter/index.js";
+import { loadLegacyData, missingLegacyNodes, retireLegacyFiles, type LegacyData } from "./converter/index.js";
 import { createFileLogger } from "./file-logger.js";
 import { initializeOta } from "./ota.js";
 import { HealthHandler } from "./server/HealthHandler.js";
@@ -104,7 +105,6 @@ let controller: MatterController;
 let server: WebServer;
 let config: ConfigStorage;
 let legacyData: LegacyData;
-let legacyDataWriter: LegacyDataWriter | undefined;
 let fileLoggerClose: (() => Promise<void>) | undefined;
 let stopping = false;
 const SHUTDOWN_AFTER_START_FAILURE_TIMEOUT = Seconds(30);
@@ -202,20 +202,6 @@ async function start() {
         controller.commandHandler.events.started.once(async () => await initializeOta(controller, cliOptions));
     }
 
-    // Subscribe to node events for legacy data file updates
-    if (legacyData.serverFile && legacyData.fabricConfig) {
-        legacyDataWriter = new LegacyDataWriter(env, cliOptions.storagePath, legacyData.fabricConfig);
-
-        controller.commandHandler.events.nodeAdded.on(nodeId => {
-            const dateCommissioned = new Date().toISOString();
-            legacyDataWriter!.queueAddition(nodeId, dateCommissioned);
-        });
-
-        controller.commandHandler.events.nodeDecommissioned.on(nodeId => {
-            legacyDataWriter!.queueRemoval(nodeId);
-        });
-    }
-
     const wsHandler = new WebSocketControllerHandler(controller, config, MATTER_SERVER_VERSION);
     const handlers: WebServerHandler[] = [new HealthHandler(wsHandler), wsHandler];
     const reservedPaths = new Array<string>();
@@ -240,6 +226,94 @@ async function start() {
     }
 
     await server.start();
+
+    // Only once the server is up: a start that fails leaves the source untouched and simply retries.
+    // Detached from the start path so retiring a large node file cannot delay coming up.
+    if (config.hasLegacyRetirementPending(controller.serverId)) {
+        finishLegacyRetirement(legacyData.fabricConfig).catch(error =>
+            logger.warn("Could not finish retiring legacy python-matter-server data:", error),
+        );
+    } else if (legacyData.hasData && legacyData.fabricConfig !== undefined && legacyData.serverFile !== undefined) {
+        retireLegacyData(legacyData.fabricConfig).catch(error =>
+            logger.warn("Could not retire legacy python-matter-server data:", error),
+        );
+    }
+}
+
+/**
+ * Whether everything the legacy file holds has arrived.
+ *
+ * The import's own record answers it, because that record is taken before anything can be removed again.
+ * Asking the node ids instead would keep a node decommissioned after the import missing for good, and
+ * block the retirement on every later start. Without the record, every node in the file has to be one the
+ * controller knows: a device commissioned since would otherwise make up the numbers for one that never
+ * migrated, and that one's only remaining copy is what the retirement deletes.
+ */
+function legacyImportIsComplete() {
+    if (controller !== undefined && config.hasImportedLegacyNodes(controller.serverId)) {
+        return true;
+    }
+
+    const missing = missingLegacyNodes(legacyData.serverFile, controller?.commandHandler.getNodeIds() ?? []);
+    if (missing.length === 0) {
+        return true;
+    }
+    logger.warn(
+        `Keeping legacy data: node(s) ${missing.join(", ")} from the legacy file are unknown to the ` +
+            `controller. The next start retries the migration.`,
+    );
+    return false;
+}
+
+/** Put the python-matter-server import behind us, once everything it held has arrived. */
+async function retireLegacyData(fabricConfig: NonNullable<LegacyData["fabricConfig"]>) {
+    if (controller === undefined || !legacyImportIsComplete()) {
+        return;
+    }
+
+    await config.markLegacyRetirementPending(controller.serverId);
+    await retireLegacySources(fabricConfig);
+}
+
+/**
+ * Rename the source files and drop the storage they were imported into.
+ *
+ * Order matters — the files go first, because they are what would otherwise be re-imported, and the
+ * storage cleanup removes the markers that recognise an already-imported node. Resumable on its own: a
+ * start that finds the work flagged as unfinished runs it again, renaming whatever is left and repeating
+ * a cleanup that has nothing more to remove.
+ */
+async function finishLegacyRetirement(fabricConfig: LegacyData["fabricConfig"]) {
+    if (controller === undefined) {
+        return;
+    }
+
+    // Sources still under their original name mean this start imported them again, so the import has to
+    // be complete once more before the cleanup drops the storage it is recognised by. A peer that failed
+    // to migrate this time would otherwise lose its only remaining copy.
+    if (legacyData.serverFile !== undefined && !legacyImportIsComplete()) {
+        return;
+    }
+    await retireLegacySources(fabricConfig);
+}
+
+async function retireLegacySources(fabricConfig: LegacyData["fabricConfig"]) {
+    if (controller === undefined) {
+        return;
+    }
+
+    if (fabricConfig !== undefined) {
+        const retired = await retireLegacyFiles(env, cliOptions.storagePath, fabricConfig, legacyData.chipConfig);
+        if (retired.length > 0) {
+            logger.notice(`Migration complete; retired legacy data file(s): ${retired.join(", ")}`);
+        }
+    }
+    if (!(await cleanupLegacyStorage(env, controller.serverId))) {
+        // The cleanup refused because the migration is not complete after all. Leaving the job flagged is
+        // what gets it another attempt; clearing it here would strand the imported storage.
+        return;
+    }
+    await config.clearLegacyRetirementPending(controller.serverId);
 }
 
 async function stop() {
@@ -269,15 +343,6 @@ async function shutdown() {
         await controller?.stop();
     } catch (err) {
         console.warn("Failed to stop controller:", err);
-    }
-    // Flush any pending legacy data writes before closing
-    try {
-        if (legacyDataWriter?.hasPendingWork()) {
-            logger.info("Flushing pending legacy data writes...");
-            await legacyDataWriter.flush();
-        }
-    } catch (err) {
-        console.warn("Failed to flush legacy data:", err);
     }
     try {
         await config?.close();
