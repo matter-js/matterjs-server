@@ -52,7 +52,6 @@ const KEY_SET_FIELDS = new Set([
     "epochKey2",
     "epochStartTime2",
     "groupKeySecurityPolicy",
-    "groupKeyMulticastPolicy",
     "label",
     "_comment",
 ]);
@@ -291,28 +290,24 @@ export async function loadCertContext(
 /**
  * Install the context into the controller fabric. Call before the node goes online: the key sets and the group map
  * go into the persisted GroupKeyManagement state, which matter.js applies to the fabric when the node goes online and
- * again whenever the fabric is replaced. Key sets and groups the context defines are added or updated; other entries
- * stay.
+ * again whenever the fabric is replaced. The fabric's key sets (apart from the implicit IPK) and its group map become
+ * exactly the context's; entries of other fabrics stay.
  *
  * The multicast address policy has no persisted form outside Groupcast, so it is set on this fabric object only. A
  * replacement by a new fabric object drops it, so call this after the start-up NOC rotation in `defaultFabric()`.
  */
 export async function applyCertContext(node: ServerNode, fabric: Fabric, context: CertContext) {
     const { fabricIndex } = fabric;
-    const keySetIds = new Set(context.keySets.map(({ groupKeySetId }) => groupKeySetId));
-    const groupIds = new Set<number>(context.groupKeyMap.map(({ groupId }) => groupId));
     const { groupKeySets, groupKeyMap } = node.stateOf(GroupKeyManagementServer);
 
     try {
         await node.setStateOf(GroupKeyManagementServer, {
             groupKeySets: [
-                ...groupKeySets.filter(
-                    entry => entry.fabricIndex !== fabricIndex || !keySetIds.has(entry.groupKeySetId),
-                ),
+                ...groupKeySets.filter(entry => entry.fabricIndex !== fabricIndex),
                 ...context.keySets.map(keySet => ({ ...keySet, fabricIndex })),
             ],
             groupKeyMap: [
-                ...groupKeyMap.filter(entry => entry.fabricIndex !== fabricIndex || !groupIds.has(entry.groupId)),
+                ...groupKeyMap.filter(entry => entry.fabricIndex !== fabricIndex),
                 ...context.groupKeyMap.map(({ groupId, groupKeySetId }) => ({ groupId, groupKeySetId, fabricIndex })),
             ],
         });
@@ -320,6 +315,9 @@ export async function applyCertContext(node: ServerNode, fabric: Fabric, context
         throw new CertContextError(`Cannot install group key configuration: ${errorText(error)}`);
     }
 
+    for (const groupId of [...fabric.groups.multicastPolicy.keys()]) {
+        fabric.groups.removeGroupMulticastPolicy(groupId);
+    }
     for (const { groupId, addressPolicy } of context.groupKeyMap) {
         if (addressPolicy !== undefined) {
             fabric.groups.setGroupMulticastPolicy(groupId, addressPolicy);

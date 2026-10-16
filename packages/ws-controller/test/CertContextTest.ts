@@ -4,13 +4,24 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { AttributeId, Bytes, ClusterId, Environment, Filesystem, GroupId, MockFilesystem, NodeId } from "@matter/main";
+import {
+    AttributeId,
+    Bytes,
+    ClusterId,
+    Environment,
+    FabricIndex,
+    Filesystem,
+    GroupId,
+    MockFilesystem,
+    NodeId,
+} from "@matter/main";
 import { GroupKeyManagement } from "@matter/main/clusters/group-key-management";
 import { OnOff } from "@matter/main/clusters/on-off";
 import { FabricManager, NoUsableGroupKeyError } from "@matter/main/protocol";
 import { MATTER_EPOCH_OFFSET_US } from "@matter/main/types";
 import { GroupKeyManagementServer } from "@matter/node/behaviors/group-key-management";
 import {
+    applyCertContext,
     CERT_CONTEXT_FILE,
     CertContextError,
     loadCertContext,
@@ -29,7 +40,6 @@ function keySet(groupKeySetId: number, key: string, start: number, extra: Record
         epochKey2: `${key}2c1c2c3c4c5c6c7c8c9cacbcccdcecf`,
         epochStartTime2: start + 2,
         groupKeySecurityPolicy: "CacheAndSync",
-        groupKeyMulticastPolicy: "PerGroupId",
         ...extra,
     };
 }
@@ -52,7 +62,6 @@ function certFile(groupOneAddressPolicy?: string) {
                 epochKey2: null,
                 epochStartTime2: null,
                 groupKeySecurityPolicy: "TrustFirst",
-                groupKeyMulticastPolicy: "PerGroupId",
             },
         ],
         groupKeyMap: [
@@ -156,6 +165,11 @@ describe("certContext", () => {
             ["a non-object file", () => [], "file must be an object"],
             ["an unknown top-level field", file => ({ ...file, keysets: [] }), "file.keysets is not a known field"],
             ["a missing keySets list", ({ groupKeyMap }) => ({ groupKeyMap }), "keySets must be an array"],
+            [
+                "a multicast policy on a key set",
+                file => ({ ...file, keySets: [{ ...file.keySets[0], groupKeyMulticastPolicy: "IanaAddr" }] }),
+                "keySets[0].groupKeyMulticastPolicy is not a known field",
+            ],
             [
                 "a missing epochKey0",
                 file => {
@@ -413,26 +427,68 @@ describe("certContext", () => {
             expect(error instanceof Error ? error.message : "").to.contain("Too many groups");
         });
 
-        it("adds and updates entries on top of earlier ones and groupcasts with a Unix epoch start time", async () => {
+        it("replaces the entries of an earlier file and groupcasts with a Unix epoch start time", async () => {
             await site.startController(true, { certContextFile: file });
             await site.stopController();
             await site.startController(true, { certContextFile: JSON.stringify(UNIX_EPOCH_FILE) });
 
             const state = site.controller.node.stateOf(GroupKeyManagementServer);
-            expect(state.groupKeySets.map(({ groupKeySetId }) => groupKeySetId)).to.have.members([
-                417, 418, 419, 420, 1,
-            ]);
-            expect(
-                state.groupKeyMap.map(({ groupId, groupKeySetId }) => [groupId, groupKeySetId]),
-            ).to.have.deep.members([
-                [257, 417],
-                [258, 418],
-                [259, 419],
+            expect(state.groupKeySets.map(({ groupKeySetId }) => groupKeySetId)).to.deep.equal([1]);
+            expect(state.groupKeyMap.map(({ groupId, groupKeySetId }) => [groupId, groupKeySetId])).to.deep.equal([
                 [1, 1],
             ]);
+            const { groups } = site.controller.fabric;
+            expect(groups.keySets.forId(417)).to.equal(undefined);
+            expect(groups.multicastAddressFor(GroupId(1))).to.match(/^ff35:/);
 
             await groupWrite(1);
-            await groupWrite(259);
+            const error = await groupWrite(259).then(
+                () => undefined,
+                (e: unknown) => e,
+            );
+            expect(error).to.be.instanceOf(NoUsableGroupKeyError);
+        });
+
+        it("leaves the entries of other fabrics alone and drops address policies the context does not set", async () => {
+            await site.startController(true, { certContextFile: file });
+            const { node, fabric } = site.controller;
+            const otherFabric = FabricIndex(fabric.fabricIndex + 1);
+            const current = node.stateOf(GroupKeyManagementServer);
+            await node.setStateOf(GroupKeyManagementServer, {
+                groupKeySets: [
+                    ...current.groupKeySets,
+                    {
+                        groupKeySetId: 417,
+                        groupKeySecurityPolicy: GroupKeyManagement.GroupKeySecurityPolicy.TrustFirst,
+                        epochKey0: Bytes.fromHex("00112233445566778899aabbccddeeff"),
+                        epochStartTime0: MATTER_EPOCH_OFFSET_US + 1n,
+                        epochKey1: null,
+                        epochStartTime1: null,
+                        epochKey2: null,
+                        epochStartTime2: null,
+                        fabricIndex: otherFabric,
+                    },
+                ],
+                groupKeyMap: [
+                    ...current.groupKeyMap,
+                    { groupId: GroupId(257), groupKeySetId: 417, fabricIndex: otherFabric },
+                ],
+            });
+
+            await applyCertContext(node, fabric, parse(UNIX_EPOCH_FILE));
+            expect(fabric.groups.multicastAddressFor(GroupId(1))).to.match(/^ff35:/);
+
+            const state = node.stateOf(GroupKeyManagementServer);
+            expect(
+                state.groupKeySets.map(({ groupKeySetId, fabricIndex }) => [fabricIndex, groupKeySetId]),
+            ).to.have.deep.members([
+                [otherFabric, 417],
+                [fabric.fabricIndex, 1],
+            ]);
+            expect(state.groupKeyMap.map(({ groupId, fabricIndex }) => [fabricIndex, groupId])).to.have.deep.members([
+                [otherFabric, 257],
+                [fabric.fabricIndex, 1],
+            ]);
         });
     });
 });
