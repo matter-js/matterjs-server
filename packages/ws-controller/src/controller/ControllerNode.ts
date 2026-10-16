@@ -18,7 +18,7 @@ import {
 } from "@matter/main";
 import { Ble, Fabric, FabricAuthority, FabricManager } from "@matter/main/protocol";
 import { OtaProviderEndpoint } from "@matter/node/endpoints/ota-provider";
-import { applyCertContext, CertContext } from "./certContext.js";
+import { applyCertContext, loadCertContext } from "./certContext.js";
 import { CameraControllerEndpoint } from "./ControllerCommandHandler.js";
 import { applyAutoSubscribe, PeerSettingsRepairMarker, repairRestoredPeers } from "./restoredPeers.js";
 
@@ -88,9 +88,6 @@ export interface ControllerNodeOptions {
      * and matter.js reads `offline` only when a service is created.
      */
     dcl?: { acceptTestCertificates: boolean; offline: boolean };
-
-    /** Group keys installed into the controller fabric for certification runs. */
-    certContext?: CertContext;
 }
 
 export interface ControllerResources {
@@ -115,6 +112,7 @@ export interface ControllerNode extends ControllerResources {
 export async function createControllerNode(options: ControllerNodeOptions): Promise<ControllerNode> {
     const { environment, id, adminVendorId, adminFabricId, adminFabricLabel, serverVersion } = options;
     const adminNodeId = NodeId(112233); // TODO Remove when we switch to random IDs
+    const certContext = await loadCertContext(environment, options.disableAutoSubscription ?? false);
 
     const node = await ServerNode.create(ControllerRootEndpoint, {
         environment,
@@ -169,8 +167,8 @@ export async function createControllerNode(options: ControllerNodeOptions): Prom
             adminFabricId,
         });
 
-        if (options.certContext !== undefined) {
-            await applyCertContext(node, fabric, options.certContext);
+        if (certContext !== undefined) {
+            await applyCertContext(node, fabric, certContext);
         }
 
         if (options.peerSettingsRepair !== undefined) {

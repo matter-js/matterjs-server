@@ -7,12 +7,11 @@
 // Certification runs only, not an end-user feature: pre-provisions the controller fabric with the group keys a test
 // case expects, so the controller can send groupcast. Will be removed again.
 
-import { Bytes, GroupId, Logger, ServerNode } from "@matter/main";
+import { Bytes, Environment, Filesystem, GroupId, Logger, ServerNode } from "@matter/main";
 import { GroupKeyManagement } from "@matter/main/clusters/group-key-management";
 import { Fabric, GroupMulticastPolicy } from "@matter/main/protocol";
 import { MATTER_EPOCH_OFFSET_US } from "@matter/main/types";
 import { GroupKeyManagementServer } from "@matter/node/behaviors/group-key-management";
-import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 
 const logger = Logger.get("GroupKeyConfig");
@@ -76,21 +75,8 @@ function isUint(value: unknown, max: number): value is number {
     return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 && value <= max;
 }
 
-function isErrnoCode(error: unknown, code: string) {
-    return error instanceof Error && "code" in error && error.code === code;
-}
-
 function errorText(error: unknown) {
     return error instanceof Error ? error.message : String(error);
-}
-
-async function exists(path: string) {
-    try {
-        await stat(path);
-        return true;
-    } catch {
-        return false;
-    }
 }
 
 class Parser {
@@ -271,24 +257,27 @@ export function parseCertContext(text: string, source: string): CertContext {
  * subscribes on its own: certification runs drive every interaction themselves.
  */
 export async function loadCertContext(
-    storagePath: string,
+    environment: Environment,
     disableAutoSubscription: boolean,
 ): Promise<CertContext | undefined> {
-    const path = join(storagePath, CERT_CONTEXT_FILE);
+    const fs = environment.maybeGet(Filesystem);
+    if (fs === undefined) {
+        return undefined;
+    }
+    const file = fs.file(CERT_CONTEXT_FILE);
+    const path = join(fs.path, CERT_CONTEXT_FILE);
+    if (!(await file.exists())) {
+        return undefined;
+    }
     if (!disableAutoSubscription) {
-        if (await exists(path)) {
-            logger.notice(`${path} ignored: only read with --disable-auto-subscription`);
-        }
+        logger.notice(`${path} ignored: only read with --disable-auto-subscription`);
         return undefined;
     }
 
     let text: string;
     try {
-        text = await readFile(path, "utf-8");
+        text = await file.readAllText();
     } catch (error) {
-        if (isErrnoCode(error, "ENOENT")) {
-            return undefined;
-        }
         throw new CertContextError(`Cannot read group key configuration ${path}: ${errorText(error)}`);
     }
 

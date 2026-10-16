@@ -8,8 +8,10 @@ import {
     Crypto,
     Entropy,
     Environment,
+    Filesystem,
     MemoryStorageDriver,
     MockCrypto,
+    MockFilesystem,
     MockStorageService,
     Network,
     NetworkSimulator,
@@ -20,7 +22,7 @@ import {
 import { ClientNode, Endpoint, EndpointType, NetworkClient, NodeId, ServerNode } from "@matter/main";
 import { BooleanStateServer } from "@matter/node/behaviors/boolean-state";
 import { OnOffLightDevice } from "@matter/node/devices/on-off-light";
-import { CertContext } from "../../src/controller/certContext.js";
+import { CERT_CONTEXT_FILE } from "../../src/controller/certContext.js";
 import { ControllerCommandHandler } from "../../src/controller/ControllerCommandHandler.js";
 import { ControllerNode, createControllerNode } from "../../src/controller/ControllerNode.js";
 
@@ -107,10 +109,15 @@ export class HandlerSite {
         {
             otaEnabled = false,
             threadDiagnosticsEnabled = false,
-            certContext,
-        }: { otaEnabled?: boolean; threadDiagnosticsEnabled?: boolean; certContext?: CertContext } = {},
+            certContextFile,
+        }: { otaEnabled?: boolean; threadDiagnosticsEnabled?: boolean; certContextFile?: string } = {},
     ) {
         const { env, crypto } = this.#environment("controller");
+        if (certContextFile !== undefined) {
+            const fs = new MockFilesystem();
+            await fs.file(CERT_CONTEXT_FILE).write(certContextFile);
+            env.set(Filesystem, fs);
+        }
         const resources = await createControllerNode({
             environment: env,
             id: "controller",
@@ -122,7 +129,6 @@ export class HandlerSite {
                 markPeerSettingsRepaired: async () => {},
             },
             disableAutoSubscription,
-            certContext,
         });
         const handler = new ControllerCommandHandler(resources, {
             bleEnabled: false,

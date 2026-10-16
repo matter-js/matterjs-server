@@ -4,18 +4,14 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { AttributeId, Bytes, ClusterId, GroupId, NodeId } from "@matter/main";
+import { AttributeId, Bytes, ClusterId, Environment, Filesystem, GroupId, MockFilesystem, NodeId } from "@matter/main";
 import { GroupKeyManagement } from "@matter/main/clusters/group-key-management";
 import { OnOff } from "@matter/main/clusters/on-off";
 import { FabricManager, NoUsableGroupKeyError } from "@matter/main/protocol";
 import { MATTER_EPOCH_OFFSET_US } from "@matter/main/types";
 import { GroupKeyManagementServer } from "@matter/node/behaviors/group-key-management";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import {
     CERT_CONTEXT_FILE,
-    CertContext,
     CertContextError,
     loadCertContext,
     parseCertContext,
@@ -254,63 +250,71 @@ describe("certContext", () => {
     });
 
     describe("loadCertContext", () => {
-        let dir: string;
+        let fs: MockFilesystem;
+        let env: Environment;
 
-        beforeEach(async () => {
-            dir = await mkdtemp(join(tmpdir(), "cert-context-test-"));
+        beforeEach(() => {
+            fs = new MockFilesystem();
+            env = new Environment("cert-context-test");
+            env.set(Filesystem, fs);
         });
 
-        afterEach(async () => {
-            await rm(dir, { recursive: true, force: true });
+        async function loadError(disableAutoSubscription: boolean) {
+            return loadCertContext(env, disableAutoSubscription).then(
+                () => undefined,
+                (e: unknown) => e,
+            );
+        }
+
+        it("returns nothing without a filesystem", async () => {
+            expect(await loadCertContext(new Environment("no-fs"), true)).to.equal(undefined);
         });
 
         it("returns nothing without a file", async () => {
-            expect(await loadCertContext(dir, true)).to.equal(undefined);
+            expect(await loadCertContext(env, true)).to.equal(undefined);
         });
 
         it("ignores the file while the server subscribes on its own", async () => {
-            await writeFile(join(dir, CERT_CONTEXT_FILE), JSON.stringify(certFile("IanaAddr")));
-            expect(await loadCertContext(dir, false)).to.equal(undefined);
+            await fs.file(CERT_CONTEXT_FILE).write(JSON.stringify(certFile("IanaAddr")));
+            expect(await loadCertContext(env, false)).to.equal(undefined);
         });
 
         it("loads the file with auto subscription disabled", async () => {
-            await writeFile(join(dir, CERT_CONTEXT_FILE), JSON.stringify(certFile("IanaAddr")));
-            const context = await loadCertContext(dir, true);
+            await fs.file(CERT_CONTEXT_FILE).write(JSON.stringify(certFile("IanaAddr")));
+            const context = await loadCertContext(env, true);
             expect(context?.keySets.length).to.equal(4);
             expect(context?.groupKeyMap.length).to.equal(4);
         });
 
         it("fails when the file cannot be read, naming it", async () => {
-            const path = join(dir, CERT_CONTEXT_FILE);
-            await mkdir(path);
-            const error = await loadCertContext(dir, true).then(
-                () => undefined,
-                (e: unknown) => e,
-            );
+            await fs.directory(CERT_CONTEXT_FILE).mkdir();
+            const error = await loadError(true);
             expect(error).to.be.instanceOf(CertContextError);
-            expect(error instanceof Error ? error.message : "").to.contain(path);
+            expect(error instanceof Error ? error.message : "").to.contain(
+                `Cannot read group key configuration ${CERT_CONTEXT_FILE}`,
+            );
         });
 
         it("does not read the file while the server subscribes on its own", async () => {
-            await mkdir(join(dir, CERT_CONTEXT_FILE));
-            expect(await loadCertContext(dir, false)).to.equal(undefined);
+            await fs.directory(CERT_CONTEXT_FILE).mkdir();
+            expect(await loadCertContext(env, false)).to.equal(undefined);
         });
 
         it("fails on a malformed file, naming it", async () => {
-            const path = join(dir, CERT_CONTEXT_FILE);
-            await writeFile(path, JSON.stringify({ keySets: [{ groupKeySetId: 1 }], groupKeyMap: [] }));
-            const error = await loadCertContext(dir, true).then(
-                () => undefined,
-                (e: unknown) => e,
-            );
+            await fs
+                .file(CERT_CONTEXT_FILE)
+                .write(JSON.stringify({ keySets: [{ groupKeySetId: 1 }], groupKeyMap: [] }));
+            const error = await loadError(true);
             expect(error).to.be.instanceOf(CertContextError);
-            expect(error instanceof Error ? error.message : "").to.contain(path);
+            expect(error instanceof Error ? error.message : "").to.contain(
+                `Invalid group key configuration ${CERT_CONTEXT_FILE}`,
+            );
         });
     });
 
     describe("installed into a running controller", () => {
         let site: HandlerSite;
-        const context: CertContext = parse(certFile("IanaAddr"));
+        const file = JSON.stringify(certFile("IanaAddr"));
 
         beforeEach(() => {
             site = new HandlerSite();
@@ -348,14 +352,14 @@ describe("certContext", () => {
         }
 
         it("groupcasts to the groups the context defines", async () => {
-            await site.startController(true, { certContext: context });
+            await site.startController(true, { certContextFile: file });
 
             await groupWrite(259);
             await groupWrite(1);
         });
 
         it("gives the fabric the send path uses the key sets, the group map and the IANA address of group 1", async () => {
-            await site.startController(true, { certContext: context });
+            await site.startController(true, { certContextFile: file });
 
             const { fabric, node } = site.controller;
             expect(node.env.get(FabricManager).for(fabric.fabricIndex)).to.equal(fabric);
@@ -364,7 +368,7 @@ describe("certContext", () => {
 
         // Characterization: the negative control showing the send path refuses a group without a key.
         it("cannot groupcast to a group the context does not define", async () => {
-            await site.startController(true, { certContext: context });
+            await site.startController(true, { certContextFile: file });
             const error = await groupWrite(260).then(
                 () => undefined,
                 (e: unknown) => e,
@@ -374,15 +378,15 @@ describe("certContext", () => {
 
         // Characterization: a fabric update that keeps the fabric object.
         it("keeps everything when the fabric is updated", async () => {
-            await site.startController(true, { certContext: context });
+            await site.startController(true, { certContextFile: file });
             await MockTime.resolve(site.controller.fabric.persist(), { macrotasks: true });
             expectInstalled();
         });
 
         it("replaces its own entries on the next start instead of adding them again", async () => {
-            await site.startController(true, { certContext: context });
+            await site.startController(true, { certContextFile: file });
             await site.stopController();
-            await site.startController(true, { certContext: context });
+            await site.startController(true, { certContextFile: file });
 
             const state = site.controller.node.stateOf(GroupKeyManagementServer);
             expect(state.groupKeySets.length).to.equal(4);
@@ -390,15 +394,18 @@ describe("certContext", () => {
             expectInstalled();
         });
 
+        it("installs nothing while the server subscribes on its own", async () => {
+            await site.startController(false, { certContextFile: file });
+            expect(site.controller.fabric.groups.keySets.forId(417)).to.equal(undefined);
+            expect(site.controller.node.stateOf(GroupKeyManagementServer).groupKeySets.length).to.equal(0);
+        });
+
         it("fails the start with a typed error when matter.js refuses the entries", async () => {
-            const tooMany: CertContext = {
-                keySets: context.keySets,
-                groupKeyMap: Array.from({ length: 23 }, (_, index) => ({
-                    groupId: GroupId(index + 1),
-                    groupKeySetId: 417,
-                })),
-            };
-            const error = await site.startController(true, { certContext: tooMany }).then(
+            const tooMany = JSON.stringify({
+                ...certFile(),
+                groupKeyMap: Array.from({ length: 23 }, (_, index) => ({ groupId: index + 1, groupKeySetId: 417 })),
+            });
+            const error = await site.startController(true, { certContextFile: tooMany }).then(
                 () => undefined,
                 (e: unknown) => e,
             );
@@ -407,9 +414,9 @@ describe("certContext", () => {
         });
 
         it("adds and updates entries on top of earlier ones and groupcasts with a Unix epoch start time", async () => {
-            await site.startController(true, { certContext: context });
+            await site.startController(true, { certContextFile: file });
             await site.stopController();
-            await site.startController(true, { certContext: parse(UNIX_EPOCH_FILE) });
+            await site.startController(true, { certContextFile: JSON.stringify(UNIX_EPOCH_FILE) });
 
             const state = site.controller.node.stateOf(GroupKeyManagementServer);
             expect(state.groupKeySets.map(({ groupKeySetId }) => groupKeySetId)).to.have.members([
