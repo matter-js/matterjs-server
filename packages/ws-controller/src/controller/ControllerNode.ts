@@ -9,6 +9,7 @@ import {
     Endpoint,
     Environment,
     FabricId,
+    FabricIndex,
     MatterAggregateError,
     NodeId,
     ServerNode,
@@ -56,7 +57,7 @@ export interface ControllerNodeOptions {
 
 export interface ControllerResources {
     readonly node: ServerNode;
-    readonly fabric: Fabric;
+    readonly fabricIndex: FabricIndex;
     readonly otaProvider?: Endpoint<typeof OtaProviderEndpoint>;
     readonly webRtcRequestor: Endpoint<CameraControllerEndpoint>;
 }
@@ -69,6 +70,9 @@ export interface ControllerResources {
  */
 export interface ControllerNode extends ControllerResources {
     readonly node: ServerNode<ControllerRootEndpoint>;
+
+    /** matter.js replaces the Fabric object whenever it rotates the NOC, so resolve this on use instead of keeping it. */
+    readonly fabric: Fabric;
 
     close(): Promise<void>;
 }
@@ -112,12 +116,12 @@ export async function createControllerNode(options: ControllerNodeOptions): Prom
             : undefined;
         const webRtcRequestor = await node.add(new Endpoint(CameraControllerEndpoint, { id: "camera-controller" }));
 
-        await node.env.load(FabricManager);
+        const fabrics = await node.env.load(FabricManager);
         const fabricAuthority = await node.env.load(FabricAuthority);
         // Rotates the operational keypair on every start where a fabric already exists, so no long-lived
         // operational key is kept on disk. Peers still trust us: the NOC is reissued under the same CA and
         // fabric identifiers.
-        const fabric = await fabricAuthority.defaultFabric({
+        const { fabricIndex } = await fabricAuthority.defaultFabric({
             adminFabricLabel,
             adminVendorId,
             adminNodeId,
@@ -128,7 +132,16 @@ export async function createControllerNode(options: ControllerNodeOptions): Prom
             await repairRestoredPeers(node, id, options.peerSettingsRepair);
         }
 
-        return { node, fabric, otaProvider, webRtcRequestor, close: () => node.close() };
+        return {
+            node,
+            fabricIndex,
+            get fabric() {
+                return fabrics.for(fabricIndex);
+            },
+            otaProvider,
+            webRtcRequestor,
+            close: () => node.close(),
+        };
     } catch (error) {
         // The node already holds the storage lock and the caller has no handle to it yet, so a close that
         // fails has to travel with the original error rather than be logged away.

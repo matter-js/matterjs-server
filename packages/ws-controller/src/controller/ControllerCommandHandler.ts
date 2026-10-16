@@ -12,6 +12,7 @@ import {
     causedBy,
     ClientNode,
     CommissioningClient,
+    ControllerBehavior,
     Duration,
     FabricId,
     FabricIndex,
@@ -49,6 +50,7 @@ import {
     AttestationFinding,
     DeviceAttestationCheck,
     Fabric,
+    FabricManager,
     Invoke,
     PasscodeMismatchError,
     PeerAddress,
@@ -245,7 +247,7 @@ class UnreachedAddressError extends Error {
 
 export class ControllerCommandHandler {
     #node: ServerNode;
-    #fabric: Fabric;
+    readonly #fabricIndex: FabricIndex;
     #otaProvider?: Endpoint<typeof OtaProviderEndpoint>;
     #webRtcRequestor: Endpoint<CameraControllerEndpoint>;
     #started = false;
@@ -309,7 +311,7 @@ export class ControllerCommandHandler {
         } = options;
 
         this.#node = controller.node;
-        this.#fabric = controller.fabric;
+        this.#fabricIndex = controller.fabricIndex;
         this.#otaProvider = controller.otaProvider;
         this.#webRtcRequestor = controller.webRtcRequestor;
 
@@ -344,7 +346,12 @@ export class ControllerCommandHandler {
 
     /** Build the canonical PeerAddress for the given node on this controller's fabric. */
     #peerOf(nodeId: NodeId): PeerAddress {
-        return PeerAddress({ fabricIndex: this.#fabric.fabricIndex, nodeId });
+        return PeerAddress({ fabricIndex: this.#fabricIndex, nodeId });
+    }
+
+    /** matter.js replaces the Fabric object for the same index when it rotates the NOC. */
+    get #fabric(): Fabric {
+        return this.#node.env.get(FabricManager).for(this.#fabricIndex);
     }
 
     #isConnected(nodeId: NodeId): boolean {
@@ -353,8 +360,7 @@ export class ControllerCommandHandler {
 
     /** Format a NodeId as a PeerAddress string for logging. */
     formatNode(nodeId: NodeId): string {
-        const fabricIndex = this.#fabric.fabricIndex;
-        return formatNodeId(nodeId, fabricIndex);
+        return formatNodeId(nodeId, this.#fabricIndex);
     }
 
     get started() {
@@ -579,7 +585,7 @@ export class ControllerCommandHandler {
 
         const requestorEndpoint = this.#webRtcRequestor;
         const originatingEndpointId = EndpointNumber(requestorEndpoint.number);
-        const fabricIndex = this.#fabric.fabricIndex;
+        const fabricIndex = this.#fabricIndex;
         const node = this.#nodes.get(nodeId);
         const providerEndpoint = this.#clusterEndpoint(nodeId, endpointId, WebRtcTransportProviderClient.id);
 
@@ -685,7 +691,7 @@ export class ControllerCommandHandler {
             const requestor = agent.get(WebRtcTransportRequestorServer);
             const tracked = trackedSessionOf(
                 requestor.state.currentSessions,
-                { id: webRtcSessionId, fabricIndex: this.#fabric.fabricIndex, peerNodeId: nodeId },
+                { id: webRtcSessionId, fabricIndex: this.#fabricIndex, peerNodeId: nodeId },
                 endpointId,
             );
             if (tracked === undefined) {
@@ -1224,6 +1230,9 @@ export class ControllerCommandHandler {
 
     /** Set the fabric label. matter.js requires a non-empty label of 1-32 chars; callers must normalize first. */
     async setFabricLabel(label: string) {
+        // matter.js resets the fabric label to this state when the behavior loads and on every commissioning.
+        await this.#node.act(agent => agent.load(ControllerBehavior));
+        await this.#node.setStateOf(ControllerBehavior, { adminFabricLabel: label });
         await this.#fabric.setLabel(label);
         await this.#pushFabricLabel(label);
     }
@@ -1701,7 +1710,7 @@ export class ControllerCommandHandler {
 
     async getNodeIpAddresses(nodeId: NodeId, preferCache = true) {
         const addresses = new Set<string>();
-        const peer = this.#peers?.for(this.#fabric.addressOf(nodeId));
+        const peer = this.#peers?.for(this.#peerOf(nodeId));
         if (peer) {
             for (const address of peer.service.addresses) {
                 addresses.add(address.ip);
@@ -1744,7 +1753,7 @@ export class ControllerCommandHandler {
                 return [];
             }
 
-            const peer = this.#peers.for(this.#fabric.addressOf(nodeId));
+            const peer = this.#peers.for(this.#peerOf(nodeId));
 
             const abort = new Abort({ timeout: Seconds(3) });
             const names = peer.service.names;
@@ -2127,7 +2136,7 @@ export class ControllerCommandHandler {
             );
 
             // Find update for this specific node
-            const peerAddress = this.#fabric.addressOf(nodeId);
+            const peerAddress = this.#peerOf(nodeId);
             const nodeUpdate = updatesAvailable.find(({ peerAddress: updateAddress }) =>
                 PeerAddress.is(peerAddress, updateAddress),
             );
@@ -2192,7 +2201,7 @@ export class ControllerCommandHandler {
         logger.info(`Starting update for node ${this.formatNode(nodeId)} to version ${softwareVersion}`);
 
         await otaProvider.act(agent =>
-            agent.get(SoftwareUpdateManager).forceUpdate(this.#fabric.addressOf(nodeId), {
+            agent.get(SoftwareUpdateManager).forceUpdate(this.#peerOf(nodeId), {
                 vendorId: updateInfo.vendorId,
                 productId: updateInfo.productId,
                 targetSoftwareVersion: softwareVersion,

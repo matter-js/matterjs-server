@@ -44,7 +44,7 @@ describe("writeAttribute", () => {
         handler = new ControllerCommandHandler(
             {
                 node: controller,
-                fabric,
+                fabricIndex: fabric.fabricIndex,
                 otaProvider: undefined,
                 webRtcRequestor: await controller.add(
                     new Endpoint(CameraControllerEndpoint, { id: "camera-controller" }),

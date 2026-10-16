@@ -54,7 +54,7 @@ function stubHandler(capture: Capture): { handler: ControllerCommandHandler; cap
     };
 
     const controller = {
-        fabric: { fabricIndex: FABRIC_INDEX },
+        fabricIndex: FABRIC_INDEX,
         node: {
             peers: {
                 forAddress(address: PeerAddress) {
@@ -220,7 +220,7 @@ describe("groupcast against a commissioned controller", () => {
         handler = new ControllerCommandHandler(
             {
                 node: controller,
-                fabric,
+                fabricIndex: fabric.fabricIndex,
                 otaProvider: undefined,
                 webRtcRequestor: await controller.add(
                     new Endpoint(CameraControllerEndpoint, { id: "camera-controller" }),

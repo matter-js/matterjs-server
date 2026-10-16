@@ -25,7 +25,7 @@ describe("commissionNode", () => {
 
         // The controller has no fabric until something creates one; production does this in
         // createControllerNode, before the command handler exists.
-        const fabric = await (
+        const { fabricIndex } = await (
             await controller.env.load(FabricAuthority)
         ).defaultFabric({
             adminFabricLabel: "TestFabric",
@@ -35,7 +35,7 @@ describe("commissionNode", () => {
         handler = new ControllerCommandHandler(
             {
                 node: controller,
-                fabric,
+                fabricIndex,
                 otaProvider: undefined,
                 webRtcRequestor: await controller.add(
                     new Endpoint(CameraControllerEndpoint, { id: "camera-controller" }),
