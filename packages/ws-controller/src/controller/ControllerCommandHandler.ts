@@ -1947,7 +1947,7 @@ export class ControllerCommandHandler {
                     logger.info("Attestation accepted");
                     return true;
                 }
-                logger.notice(`Attestation rejected: ${refusal}`);
+                logger.notice(refusal);
                 return refusal;
             },
         };

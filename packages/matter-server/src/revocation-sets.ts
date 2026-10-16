@@ -27,6 +27,7 @@ export async function loadRevocationSets(target: RevocationInstaller, directory:
     let entries = 0;
 
     let names: string[];
+    let readable = true;
     try {
         names = (await readdir(directory)).filter(name => name.toLowerCase().endsWith(".json")).sort();
     } catch (error) {
@@ -36,6 +37,7 @@ export async function loadRevocationSets(target: RevocationInstaller, directory:
             logger.error(`Cannot read revocation sets directory ${directory}:`, error);
         }
         names = [];
+        readable = false;
     }
 
     for (const name of names) {
@@ -55,7 +57,11 @@ export async function loadRevocationSets(target: RevocationInstaller, directory:
         }
     }
 
-    logger.notice(`Loaded revocation sets from ${directory}: ${files} files, ${entries} entries`);
+    if (files > 0) {
+        logger.notice(`Loaded revocation sets from ${directory}: ${files} files, ${entries} entries`);
+    } else if (readable) {
+        logger.warn(`No revocation sets installed from ${directory}`);
+    }
     return { files, entries };
 }
 

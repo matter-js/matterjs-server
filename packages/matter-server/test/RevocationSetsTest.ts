@@ -142,7 +142,15 @@ describe("loadRevocationSets", () => {
             `Revocation sets directory ${missing} does not exist, no revocation sets installed`,
         ]);
         expect(lines(LogLevel.WARN)).deep.equals([]);
-        expect(lines(LogLevel.NOTICE)).deep.equals([`Loaded revocation sets from ${missing}: 0 files, 0 entries`]);
+        expect(lines(LogLevel.NOTICE)).deep.equals([]);
+    });
+
+    it("warns when the directory holds no usable set", async () => {
+        expect(await loadRevocationSets(service, dir)).deep.equals({ files: 0, entries: 0 });
+
+        expect(lines(LogLevel.WARN)).deep.equals([`No revocation sets installed from ${dir}`]);
+        expect(lines(LogLevel.ERROR)).deep.equals([]);
+        expect(lines(LogLevel.NOTICE)).deep.equals([]);
     });
 
     it("reports a path that is not a readable directory as an error", async () => {
@@ -152,6 +160,7 @@ describe("loadRevocationSets", () => {
         expect(await loadRevocationSets(service, file)).deep.equals({ files: 0, entries: 0 });
 
         expect(lines(LogLevel.WARN)).deep.equals([]);
+        expect(lines(LogLevel.NOTICE)).deep.equals([]);
         expect(lines(LogLevel.ERROR)).length(1);
         expect(lines(LogLevel.ERROR)[0]).match(new RegExp(`^Cannot read revocation sets directory ${file}:`));
     });
