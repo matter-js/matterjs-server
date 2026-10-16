@@ -8,7 +8,7 @@ import { NodeId, UINT64_MAX } from "@matter/main";
 import { isRecord } from "../camera/wireArgumentChecks.js";
 import { InteractionReadRequest, InteractionSubscribeRequest } from "../types/CommandHandler.js";
 import { ServerError } from "../types/WebSocketMessageTypes.js";
-import { isWellFormedPath, splitAttributePath, splitEventPath } from "./Converters.js";
+import { isWellFormedPath, splitAttributePath, splitEventPath, toBigIntAwareJson } from "./Converters.js";
 
 const UINT16_MAX = 0xffff;
 const UINT32_MAX = 0xffff_ffff;
@@ -51,7 +51,7 @@ function entryOf(value: unknown, field: string): Record<string, unknown> {
 
 function malformedPath(value: unknown, field: string, segments: 2 | 3) {
     return ServerError.invalidArguments(
-        `Malformed ${field} path ${JSON.stringify(value)}: expected ${segments} parts separated by "/", each a number or "*"`,
+        `Malformed ${field} path ${toBigIntAwareJson(value)}: expected ${segments} parts separated by "/", each a number or "*"`,
     );
 }
 

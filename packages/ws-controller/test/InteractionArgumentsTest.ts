@@ -85,6 +85,17 @@ describe("read and subscribe arguments", () => {
         }
     });
 
+    it("rejects a malformed path that holds a bigint as invalid arguments", () => {
+        expectInvalidArguments(
+            () => readRequestOf(NODE, { attribute_paths: [9007199254740993n] }),
+            "Malformed attribute_paths path 9007199254740993",
+        );
+        expectInvalidArguments(
+            () => subscribeRequestOf(NODE, { ...SUBSCRIBE, event_paths: [{ path: { endpoint: 9007199254740993n } }] }),
+            "9007199254740993",
+        );
+    });
+
     it("rejects an event_min or data_version out of range", () => {
         for (const eventMin of [-1, 1.5, Number.MAX_SAFE_INTEGER + 1, -1n, 0x1_0000_0000_0000_0000n]) {
             expectInvalidArguments(

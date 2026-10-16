@@ -7,7 +7,7 @@
 import { isTestNodeId } from "@matter-server/ws-client";
 import { Logger, NodeId, Observable } from "@matter/main";
 import { Status } from "@matter/main/types";
-import { parseBigIntAwareJson, splitAttributePath } from "../server/Converters.js";
+import { parseBigIntAwareJson, splitAttributePath, toBigIntAwareJson } from "../server/Converters.js";
 import {
     AttributeResponseStatus,
     AttributesData,
@@ -191,7 +191,7 @@ export class TestNodeCommandHandler implements NodeCommandHandler {
         const { nodeId, endpointId, clusterId, attributeId, value } = data;
 
         logger.debug(
-            `write_attribute for test node ${nodeId} on ${endpointId ?? "*"}/${clusterId}/${attributeId} - value: ${JSON.stringify(value)}`,
+            `write_attribute for test node ${nodeId} on ${endpointId ?? "*"}/${clusterId}/${attributeId} - value: ${toBigIntAwareJson(value)}`,
         );
 
         if (endpointId === undefined) {
@@ -215,7 +215,7 @@ export class TestNodeCommandHandler implements NodeCommandHandler {
 
         logger.debug(
             `device_command for test node ${nodeId} on endpoint ${endpointId} - ` +
-                `cluster ${clusterId} - command ${commandName} - payload: ${JSON.stringify(payload)}`,
+                `cluster ${clusterId} - command ${commandName} - payload: ${toBigIntAwareJson(payload)}`,
         );
 
         return null;
