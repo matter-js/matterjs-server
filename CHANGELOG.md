@@ -93,7 +93,7 @@ This page shows a detailed overview of the changes between versions without the 
 - Fix: The Noble BLE proxy reference client counts connect scan pauses, so a connect that finishes while another is still interviewing no longer resumes scanning and reinstates the macOS characteristic-discovery hang
 - Fix: A BLE proxy client that answers `already_scanning` stays tracked as scanning, so its later `scan_stopped` still reaches the Matter stack
 - Fix: The Python BLE proxy client tracks subscriptions and the last written characteristic without requiring a prior `discover_services`, and re-arms a running scan when `start_scan` changes its parameters
-- Fix: A label set with `set_default_fabric_label` is no longer reset to the startup label when a node is commissioned or discovery runs for the first time: `get_fabric_label` keeps returning it, and newly commissioned nodes receive it. On fresh storage, a label set after the first commissioning now also reaches later nodes
+- Fix: Ensure a fabric label set with `set_default_fabric_label` is respected also for servers without any commissioned device
 
 ## 1.4.0 (2026-08-07)
 
