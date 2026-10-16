@@ -11,7 +11,6 @@ import { Bytes, Environment, Filesystem, GroupId, Logger, ServerNode } from "@ma
 import { GroupKeyManagement } from "@matter/main/clusters/group-key-management";
 import { Fabric, FabricManager, GroupMulticastPolicy } from "@matter/main/protocol";
 import { MATTER_EPOCH_OFFSET_US } from "@matter/main/types";
-import { GroupKeyManagementServer } from "@matter/node/behaviors/group-key-management";
 import { join } from "node:path";
 
 const logger = Logger.get("GroupKeyConfig");
@@ -288,54 +287,43 @@ export async function loadCertContext(
 }
 
 /**
- * Install the context into the controller fabric. Call before the node goes online: the key sets and the group map
- * go into the persisted GroupKeyManagement state, which matter.js applies to the fabric when the node goes online and
- * again whenever the fabric is replaced. The fabric's key sets (apart from the implicit IPK) and its group map become
- * exactly the context's; entries of other fabrics stay.
+ * Install the context into the runtime groups of the controller fabric, the ones the group send path reads. Nothing is
+ * persisted and the GroupKeyManagement cluster state stays untouched, so its device limits do not apply; matter.js only
+ * writes these runtime groups from that state, and it is empty on a controller.
  *
- * The multicast address policy has no persisted form outside Groupcast and lives on the fabric object only. A NOC
- * rotation replaces that object, so the policies are applied again to every replacement until the returned function
- * stops it.
+ * A NOC rotation replaces the fabric object with one whose groups are empty, so everything is installed again into
+ * every replacement until the returned function stops it.
  */
 export async function applyCertContext(node: ServerNode, fabric: Fabric, context: CertContext): Promise<() => void> {
     const { fabricIndex } = fabric;
-    const { groupKeySets, groupKeyMap } = node.stateOf(GroupKeyManagementServer);
-
+    const fabrics = node.env.get(FabricManager);
     try {
-        await node.setStateOf(GroupKeyManagementServer, {
-            groupKeySets: [
-                ...groupKeySets.filter(entry => entry.fabricIndex !== fabricIndex),
-                ...context.keySets.map(keySet => ({ ...keySet, fabricIndex })),
-            ],
-            groupKeyMap: [
-                ...groupKeyMap.filter(entry => entry.fabricIndex !== fabricIndex),
-                ...context.groupKeyMap.map(({ groupId, groupKeySetId }) => ({ groupId, groupKeySetId, fabricIndex })),
-            ],
-        });
+        await installInto(fabrics.for(fabricIndex), context);
     } catch (error) {
         throw new CertContextError(`Cannot install group key configuration: ${errorText(error)}`);
     }
 
-    applyAddressPolicies(fabric, context);
-
-    const { replaced } = node.env.get(FabricManager).events;
-    const reapply = (replacement: Fabric) => {
+    const { replaced } = fabrics.events;
+    const reinstall = (replacement: Fabric) => {
         if (replacement.fabricIndex !== fabricIndex) {
             return;
         }
-        applyAddressPolicies(replacement, context);
+        installInto(replacement, context).catch(error =>
+            logger.error(`Cannot install group key configuration into replaced fabric ${fabricIndex}:`, error),
+        );
     };
-    replaced.on(reapply);
-    return () => replaced.off(reapply);
+    replaced.on(reinstall);
+    return () => replaced.off(reinstall);
 }
 
-function applyAddressPolicies(fabric: Fabric, context: CertContext) {
-    for (const groupId of [...fabric.groups.multicastPolicy.keys()]) {
-        fabric.groups.removeGroupMulticastPolicy(groupId);
+async function installInto({ groups }: Fabric, context: CertContext) {
+    for (const keySet of context.keySets) {
+        await groups.setFromGroupKeySet(keySet);
     }
+    groups.groupKeyIdMap = new Map(context.groupKeyMap.map(({ groupId, groupKeySetId }) => [groupId, groupKeySetId]));
     for (const { groupId, addressPolicy } of context.groupKeyMap) {
         if (addressPolicy !== undefined) {
-            fabric.groups.setGroupMulticastPolicy(groupId, addressPolicy);
+            groups.setGroupMulticastPolicy(groupId, addressPolicy);
         }
     }
 }

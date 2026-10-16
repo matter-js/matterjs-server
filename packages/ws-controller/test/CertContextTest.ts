@@ -4,24 +4,13 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import {
-    AttributeId,
-    Bytes,
-    ClusterId,
-    Environment,
-    FabricIndex,
-    Filesystem,
-    GroupId,
-    MockFilesystem,
-    NodeId,
-} from "@matter/main";
+import { AttributeId, Bytes, ClusterId, Environment, Filesystem, GroupId, MockFilesystem, NodeId } from "@matter/main";
 import { GroupKeyManagement } from "@matter/main/clusters/group-key-management";
 import { OnOff } from "@matter/main/clusters/on-off";
-import { FabricAuthority, FabricManager, NoUsableGroupKeyError } from "@matter/main/protocol";
+import { Fabric, FabricAuthority, FabricManager, NoUsableGroupKeyError } from "@matter/main/protocol";
 import { MATTER_EPOCH_OFFSET_US } from "@matter/main/types";
 import { GroupKeyManagementServer } from "@matter/node/behaviors/group-key-management";
 import {
-    applyCertContext,
     CERT_CONTEXT_FILE,
     CertContextError,
     loadCertContext,
@@ -350,8 +339,27 @@ describe("certContext", () => {
             );
         }
 
-        function expectInstalled() {
-            const { groups } = site.controller.fabric;
+        async function groupWriteError(groupId: number) {
+            return groupWrite(groupId).then(
+                () => undefined,
+                (e: unknown) => e,
+            );
+        }
+
+        /** The fabric object the send path resolves, which a NOC rotation replaces. */
+        function currentFabric() {
+            const { node, fabric } = site.controller;
+            return node.env.get(FabricManager).for(fabric.fabricIndex);
+        }
+
+        function expectNothingPersisted() {
+            const state = site.controller.node.stateOf(GroupKeyManagementServer);
+            expect(state.groupKeySets.length, "persisted key sets").to.equal(0);
+            expect(state.groupKeyMap.length, "persisted group map").to.equal(0);
+        }
+
+        function expectInstalled(fabric: Fabric) {
+            const { groups } = fabric;
             for (const id of [417, 418, 419, 420]) {
                 expect(groups.keySets.forId(id), `key set ${id}`).to.not.equal(undefined);
             }
@@ -365,69 +373,55 @@ describe("certContext", () => {
             expect(groups.multicastAddressFor(GroupId(259))).to.match(/^ff35:/);
         }
 
-        it("groupcasts to the groups the context defines", async () => {
+        it("installs the file into the fabric the send path uses and persists nothing", async () => {
             await site.startController(true, { certContextFile: file });
 
+            expect(currentFabric()).to.equal(site.controller.fabric);
+            expectInstalled(currentFabric());
+            expectNothingPersisted();
             await groupWrite(259);
             await groupWrite(1);
         });
 
-        it("gives the fabric the send path uses the key sets, the group map and the IANA address of group 1", async () => {
+        it("cannot groupcast to a group the file does not define", async () => {
             await site.startController(true, { certContextFile: file });
-
-            const { fabric, node } = site.controller;
-            expect(node.env.get(FabricManager).for(fabric.fabricIndex)).to.equal(fabric);
-            expectInstalled();
+            expect(await groupWriteError(260)).to.be.instanceOf(NoUsableGroupKeyError);
         });
 
-        // Characterization: the negative control showing the send path refuses a group without a key.
-        it("cannot groupcast to a group the context does not define", async () => {
-            await site.startController(true, { certContextFile: file });
-            const error = await groupWrite(260).then(
-                () => undefined,
-                (e: unknown) => e,
-            );
-            expect(error).to.be.instanceOf(NoUsableGroupKeyError);
+        it("installs nothing while the server subscribes on its own", async () => {
+            await site.startController(false, { certContextFile: file });
+            expect(currentFabric().groups.keySets.forId(417)).to.equal(undefined);
+            expect(await groupWriteError(259)).to.be.instanceOf(NoUsableGroupKeyError);
+            expectNothingPersisted();
+        });
+
+        it("is not bound by the device limits of the GroupKeyManagement cluster", async () => {
+            const keySets = Array.from({ length: 25 }, (_, index) => ({
+                groupKeySetId: index + 1,
+                epochKey0: (index + 0x10).toString(16).repeat(16),
+                epochStartTime0: 1,
+                groupKeySecurityPolicy: "TrustFirst",
+            }));
+            const groupKeyMap = Array.from({ length: 30 }, (_, index) => ({
+                groupId: index + 1,
+                groupKeySetId: (index % 25) + 1,
+            }));
+            await site.startController(true, { certContextFile: JSON.stringify({ keySets, groupKeyMap }) });
+
+            expect(currentFabric().groups.keySets.forId(25)).to.not.equal(undefined);
+            expect(currentFabric().groups.groupKeyIdMap.size).to.equal(30);
+            await groupWrite(30);
+            await groupWrite(25);
         });
 
         // Characterization: a fabric update that keeps the fabric object.
         it("keeps everything when the fabric is updated", async () => {
             await site.startController(true, { certContextFile: file });
             await MockTime.resolve(site.controller.fabric.persist(), { macrotasks: true });
-            expectInstalled();
+            expectInstalled(currentFabric());
         });
 
-        it("replaces its own entries on the next start instead of adding them again", async () => {
-            await site.startController(true, { certContextFile: file });
-            await site.stopController();
-            await site.startController(true, { certContextFile: file });
-
-            const state = site.controller.node.stateOf(GroupKeyManagementServer);
-            expect(state.groupKeySets.length).to.equal(4);
-            expect(state.groupKeyMap.length).to.equal(4);
-            expectInstalled();
-        });
-
-        it("installs nothing while the server subscribes on its own", async () => {
-            await site.startController(false, { certContextFile: file });
-            expect(site.controller.fabric.groups.keySets.forId(417)).to.equal(undefined);
-            expect(site.controller.node.stateOf(GroupKeyManagementServer).groupKeySets.length).to.equal(0);
-        });
-
-        it("fails the start with a typed error when matter.js refuses the entries", async () => {
-            const tooMany = JSON.stringify({
-                ...certFile(),
-                groupKeyMap: Array.from({ length: 23 }, (_, index) => ({ groupId: index + 1, groupKeySetId: 417 })),
-            });
-            const error = await site.startController(true, { certContextFile: tooMany }).then(
-                () => undefined,
-                (e: unknown) => e,
-            );
-            expect(error).to.be.instanceOf(CertContextError);
-            expect(error instanceof Error ? error.message : "").to.contain("Too many groups");
-        });
-
-        it("keeps the IANA address of group 1 when a NOC rotation replaces the fabric", async () => {
+        it("installs everything again when a NOC rotation replaces the fabric", async () => {
             await site.startController(true, { certContextFile: file });
             const { node, fabric } = site.controller;
             await MockTime.resolve(
@@ -437,84 +431,44 @@ describe("certContext", () => {
                 { macrotasks: true },
             );
 
-            const current = node.env.get(FabricManager).for(fabric.fabricIndex);
-            // matter.js derives the key sets on the replacement off the event loop and sets the group map after them
+            const current = currentFabric();
+            expect(current).to.not.equal(fabric);
+            // The key derivation runs off the event loop and the group map is set after it
             const deadline = Date.now() + 1500;
             while (!current.groups.groupKeyIdMap.has(GroupId(1)) && Date.now() < deadline) {
                 await new Promise(resolve => setTimeout(resolve, 5));
             }
-            expect(current.groups.groupKeyIdMap.has(GroupId(1)), "group map restored on the replacement").to.equal(
+            expect(current.groups.groupKeyIdMap.has(GroupId(1)), "group map installed on the replacement").to.equal(
                 true,
             );
-            expect(current).to.not.equal(fabric);
-            expect(current.groups.multicastAddressFor(GroupId(1))).to.equal("ff05::fa");
-            expect(current.groups.multicastAddressFor(GroupId(259))).to.match(/^ff35:/);
+            expectInstalled(current);
+            expectNothingPersisted();
             await groupWrite(1);
+            await groupWrite(259);
         });
 
-        it("replaces the entries of an earlier file and groupcasts with a Unix epoch start time", async () => {
+        it("starts from the next file only and groupcasts with a Unix epoch start time", async () => {
             await site.startController(true, { certContextFile: file });
             await site.stopController();
             await site.startController(true, { certContextFile: JSON.stringify(UNIX_EPOCH_FILE) });
 
-            const state = site.controller.node.stateOf(GroupKeyManagementServer);
-            expect(state.groupKeySets.map(({ groupKeySetId }) => groupKeySetId)).to.deep.equal([1]);
-            expect(state.groupKeyMap.map(({ groupId, groupKeySetId }) => [groupId, groupKeySetId])).to.deep.equal([
-                [1, 1],
-            ]);
-            const { groups } = site.controller.fabric;
+            const { groups } = currentFabric();
             expect(groups.keySets.forId(417)).to.equal(undefined);
+            expect([...groups.groupKeyIdMap.entries()]).to.deep.equal([[1, 1]]);
             expect(groups.multicastAddressFor(GroupId(1))).to.match(/^ff35:/);
+            expectNothingPersisted();
 
             await groupWrite(1);
-            const error = await groupWrite(259).then(
-                () => undefined,
-                (e: unknown) => e,
-            );
-            expect(error).to.be.instanceOf(NoUsableGroupKeyError);
+            expect(await groupWriteError(259)).to.be.instanceOf(NoUsableGroupKeyError);
         });
 
-        it("leaves the entries of other fabrics alone and drops address policies the context does not set", async () => {
+        it("keeps nothing after a start without the file", async () => {
             await site.startController(true, { certContextFile: file });
-            const { node, fabric } = site.controller;
-            const otherFabric = FabricIndex(fabric.fabricIndex + 1);
-            const current = node.stateOf(GroupKeyManagementServer);
-            await node.setStateOf(GroupKeyManagementServer, {
-                groupKeySets: [
-                    ...current.groupKeySets,
-                    {
-                        groupKeySetId: 417,
-                        groupKeySecurityPolicy: GroupKeyManagement.GroupKeySecurityPolicy.TrustFirst,
-                        epochKey0: Bytes.fromHex("00112233445566778899aabbccddeeff"),
-                        epochStartTime0: MATTER_EPOCH_OFFSET_US + 1n,
-                        epochKey1: null,
-                        epochStartTime1: null,
-                        epochKey2: null,
-                        epochStartTime2: null,
-                        fabricIndex: otherFabric,
-                    },
-                ],
-                groupKeyMap: [
-                    ...current.groupKeyMap,
-                    { groupId: GroupId(257), groupKeySetId: 417, fabricIndex: otherFabric },
-                ],
-            });
+            await site.stopController();
+            await site.startController(true);
 
-            const stopReapplying = await applyCertContext(node, fabric, parse(UNIX_EPOCH_FILE));
-            stopReapplying();
-            expect(fabric.groups.multicastAddressFor(GroupId(1))).to.match(/^ff35:/);
-
-            const state = node.stateOf(GroupKeyManagementServer);
-            expect(
-                state.groupKeySets.map(({ groupKeySetId, fabricIndex }) => [fabricIndex, groupKeySetId]),
-            ).to.have.deep.members([
-                [otherFabric, 417],
-                [fabric.fabricIndex, 1],
-            ]);
-            expect(state.groupKeyMap.map(({ groupId, fabricIndex }) => [fabricIndex, groupId])).to.have.deep.members([
-                [otherFabric, 257],
-                [fabric.fabricIndex, 1],
-            ]);
+            expect(currentFabric().groups.keySets.forId(417)).to.equal(undefined);
+            expect(await groupWriteError(259)).to.be.instanceOf(NoUsableGroupKeyError);
         });
     });
 });
