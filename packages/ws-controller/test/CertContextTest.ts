@@ -421,7 +421,7 @@ describe("certContext", () => {
             expectInstalled(currentFabric());
         });
 
-        it("installs everything again when a NOC rotation replaces the fabric", async () => {
+        it("keeps everything when a NOC rotation replaces the fabric", async () => {
             await site.startController(true, { certContextFile: file });
             const { node, fabric } = site.controller;
             await MockTime.resolve(
@@ -433,14 +433,6 @@ describe("certContext", () => {
 
             const current = currentFabric();
             expect(current).to.not.equal(fabric);
-            // The key derivation runs off the event loop and the group map is set after it
-            const deadline = Date.now() + 1500;
-            while (!current.groups.groupKeyIdMap.has(GroupId(1)) && Date.now() < deadline) {
-                await new Promise(resolve => setTimeout(resolve, 5));
-            }
-            expect(current.groups.groupKeyIdMap.has(GroupId(1)), "group map installed on the replacement").to.equal(
-                true,
-            );
             expectInstalled(current);
             expectNothingPersisted();
             await groupWrite(1);

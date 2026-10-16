@@ -289,34 +289,15 @@ export async function loadCertContext(
 /**
  * Install the context into the runtime groups of the controller fabric, the ones the group send path reads. Nothing is
  * persisted and the GroupKeyManagement cluster state stays untouched, so its device limits do not apply; matter.js only
- * writes these runtime groups from that state, and it is empty on a controller.
- *
- * A NOC rotation replaces the fabric object with one whose groups are empty, so everything is installed again into
- * every replacement until the returned function stops it.
+ * writes these runtime groups from that state, and it is empty on a controller. A fabric that matter.js replaces, as at
+ * a NOC rotation, keeps these groups.
  */
-export async function applyCertContext(
-    node: ServerNode,
-    fabricIndex: FabricIndex,
-    context: CertContext,
-): Promise<() => void> {
-    const fabrics = node.env.get(FabricManager);
+export async function applyCertContext(node: ServerNode, fabricIndex: FabricIndex, context: CertContext) {
     try {
-        await installInto(fabrics.for(fabricIndex), context);
+        await installInto(node.env.get(FabricManager).for(fabricIndex), context);
     } catch (error) {
         throw new CertContextError(`Cannot install group key configuration: ${errorText(error)}`);
     }
-
-    const { replaced } = fabrics.events;
-    const reinstall = (replacement: Fabric) => {
-        if (replacement.fabricIndex !== fabricIndex) {
-            return;
-        }
-        installInto(replacement, context).catch(error =>
-            logger.error(`Cannot install group key configuration into replaced fabric ${fabricIndex}:`, error),
-        );
-    };
-    replaced.on(reinstall);
-    return () => replaced.off(reinstall);
 }
 
 async function installInto({ groups }: Fabric, context: CertContext) {

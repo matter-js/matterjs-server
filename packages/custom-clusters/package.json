@@ -40,10 +40,10 @@
         "test": "matter-test --force-exit"
     },
     "dependencies": {
-        "@matter/main": "0.18.0-alpha.0-20261015-4e64d055e"
+        "@matter/main": "0.18.0-alpha.0-20261016-91af23fab"
     },
     "devDependencies": {
-        "@matter/testing": "0.18.0-alpha.0-20261015-4e64d055e",
+        "@matter/testing": "0.18.0-alpha.0-20261016-91af23fab",
         "@types/node": "^26.6.4"
     },
     "engines": {

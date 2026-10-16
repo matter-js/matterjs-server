@@ -198,14 +198,14 @@ export namespace LegacyDataInjector {
         }
 
         const builder = await FabricBuilder.create(crypto);
-        builder.initializeFromFabricForUpdate(tempFabric);
         const {
             subject: { nodeId: certNodeId, fabricId: certFabricId },
         } = Noc.fromTlv(tempFabric.operationalCert).cert;
         if (certNodeId !== nodeId || certFabricId !== fabricId) {
             throw new ImplementationError(`Cannot rotate NOC for fabric because root node ID changed`);
         }
-        await builder.setOperationalCert(
+        await builder.updateOperationalCert(
+            tempFabric,
             await rootCertificateAuthority.generateNoc(builder.publicKey, certFabricId, certNodeId),
             tempFabric.intermediateCACert,
         );

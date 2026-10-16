@@ -124,7 +124,6 @@ export async function createControllerNode(options: ControllerNodeOptions): Prom
         dcl: { fetchTestCertificates: true, ...options.dcl },
     });
 
-    let stopCertContext: (() => void) | undefined;
     try {
         const otaProvider = options.enableOtaProvider
             ? await node.add(
@@ -149,7 +148,7 @@ export async function createControllerNode(options: ControllerNodeOptions): Prom
         });
 
         if (certContext !== undefined) {
-            stopCertContext = await applyCertContext(node, fabricIndex, certContext);
+            await applyCertContext(node, fabricIndex, certContext);
         }
 
         if (options.peerSettingsRepair !== undefined) {
@@ -165,13 +164,9 @@ export async function createControllerNode(options: ControllerNodeOptions): Prom
             },
             otaProvider,
             webRtcRequestor,
-            close: () => {
-                stopCertContext?.();
-                return node.close();
-            },
+            close: () => node.close(),
         };
     } catch (error) {
-        stopCertContext?.();
         // The node already holds the storage lock and the caller has no handle to it yet, so a close that
         // fails has to travel with the original error rather than be logged away.
         try {
