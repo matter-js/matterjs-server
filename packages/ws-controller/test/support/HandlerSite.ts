@@ -20,6 +20,7 @@ import {
 import { ClientNode, Endpoint, EndpointType, NetworkClient, NodeId, ServerNode } from "@matter/main";
 import { BooleanStateServer } from "@matter/node/behaviors/boolean-state";
 import { OnOffLightDevice } from "@matter/node/devices/on-off-light";
+import { CertContext } from "../../src/controller/certContext.js";
 import { ControllerCommandHandler } from "../../src/controller/ControllerCommandHandler.js";
 import { ControllerNode, createControllerNode } from "../../src/controller/ControllerNode.js";
 
@@ -94,9 +95,20 @@ export class HandlerSite {
         return this.peer.behaviors.internalsOf(NetworkClient).activeSubscription !== undefined;
     }
 
+    get controller() {
+        if (this.#controller === undefined) {
+            throw new Error("Controller not started");
+        }
+        return this.#controller.resources;
+    }
+
     async startController(
         disableAutoSubscription: boolean,
-        { otaEnabled = false, threadDiagnosticsEnabled = false } = {},
+        {
+            otaEnabled = false,
+            threadDiagnosticsEnabled = false,
+            certContext,
+        }: { otaEnabled?: boolean; threadDiagnosticsEnabled?: boolean; certContext?: CertContext } = {},
     ) {
         const { env, crypto } = this.#environment("controller");
         const resources = await createControllerNode({
@@ -110,6 +122,7 @@ export class HandlerSite {
                 markPeerSettingsRepaired: async () => {},
             },
             disableAutoSubscription,
+            certContext,
         });
         const handler = new ControllerCommandHandler(resources, {
             bleEnabled: false,

@@ -15,6 +15,7 @@ import {
     ConfigStorage,
     Environment,
     LegacyServerData,
+    loadCertContext,
     LogDestination,
     LogFormat,
     LogLevel,
@@ -190,10 +191,12 @@ async function start() {
         env.set(Ble, new ProxyBle(bleProxyHandler, env));
     }
 
+    const certContext = await loadCertContext(cliOptions.storagePath, cliOptions.disableAutoSubscription);
+
     controller = await MatterController.create(
         env,
         config,
-        controllerOptionsFrom(cliOptions, legacyData.serverId, MATTER_SERVER_VERSION),
+        { ...controllerOptionsFrom(cliOptions, legacyData.serverId, MATTER_SERVER_VERSION), certContext },
         legacyServerData,
     );
 

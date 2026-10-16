@@ -24,6 +24,8 @@ export type { CameraSessionEnded, CameraStreamEvicted } from "./camera/cameraTyp
 
 // Export controller components
 export { WebRtcTransportRequestorServer } from "@matter/node/behaviors/web-rtc-transport-requestor";
+export { CertContextError, loadCertContext } from "./controller/certContext.js";
+export type { CertContext } from "./controller/certContext.js";
 export * from "./controller/ControllerCommandHandler.js";
 export * from "./controller/ControllerNode.js";
 export * from "./controller/LegacyDataInjector.js";

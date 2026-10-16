@@ -18,6 +18,7 @@ import {
 } from "@matter/main";
 import { Ble, Fabric, FabricAuthority, FabricManager } from "@matter/main/protocol";
 import { OtaProviderEndpoint } from "@matter/node/endpoints/ota-provider";
+import { applyCertContext, CertContext } from "./certContext.js";
 import { CameraControllerEndpoint } from "./ControllerCommandHandler.js";
 import { applyAutoSubscribe, PeerSettingsRepairMarker, repairRestoredPeers } from "./restoredPeers.js";
 
@@ -87,6 +88,9 @@ export interface ControllerNodeOptions {
      * and matter.js reads `offline` only when a service is created.
      */
     dcl?: { acceptTestCertificates: boolean; offline: boolean };
+
+    /** Group keys installed into the controller fabric for certification runs. */
+    certContext?: CertContext;
 }
 
 export interface ControllerResources {
@@ -164,6 +168,10 @@ export async function createControllerNode(options: ControllerNodeOptions): Prom
             adminNodeId,
             adminFabricId,
         });
+
+        if (options.certContext !== undefined) {
+            await applyCertContext(node, fabric, options.certContext);
+        }
 
         if (options.peerSettingsRepair !== undefined) {
             await repairRestoredPeers(node, id, options.peerSettingsRepair);

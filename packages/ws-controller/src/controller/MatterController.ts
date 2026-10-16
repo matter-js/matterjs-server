@@ -42,6 +42,7 @@ import { CameraStreamManager } from "../camera/CameraStreamManager.js";
 import { MatterCameraDeviceIo } from "../camera/MatterCameraDeviceIo.js";
 import { ConfigStorage } from "../server/ConfigStorage.js";
 import { ServerError } from "../types/WebSocketMessageTypes.js";
+import type { CertContext } from "./certContext.js";
 import { CameraControllerEndpoint, ControllerCommandHandler } from "./ControllerCommandHandler.js";
 import { ControllerNode, createControllerNode } from "./ControllerNode.js";
 import { LegacyDataInjector, LegacyServerData } from "./LegacyDataInjector.js";
@@ -128,6 +129,8 @@ export interface MatterControllerOptions {
      * per peer. Defaults to false.
      */
     disableAutoSubscription?: boolean;
+    /** Group keys installed into the controller fabric for certification runs. */
+    certContext?: CertContext;
 }
 
 /**
@@ -223,6 +226,7 @@ export class MatterController {
     #threadDiagnosticsDisabled = false;
     #customClusterPollInterval?: Duration;
     #disableAutoSubscription = false;
+    #certContext?: CertContext;
     #otaUploadOptions: OtaUploadOptions = {};
     #otaUploads?: OtaUploadRegistry;
     readonly #borderRouterRegistry: BorderRouterRegistry;
@@ -324,6 +328,7 @@ export class MatterController {
         this.#threadDiagnosticsDisabled = options.disableThreadDiagnostics ?? this.#threadDiagnosticsDisabled;
         this.#customClusterPollInterval = options.customClusterPollInterval;
         this.#disableAutoSubscription = options.disableAutoSubscription ?? this.#disableAutoSubscription;
+        this.#certContext = options.certContext;
         this.#otaUploadOptions = options.otaUpload ?? this.#otaUploadOptions;
         this.#services = this.#env.asDependent();
         this.#threadDiagnostics = new ThreadDiagnosticsService({
@@ -414,6 +419,7 @@ export class MatterController {
             peerSettingsRepair: this.#config,
             disableAutoSubscription: this.#disableAutoSubscription,
             dcl: { acceptTestCertificates: this.#enableTestNetDcl, offline: this.#dclOffline },
+            certContext: this.#certContext,
         });
     }
 
