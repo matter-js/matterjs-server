@@ -31,7 +31,7 @@ export async function loadRevocationSets(target: RevocationInstaller, directory:
         names = (await readdir(directory)).filter(name => name.toLowerCase().endsWith(".json")).sort();
     } catch (error) {
         if (isErrnoCode(error, "ENOENT")) {
-            logger.warn(`Revocation sets directory ${directory} does not exist, no revocation sets installed`);
+            logger.error(`Revocation sets directory ${directory} does not exist, no revocation sets installed`);
         } else {
             logger.error(`Cannot read revocation sets directory ${directory}:`, error);
         }

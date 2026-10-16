@@ -272,7 +272,7 @@ During commissioning, the server checks whether the device's attestation certifi
 - The sets only add revocations. Certificates not listed in them are still checked against the DCL (unless `--dcl-offline` is set).
 - The option works with and without `--dcl-offline` and `--enable-test-net-dcl`.
 - The server trusts the files as they are: it does not check any signature in them. Only put files there that you got from a source you trust.
-- A file that cannot be read or is not a valid revocation set is skipped with an error in the log. The other files are still installed. A missing directory is logged as a warning.
+- A file that cannot be read or is not a valid revocation set is skipped with an error in the log. The other files are still installed. A missing directory is logged as an error, and the server starts without revocation sets.
 - At the end the server logs `Loaded revocation sets from <path>: <F> files, <N> entries`.
 
 ### File format

@@ -133,15 +133,15 @@ describe("loadRevocationSets", () => {
         expect(await loadRevocationSets(service, dir)).deep.equals({ files: 1, entries: 1 });
     });
 
-    it("warns about a missing directory and continues", async () => {
+    it("reports a missing directory as an error and continues", async () => {
         const missing = join(dir, "missing");
 
         expect(await loadRevocationSets(service, missing)).deep.equals({ files: 0, entries: 0 });
 
-        expect(lines(LogLevel.WARN)).deep.equals([
+        expect(lines(LogLevel.ERROR)).deep.equals([
             `Revocation sets directory ${missing} does not exist, no revocation sets installed`,
         ]);
-        expect(lines(LogLevel.ERROR)).deep.equals([]);
+        expect(lines(LogLevel.WARN)).deep.equals([]);
         expect(lines(LogLevel.NOTICE)).deep.equals([`Loaded revocation sets from ${missing}: 0 files, 0 entries`]);
     });
 
