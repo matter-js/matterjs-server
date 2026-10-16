@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Endpoint, FabricId, FabricIndex, NetworkClient, NodeId, ServerNode } from "@matter/main";
+import { ControllerBehavior, Endpoint, FabricId, FabricIndex, NetworkClient, NodeId, ServerNode } from "@matter/main";
 import { OperationalCredentialsServer } from "@matter/node/behaviors/operational-credentials";
 import { Fabric, FabricAuthority, FabricManager, SustainedSubscription } from "@matter/protocol";
 import { CameraControllerEndpoint, ControllerCommandHandler } from "../src/controller/ControllerCommandHandler.js";
@@ -119,7 +119,7 @@ describe("setFabricLabel after commissioning replaced the fabric", () => {
         await site.close();
     });
 
-    it("sets the label on the fabric matter.js holds now", async () => {
+    it("sets the label on the fabric matter.js currently holds", async () => {
         expect(controller.env.get(FabricManager).for(fabricIndex)).not.equal(fabricAtStart);
 
         await MockTime.resolve(handler.setFabricLabel("Living Room"), { macrotasks: true });
@@ -138,6 +138,7 @@ describe("setFabricLabel after commissioning replaced the fabric", () => {
         expect(second.stateOf(OperationalCredentialsServer).fabrics[0]?.label).equals("Living Room");
     });
 
+    // Characterization test: proves Fabric persistence only; production restarts take the label from the server config.
     it("persists the new label with the fabric", async () => {
         await MockTime.resolve(handler.setFabricLabel("Living Room"), { macrotasks: true });
         await MockTime.resolve(handler.close(), { macrotasks: true });
@@ -150,7 +151,7 @@ describe("setFabricLabel after commissioning replaced the fabric", () => {
     });
 });
 
-describe("setFabricLabel before this run commissioned anything", () => {
+describe("setFabricLabel before the first commissioning of this run", () => {
     let site: TestSite;
     let controller: ServerNode;
     let handler: ControllerCommandHandler;
@@ -191,5 +192,6 @@ describe("setFabricLabel before this run commissioned anything", () => {
 
         expect(controller.env.get(FabricManager).for(fabricIndex).label).equals("Living Room");
         expect(handler.getFabricLabel()).equals("Living Room");
+        expect(controller.stateOf(ControllerBehavior).adminFabricLabel).equals("Living Room");
     });
 });

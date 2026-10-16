@@ -248,6 +248,7 @@ class UnreachedAddressError extends Error {
 export class ControllerCommandHandler {
     #node: ServerNode;
     readonly #fabricIndex: FabricIndex;
+    readonly #fabrics: FabricManager;
     #otaProvider?: Endpoint<typeof OtaProviderEndpoint>;
     #webRtcRequestor: Endpoint<CameraControllerEndpoint>;
     #started = false;
@@ -312,6 +313,7 @@ export class ControllerCommandHandler {
 
         this.#node = controller.node;
         this.#fabricIndex = controller.fabricIndex;
+        this.#fabrics = controller.node.env.get(FabricManager);
         this.#otaProvider = controller.otaProvider;
         this.#webRtcRequestor = controller.webRtcRequestor;
 
@@ -351,7 +353,7 @@ export class ControllerCommandHandler {
 
     /** matter.js replaces the Fabric object for the same index when it rotates the NOC. */
     get #fabric(): Fabric {
-        return this.#node.env.get(FabricManager).for(this.#fabricIndex);
+        return this.#fabrics.for(this.#fabricIndex);
     }
 
     #isConnected(nodeId: NodeId): boolean {

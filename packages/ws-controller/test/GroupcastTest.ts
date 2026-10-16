@@ -56,6 +56,7 @@ function stubHandler(capture: Capture): { handler: ControllerCommandHandler; cap
     const controller = {
         fabricIndex: FABRIC_INDEX,
         node: {
+            env: { get: () => undefined },
             peers: {
                 forAddress(address: PeerAddress) {
                     capture.addresses.push(address);
