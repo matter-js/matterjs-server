@@ -10,7 +10,7 @@
 import { Bytes, Environment, Filesystem, GroupId, Logger, ServerNode } from "@matter/main";
 import { GroupKeyManagement } from "@matter/main/clusters/group-key-management";
 import { Fabric, FabricManager, GroupMulticastPolicy } from "@matter/main/protocol";
-import { MATTER_EPOCH_OFFSET_US } from "@matter/main/types";
+import { FabricIndex, MATTER_EPOCH_OFFSET_US } from "@matter/main/types";
 import { join } from "node:path";
 
 const logger = Logger.get("GroupKeyConfig");
@@ -294,8 +294,11 @@ export async function loadCertContext(
  * A NOC rotation replaces the fabric object with one whose groups are empty, so everything is installed again into
  * every replacement until the returned function stops it.
  */
-export async function applyCertContext(node: ServerNode, fabric: Fabric, context: CertContext): Promise<() => void> {
-    const { fabricIndex } = fabric;
+export async function applyCertContext(
+    node: ServerNode,
+    fabricIndex: FabricIndex,
+    context: CertContext,
+): Promise<() => void> {
     const fabrics = node.env.get(FabricManager);
     try {
         await installInto(fabrics.for(fabricIndex), context);

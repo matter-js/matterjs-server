@@ -145,7 +145,7 @@ export async function createControllerNode(options: ControllerNodeOptions): Prom
         });
 
         if (certContext !== undefined) {
-            stopCertContext = await applyCertContext(node, fabric, certContext);
+            stopCertContext = await applyCertContext(node, fabric.fabricIndex, certContext);
         }
 
         if (options.peerSettingsRepair !== undefined) {
