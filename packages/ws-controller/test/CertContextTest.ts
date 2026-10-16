@@ -438,10 +438,14 @@ describe("certContext", () => {
             );
 
             const current = node.env.get(FabricManager).for(fabric.fabricIndex);
-            // matter.js restores the key sets and the group map on the replacement asynchronously
-            for (let i = 0; i < 100 && !current.groups.groupKeyIdMap.has(GroupId(1)); i++) {
-                await new Promise(resolve => setImmediate(resolve));
+            // matter.js derives the key sets on the replacement off the event loop and sets the group map after them
+            const deadline = Date.now() + 1500;
+            while (!current.groups.groupKeyIdMap.has(GroupId(1)) && Date.now() < deadline) {
+                await new Promise(resolve => setTimeout(resolve, 5));
             }
+            expect(current.groups.groupKeyIdMap.has(GroupId(1)), "group map restored on the replacement").to.equal(
+                true,
+            );
             expect(current).to.not.equal(fabric);
             expect(current.groups.multicastAddressFor(GroupId(1))).to.equal("ff05::fa");
             expect(current.groups.multicastAddressFor(GroupId(259))).to.match(/^ff35:/);
