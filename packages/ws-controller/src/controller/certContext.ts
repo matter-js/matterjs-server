@@ -323,12 +323,7 @@ export async function applyCertContext(node: ServerNode, fabric: Fabric, context
         if (replacement.fabricIndex !== fabricIndex) {
             return;
         }
-        // Shared Observable: an uncaught throw here aborts the emit and starves the other observers
-        try {
-            applyAddressPolicies(replacement, context);
-        } catch (error) {
-            logger.error(`Cannot apply group address policies to fabric ${fabricIndex}:`, error);
-        }
+        applyAddressPolicies(replacement, context);
     };
     replaced.on(reapply);
     return () => replaced.off(reapply);
