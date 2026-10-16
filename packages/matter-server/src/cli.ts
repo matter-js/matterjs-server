@@ -66,6 +66,7 @@ export interface CliOptions {
     enableTestNetDcl: boolean;
     disableDclSeed: boolean;
     dclOffline: boolean;
+    revocationSetsDir: string | null;
 
     // Bluetooth configuration
     bluetoothAdapter: number | null;
@@ -243,6 +244,12 @@ export function parseCliArgs(argv?: string[]): CliOptions {
                 .env("DCL_OFFLINE"),
         )
         .addOption(
+            new Option(
+                "--revocation-sets-dir <path>",
+                "Directory with device attestation revocation sets (*.json) to install at start",
+            ).env("REVOCATION_SETS_DIR"),
+        )
+        .addOption(
             new Option("--bluetooth-adapter <id>", "Bluetooth adapter HCI ID (e.g., 0 for hci0)")
                 .argParser(parseIntOption)
                 .env("BLUETOOTH_ADAPTER"),
@@ -411,6 +418,7 @@ export function parseCliArgs(argv?: string[]): CliOptions {
         enableTestNetDcl: opts.enableTestNetDcl,
         disableDclSeed: opts.disableDclSeed,
         dclOffline: opts.dclOffline,
+        revocationSetsDir: opts.revocationSetsDir ?? null,
         bluetoothAdapter: opts.bluetoothAdapter ?? null,
         bleProxy: opts.bleProxy,
         disableOta: opts.disableOta,

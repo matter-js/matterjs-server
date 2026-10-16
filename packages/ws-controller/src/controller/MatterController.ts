@@ -607,6 +607,17 @@ export class MatterController {
     }
 
     /**
+     * Install revocation information from outside the DCL into the certificate service that judges device
+     * attestation. In memory only, so it must run again on every start.
+     *
+     * @throws {ImplementationError} if an entry states an identifier or serial that is not hex, or an issuer name that
+     * is not base64
+     */
+    installRevocations(entries: DclCertificateService.RevocationSetEntry[]) {
+        this.#services.get(DclCertificateService).installRevocations(entries);
+    }
+
+    /**
      * Get the DCL OTA update service instance
      * Lazily initializes the service if not already present.
      */

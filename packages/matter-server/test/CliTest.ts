@@ -30,6 +30,7 @@ describe("cli", () => {
         "THREAD_REST_PROBE_PORT",
         "DCL_OFFLINE",
         "DISABLE_DCL_SEED",
+        "REVOCATION_SETS_DIR",
     ];
     const savedEnv = new Map<string, string | undefined>();
 
@@ -209,6 +210,34 @@ describe("cli", () => {
                 delete process.env.DCL_OFFLINE;
                 delete process.env.DISABLE_DCL_SEED;
             }
+        });
+    });
+
+    describe("--revocation-sets-dir", () => {
+        it("is unset by default", () => {
+            expect(parseCliArgs(argv()).revocationSetsDir).to.equal(null);
+        });
+
+        it("is set by the option and the environment", () => {
+            expect(parseCliArgs(argv("--revocation-sets-dir", "/sets")).revocationSetsDir).to.equal("/sets");
+            process.env.REVOCATION_SETS_DIR = "/env-sets";
+            try {
+                expect(parseCliArgs(argv()).revocationSetsDir).to.equal("/env-sets");
+            } finally {
+                delete process.env.REVOCATION_SETS_DIR;
+            }
+        });
+
+        // Characterization: the options are independent, so nothing rejects the combination.
+        it("combines with --dcl-offline and --enable-test-net-dcl", () => {
+            const options = parseCliArgs(
+                argv("--revocation-sets-dir", "/sets", "--dcl-offline", "--enable-test-net-dcl"),
+            );
+            expect([options.revocationSetsDir, options.dclOffline, options.enableTestNetDcl]).deep.equals([
+                "/sets",
+                true,
+                true,
+            ]);
         });
     });
 

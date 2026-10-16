@@ -292,6 +292,21 @@ class UnreachedAddressError extends Error {
 const UNSCOPED_INVOKES = {};
 
 /**
+ * Why device attestation refuses a device, as the text the client is shown, or `undefined` when no finding
+ * stops it. A test certificate gets an actionable hint; any other error-level finding is named with its check.
+ */
+export function attestationRefusalOf(findings: AttestationFinding[]): string | undefined {
+    if (findings.some(({ type }) => type === DeviceAttestationCheck.TrustedAsTestCertificate)) {
+        return 'This device uses a test/development certificate. To commission it, enable the "Test DCL" option in the settings — only do this if you trust the vendor.';
+    }
+    const errors = findings.filter(({ level }) => level === "error");
+    if (errors.length === 0) {
+        return undefined;
+    }
+    return `Device attestation refused: ${errors.map(({ type, message }) => `${type}: ${message}`).join("; ")}`;
+}
+
+/**
  * The `NodeCommissionFailed` error for a failed commissioning, with a `reason` a client can act on. With
  * `attestationRejected` the reason is `attestation-rejected`, whatever error the aborted commissioning raised.
  */
@@ -1923,25 +1938,17 @@ export class ControllerCommandHandler {
             wifiNetwork,
             threadNetwork,
             onAttestationFailure: (findings: AttestationFinding[]) => {
-                let testCertReason: string | undefined;
-                let hardError = false;
                 for (const f of findings) {
-                    if (f.type === DeviceAttestationCheck.TrustedAsTestCertificate) {
-                        testCertReason =
-                            'This device uses a test/development certificate. To commission it, enable the "Test DCL" option in the settings — only do this if you trust the vendor.';
-                    } else if (f.level === "error") {
-                        hardError = true;
-                    }
                     logger.info(`Attestation finding (${f.level}):`, f.type, f.message);
                 }
-                if (testCertReason !== undefined) {
-                    logger.notice(`Attestation rejected: ${testCertReason}`);
-                    attestation.rejected = true;
-                    return testCertReason;
+                const refusal = attestationRefusalOf(findings);
+                attestation.rejected = refusal !== undefined;
+                if (refusal === undefined) {
+                    logger.info("Attestation accepted");
+                    return true;
                 }
-                logger.info(`Attestation ${hardError ? "rejected" : "accepted"}`);
-                attestation.rejected = hardError;
-                return !hardError;
+                logger.notice(`Attestation rejected: ${refusal}`);
+                return refusal;
             },
         };
     }

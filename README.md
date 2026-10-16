@@ -162,7 +162,7 @@ Ideally, the Matter server has access to the internet which is needed for the fo
 - Checking for OTA device updates (requires access to the CSA DCL)
 - Download OTA device updates (requires access to vendor specific Download locations returned by the CSA DCL)
 
-Without Internet access no OTA update checks or OTA update download is possible. You can still add [OTA files manually to the server](#importing-custom-ota-firmware-files).
+Without Internet access no OTA update checks or OTA update download is possible. You can still add [OTA files manually to the server](#importing-custom-ota-firmware-files), and [certificate revocation sets as files](#installing-device-attestation-revocation-sets).
 For Certificates, Certification verifications, and vendor lookup the server uses a package of seed data and will (if not disabled, see above) pre-install data from the time from release of this matter server version. These data might be outdated and certificates might be missing depending on your devices, which could lead to errors when you try to commission devices.
 
 ## Dashboard Network Visualization
@@ -262,6 +262,50 @@ npx matter-server
 - The server stores imported OTA images internally for serving to devices
 - To disable OTA functionality entirely, use `--disable-ota` (or env var `DISABLE_OTA=true`)
 - Check the server logs for information about successfully imported OTA files
+
+## Installing Device Attestation Revocation Sets
+
+During commissioning, the server checks whether the device's attestation certificates (DAC and PAI) have been revoked. Normally it asks the DCL. With `--revocation-sets-dir <path>` (or env var `REVOCATION_SETS_DIR=<path>`) you can give it revocation sets as files, for example when the server has no DCL access or for certification tests. A device whose certificate is listed in one of these sets is refused, with an error that names `CertificateRevoked`.
+
+- The server reads every `*.json` file in the directory (not subdirectories) at start, before it accepts WebSocket connections. Other files are ignored.
+- The sets are kept in memory only. The files stay in the directory and are read again on every start.
+- The sets only add revocations. Certificates not listed in them are still checked against the DCL (unless `--dcl-offline` is set).
+- The option works with and without `--dcl-offline` and `--enable-test-net-dcl`.
+- The server trusts the files as they are: it does not check any signature in them. Only put files there that you got from a source you trust.
+- A file that cannot be read or is not a valid revocation set is skipped with an error in the log. The other files are still installed. A missing directory is logged as a warning.
+- At the end the server logs `Loaded revocation sets from <path>: <F> files, <N> entries`.
+
+### File format
+
+The files use the format that the CHIP SDK tool [`credentials/generate_revocation_set.py`](https://github.com/project-chip/connectedhomeip/blob/master/credentials/generate_revocation_set.py) writes. The tool reads the revocation distribution points from the DCL, downloads and checks the CRLs, and writes the result (for example `python3 generate_revocation_set.py from-dcl --use-main-net-http --output revocation_set.json`).
+
+A file is a JSON array. Each entry describes the revoked certificates of one issuer:
+
+| Field                    | Type             | Encoding                     | Required | Used by the server | Meaning                                                                                                                       |
+| ------------------------ | ---------------- | ---------------------------- | -------- | ------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
+| `type`                   | string           | -                            | No       | Checked            | Must be `"revocation_set"` if present                                                                                         |
+| `issuer_subject_key_id`  | string           | hex (`:` separators allowed) | Yes      | Yes                | Subject Key Identifier of the certificate that issued the revoked certificates (PAA for a revoked PAI, PAI for a revoked DAC) |
+| `issuer_name`            | string           | base64 of the DER issuer name | No       | Yes                | Subject name of that issuer. Without it (or empty), entries match on `issuer_subject_key_id` alone                            |
+| `revoked_serial_numbers` | array of strings | hex, even number of digits   | Yes      | Yes                | Serial numbers of the revoked certificates. Leading zero bytes do not matter                                                  |
+| `crl_signer_cert`        | string           | base64 of DER                | No       | No (ignored)       | Certificate that signed the CRL the entry was made from                                                                       |
+| `crl_signer_delegator`   | string or `null` | base64 of DER                | No       | No (ignored)       | Certificate that delegated CRL signing, if any                                                                                |
+
+Hex values are not case sensitive. Other fields are ignored. The tool always writes `type`, `issuer_name` and `crl_signer_cert`, and writes `crl_signer_delegator` as `null` when there is none.
+
+Example with one entry (the values are made up):
+
+```json
+[
+    {
+        "type": "revocation_set",
+        "issuer_subject_key_id": "3A1F5C9E0B7D24E68F1A2B3C4D5E6F7081920A1B",
+        "issuer_name": "MB0xGzAZBgNVBAMMEkV4YW1wbGUgVmVuZG9yIFBBSQ==",
+        "revoked_serial_numbers": ["5C2E91A0D7B34F18", "0A"],
+        "crl_signer_cert": "MIIBnDCCAUKgAwIBAgIIGq3cE5b0Wl8wCgYIKoZIzj0EAwI=",
+        "crl_signer_delegator": null
+    }
+]
+```
 
 ## Differences from Python Matter Server
 

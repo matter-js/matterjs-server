@@ -5,6 +5,7 @@
  */
 
 import {
+    Bytes,
     Crypto,
     DeviceNotDiscoveredError,
     DiscoveryIncompleteError,
@@ -25,15 +26,19 @@ import {
 import { Endpoint } from "@matter/node";
 import { OnOffLightDevice } from "@matter/node/devices/on-off-light";
 import {
+    AttestationFinding,
     CommissioningError,
     CommissioningTimeoutError,
     DclCertificateService,
+    DeviceAttestationCheck,
     FabricAuthority,
     PairRetransmissionLimitReachedError,
     PasscodeMismatchError,
     TestCert_PAA_NoVID_Cert,
+    TestCert_PAA_NoVID_SKID,
 } from "@matter/protocol";
 import {
+    attestationRefusalOf,
     CameraControllerEndpoint,
     commissionFailureOf,
     ControllerCommandHandler,
@@ -185,16 +190,72 @@ describe("commissionNode", () => {
             trustStore = undefined;
         });
 
-        /** An offline trust store that rejects test certificates; `testPaa` adds the PAA the simulated device chains to. */
-        async function useTrustStore(testPaa: boolean) {
-            const service = new DclCertificateService(controller.env, { offline: true, acceptTestCertificates: false });
+        /** An offline trust store; `testPaa` adds the PAA the simulated device chains to. */
+        async function useTrustStore(testPaa: boolean, acceptTestCertificates = false) {
+            const service = new DclCertificateService(controller.env, { offline: true, acceptTestCertificates });
             trustStore = service;
             await service.construction;
             if (testPaa) {
                 await service.addCertificate(TestCert_PAA_NoVID_Cert, "PAA", { isProduction: false });
             }
             controller.env.set(DclCertificateService, service);
+            return service;
         }
+
+        // The simulated device's PAI is serial 1, issued by the test PAA.
+        const simulatedPaiRevocation = {
+            issuerSubjectKeyId: Bytes.toHex(TestCert_PAA_NoVID_SKID),
+            revokedSerialNumbers: ["01"],
+        };
+
+        // Characterization: the baseline the revocation tests below refuse from.
+        it("commissions a device with a trusted test certificate", async () => {
+            await useTrustStore(true, true);
+
+            const { nodeId } = await commissioning(() => handler.commissionNode(request()));
+
+            expect(nodeId).equals(NODE_ID);
+        });
+
+        it("refuses a device whose PAI is revoked, naming the check", async () => {
+            const service = await useTrustStore(true, true);
+            service.installRevocations([simulatedPaiRevocation]);
+
+            const error = await failureOf(() => commissioning(() => handler.commissionNode(request())));
+
+            expect([error.code, error.reason]).deep.equals([
+                ServerErrorCode.NodeCommissionFailed,
+                "attestation-rejected",
+            ]);
+            expect(error.message).equals(
+                "Commission failed: Device attestation refused: CertificateRevoked: Product Attestation Intermediate certificate has been revoked",
+            );
+            expect(handler.isNodeIdInUse(NODE_ID)).equals(false);
+        });
+
+        it("refuses a device whose PAI is revoked under its issuer name, as the CHIP tool states it", async () => {
+            const service = await useTrustStore(true, true);
+            // DER of the issuer name "CN=Matter Test PAA"
+            service.installRevocations([
+                { ...simulatedPaiRevocation, issuerName: "MBoxGDAWBgNVBAMMD01hdHRlciBUZXN0IFBBQQ==" },
+            ]);
+
+            const error = await failureOf(() => commissioning(() => handler.commissionNode(request())));
+
+            expect(error.message).match(/CertificateRevoked/);
+        });
+
+        it("commissions a device whose PAI is revoked only under another issuer name", async () => {
+            const service = await useTrustStore(true, true);
+            // DER of the issuer name "CN=Example Vendor PAI"
+            service.installRevocations([
+                { ...simulatedPaiRevocation, issuerName: "MB0xGzAZBgNVBAMMEkV4YW1wbGUgVmVuZG9yIFBBSQ==" },
+            ]);
+
+            const { nodeId } = await commissioning(() => handler.commissionNode(request()));
+
+            expect(nodeId).equals(NODE_ID);
+        });
 
         it("reports a device with a test certificate as attestation-rejected", async () => {
             await useTrustStore(true);
@@ -217,6 +278,7 @@ describe("commissionNode", () => {
                 ServerErrorCode.NodeCommissionFailed,
                 "attestation-rejected",
             ]);
+            expect(error.message).match(/^Commission failed: Device attestation refused: PaaNotTrusted: /);
             expect(handler.isNodeIdInUse(NODE_ID)).equals(false);
         });
     });
@@ -462,5 +524,48 @@ describe("commissionFailureOf", () => {
 
     it("names anything else other", () => {
         expect(commissionFailureOf(new CommissioningError("network setup failed"), false).reason).equals("other");
+    });
+});
+
+describe("attestationRefusalOf", () => {
+    const revoked: AttestationFinding = {
+        level: "error",
+        type: DeviceAttestationCheck.CertificateRevoked,
+        message: "Device Attestation Certificate has been revoked",
+    };
+    const expired: AttestationFinding = {
+        level: "error",
+        type: DeviceAttestationCheck.CertificateExpired,
+        message: "DAC has expired",
+    };
+    const provisional: AttestationFinding = {
+        level: "warning",
+        type: DeviceAttestationCheck.CertificationTypeProvisional,
+        message: "provisional",
+    };
+    const testCertificate: AttestationFinding = {
+        level: "error",
+        type: DeviceAttestationCheck.TrustedAsTestCertificate,
+        message: "test PAA",
+    };
+
+    it("accepts a device with only warnings", () => {
+        expect(attestationRefusalOf([provisional])).equals(undefined);
+    });
+
+    it("names an error finding with its check", () => {
+        expect(attestationRefusalOf([provisional, revoked])).equals(
+            "Device attestation refused: CertificateRevoked: Device Attestation Certificate has been revoked",
+        );
+    });
+
+    it("names every error finding", () => {
+        expect(attestationRefusalOf([revoked, expired])).equals(
+            "Device attestation refused: CertificateRevoked: Device Attestation Certificate has been revoked; CertificateExpired: DAC has expired",
+        );
+    });
+
+    it("gives the test certificate hint over any other error", () => {
+        expect(attestationRefusalOf([revoked, testCertificate])).match(/enable the "Test DCL" option/);
     });
 });

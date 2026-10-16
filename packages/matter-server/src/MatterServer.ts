@@ -31,6 +31,7 @@ import { controllerOptionsFrom } from "./controller-options.js";
 import { LegacyDataWriter, loadLegacyData, type LegacyData } from "./converter/index.js";
 import { createFileLogger } from "./file-logger.js";
 import { initializeOta } from "./ota.js";
+import { loadRevocationSets } from "./revocation-sets.js";
 import { HealthHandler } from "./server/HealthHandler.js";
 import { OtaUploadHandler } from "./server/OtaUploadHandler.js";
 import { StaticFileHandler } from "./server/StaticFileHandler.js";
@@ -196,6 +197,11 @@ async function start() {
         controllerOptionsFrom(cliOptions, legacyData.serverId, MATTER_SERVER_VERSION),
         legacyServerData,
     );
+
+    // Before the web server starts: no commissioning can be requested until the sets are in force.
+    if (cliOptions.revocationSetsDir) {
+        await loadRevocationSets(controller, cliOptions.revocationSetsDir);
+    }
 
     if (!cliOptions.disableOta) {
         await controller.otaUploads.cleanupOrphans();
