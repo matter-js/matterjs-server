@@ -13,7 +13,6 @@ import {
     MatterAggregateError,
     NodeId,
     ServerNode,
-    SoftwareUpdateManager,
     VendorId,
 } from "@matter/main";
 import { Ble, Fabric, FabricAuthority, FabricManager } from "@matter/main/protocol";
@@ -21,35 +20,12 @@ import { OtaProviderEndpoint } from "@matter/node/endpoints/ota-provider";
 import { applyCertContext, loadCertContext } from "./certContext.js";
 import { CameraControllerEndpoint } from "./ControllerCommandHandler.js";
 import { applyAutoSubscribe, PeerSettingsRepairMarker, repairRestoredPeers } from "./restoredPeers.js";
+import { ServerSoftwareUpdateManager } from "./ServerSoftwareUpdateManager.js";
 
 // A controller joins fabrics, it does not serve groupcast, and the Groupcast listener would pull in the
 // Auxiliary ACL feature with it.
 const ControllerRootEndpoint = ServerNode.RootEndpointWithoutGroupcast.with(ControllerBehavior, DclBehavior);
 type ControllerRootEndpoint = typeof ControllerRootEndpoint;
-
-/**
- * With `checkOnRequestOnly`, skips the periodic DCL update check, which also announces consented updates to the
- * devices, and with it the cleanup of stored OTA files no node needs anymore. `check_node_update` and `update_node` go
- * through `queryUpdates` and `forceUpdate`. matter.js only offers updates to a node with the server's own
- * subscription, so for any other node `check_node_update` returns `null` and `update_node` fails, unless an update was
- * found while it was subscribed.
- */
-class ServerSoftwareUpdateManager extends SoftwareUpdateManager {
-    declare state: ServerSoftwareUpdateManager.State;
-
-    override async checkForUpdates() {
-        if (this.state.checkOnRequestOnly) {
-            return;
-        }
-        await super.checkForUpdates();
-    }
-}
-
-namespace ServerSoftwareUpdateManager {
-    export class State extends SoftwareUpdateManager.State {
-        checkOnRequestOnly = false;
-    }
-}
 
 /**
  * Parse a version string into a numeric version in MMmmpp format.
