@@ -15,6 +15,7 @@ import {
     NetworkSimulator,
     SupportedStorageTypes,
 } from "@matter/general";
+import { FabricAuthority, FabricManager } from "@matter/protocol";
 import { ControllerNodeOptions, createControllerNode } from "../src/controller/ControllerNode.js";
 
 const NODE_ID = "controller";
@@ -66,6 +67,20 @@ describe("createControllerNode", () => {
         try {
             expect(controller.fabric.label).equals("TestFabric");
             expect(controller.otaProvider).equals(undefined);
+        } finally {
+            await controller.close();
+        }
+    });
+
+    it("serves the fabric matter.js holds after a NOC rotation replaced it", async () => {
+        const controller = await build().controller;
+        try {
+            const before = controller.fabric;
+            await controller.node.env.get(FabricAuthority).defaultFabric({ adminFabricLabel: "TestFabric" });
+
+            const current = controller.node.env.get(FabricManager).for(controller.fabricIndex);
+            expect(current).not.equal(before);
+            expect(controller.fabric).equal(current);
         } finally {
             await controller.close();
         }

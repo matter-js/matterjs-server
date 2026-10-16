@@ -29,11 +29,11 @@ const ON_OFF_PATH = `1/${OnOff.Cluster.id}/${OnOff.Cluster.attributes.onOff.id}`
 async function createHandler(controller: ServerNode) {
     const webRtcRequestor = await controller.add(new Endpoint(CameraControllerEndpoint, { id: "camera-controller" }));
     await controller.env.load(FabricManager);
-    const fabric = await (
+    const { fabricIndex } = await (
         await controller.env.load(FabricAuthority)
     ).defaultFabric({ adminFabricLabel: "TestFabric", adminFabricId: FabricId(1), adminNodeId: NodeId(112233) });
     return new ControllerCommandHandler(
-        { node: controller, fabric, otaProvider: undefined, webRtcRequestor },
+        { node: controller, fabricIndex, otaProvider: undefined, webRtcRequestor },
         { bleEnabled: false, bleProxyEnabled: false, otaEnabled: false },
     );
 }
