@@ -26,6 +26,7 @@ import {
 } from "@matter-server/ws-controller";
 import { Seconds, Time } from "@matter/main";
 import { Ble } from "@matter/main/protocol";
+import { importCertificates } from "./certificates.js";
 import { getCliOptions, getOriginalArgv, type LogLevel as CliLogLevel } from "./cli.js";
 import { controllerOptionsFrom } from "./controller-options.js";
 import { LegacyDataWriter, loadLegacyData, type LegacyData } from "./converter/index.js";
@@ -201,6 +202,15 @@ async function start() {
     // Before the web server starts: no commissioning can be requested until the sets are in force.
     if (cliOptions.revocationSetsDir) {
         await loadRevocationSets(controller, cliOptions.revocationSetsDir);
+    }
+
+    // Not awaited: the import waits for the first DCL update, which must not delay the start
+    if (cliOptions.certificatesDir) {
+        const directory = cliOptions.certificatesDir;
+        controller
+            .certificateService()
+            .then(service => importCertificates(service, directory))
+            .catch(error => logger.error("Failed to import certificates:", error));
     }
 
     if (!cliOptions.disableOta) {

@@ -162,7 +162,7 @@ Ideally, the Matter server has access to the internet which is needed for the fo
 - Checking for OTA device updates (requires access to the CSA DCL)
 - Download OTA device updates (requires access to vendor specific Download locations returned by the CSA DCL)
 
-Without Internet access no OTA update checks or OTA update download is possible. You can still add [OTA files manually to the server](#importing-custom-ota-firmware-files), and [certificate revocation sets as files](#installing-device-attestation-revocation-sets).
+Without Internet access no OTA update checks or OTA update download is possible. You can still add [OTA files manually to the server](#importing-custom-ota-firmware-files), [certificate revocation sets as files](#installing-device-attestation-revocation-sets), and [custom PAA certificates](#importing-custom-paa-certificates).
 For Certificates, Certification verifications, and vendor lookup the server uses a package of seed data and will (if not disabled, see above) pre-install data from the time from release of this matter server version. These data might be outdated and certificates might be missing depending on your devices, which could lead to errors when you try to commission devices.
 
 ## Dashboard Network Visualization
@@ -306,6 +306,18 @@ Example with one entry (the values are made up):
     }
 ]
 ```
+
+## Importing Custom PAA Certificates
+
+A device can only pass device attestation when the server knows the PAA (Product Attestation Authority) root certificate at the end of its attestation chain. A PAA that is not on the DCL, for example a vendor's own test PAA, can be imported from files with `--certificates-dir <path>` (or env var `CERTIFICATES_DIR=<path>`).
+
+- File names must end in `.paa.der` (one DER-encoded certificate) or `.paa.pem` (one or more PEM-encoded certificates). Other files stay in the directory, and the server logs that it ignored them. Subdirectories are not read.
+- A certificate is imported as a test certificate. The server only trusts a test certificate when `--enable-test-net-dcl` is set. Without it, commissioning of a device that uses the certificate fails with an error that asks to enable the "Test DCL" option.
+- When the file name before `.paa.der` or `.paa.pem` ends in `-prod` (for example `vendor-prod.paa.der`), the certificate is imported as a production certificate and is trusted without `--enable-test-net-dcl`. A `-prod` file also turns a certificate that is already stored as test into production. A file without `-prod` never changes a stored certificate. Only use `-prod` for certificates you got from a source you trust.
+- The server imports the files at every start, after it has loaded the bundled DCL data and finished its first DCL update. The server starts without waiting for the import, so a device that needs an imported certificate can only be commissioned after the import has logged its summary line. On a server without Internet access this takes until the first DCL update gives up; use `--dcl-offline` to skip that update.
+- The certificates are stored with the other certificates in the server storage and stay there. A file is deleted when each of its certificates is stored, also when a certificate was already stored before.
+- A file that cannot be read or holds an invalid certificate is logged as an error and stays in the directory. Certificates before the invalid one in the same file are still stored. A missing directory is logged as a warning.
+- The server logs one line per certificate and, when it read at least one `.paa.der` or `.paa.pem` file, a summary `Certificates from <path>: <N> imported, <U> upgraded to production, <K> already stored, <F> files failed`.
 
 ## Differences from Python Matter Server
 

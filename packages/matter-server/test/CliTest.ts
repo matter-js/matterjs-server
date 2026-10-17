@@ -241,6 +241,22 @@ describe("cli", () => {
         });
     });
 
+    describe("--certificates-dir", () => {
+        it("is unset by default", () => {
+            expect(parseCliArgs(argv()).certificatesDir).to.equal(null);
+        });
+
+        it("is set by the option and the environment", () => {
+            expect(parseCliArgs(argv("--certificates-dir", "/certs")).certificatesDir).to.equal("/certs");
+            process.env.CERTIFICATES_DIR = "/env-certs";
+            try {
+                expect(parseCliArgs(argv()).certificatesDir).to.equal("/env-certs");
+            } finally {
+                delete process.env.CERTIFICATES_DIR;
+            }
+        });
+    });
+
     describe("LISTEN_ADDRESS", () => {
         function withListenAddressEnv(value: string, run: () => void) {
             process.env.LISTEN_ADDRESS = value;
