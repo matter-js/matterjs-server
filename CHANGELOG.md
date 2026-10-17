@@ -35,7 +35,7 @@ This page shows a detailed overview of the changes between versions without the 
 - Enhancement: Adds the CHIP UnitTesting test cluster (0xFFF1FC05) as custom cluster that the controller certification suite uses
 - Enhancement: `write_attribute` takes a wildcard endpoint to write all endpoints of a node in one request, and `timed_request_timeout_ms` for a timed write
 - Enhancement: The ws-client has `commissionOnNetwork`, and `deviceCommand` takes an options object with `timedRequestTimeoutMs` and `interactionTimeoutMs` (a number still sets the client timeout)
-- Enhancement: On Windows, `--bluetooth-adapter` can be given without an HCI ID to enable BLE
+- Enhancement: On Windows and macOS, `--bluetooth-adapter` can be given without an HCI ID to enable BLE
 - Enhancement: `--port 0` binds a free port, shown in the startup log line `Webserver listening on …`
 - Enhancement: Dashboard network view uses the Thread 1.4 role names: a Thread Router is shown as "Mesh Extender" and a REED as "Standby Mesh Extender". External (non-fabric) neighbors, whose role is only inferred from rx-on-when-idle, are now labeled "Always-on device" instead of a routing role. Wire values and the `ThreadRoutingRole` enum keep the Matter spec names
 - Enhancement: (@cyberb) `--listen-address` (env `LISTEN_ADDRESS`) accepts an absolute unix socket path, so the WebSocket API and dashboard can be served on a local socket, alone or next to TCP addresses; a socket file left behind by an unclean shutdown is replaced on the next start, and the Docker health check queries the socket

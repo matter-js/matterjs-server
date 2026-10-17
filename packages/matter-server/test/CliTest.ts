@@ -261,6 +261,18 @@ describe("cli", () => {
     });
 
     describe("--bluetooth-adapter", () => {
+        /** A missing ID ends the process through `program.error`, so the bare flag is parsed in a child process. */
+        function parseCliArgsInChild(script: string) {
+            const cli = JSON.stringify(import.meta.resolve("../src/cli.js"));
+            return spawnSync(
+                process.execPath,
+                ["--input-type=module", "-e", `const m = await import(${cli}); ${script}`],
+                {
+                    encoding: "utf8",
+                },
+            );
+        }
+
         it("is unset by default", () => {
             expect(parseCliArgs(argv()).bluetoothAdapter).to.equal(null);
         });
@@ -271,28 +283,30 @@ describe("cli", () => {
             expect(bluetoothAdapterFrom(1, "win32")).to.equal(1);
         });
 
-        it("uses HCI ID 0 on Windows when given without an ID", () => {
+        it("uses HCI ID 0 on Windows and macOS when given without an ID", () => {
             expect(bluetoothAdapterFrom(true, "win32")).to.equal(0);
+            expect(bluetoothAdapterFrom(true, "darwin")).to.equal(0);
+        });
+
+        it("enables BLE without an ID on this platform if it has no HCI IDs", function () {
+            if (process.platform !== "win32" && process.platform !== "darwin") this.skip();
+            const result = parseCliArgsInChild(
+                "console.log(m.parseCliArgs(['node', 'matter-server', '--bluetooth-adapter']).bluetoothAdapter);",
+            );
+
+            expect(result.status, `stdout: ${result.stdout}\nstderr: ${result.stderr}`).to.equal(0);
+            expect(result.stdout.trim()).to.equal("0");
         });
 
         it("needs an HCI ID on other platforms", () => {
-            for (const platform of ["linux", "darwin"] as const) {
+            for (const platform of ["linux", "freebsd"] as const) {
                 expect(() => bluetoothAdapterFrom(true, platform)).to.throw(InvalidArgumentError, "needs the HCI ID");
             }
         });
 
-        it("exits with an error when given without an ID outside Windows", function () {
-            if (process.platform === "win32") this.skip();
-            const cli = JSON.stringify(import.meta.resolve("../src/cli.js"));
-            const result = spawnSync(
-                process.execPath,
-                [
-                    "--input-type=module",
-                    "-e",
-                    `const m = await import(${cli}); m.parseCliArgs(["node", "matter-server", "--bluetooth-adapter"]);`,
-                ],
-                { encoding: "utf8" },
-            );
+        it("exits with an error when given without an ID outside Windows and macOS", function () {
+            if (process.platform === "win32" || process.platform === "darwin") this.skip();
+            const result = parseCliArgsInChild("m.parseCliArgs(['node', 'matter-server', '--bluetooth-adapter']);");
 
             expect(result.status, `stdout: ${result.stdout}\nstderr: ${result.stderr}`).to.equal(1);
             expect(result.stderr).to.include("--bluetooth-adapter needs the HCI ID");

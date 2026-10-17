@@ -139,9 +139,12 @@ export function parseListenAddressList(value: string): string[] {
         .filter(address => address !== "");
 }
 
+/** Platforms whose noble bindings (WinRT, CoreBluetooth) use the system adapter and ignore the HCI ID. */
+const PLATFORMS_WITHOUT_HCI_ID: ReadonlySet<NodeJS.Platform> = new Set(["win32", "darwin"]);
+
 /**
- * Resolves `--bluetooth-adapter` to an HCI ID. `true` means the option was given without an ID. Only Windows accepts
- * that and uses 0: Windows has no HCI IDs, and noble's WinRT bindings ignore the ID.
+ * Resolves `--bluetooth-adapter` to an HCI ID. `true` means the option was given without an ID. Only Windows and macOS
+ * accept that and use 0, which their noble bindings ignore.
  *
  * @throws InvalidArgumentError when the ID is missing on any other platform
  */
@@ -152,9 +155,9 @@ export function bluetoothAdapterFrom(value: number | true | undefined, platform:
     if (value !== true) {
         return value;
     }
-    if (platform !== "win32") {
+    if (!PLATFORMS_WITHOUT_HCI_ID.has(platform)) {
         throw new InvalidArgumentError(
-            "--bluetooth-adapter needs the HCI ID of the adapter (e.g. 0 for hci0). Only Windows accepts it without an ID",
+            "--bluetooth-adapter needs the HCI ID of the adapter (e.g. 0 for hci0). Only Windows and macOS accept it without an ID",
         );
     }
     return 0;
@@ -280,7 +283,7 @@ export function parseCliArgs(argv?: string[]): CliOptions {
         .addOption(
             new Option(
                 "--bluetooth-adapter [id]",
-                "Enable local BLE with this Bluetooth adapter HCI ID (e.g., 0 for hci0); the ID is optional on Windows",
+                "Enable local BLE with this Bluetooth adapter HCI ID (e.g., 0 for hci0); the ID is optional on Windows and macOS",
             )
                 .argParser(parseIntOption)
                 .env("BLUETOOTH_ADAPTER"),
