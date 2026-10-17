@@ -52,13 +52,22 @@ devices and the server find each other over mDNS on that interface.
     sudo setcap cap_net_raw+eip $(eval readlink -f `which node`)
     ```
 
-4. Docker; every cert run needs it for the test harness containers:
+4. Docker; every cert run needs it for the test harness containers. The cert run uses Docker without `sudo`, so add
+   your user to the `docker` group:
 
     ```bash
     curl -fsSL https://get.docker.com | sudo sh
-    sudo usermod -aG docker $USER   # then log out and in again
+    sudo usermod -aG docker $USER
+    ```
+
+    The group applies only to new logins. Log out and in again (for SSH: reconnect), then check:
+
+    ```bash
+    groups                          # must list docker
     docker run --rm hello-world
     ```
+
+    Without that new login, `docker` fails with `permission denied while trying to connect to the docker API`.
 
 5. Memory. Building the matter.js monorepo peaks at about 1.4 GB, the server at about 0.8 GB. Set `GOMEMLIMIT` on
    every Raspberry Pi; the native TypeScript type checker the build runs reads it, and it cut the matter.js peak to
