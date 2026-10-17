@@ -299,7 +299,7 @@ const UNSCOPED_INVOKES = {};
  */
 export function attestationRefusalOf(findings: AttestationFinding[]): string | undefined {
     if (findings.some(({ type }) => type === DeviceAttestationCheck.TrustedAsTestCertificate)) {
-        return 'This device uses a test/development certificate. To commission it, enable the "Test DCL" option in the settings — only do this if you trust the vendor.';
+        return "This device uses a test/development certificate. To commission it, enable the test-net DCL option of the Matter Server — only do this if you trust the vendor.";
     }
     const errors = findings.filter(({ level }) => level === "error");
     if (errors.length === 0) {

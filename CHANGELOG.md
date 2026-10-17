@@ -81,6 +81,7 @@ This page shows a detailed overview of the changes between versions without the 
 - Fix: Commissioning with a pairing code that names a vendor and product skips a device whose advertisement names another vendor or product
 - Fix: A device that has only its root endpoint is commissioned and reported with its data
 - Fix: `commission_on_network` respects `filter_type` 3 (vendor) and 4 (device type)
+- Fix: `discover_commissionable_nodes` returns every discovered device, not only the last one
 - Fix: `device_command` respects `interaction_timeout_ms`, and refuses a command the cluster does not have or fields that cannot be encoded with error 8
 - Fix: Identical commands sent in parallel by different clients each reach the device
 - Fix: `read_attribute` and `write_attribute` refuse a path with an id that is invalid for its kind (for example cluster 32768) with `InvalidArguments`
