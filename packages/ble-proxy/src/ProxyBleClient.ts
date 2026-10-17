@@ -5,7 +5,7 @@
  */
 
 import { createPromise, Logger, Seconds, withTimeout } from "@matter/main";
-import { BleError, MatterBle } from "@matter/main/protocol";
+import { BleError, type BleScannerClient, MatterBle } from "@matter/main/protocol";
 import type { BleProxyConnection } from "./BleProxyConnection.js";
 import type { BleProxyHandler } from "./BleProxyHandler.js";
 import type { DeviceDiscoveredData } from "./BleProxyProtocol.js";
@@ -38,9 +38,8 @@ export interface ProxyPeripheral {
  * Replaces NobleBleClient - instead of using Noble directly, sends scan commands
  * to the proxy client and receives device_discovered events.
  */
-export class ProxyBleClient {
+export class ProxyBleClient implements BleScannerClient {
     readonly #handler: BleProxyHandler;
-    readonly #discoveredPeripherals = new Map<string, { peripheral: ProxyPeripheral; matterServiceData: Uint8Array }>();
     #deviceDiscoveredCallback: ((peripheral: ProxyPeripheral, matterServiceData: Uint8Array) => void) | undefined;
     #isScanning = false;
 
@@ -61,9 +60,10 @@ export class ProxyBleClient {
 
     setDiscoveryCallback(callback: (peripheral: ProxyPeripheral, matterServiceData: Uint8Array) => void): void {
         this.#deviceDiscoveredCallback = callback;
-        for (const { peripheral, matterServiceData } of this.#discoveredPeripherals.values()) {
-            this.#deviceDiscoveredCallback(peripheral, matterServiceData);
-        }
+    }
+
+    isPeripheralReachable(address: string): boolean {
+        return this.#handler.getOwner(address) !== undefined;
     }
 
     async startScanning(): Promise<void> {
@@ -147,7 +147,6 @@ export class ProxyBleClient {
         logger.info(
             `Discovered commissionable device ${address} (${name ?? "unnamed"}) rssi=${rssi ?? "n/a"} via proxy`,
         );
-        this.#discoveredPeripherals.set(address, { peripheral, matterServiceData });
         this.#deviceDiscoveredCallback?.(peripheral, matterServiceData);
     }
 }

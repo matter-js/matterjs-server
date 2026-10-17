@@ -8,6 +8,7 @@ import { createServer } from "node:http";
 import { BleProxyHandler } from "../src/BleProxyHandler.js";
 import { BleProxyCommand, BleProxyErrorCode } from "../src/BleProxyProtocol.js";
 import { ProxyBleClient } from "../src/ProxyBleClient.js";
+import { ProxyBleScanner } from "../src/ProxyBleScanner.js";
 import { BleProxyTestClient } from "./BleProxyTestClient.js";
 
 const matterServiceData = Buffer.from([0, 0, 0, 0, 0, 0, 0, 0]).toString("base64");
@@ -220,5 +221,69 @@ describe("Multi-client BLE Proxy", function () {
         a.close();
         await new Promise<void>(resolve => setTimeout(resolve, 100));
         expect(handler.getOwner(address)).to.be.undefined;
+    });
+
+    describe("commissioning candidates", () => {
+        const discovered = (address: string) => ({
+            address,
+            connectable: true,
+            service_data: { fff6: matterServiceData },
+        });
+
+        const waitUntil = async (condition: () => boolean) => {
+            for (let i = 0; i < 100 && !condition(); i++) {
+                await new Promise<void>(resolve => setTimeout(resolve, 10));
+            }
+            expect(condition()).to.be.true;
+        };
+
+        let scanner: ProxyBleScanner;
+        const candidates = () =>
+            scanner
+                .getDiscoveredCommissionableDevices({ longDiscriminator: 0 })
+                .map(({ deviceIdentifier }) => deviceIdentifier);
+
+        beforeEach(() => {
+            scanner = new ProxyBleScanner(new ProxyBleClient(handler));
+        });
+
+        afterEach(async () => {
+            await scanner.close();
+        });
+
+        it("drops a peripheral once no connected client owns it and offers it again when one reports it", async () => {
+            const address = "AA:BB:CC:DD:EE:33";
+            const a = await addClient();
+            await waitUntil(() => handler.connected);
+            a.sendEvent("device_discovered", discovered(address));
+            await waitUntil(() => candidates().length === 1);
+
+            a.close();
+            await waitUntil(() => handler.getOwner(address) === undefined);
+            expect(candidates()).to.be.empty;
+            expect(() => scanner.getDiscoveredDevice(address)).to.throw("not reachable");
+
+            const b = await addClient();
+            await waitUntil(() => handler.connected);
+            b.sendEvent("device_discovered", discovered(address));
+            await waitUntil(() => candidates().length === 1);
+        });
+
+        it("keeps a peripheral as candidate when its owner disconnects and another client has seen it", async () => {
+            const address = "AA:BB:CC:DD:EE:44";
+            const a = await addClient();
+            const b = await addClient();
+            await new Promise<void>(resolve => setTimeout(resolve, 50));
+            a.sendEvent("device_discovered", discovered(address));
+            await waitUntil(() => handler.getOwner(address) !== undefined);
+            b.sendEvent("device_discovered", discovered(address));
+            await new Promise<void>(resolve => setTimeout(resolve, 50));
+            const ownerBefore = handler.getOwner(address);
+
+            a.close();
+            await waitUntil(() => handler.getOwner(address) !== ownerBefore);
+            expect(handler.getOwner(address)).to.not.be.undefined;
+            expect(candidates()).to.have.length(1);
+        });
     });
 });

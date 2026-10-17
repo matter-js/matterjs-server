@@ -137,10 +137,25 @@ export class BleProxyHandler implements WebServerHandler {
         });
     }
 
-    /** Returns the connection that owns `address`, if it is still connected. */
+    /**
+     * Returns the connected connection that owns `address`. An owner that is no longer connected but whose close has
+     * not been processed yet hands ownership to a connected seer, so the peripheral stays reachable meanwhile.
+     */
     getOwner(address: string): BleProxyConnection | undefined {
         const entry = this.#owners.get(address);
-        if (entry && entry.owner.connected) return entry.owner;
+        if (entry === undefined) return undefined;
+        if (!entry.owner.connected) {
+            const seer = this.#connectedSeer(entry.seers);
+            if (seer === undefined) return undefined;
+            entry.owner = seer;
+        }
+        return entry.owner;
+    }
+
+    #connectedSeer(seers: Set<BleProxyConnection>): BleProxyConnection | undefined {
+        for (const seer of seers) {
+            if (seer.connected) return seer;
+        }
         return undefined;
     }
 
@@ -244,13 +259,7 @@ export class BleProxyHandler implements WebServerHandler {
         for (const [address, entry] of this.#owners) {
             entry.seers.delete(connection);
             if (entry.owner === connection) {
-                let next: BleProxyConnection | undefined;
-                for (const seer of entry.seers) {
-                    if (seer.connected) {
-                        next = seer;
-                        break;
-                    }
-                }
+                const next = this.#connectedSeer(entry.seers);
                 if (next) {
                     entry.owner = next;
                     logger.info(`Reassigned ownership of ${address} to [${next.id}]`);
