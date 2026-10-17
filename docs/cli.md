@@ -196,7 +196,7 @@ The Python client connects with the server URL `unix:///run/matter-server/ws.soc
 
 The `--bluetooth-adapter` option enables BLE commissioning for Matter devices. It expects the **HCI ID** (integer) of your Bluetooth adapter, not a device path.
 
-Windows and macOS have no HCI IDs, so there `--bluetooth-adapter` can be given on the command line without a value to enable BLE. The server then uses the system's Bluetooth adapter. `BLUETOOTH_ADAPTER` still needs a number.
+Windows and macOS have no HCI IDs, so there `--bluetooth-adapter` can be given without a value to enable BLE, or set as `BLUETOOTH_ADAPTER=true` in the environment. The server then uses the system's Bluetooth adapter. `BLUETOOTH_ADAPTER=false` or an empty value leaves BLE off on every platform.
 
 ### Finding Your HCI ID
 

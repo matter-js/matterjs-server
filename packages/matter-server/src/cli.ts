@@ -143,13 +143,32 @@ export function parseListenAddressList(value: string): string[] {
 const PLATFORMS_WITHOUT_HCI_ID: ReadonlySet<NodeJS.Platform> = new Set(["win32", "darwin"]);
 
 /**
- * Resolves `--bluetooth-adapter` to an HCI ID. `true` means the option was given without an ID. Only Windows and macOS
- * accept that and use 0, which their noble bindings ignore.
+ * Parses a `--bluetooth-adapter` / `BLUETOOTH_ADAPTER` value: an HCI ID, or a boolean so the environment can enable BLE
+ * without an ID (`true`) or leave it off (`false` or empty). A number is always an HCI ID, so `1` means hci1.
+ */
+export function parseBluetoothAdapterOption(value: string): number | boolean {
+    const normalized = value.trim().toLowerCase();
+    if (/^\d+$/.test(normalized)) {
+        return Number(normalized);
+    }
+    if (["true", "yes", "on"].includes(normalized)) {
+        return true;
+    }
+    if (["", "false", "no", "off"].includes(normalized)) {
+        return false;
+    }
+    throw new InvalidArgumentError(`Expected an HCI ID or true/false, got: "${value}"`);
+}
+
+/**
+ * Resolves `--bluetooth-adapter` to an HCI ID, or `null` when BLE stays off. `true` means BLE without an ID: given as
+ * the bare flag or as `BLUETOOTH_ADAPTER=true`. Only Windows and macOS accept that and use 0, which their noble
+ * bindings ignore.
  *
  * @throws InvalidArgumentError when the ID is missing on any other platform
  */
-export function bluetoothAdapterFrom(value: number | true | undefined, platform: NodeJS.Platform): number | null {
-    if (value === undefined) {
+export function bluetoothAdapterFrom(value: number | boolean | undefined, platform: NodeJS.Platform): number | null {
+    if (value === undefined || value === false) {
         return null;
     }
     if (value !== true) {
@@ -285,7 +304,7 @@ export function parseCliArgs(argv?: string[]): CliOptions {
                 "--bluetooth-adapter [id]",
                 "Enable local BLE with this Bluetooth adapter HCI ID (e.g., 0 for hci0); the ID is optional on Windows and macOS",
             )
-                .argParser(parseIntOption)
+                .argParser(parseBluetoothAdapterOption)
                 .env("BLUETOOTH_ADAPTER"),
         )
         .addOption(

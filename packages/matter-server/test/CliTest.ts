@@ -10,6 +10,7 @@ import { spawnSync } from "node:child_process";
 import { networkInterfaces } from "node:os";
 import {
     bluetoothAdapterFrom,
+    parseBluetoothAdapterOption,
     parseCliArgs,
     parseCustomClusterPollIntervalOption,
     parseListenAddressList,
@@ -262,14 +263,12 @@ describe("cli", () => {
 
     describe("--bluetooth-adapter", () => {
         /** A missing ID ends the process through `program.error`, so the bare flag is parsed in a child process. */
-        function parseCliArgsInChild(script: string) {
+        function parseCliArgsInChild(script: string, env: Record<string, string> = {}) {
             const cli = JSON.stringify(import.meta.resolve("../src/cli.js"));
             return spawnSync(
                 process.execPath,
                 ["--input-type=module", "-e", `const m = await import(${cli}); ${script}`],
-                {
-                    encoding: "utf8",
-                },
+                { encoding: "utf8", env: { ...process.env, ...env } },
             );
         }
 
@@ -281,6 +280,48 @@ describe("cli", () => {
             expect(parseCliArgs(argv("--bluetooth-adapter", "1")).bluetoothAdapter).to.equal(1);
             expect(bluetoothAdapterFrom(1, "linux")).to.equal(1);
             expect(bluetoothAdapterFrom(1, "win32")).to.equal(1);
+        });
+
+        it("parses an HCI ID or a boolean", () => {
+            expect(parseBluetoothAdapterOption("1")).to.equal(1);
+            expect(parseBluetoothAdapterOption(" 0 ")).to.equal(0);
+            for (const value of ["true", "TRUE", "yes", "on"]) {
+                expect(parseBluetoothAdapterOption(value)).to.equal(true);
+            }
+            for (const value of ["", "false", "no", "off"]) {
+                expect(parseBluetoothAdapterOption(value)).to.equal(false);
+            }
+            expect(() => parseBluetoothAdapterOption("hci0")).to.throw(InvalidArgumentError, "Expected an HCI ID");
+        });
+
+        it("leaves BLE off for false on every platform", () => {
+            expect(bluetoothAdapterFrom(false, "linux")).to.equal(null);
+            expect(bluetoothAdapterFrom(false, "darwin")).to.equal(null);
+        });
+
+        it("reads BLUETOOTH_ADAPTER=true like the flag without an ID", () => {
+            const result = parseCliArgsInChild(
+                "console.log(m.parseCliArgs(['node', 'matter-server']).bluetoothAdapter);",
+                { BLUETOOTH_ADAPTER: "true" },
+            );
+
+            if (process.platform === "win32" || process.platform === "darwin") {
+                expect(result.status, `stdout: ${result.stdout}\nstderr: ${result.stderr}`).to.equal(0);
+                expect(result.stdout.trim()).to.equal("0");
+            } else {
+                expect(result.status, `stdout: ${result.stdout}\nstderr: ${result.stderr}`).to.equal(1);
+                expect(result.stderr).to.include("--bluetooth-adapter needs the HCI ID");
+            }
+        });
+
+        it("reads an empty BLUETOOTH_ADAPTER as BLE off", () => {
+            const result = parseCliArgsInChild(
+                "console.log(m.parseCliArgs(['node', 'matter-server']).bluetoothAdapter);",
+                { BLUETOOTH_ADAPTER: "" },
+            );
+
+            expect(result.status, `stdout: ${result.stdout}\nstderr: ${result.stderr}`).to.equal(0);
+            expect(result.stdout.trim()).to.equal("null");
         });
 
         it("uses HCI ID 0 on Windows and macOS when given without an ID", () => {
