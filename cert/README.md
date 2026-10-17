@@ -56,4 +56,5 @@ Runs with different inputs do not cancel each other. The evidence artifact is na
 
 `.github/workflows/matterjs-nightly-validation.yml` also calls it for both device flavors whenever a new matter.js
 nightly is available: it first updates the server to that nightly and then runs that version's suite (artifact
-`cert-evidence-<device>-nightly`).
+`cert-evidence-<device>-nightly`). A manual run with `force-cert` runs the suite even when the server already uses the
+newest nightly.
