@@ -12,7 +12,7 @@ import { join } from "node:path";
 
 const logger = Logger.get("MatterServer.Certificates");
 
-const PAA_FILE = /^(?<base>.+)\.paa\.(?<format>der|pem)$/i;
+const PAA_FILE = /^.+?(?<production>\.prod)?\.paa\.(?<format>der|pem)$/i;
 const PEM_BEGIN = "-----BEGIN ";
 const PEM_CERTIFICATE = /-----BEGIN CERTIFICATE-----([A-Za-z0-9+/=\s]+)-----END CERTIFICATE-----/g;
 
@@ -22,10 +22,11 @@ export type PaaTrustStore = Pick<DclCertificateService, "addCertificate" | "getC
  * Import the PAA root certificates in a directory into the persisted trust store.
  *
  * Only files named `<name>.paa.der` (one DER certificate) or `<name>.paa.pem` (one or more PEM certificates) are read;
- * other files stay untouched. A certificate is stored as production when `<name>` ends with `-prod`, otherwise as test.
+ * other files stay untouched. A certificate is stored as production when the name is `<name>.prod.paa.der` or
+ * `<name>.prod.paa.pem`, otherwise as test.
  * A production file turns a certificate stored as test into production; a test file never changes a stored certificate.
  * A file is deleted once each of its certificates is stored. A file that cannot be read or holds an invalid certificate
- * is logged as an error and kept; certificates before the invalid one in the same file stay stored.
+ * or PEM block is logged as an error and kept, and none of its certificates is stored.
  *
  * @param store a trust store that has finished its construction
  */
@@ -53,7 +54,7 @@ export async function importCertificates(store: PaaTrustStore, directory: string
             );
             continue;
         }
-        const isProduction = match.groups.base.toLowerCase().endsWith("-prod");
+        const isProduction = match.groups.production !== undefined;
 
         let index = 0;
         try {
@@ -65,8 +66,13 @@ export async function importCertificates(store: PaaTrustStore, directory: string
             const content = await readFile(path);
             const certificates = match.groups.format.toLowerCase() === "pem" ? pemCertificates(content) : [content];
 
-            for (const der of certificates) {
-                index++;
+            // Parse every certificate first, so an invalid one leaves the whole file unstored
+            for (const [position, der] of certificates.entries()) {
+                index = position + 1;
+                Paa.fromAsn1(der);
+            }
+            for (const [position, der] of certificates.entries()) {
+                index = position + 1;
                 const outcome = await storePaa(store, der, isProduction);
                 result[outcome]++;
                 const action = {

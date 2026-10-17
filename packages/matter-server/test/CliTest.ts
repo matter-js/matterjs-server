@@ -31,6 +31,7 @@ describe("cli", () => {
         "DCL_OFFLINE",
         "DISABLE_DCL_SEED",
         "REVOCATION_SETS_DIR",
+        "CERTIFICATES_DIR",
     ];
     const savedEnv = new Map<string, string | undefined>();
 

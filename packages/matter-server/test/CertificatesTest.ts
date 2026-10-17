@@ -69,6 +69,14 @@ describe("importCertificates", () => {
         return metadata === undefined ? undefined : { kind: metadata.kind, isProduction: metadata.isProduction };
     }
 
+    it("imports a file whose name only ends in -prod as test PAA", async () => {
+        await writeFile(join(dir, "vendor-prod.paa.der"), der(PEM_A));
+
+        await importCertificates(service, dir);
+
+        expect(stored(SKID_A)).deep.equals({ kind: "PAA", isProduction: false });
+    });
+
     it("imports a DER file as test PAA and deletes it", async () => {
         await writeFile(join(dir, "vendor.paa.der"), der(PEM_A));
 
@@ -83,8 +91,8 @@ describe("importCertificates", () => {
         expect(await readdir(dir)).deep.equals([]);
     });
 
-    it("imports every certificate of a -prod PEM file as production PAA", async () => {
-        await writeFile(join(dir, "vendor-PROD.PAA.PEM"), PEM_A + PEM_B);
+    it("imports every certificate of a .prod PEM file as production PAA", async () => {
+        await writeFile(join(dir, "vendor.PROD.PAA.PEM"), PEM_A + PEM_B);
 
         expect(await importCertificates(service, dir)).deep.equals({
             imported: 2,
@@ -114,9 +122,9 @@ describe("importCertificates", () => {
         expect(await readdir(dir)).deep.equals([]);
     });
 
-    it("upgrades a certificate stored as test with a -prod file", async () => {
+    it("upgrades a certificate stored as test with a .prod file", async () => {
         await service.addCertificate(der(PEM_A), "PAA");
-        await writeFile(join(dir, "vendor-prod.paa.der"), der(PEM_A));
+        await writeFile(join(dir, "vendor.prod.paa.der"), der(PEM_A));
 
         expect(await importCertificates(service, dir)).deep.equals({
             imported: 0,
@@ -143,20 +151,20 @@ describe("importCertificates", () => {
         expect(stored(SKID_A)).deep.equals({ kind: "PAA", isProduction: true });
     });
 
-    it("keeps a PEM file whose second certificate is invalid and counts the first", async () => {
+    it("stores nothing from a PEM file whose second certificate is invalid", async () => {
         await writeFile(
             join(dir, "mixed.paa.pem"),
             `${PEM_A}-----BEGIN CERTIFICATE-----\nMAMCAQE=\n-----END CERTIFICATE-----\n`,
         );
 
         expect(await importCertificates(service, dir)).deep.equals({
-            imported: 1,
+            imported: 0,
             upgraded: 0,
             known: 0,
             failedFiles: 1,
         });
 
-        expect(stored(SKID_A)).deep.equals({ kind: "PAA", isProduction: false });
+        expect(stored(SKID_A)).equals(undefined);
         expect(await readdir(dir)).deep.equals(["mixed.paa.pem"]);
     });
 
@@ -206,6 +214,7 @@ describe("importCertificates", () => {
 
     it("leaves files without the .paa.der or .paa.pem suffix untouched", async () => {
         await writeFile(join(dir, "vendor.der"), der(PEM_A));
+        await writeFile(join(dir, "vendor.paa.prod.der"), der(PEM_A));
         await writeFile(join(dir, "vendor.pem"), PEM_A);
 
         expect(await importCertificates(service, dir)).deep.equals({
@@ -216,7 +225,7 @@ describe("importCertificates", () => {
         });
 
         expect(service.certificates).deep.equals([]);
-        expect((await readdir(dir)).sort()).deep.equals(["vendor.der", "vendor.pem"]);
+        expect((await readdir(dir)).sort()).deep.equals(["vendor.der", "vendor.paa.prod.der", "vendor.pem"]);
     });
 
     it("imports nothing from a missing directory", async () => {
