@@ -88,6 +88,23 @@ The first run pulls the images and builds matter.js and takes long; the whole su
 arm64 runner and longer on a Raspberry Pi. No other Matter device on the network should advertise with the default
 passcode or discriminator 3840, and only one cert run may be active at a time.
 
+### Updating to another server version
+
+To move an existing checkout to a new release (or any other tag or branch):
+
+```bash
+cd matterjs-server
+git fetch --tags origin
+git checkout v1.5.1   # the new tag, or for example `git checkout main && git pull`
+npm ci
+npm run cert -- --device chip-local
+```
+
+`npm ci` installs the dependencies of that version, including its matter.js. `npm run cert` then rebuilds the server
+and moves `.cert/matter.js` to the matter.js version the new server uses, installs and builds it there, and runs that
+version's suite; `.cert` does not need to be deleted. Delete `.cert` only to free disk space, the next run clones
+matter.js again.
+
 ## Server configuration
 
 The matter.js adapter (`support/chip-testing/src/matter-server/matter-server-process.ts`) starts the server with these
