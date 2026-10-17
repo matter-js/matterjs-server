@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /**
- * Sync Matter.js dependencies to a specific npm tag version.
+ * Sync Matter.js dependencies to the version of an npm tag or to an exact version.
  *
- * Usage: node utils/sync-matterjs.js [latest|dev]
- *        npm run sync-matterjs [-- latest|dev]
+ * Usage: node utils/sync-matterjs.js [latest|dev|<version>]
+ *        npm run sync-matterjs [-- latest|dev|<version>]
  *
  * Defaults to "dev" tag if no argument provided.
  */
@@ -68,12 +68,12 @@ async function updatePackageJson(filePath, version) {
 async function main() {
     const tag = process.argv[2] ?? "dev";
 
-    if (!["latest", "dev"].includes(tag)) {
-        console.error(`Invalid tag "${tag}". Use "latest" or "dev".`);
+    if (!["latest", "dev"].includes(tag) && !/^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/.test(tag)) {
+        console.error(`Invalid tag "${tag}". Use "latest", "dev" or an exact version.`);
         process.exit(1);
     }
 
-    console.log(`Fetching Matter.js version for tag "${tag}"...`);
+    console.log(`Fetching Matter.js version for "${tag}"...`);
     const version = await getVersionFromNpm(tag);
     console.log(`Found version: ${version}\n`);
 

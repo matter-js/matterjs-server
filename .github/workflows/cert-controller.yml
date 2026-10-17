@@ -27,10 +27,10 @@ on:
                 description: "Test devices: chip-local or matterjs"
                 type: string
                 default: "chip-local"
-            matterjs-latest:
-                description: "Update the server to the newest matter.js nightly first and run that version's suite"
-                type: boolean
-                default: false
+            matterjs-version:
+                description: "Update the server to this matter.js version first and run that version's suite (empty: keep the server's version)"
+                type: string
+                default: ""
     push:
         branches: ["ci/cert-dut"]
 
@@ -38,7 +38,7 @@ permissions:
     contents: read
 
 concurrency:
-    group: ${{ github.ref }}-cert-controller-${{ inputs.matterjs-ref }}-${{ inputs.matterjs-latest }}-${{ inputs.device }}-${{ inputs.chip-bins-tag }}-${{ inputs.tc }}
+    group: ${{ github.ref }}-cert-controller-${{ inputs.matterjs-ref }}-${{ inputs.matterjs-version }}-${{ inputs.device }}-${{ inputs.chip-bins-tag }}-${{ inputs.tc }}
     cancel-in-progress: true
 
 jobs:
@@ -58,9 +58,11 @@ jobs:
             - uses: actions/checkout@v7
             - name: Prepare environment
               uses: ./.github/actions/prepare-env
-            - name: Update to the newest matter.js nightly
-              if: inputs.matterjs-latest
-              run: npm run sync-matterjs
+            - name: Update to matter.js ${{ inputs.matterjs-version }}
+              if: inputs.matterjs-version != ''
+              env:
+                  MATTERJS_VERSION: ${{ inputs.matterjs-version }}
+              run: npm run sync-matterjs -- "$MATTERJS_VERSION"
             - name: Start mDNS responder
               if: env.DEVICE == 'chip-local'
               run: |
@@ -79,7 +81,7 @@ jobs:
               if: always()
               uses: actions/upload-artifact@v7
               with:
-                  name: cert-evidence-${{ inputs.device || 'chip-local' }}${{ inputs.matterjs-latest && '-latest' || '' }}
+                  name: cert-evidence-${{ inputs.device || 'chip-local' }}${{ inputs.matterjs-version != '' && '-nightly' || '' }}
                   path: |
                       .cert/evidence
                       .cert/matter.js/support/chip-testing/build/cert-evidence

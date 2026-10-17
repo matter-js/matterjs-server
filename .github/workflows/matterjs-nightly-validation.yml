@@ -13,7 +13,8 @@ jobs:
   validate-nightly:
     runs-on: ubuntu-latest
     outputs:
-      has_changes: ${{ steps.check-changes.outputs.has_changes }}
+      matterjs_version: ${{ steps.sync.outputs.matterjs_version }}
+      version_changed: ${{ steps.sync.outputs.version_changed }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -29,8 +30,14 @@ jobs:
           # Capture the version being synced to
           MATTERJS_VERSION=$(npm view @matter/main@dev version)
           echo "matterjs_version=$MATTERJS_VERSION" >> $GITHUB_OUTPUT
+          CURRENT_VERSION=$(node -p "require('./packages/matter-server/package.json').dependencies['@matter/main']")
+          if [ "$CURRENT_VERSION" = "$MATTERJS_VERSION" ]; then
+            echo "version_changed=false" >> $GITHUB_OUTPUT
+          else
+            echo "version_changed=true" >> $GITHUB_OUTPUT
+          fi
           echo "Syncing to matter.js version: $MATTERJS_VERSION"
-          npm run sync-matterjs
+          npm run sync-matterjs -- "$MATTERJS_VERSION"
           npm run relock
 
       - name: Check for changes
@@ -73,7 +80,7 @@ jobs:
 
   cert:
     needs: validate-nightly
-    if: needs.validate-nightly.outputs.has_changes == 'true'
+    if: needs.validate-nightly.outputs.version_changed == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -81,4 +88,4 @@ jobs:
     uses: ./.github/workflows/cert-controller.yml
     with:
       device: ${{ matrix.device }}
-      matterjs-latest: true
+      matterjs-version: ${{ needs.validate-nightly.outputs.matterjs_version }}
