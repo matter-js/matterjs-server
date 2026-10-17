@@ -60,15 +60,20 @@ devices and the server find each other over mDNS on that interface.
     docker run --rm hello-world
     ```
 
-5. Memory. Building the matter.js monorepo peaks at about 1.4 GB, the server at about 0.8 GB. With 4 GB of RAM this
-   fits; with less, add swap and set `GOMEMLIMIT` (read by the native TypeScript type checker the build runs), which
-   cut the matter.js peak to about 1.1 GB in a measurement, at a slightly longer build time:
+5. Memory. Building the matter.js monorepo peaks at about 1.4 GB, the server at about 0.8 GB. Set `GOMEMLIMIT` on
+   every Raspberry Pi; the native TypeScript type checker the build runs reads it, and it cut the matter.js peak to
+   about 1.1 GB in a measurement at a slightly longer build time, which leaves room for the OS and Docker:
+
+    ```bash
+    echo 'export GOMEMLIMIT=1GiB' >> ~/.bashrc && export GOMEMLIMIT=1GiB
+    ```
+
+    With less than 4 GB of RAM, also add swap:
 
     ```bash
     sudo fallocate -l 4G /swapfile && sudo chmod 600 /swapfile
     sudo mkswap /swapfile && sudo swapon /swapfile
     echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
-    export GOMEMLIMIT=1GiB
     ```
 
 6. Check out and run, either a release tag (`git tag -l 'v*'` lists them) or `main`:
