@@ -12,6 +12,8 @@ on:
 jobs:
   validate-nightly:
     runs-on: ubuntu-latest
+    outputs:
+      has_changes: ${{ steps.check-changes.outputs.has_changes }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -68,3 +70,15 @@ jobs:
           echo "matter.js version **${{ steps.sync.outputs.matterjs_version }}** is already in use." >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "No new nightly version to validate." >> $GITHUB_STEP_SUMMARY
+
+  cert:
+    needs: validate-nightly
+    if: needs.validate-nightly.outputs.has_changes == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        device: [chip-local, matterjs]
+    uses: ./.github/workflows/cert-controller.yml
+    with:
+      device: ${{ matrix.device }}
+      matterjs-latest: true

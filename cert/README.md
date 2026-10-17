@@ -8,8 +8,6 @@
 npm run cert -- [--tc TC-IDM-2.1] [--matterjs-ref <ref>] [--device chip-local|matterjs] [--dry-run]
 ```
 
-The matterjs-server adapter is not in matter.js `main` yet, and the default ref below does not contain it. Until it is merged, pass `--matterjs-ref feat/cert-matterjs-server-controller`; otherwise every test fails at collection with `Unknown MATTER_CERT_CONTROLLER`.
-
 Steps: build this repo, clone (or fetch) matter.js into `.cert/matter.js` (git-ignored), check out the ref, `npm ci && npm run build` there, then run the tests. The exit code is the test exit code; a failing step prints its name and exits with that step's exit code, or with 1 when it was killed by a signal or could not start. An invalid argument exits with 2 before any step runs. Nested steps get your environment without the variables `npm run` sets about its own invocation (`npm_lifecycle_*`, `npm_package_*`, `npm_config_local_prefix`, `npm_config_user_agent` and a few more); your other `npm_config_*` settings pass. `PATH` keeps the `node_modules/.bin` entries `npm run` added for this repo.
 
 - `--tc <id>`: run only `test/cert/<id>.test.ts` (default: the whole suite). The id is `TC-` followed by letters, digits, `.`, `-` or `_`, for example `TC-IDM-2.1`.
@@ -47,10 +45,15 @@ Besides `read`, `subscribe` and the commissioning commands, the adapter uses `st
 `chip-local` with the official `chip-cert-bins` apps on an arm64 runner, because `chip-cert-bins` is published for
 `linux/arm64` only. Inputs:
 
-- `matterjs-ref`: matter.js branch, tag or commit with the certification suite.
+- `matterjs-ref`: matter.js branch, tag or commit with the certification suite. Empty (default): the matter.js
+  version this server uses.
 - `device`: `chip-local` (default) or `matterjs`, which runs matter.js test devices on an amd64 runner.
 - `chip-bins-tag`: `chip-cert-bins` image tag (`MATTER_CHIP_BINS_TAG`); empty uses the matter.js default, `latest`
   the newest published image.
 - `tc`: run a single test case.
 
-Runs with different inputs do not cancel each other.
+Runs with different inputs do not cancel each other. The evidence artifact is named `cert-evidence-<device>`.
+
+`.github/workflows/matterjs-nightly-validation.yml` also calls it for both device flavors whenever a new matter.js
+nightly is available: it first updates the server to that nightly and then runs that version's suite (artifact
+`cert-evidence-<device>-latest`).

@@ -5,9 +5,9 @@ on:
     workflow_dispatch:
         inputs:
             matterjs-ref:
-                description: "matter.js branch, tag or commit with the certification suite"
+                description: "matter.js branch, tag or commit with the certification suite (empty: the matter.js version this server uses)"
                 required: false
-                default: "feat/cert-matterjs-server-controller"
+                default: ""
             device:
                 description: "Test devices: chip-local (official chip-cert-bins apps) or matterjs (matter.js test devices)"
                 type: choice
@@ -21,6 +21,16 @@ on:
                 description: "Single test case, for example TC-IDM-2.1 (empty: whole suite)"
                 required: false
                 default: ""
+    workflow_call:
+        inputs:
+            device:
+                description: "Test devices: chip-local or matterjs"
+                type: string
+                default: "chip-local"
+            matterjs-latest:
+                description: "Update the server to the newest matter.js nightly first and run that version's suite"
+                type: boolean
+                default: false
     push:
         branches: ["ci/cert-dut"]
 
@@ -28,7 +38,7 @@ permissions:
     contents: read
 
 concurrency:
-    group: ${{ github.ref }}-cert-controller-${{ inputs.matterjs-ref }}-${{ inputs.device }}-${{ inputs.chip-bins-tag }}-${{ inputs.tc }}
+    group: ${{ github.ref }}-cert-controller-${{ inputs.matterjs-ref }}-${{ inputs.matterjs-latest }}-${{ inputs.device }}-${{ inputs.chip-bins-tag }}-${{ inputs.tc }}
     cancel-in-progress: true
 
 jobs:
@@ -37,8 +47,7 @@ jobs:
         runs-on: ${{ inputs.device == 'matterjs' && 'ubuntu-latest' || 'ubuntu-24.04-arm' }}
         timeout-minutes: 90
         env:
-            # The matterjs-server adapter is not in matter.js main yet.
-            MATTERJS_REF: ${{ inputs.matterjs-ref || 'feat/cert-matterjs-server-controller' }}
+            MATTERJS_REF: ${{ inputs.matterjs-ref }}
             DEVICE: ${{ inputs.device || 'chip-local' }}
             MATTER_CHIP_BINS_TAG: ${{ inputs.chip-bins-tag }}
             # Lets TC-SC-3.5 and TC-DA-1.9 run instead of skipping themselves; only the chip-local leg has these bins.
@@ -49,6 +58,9 @@ jobs:
             - uses: actions/checkout@v7
             - name: Prepare environment
               uses: ./.github/actions/prepare-env
+            - name: Update to the newest matter.js nightly
+              if: inputs.matterjs-latest
+              run: npm run sync-matterjs
             - name: Start mDNS responder
               if: env.DEVICE == 'chip-local'
               run: |
@@ -67,7 +79,7 @@ jobs:
               if: always()
               uses: actions/upload-artifact@v7
               with:
-                  name: cert-evidence
+                  name: cert-evidence-${{ inputs.device || 'chip-local' }}${{ inputs.matterjs-latest && '-latest' || '' }}
                   path: |
                       .cert/evidence
                       .cert/matter.js/support/chip-testing/build/cert-evidence
