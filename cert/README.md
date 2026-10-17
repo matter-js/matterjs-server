@@ -71,11 +71,11 @@ devices and the server find each other over mDNS on that interface.
     export GOMEMLIMIT=1GiB
     ```
 
-6. Check out and run. Use a release tag (`git tag -l 'v*'`) or `main`:
+6. Check out and run, either a release tag (`git tag -l 'v*'` lists them) or `main`:
 
     ```bash
     git clone https://github.com/matter-js/matterjs-server.git && cd matterjs-server
-    git checkout <tag>   # optional
+    git checkout v1.5.0   # a release tag, for example; leave out to run main
     npm ci
 
     export MATTER_MDNS_NETWORKINTERFACE=eth0   # the interface the test devices are on
