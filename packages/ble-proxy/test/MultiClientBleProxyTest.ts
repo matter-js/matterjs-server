@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import { Minutes } from "@matter/main";
 import { createServer } from "node:http";
 import { BleProxyHandler } from "../src/BleProxyHandler.js";
 import { BleProxyCommand, BleProxyErrorCode } from "../src/BleProxyProtocol.js";
@@ -221,6 +222,65 @@ describe("Multi-client BLE Proxy", function () {
         a.close();
         await new Promise<void>(resolve => setTimeout(resolve, 100));
         expect(handler.getOwner(address)).to.be.undefined;
+    });
+
+    describe("ownership expiry", () => {
+        let a: BleProxyTestClient;
+
+        const report = async (address: string) => {
+            a.sendEvent("device_discovered", { address, connectable: true, service_data: { fff6: matterServiceData } });
+            await new Promise<void>(resolve => setTimeout(resolve, 30));
+        };
+        const startScan = () => handler.startScan({ service_uuids: ["fff6"], allow_duplicates: false });
+
+        // After the handshake, so the liveness timer runs on the real clock; its first tick comes after the test ends.
+        beforeEach(async () => {
+            a = await addClient();
+            await new Promise<void>(resolve => setTimeout(resolve, 50));
+            MockTime.enable();
+        });
+
+        afterEach(() => {
+            MockTime.disable();
+        });
+
+        it("drops a peripheral not reported for 15 minutes when a new scan starts", async () => {
+            await report("AA:BB:CC:DD:EE:55");
+            await report("AA:BB:CC:DD:EE:66");
+            await MockTime.advance(Minutes(16));
+            await report("AA:BB:CC:DD:EE:66");
+
+            await startScan();
+
+            expect(handler.getOwner("AA:BB:CC:DD:EE:55")).to.be.undefined;
+            expect(handler.getOwner("AA:BB:CC:DD:EE:66")).to.not.be.undefined;
+        });
+
+        it("counts the age from the end of the last scan like the BLE scanner", async () => {
+            await startScan();
+            await report("AA:BB:CC:DD:EE:77");
+            await MockTime.advance(Minutes(10));
+            await handler.stopScan();
+            await MockTime.advance(Minutes(10));
+
+            await startScan();
+            expect(handler.getOwner("AA:BB:CC:DD:EE:77")).to.not.be.undefined;
+
+            await handler.stopScan();
+            await MockTime.advance(Minutes(16));
+            await startScan();
+            expect(handler.getOwner("AA:BB:CC:DD:EE:77")).to.be.undefined;
+        });
+
+        it("keeps every peripheral while a scan is re-armed", async () => {
+            await startScan();
+            await report("AA:BB:CC:DD:EE:88");
+            await MockTime.advance(Minutes(16));
+
+            await startScan();
+
+            expect(handler.getOwner("AA:BB:CC:DD:EE:88")).to.not.be.undefined;
+        });
     });
 
     describe("commissioning candidates", () => {

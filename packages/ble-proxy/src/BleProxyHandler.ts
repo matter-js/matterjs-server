@@ -5,7 +5,7 @@
  */
 
 import type { WebServerHandler } from "@matter-server/ws-controller";
-import { Logger, Observable } from "@matter/main";
+import { Logger, Minutes, Observable, Time, Timestamp } from "@matter/main";
 import type { createServer } from "node:http";
 import { WebSocket, WebSocketServer } from "ws";
 import { BleProxyConnection } from "./BleProxyConnection.js";
@@ -22,6 +22,13 @@ import {
 type HttpServer = ReturnType<typeof createServer>;
 
 const logger = Logger.get("BleProxyHandler");
+
+/**
+ * Age after which an ownership entry is dropped when a new scan starts. The entry ages like the BLE scanner's record for
+ * a client without listening time: from the later of its last report and the end of the last scan, so it never expires
+ * while the scanner still offers the device.
+ */
+const OWNER_MAX_AGE = Minutes(15);
 
 function isErrorCode(err: unknown, code: BleProxyErrorCodeValue): boolean {
     return err instanceof BleProxyCommandError && err.code === code;
@@ -44,11 +51,15 @@ export class BleProxyHandler implements WebServerHandler {
     /** Active scan intent + args, so clients joining mid-scan can be synced. */
     #scanActive = false;
     #scanArgs?: StartScanArgs;
+    #scanStoppedAt?: Timestamp;
     /** Connections currently told to scan, for aggregate `scanStopped`. */
     #scanning = new Set<BleProxyConnection>();
 
-    /** address -> owning connection + every connection that has seen it. */
-    #owners = new Map<string, { owner: BleProxyConnection; seers: Set<BleProxyConnection> }>();
+    /** address -> owning connection, every connection that has seen it, and when it was last reported. */
+    #owners = new Map<
+        string,
+        { owner: BleProxyConnection; seers: Set<BleProxyConnection>; lastReportedAt: Timestamp }
+    >();
 
     /** Emitted whenever a connection completes its handshake. */
     readonly connectionEstablished = new Observable<[]>();
@@ -160,6 +171,9 @@ export class BleProxyHandler implements WebServerHandler {
     }
 
     async startScan(args: StartScanArgs): Promise<void> {
+        if (!this.#scanActive) {
+            this.#forgetUnreportedOwners();
+        }
         this.#scanActive = true;
         this.#scanArgs = args;
         const sends = new Array<Promise<unknown>>();
@@ -178,6 +192,7 @@ export class BleProxyHandler implements WebServerHandler {
 
     async stopScan(): Promise<void> {
         this.#scanActive = false;
+        this.#scanStoppedAt = Time.nowUs;
         const sends = new Array<Promise<unknown>>();
         for (const connection of this.#connections) {
             if (connection.connected) {
@@ -238,10 +253,11 @@ export class BleProxyHandler implements WebServerHandler {
     #onDeviceDiscovered(connection: BleProxyConnection, data: DeviceDiscoveredData): void {
         let entry = this.#owners.get(data.address);
         if (!entry) {
-            entry = { owner: connection, seers: new Set([connection]) };
+            entry = { owner: connection, seers: new Set([connection]), lastReportedAt: Time.nowUs };
             this.#owners.set(data.address, entry);
         } else {
             entry.seers.add(connection);
+            entry.lastReportedAt = Time.nowUs;
             if (!entry.owner.connected) {
                 entry.owner = connection;
             }
@@ -250,6 +266,18 @@ export class BleProxyHandler implements WebServerHandler {
             `[${connection.id}] device_discovered ${data.address} rssi=${data.rssi ?? "n/a"} seers=${entry.seers.size} isOwner=${entry.owner === connection}`,
         );
         this.deviceDiscovered.emit(data, connection);
+    }
+
+    #forgetUnreportedOwners(): void {
+        const now = Time.nowUs;
+        if (this.#scanStoppedAt !== undefined && Timestamp.delta(this.#scanStoppedAt, now) <= OWNER_MAX_AGE) {
+            return;
+        }
+        for (const [address, { lastReportedAt }] of this.#owners) {
+            if (Timestamp.delta(lastReportedAt, now) > OWNER_MAX_AGE) {
+                this.#owners.delete(address);
+            }
+        }
     }
 
     #onConnectionClosed(connection: BleProxyConnection): void {

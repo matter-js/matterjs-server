@@ -57,6 +57,9 @@ follows:
 - **Ownership survives client loss.** If a peripheral's owner disconnects, ownership moves
   to another connected client that has also reported that peripheral. If no such client
   remains, the peripheral is dropped and must be rediscovered.
+- **Ownership expires.** A peripheral that no client reported for 15 minutes, counted from
+  its last report or the end of the last scan, whichever is later, is dropped when the next
+  scan starts and must be rediscovered.
 
 ### Liveness
 
