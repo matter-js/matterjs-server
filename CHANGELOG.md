@@ -93,6 +93,7 @@ This page shows a detailed overview of the changes between versions without the 
 - Fix: The server exits with code 1 when it fails to start (for example when the WebSocket port is in use), so systemd or Docker can restart it; before, it logged the error and kept running without a listener
 - Fix: Door Lock PIN fields (`credentialData`, `pinCode`) are redacted from the debug logs
 - Fix: BLE proxy connections are pinged every 15 seconds and terminated after 45 to 60 seconds of silence, so a proxy client that loses power is detected instead of staying registered indefinitely
+- Fix: Commissioning over BLE proxies no longer tries a device that only a disconnected proxy client had seen. The device is offered again as soon as a connected proxy client sees it
 - Fix: The node snapshot that carries a new endpoint is sent before the `endpoint_added` event, so a client that looks the new endpoint up in its node model finds it; an endpoint removed again before that snapshot is built is not announced
 - Fix: A removed endpoint leaves the attribute cache when its removal is announced, and `get_node` waits for a cache rebuild that is already running, so a read after a structure change returns the current structure
 - Fix: An endpoint removed while the server rebuilds its node data no longer comes back in the rebuilt node data
