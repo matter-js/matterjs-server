@@ -84,6 +84,6 @@ describe("DCL Attestation Enforcement", function () {
 
         expect(error.error_code).to.equal(ServerErrorCode.NodeCommissionFailed);
         expect(error.reason).to.equal("attestation-rejected");
-        expect(error.details).to.include("Test DCL");
+        expect(error.details).to.include("test-net DCL option");
     });
 });

@@ -566,6 +566,6 @@ describe("attestationRefusalOf", () => {
     });
 
     it("gives the test certificate hint over any other error", () => {
-        expect(attestationRefusalOf([revoked, testCertificate])).match(/enable the "Test DCL" option/);
+        expect(attestationRefusalOf([revoked, testCertificate])).match(/enable the test-net DCL option/);
     });
 });
