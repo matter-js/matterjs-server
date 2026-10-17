@@ -64,13 +64,23 @@ jobs:
             - name: Execute tests
               run: npm run test
 
+    cert:
+        if: github.repository == 'matter-js/matterjs-server' && contains(github.event.pull_request.labels.*.name, 'automated-npm-release')
+        needs: [check-and-lint]
+        strategy:
+            fail-fast: false
+            matrix:
+                device: [chip-local, matterjs]
+        uses: ./.github/workflows/cert-controller.yml
+        with:
+            device: ${{ matrix.device }}
+
     auto-merge:
         if: |
-            always() &&
             github.event_name == 'pull_request' &&
             github.repository == 'matter-js/matterjs-server' &&
             contains(github.event.pull_request.labels.*.name, 'automated-npm-release')
-        needs: [test, build-non-linux, check-and-lint]
+        needs: [test, build-non-linux, check-and-lint, cert]
         runs-on: ubuntu-latest
         steps:
             - id: automerge

@@ -41,9 +41,9 @@ Besides `read`, `subscribe` and the commissioning commands, the adapter uses `st
 
 ## CI
 
-`.github/workflows/cert-controller.yml` runs on manual dispatch and on a push to `ci/cert-dut`. By default it runs
-`chip-local` with the official `chip-cert-bins` apps on an arm64 runner, because `chip-cert-bins` is published for
-`linux/arm64` only. Inputs:
+`.github/workflows/cert-controller.yml` runs on manual dispatch and on every release PR (`release-npm.yml`, both device
+flavors, before the release is merged). By default it runs `chip-local` with the official `chip-cert-bins` apps on an
+arm64 runner, because `chip-cert-bins` is published for `linux/arm64` only. Inputs:
 
 - `matterjs-ref`: matter.js branch, tag or commit with the certification suite. Empty (default): the matter.js
   version this server uses.

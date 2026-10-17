@@ -31,8 +31,6 @@ on:
                 description: "Update the server to this matter.js version first and run that version's suite (empty: keep the server's version)"
                 type: string
                 default: ""
-    push:
-        branches: ["ci/cert-dut"]
 
 permissions:
     contents: read
