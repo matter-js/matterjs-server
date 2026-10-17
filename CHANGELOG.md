@@ -16,25 +16,23 @@ This page shows a detailed overview of the changes between versions without the 
     - The TypeScript client's `ServerCommandError` carries typed error details (`details`, `hasDetails(code)`); the Python client has typed camera methods, results, events and errors
     - The dashboard's camera view uses the new camera API
         - Talks back to cameras that support two-way audio (needs HTTPS or localhost for the microphone)
-- Breaking: Library API: `ServerError.nodeCommissionFailed` (`@matter-server/ws-controller`) takes the failure reason as second argument, and `APICommands` (`@matter-server/ws-client`) no longer lists the unsupported `subscribe_attribute`
 - Enhancement: `nodes_changed` events carry a detail naming the node they concern (`reason`, `nodeId`, and `attributeKey` for attribute updates). A listener interested in one node can skip events for other nodes. Listeners that take no argument are unaffected. `addEventListener` only accepts the known event names, so TypeScript code that passes a `string` must narrow it first
 - Enhancement: Update matter.js to the latest 0.18.0 nightly
     - Adds support for Matter 1.6.1 (including Python client)
 - Enhancement: Finishes the migration to the new matter.js controller API
 - Enhancement: `send_webrtc_provider_command` also relays `ProvideAnswer` and `ProvideIceCandidates`
 - Enhancement: (@RaHehl) `open_commissioning_window` also returns `discriminator`, `vendor_id`, `product_id` and `commissioning_timeout` (seconds) as reported by matter.js, so clients can hand the data to another ecosystem without decoding the QR code.
-- Enhancement: Adds the WebSocket commands `read`, `subscribe`, `unsubscribe`, `enable_auto_subscription` and `disable_auto_subscription` for generic Matter reads and subscriptions in the `--disable-auto-subscription` mode, including ws-client and Python client support. See [docs/websockets_api.md](docs/websockets_api.md#subscriptions-and-generic-read)
-- Enhancement: Adds the WebSocket command `parse_onboarding_payload` to decode a QR code or manual pairing code without contacting a device, including ws-client and Python client support
-- Enhancement: Adds CLI flag `--disable-auto-subscription` (env `DISABLE_AUTO_SUBSCRIPTION`): the server does not subscribe to nodes and runs no background jobs on its own. Only for special use cases such as certification testing. See [docs/cli.md](docs/cli.md#disabled-auto-subscription)
-- Enhancement: When device attestation refuses a device, the commissioning error also names the failed checks, e.g. `Device attestation refused: CertificateRevoked: Device Attestation Certificate has been revoked`
+- Enhancement: Adds CLI flag `--revocation-sets-dir` (env `REVOCATION_SETS_DIR`): the server installs the device attestation revocation sets from that directory at every start, and refuses devices whose certificates they list. See [README](README.md#installing-device-attestation-revocation-sets)
 - Enhancement: Adds CLI flag `--dcl-offline` (env `DCL_OFFLINE`): the server never contacts the DCL, uses the bundled DCL data and stored certificates, and skips the DCL revocation lookups. Revocation sets from `--revocation-sets-dir` still apply
-- Enhancement: Adds CLI flag `--revocation-sets-dir` (env `REVOCATION_SETS_DIR`): the server installs the device attestation revocation sets from that directory at every start, and refuses devices whose certificates they list. The files use the format of the CHIP tool `generate_revocation_set.py`. See [README](README.md#installing-device-attestation-revocation-sets)
-- Enhancement: Library API: `MatterController.installRevocations` installs device attestation revocation sets, and `attestationRefusalOf` (`@matter-server/ws-controller`) returns the refusal text for failed attestation checks
-- Enhancement: `commission_with_code` and `commission_on_network` take an optional `discovery_timeout_s`, including ws-client and Python client support; the Python client also takes `filter_type` and `filter` on `commission_on_network`
-- Enhancement: Error responses carry the device's Matter status (`status`, `cluster_status`), commissioning errors a `reason`, and `write_attribute` results the cluster-specific status, including ws-client and Python client support
-- Enhancement: Adds the WebSocket command `batched_device_commands` to send several commands to one node in a single InvokeRequest, including ws-client and Python client support
-- Enhancement: Supports the attributes of the CHIP UnitTesting test cluster (0xFFF1FC05) that the controller certification suite uses, including Python client support
-- Enhancement: `write_attribute` takes a wildcard endpoint to write all endpoints of a node in one request, and `timed_request_timeout_ms` for a timed write, including ws-client and Python client support
+- Enhancement: Adds CLI flag `--disable-auto-subscription` (env `DISABLE_AUTO_SUBSCRIPTION`): the server does not subscribe to nodes and runs no background jobs on its own. Only for special use cases. See [docs/cli.md](docs/cli.md#disabled-auto-subscription)
+- Enhancement: Adds the WebSocket commands `read`, `subscribe`, `unsubscribe`, `enable_auto_subscription` and `disable_auto_subscription` for generic Matter reads and subscriptions in the `--disable-auto-subscription` mode. See [docs/websockets_api.md](docs/websockets_api.md#subscriptions-and-generic-read)
+- Enhancement: Adds the WebSocket command `parse_onboarding_payload` to decode a QR code or manual pairing code without contacting a device
+- Enhancement: When device attestation refuses a device, the commissioning error also names the failed checks, e.g. `Device attestation refused: CertificateRevoked: Device Attestation Certificate has been revoked`
+- Enhancement: `commission_with_code` and `commission_on_network` take an optional `discovery_timeout_s`
+- Enhancement: Error responses carry the device's Matter status (`status`, `cluster_status`), commissioning errors a `reason`, and `write_attribute` results the cluster-specific status
+- Enhancement: Adds the WebSocket command `batched_device_commands` to send several commands to one node in a single InvokeRequest
+- Enhancement: Adds the CHIP UnitTesting test cluster (0xFFF1FC05) as custom cluster that the controller certification suite uses
+- Enhancement: `write_attribute` takes a wildcard endpoint to write all endpoints of a node in one request, and `timed_request_timeout_ms` for a timed write
 - Enhancement: The ws-client has `commissionOnNetwork`, and `deviceCommand` takes an options object with `timedRequestTimeoutMs` and `interactionTimeoutMs` (a number still sets the client timeout)
 - Enhancement: `--port 0` binds a free port, shown in the startup log line `Webserver listening on …`
 - Enhancement: Dashboard network view uses the Thread 1.4 role names: a Thread Router is shown as "Mesh Extender" and a REED as "Standby Mesh Extender". External (non-fabric) neighbors, whose role is only inferred from rx-on-when-idle, are now labeled "Always-on device" instead of a routing role. Wire values and the `ThreadRoutingRole` enum keep the Matter spec names
