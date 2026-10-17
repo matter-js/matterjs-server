@@ -321,3 +321,87 @@ async def test_late_result_after_disconnect_keeps_the_read_loop_alive(
         await command_task
     assert client._result_futures == {}
     assert f"Result arrived for already settled message id {message_id}" in caplog.text
+
+
+@pytest.mark.parametrize(
+    ("interface_type", "interface_name", "thread_name", "last_network_id", "networks", "expected"),
+    [
+        ("thread", "TestThreadNetwork", None, b"\x01\x23\x45\x67\x89\xab\xcd\xef", [], "TestThreadNetwork"),
+        (
+            "thread",
+            "TestThreadNetwork",
+            "FromThreadDiagnostics",
+            b"\x01\x23\x45\x67\x89\xab\xcd\xef",
+            [],
+            "FromThreadDiagnostics",
+        ),
+        ("thread", "", None, b"\x01\x23\x45\x67\x89\xab\xcd\xef", [], None),
+        ("wifi", "wlan0", None, b"HomeWiFi", [], "HomeWiFi"),
+        ("wifi", "wlan0", None, None, [(True, b"BackupWiFi")], "BackupWiFi"),
+        ("ethernet", "eth0", None, b"NotAnSSID", [], None),
+    ],
+    ids=[
+        "thread-interface-fallback",
+        "thread-diagnostics-preferred",
+        "thread-without-name",
+        "wifi-last-network-id",
+        "wifi-connected-network",
+        "ethernet-no-ssid",
+    ],
+)
+async def test_node_diagnostics_network_name(
+    interface_type: str,
+    interface_name: str,
+    thread_name: str | None,
+    last_network_id: bytes | None,
+    networks: list[tuple[bool, bytes]],
+    expected: str | None,
+) -> None:
+    """Network names are resolved according to the transport type."""
+    client = _make_client()
+    node = MagicMock()
+    node.available = True
+    node.node_data.is_bridge = False
+    interface_enum = clusters.GeneralDiagnostics.Enums.InterfaceTypeEnum
+    interface_types = {
+        "thread": interface_enum.kThread,
+        "wifi": interface_enum.kWiFi,
+        "ethernet": interface_enum.kEthernet,
+    }
+    interface = MagicMock(
+        isOperational=True,
+        type=interface_types[interface_type],
+        name=interface_name,
+        hardwareAddress=b"\x01\x02\x03\x04\x05\x06",
+    )
+    interface.name = interface_name
+    network_attrs = clusters.NetworkCommissioning.Attributes
+
+    def attribute_value(endpoint: int, cluster: object, attribute: object) -> object:
+        if attribute == clusters.GeneralDiagnostics.Attributes.NetworkInterfaces:
+            return [interface]
+        if attribute == network_attrs.LastNetworkID:
+            return last_network_id
+        if attribute == network_attrs.Networks:
+            return [MagicMock(connected=connected, networkID=network_id) for connected, network_id in networks]
+        if attribute == clusters.OperationalCredentials.Attributes.CurrentFabricIndex:
+            return 1
+        return None
+
+    node.get_attribute_value.side_effect = attribute_value
+    node.get_cluster.return_value = (
+        MagicMock(
+            networkName=thread_name,
+            routingRole=clusters.ThreadNetworkDiagnostics.Enums.RoutingRoleEnum.kEndDevice,
+        )
+        if interface_type == "thread" and thread_name is not None
+        else None
+    )
+    client.get_node = MagicMock(return_value=node)
+    client.get_node_ip_addresses = AsyncMock(return_value=["fd00::1"])
+    client.get_matter_fabrics = AsyncMock(return_value=[])
+
+    diagnostics = await client.node_diagnostics(42)
+
+    assert diagnostics.network_name == expected
+    assert diagnostics.network_type.name == interface_type.upper()
