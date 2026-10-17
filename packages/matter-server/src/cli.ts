@@ -139,6 +139,27 @@ export function parseListenAddressList(value: string): string[] {
         .filter(address => address !== "");
 }
 
+/**
+ * Resolves `--bluetooth-adapter` to an HCI ID. `true` means the option was given without an ID. Only Windows accepts
+ * that and uses 0: Windows has no HCI IDs, and noble's WinRT bindings ignore the ID.
+ *
+ * @throws InvalidArgumentError when the ID is missing on any other platform
+ */
+export function bluetoothAdapterFrom(value: number | true | undefined, platform: NodeJS.Platform): number | null {
+    if (value === undefined) {
+        return null;
+    }
+    if (value !== true) {
+        return value;
+    }
+    if (platform !== "win32") {
+        throw new InvalidArgumentError(
+            "--bluetooth-adapter needs the HCI ID of the adapter (e.g. 0 for hci0). Only Windows accepts it without an ID",
+        );
+    }
+    return 0;
+}
+
 function collectAddresses(value: string, previous: string[]): string[] {
     return previous.concat(value);
 }
@@ -257,7 +278,10 @@ export function parseCliArgs(argv?: string[]): CliOptions {
             ).env("CERTIFICATES_DIR"),
         )
         .addOption(
-            new Option("--bluetooth-adapter <id>", "Bluetooth adapter HCI ID (e.g., 0 for hci0)")
+            new Option(
+                "--bluetooth-adapter [id]",
+                "Enable local BLE with this Bluetooth adapter HCI ID (e.g., 0 for hci0); the ID is optional on Windows",
+            )
                 .argParser(parseIntOption)
                 .env("BLUETOOTH_ADAPTER"),
         )
@@ -372,6 +396,14 @@ export function parseCliArgs(argv?: string[]): CliOptions {
         program.error("error: --dcl-offline needs the DCL seed, so it cannot be combined with --disable-dcl-seed");
     }
 
+    let bluetoothAdapter: number | null = null;
+    try {
+        bluetoothAdapter = bluetoothAdapterFrom(opts.bluetoothAdapter, process.platform);
+    } catch (error) {
+        if (!(error instanceof InvalidArgumentError)) throw error;
+        program.error(`error: ${error.message}`);
+    }
+
     // Warn about deprecated options if used
     for (const [key, flag] of Object.entries(DEPRECATED_OPTIONS)) {
         if (opts[key] !== undefined && opts[key] !== false) {
@@ -427,7 +459,7 @@ export function parseCliArgs(argv?: string[]): CliOptions {
         dclOffline: opts.dclOffline,
         revocationSetsDir: opts.revocationSetsDir ?? null,
         certificatesDir: opts.certificatesDir ?? null,
-        bluetoothAdapter: opts.bluetoothAdapter ?? null,
+        bluetoothAdapter,
         bleProxy: opts.bleProxy,
         disableOta: opts.disableOta,
         otaProviderDir: opts.otaProviderDir ?? null,

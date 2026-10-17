@@ -9,6 +9,7 @@ import { InvalidArgumentError } from "commander";
 import { spawnSync } from "node:child_process";
 import { networkInterfaces } from "node:os";
 import {
+    bluetoothAdapterFrom,
     parseCliArgs,
     parseCustomClusterPollIntervalOption,
     parseListenAddressList,
@@ -32,6 +33,7 @@ describe("cli", () => {
         "DISABLE_DCL_SEED",
         "REVOCATION_SETS_DIR",
         "CERTIFICATES_DIR",
+        "BLUETOOTH_ADAPTER",
     ];
     const savedEnv = new Map<string, string | undefined>();
 
@@ -255,6 +257,45 @@ describe("cli", () => {
             } finally {
                 delete process.env.CERTIFICATES_DIR;
             }
+        });
+    });
+
+    describe("--bluetooth-adapter", () => {
+        it("is unset by default", () => {
+            expect(parseCliArgs(argv()).bluetoothAdapter).to.equal(null);
+        });
+
+        it("uses the given HCI ID on every platform", () => {
+            expect(parseCliArgs(argv("--bluetooth-adapter", "1")).bluetoothAdapter).to.equal(1);
+            expect(bluetoothAdapterFrom(1, "linux")).to.equal(1);
+            expect(bluetoothAdapterFrom(1, "win32")).to.equal(1);
+        });
+
+        it("uses HCI ID 0 on Windows when given without an ID", () => {
+            expect(bluetoothAdapterFrom(true, "win32")).to.equal(0);
+        });
+
+        it("needs an HCI ID on other platforms", () => {
+            for (const platform of ["linux", "darwin"] as const) {
+                expect(() => bluetoothAdapterFrom(true, platform)).to.throw(InvalidArgumentError, "needs the HCI ID");
+            }
+        });
+
+        it("exits with an error when given without an ID outside Windows", function () {
+            if (process.platform === "win32") this.skip();
+            const cli = JSON.stringify(import.meta.resolve("../src/cli.js"));
+            const result = spawnSync(
+                process.execPath,
+                [
+                    "--input-type=module",
+                    "-e",
+                    `const m = await import(${cli}); m.parseCliArgs(["node", "matter-server", "--bluetooth-adapter"]);`,
+                ],
+                { encoding: "utf8" },
+            );
+
+            expect(result.status, `stdout: ${result.stdout}\nstderr: ${result.stderr}`).to.equal(1);
+            expect(result.stderr).to.include("--bluetooth-adapter needs the HCI ID");
         });
     });
 

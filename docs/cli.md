@@ -38,7 +38,7 @@ npm run server -- --bluetooth-adapter 0
 | --dcl-offline                | boolean flag | false            | No       | Never contact the DCL: attestation trusts the bundled DCL seed (PAA roots, CD signers) and certificates stored by earlier runs and skips DCL revocation checks (sets from `--revocation-sets-dir` still apply), vendor names come from the seed and storage, and OTA update checks do not query the DCL. Cannot be combined with `--disable-dcl-seed` |
 | --revocation-sets-dir        | string       | null             | No       | Directory with device attestation revocation sets, installed at every start before commissioning is possible — env `REVOCATION_SETS_DIR`. Reads every `*.json` file: a JSON array of entries as CHIP's `credentials/generate_revocation_set.py` writes them (`issuer_subject_key_id` hex, `issuer_name` base64 DER, `revoked_serial_numbers` hex list; `crl_signer_cert` and `crl_signer_delegator` are ignored). An invalid file is skipped with an error. Works with and without `--dcl-offline`. See [Installing Device Attestation Revocation Sets](../README.md#installing-device-attestation-revocation-sets) |
 | --certificates-dir           | string       | null             | No       | Directory with PAA certificates to import at every start — env `CERTIFICATES_DIR`. Reads `*.paa.der` and `*.paa.pem` files and deletes each file after import; a file that fails stays. Imported as test certificates (trusted only with `--enable-test-net-dcl`), as production certificates when the name ends in `.prod.paa.der` or `.prod.paa.pem`. See [Importing Custom PAA Certificates](../README.md#importing-custom-paa-certificates) |
-| --bluetooth-adapter          | integer      | null             | No       | Bluetooth adapter HCI ID (e.g., 0 for hci0). Mutually exclusive with `--ble-proxy`.                                                                                                                                                                                  |
+| --bluetooth-adapter          | integer      | null             | No       | Bluetooth adapter HCI ID (e.g., 0 for hci0). On Windows the ID is optional. Mutually exclusive with `--ble-proxy`.                                                                                                                                                   |
 | --ble-proxy                  | boolean flag | false            | No       | Expose `/ble` WebSocket endpoint for a remote BLE proxy client. Mutually exclusive with `--bluetooth-adapter` (--ble-proxy wins).                                                                                                                                    |
 | --disable-ota                | boolean flag | false            | No       | Disable OTA update functionality                                                                                                                                                                                                                                     |
 | --ota-provider-dir           | string       | null             | No       | Directory for OTA Provider files                                                                                                                                                                                                                                     |
@@ -196,6 +196,8 @@ The Python client connects with the server URL `unix:///run/matter-server/ws.soc
 
 The `--bluetooth-adapter` option enables BLE commissioning for Matter devices. It expects the **HCI ID** (integer) of your Bluetooth adapter, not a device path.
 
+Windows has no HCI IDs, so there `--bluetooth-adapter` can be given on the command line without a value to enable BLE. The server then uses the system's Bluetooth adapter. `BLUETOOTH_ADAPTER` still needs a number.
+
 ### Finding Your HCI ID
 
 On Linux, list available Bluetooth adapters:
@@ -223,7 +225,7 @@ npm run server -- --bluetooth-adapter 0
 
 ### Note
 
-This is different from Thread Border Routers which use serial device paths (e.g., `/dev/ttyUSB0`). BLE commissioning uses the system's Bluetooth HCI interface.
+This is different from Thread Border Routers which use serial device paths (e.g., `/dev/ttyUSB0`). On Linux, BLE commissioning uses the system's Bluetooth HCI interface. On Windows and macOS it uses the operating system's Bluetooth API.
 
 ---
 
