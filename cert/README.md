@@ -21,6 +21,73 @@ Steps: build this repo, clone (or fetch) matter.js into `.cert/matter.js` (git-i
 
 Prerequisites: Docker running for every cert run, for the test harness containers; on Linux with `chip-local` the CHIP binaries are also extracted from the `cert-bins` image, which exists for `linux/arm64` only, so this needs an arm64 host (`cert/run-cert.mjs` sets `MATTER_CHIP_PLATFORM=linux/arm64`). On macOS with `chip-local` the locally built CHIP apps in `MATTER_CERT_APP_DIR` run as host processes.
 
+## Running on a Raspberry Pi or another arm64 Linux host
+
+`chip-cert-bins` exists for `linux/arm64` only, so an arm64 Linux host runs the `chip-local` flavor with the official
+CHIP apps natively, as the CI does. These steps start from a fresh Ubuntu 24.04 (arm64), for example on a Raspberry Pi
+4. Use an SSD (64 GB or more: the Docker images and two `node_modules` trees are large) and a wired network: the test
+devices and the server find each other over mDNS on that interface.
+
+1. Base packages. `avahi-daemon` is required for `chip-local`, because the CHIP apps publish through the platform's
+   mDNS responder.
+
+    ```bash
+    sudo apt update && sudo apt full-upgrade -y
+    sudo apt install -y git curl ca-certificates build-essential python3 avahi-daemon
+    sudo systemctl enable --now avahi-daemon
+    ```
+
+2. Node.js 24:
+
+    ```bash
+    sudo apt-get install -y curl
+    curl -fsSL https://deb.nodesource.com/setup_24.x | sudo -E bash -
+    sudo apt-get install -y nodejs
+    ```
+
+3. BLE (optional, the cert suite does not use it):
+
+    ```bash
+    sudo apt install -y libcap2-bin bluetooth bluez libbluetooth-dev libudev-dev make g++
+    sudo setcap cap_net_raw+eip $(eval readlink -f `which node`)
+    ```
+
+4. Docker; every cert run needs it for the test harness containers:
+
+    ```bash
+    curl -fsSL https://get.docker.com | sudo sh
+    sudo usermod -aG docker $USER   # then log out and in again
+    docker run --rm hello-world
+    ```
+
+5. Memory. Building the matter.js monorepo peaks at about 1.4 GB, the server at about 0.8 GB. With 4 GB of RAM this
+   fits; with less, add swap and set `GOMEMLIMIT` (read by the native TypeScript type checker the build runs), which
+   cut the matter.js peak to about 1.1 GB in a measurement, at a slightly longer build time:
+
+    ```bash
+    sudo fallocate -l 4G /swapfile && sudo chmod 600 /swapfile
+    sudo mkswap /swapfile && sudo swapon /swapfile
+    echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+    export GOMEMLIMIT=1GiB
+    ```
+
+6. Check out and run. Use a release tag (`git tag -l 'v*'`) or `main`:
+
+    ```bash
+    git clone https://github.com/matter-js/matterjs-server.git && cd matterjs-server
+    git checkout <tag>   # optional
+    npm ci
+
+    export MATTER_MDNS_NETWORKINTERFACE=eth0   # the interface the test devices are on
+    export MATTER_CERT_TH_SERVER_APP_PATH=/official-chip-bins/chip-all-clusters-app-nlfaultinject   # TC-SC-3.5, TC-DA-1.9
+    export MATTER_CERT_OTA_FAST_RETRY=1
+    npm run cert -- --device chip-local
+    ```
+
+The first run pulls the images and builds matter.js and takes long; the whole suite takes about 13 minutes on the CI
+arm64 runner and longer on a Raspberry Pi. No other Matter device on the network should advertise with the default
+passcode or discriminator 3840, and only one cert run may be active at a time.
+
 ## Server configuration
 
 The matter.js adapter (`support/chip-testing/src/matter-server/matter-server-process.ts`) starts the server with these
