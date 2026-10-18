@@ -142,25 +142,23 @@ Besides `read`, `subscribe` and the commissioning commands, the adapter uses `st
 ## Starting the server for manual tests
 
 For test cases run by hand (for example with the dashboard or the CHIP test scripts), build and start the server
-yourself with the options the suite uses. Use a storage directory of its own, so a test fabric never mixes with your
-normal one:
+yourself. Use a storage directory of its own, so a test fabric never mixes with your normal one:
 
 ```bash
 npm run build
 npm run server -- \
     --storage-path ~/matter-cert-data \
     --enable-test-net-dcl \
-    --dcl-offline \
     --log-level debug \
-    --primary-interface eth0 \
-    --disable-auto-subscription
+    --primary-interface eth0
 ```
 
 - The WebSocket API and the dashboard are on port 5580 (`http://<host>:5580`); `--port` and `--listen-address` change
   that.
-- Leave out `--disable-auto-subscription` when the test expects the server to subscribe to its nodes on its own, as in
-  normal use.
-- Add `--revocation-sets-dir <dir>` when the test needs device attestation revocation sets.
+- Add `--disable-auto-subscription` if the test checks which requests the controller sends; the server then neither
+  subscribes on its own nor sends background traffic.
+- Add `--dcl-offline` if the test must not depend on the DCL; attestation then uses the bundled DCL data.
+- Add `--revocation-sets-dir <dir>` if the test needs device attestation revocation sets.
 - Delete the storage directory to start again with a new fabric.
 
 ## CI
