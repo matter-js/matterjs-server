@@ -7,9 +7,6 @@
 // cli.ts has no matter.js imports, so parsing here stays before matter.js loads.
 import { getCliOptions } from "./cli.js";
 
-// The `matter-server` bin entry cannot pass --enable-source-maps
-process.setSourceMapsEnabled(true);
-
 // Apply server storage defaults before matter.js loads. matter.js's
 // NodeJsEnvironment runs at import time and installs `storage.driver = "file"`
 // from `config.storageDriver` as a baseline before overlaying process.env, so

@@ -29,7 +29,7 @@ Use the same data directory and command-line arguments as for the Python Matter 
 2. Copy `chip.json` and `<long-number>.json` from the Python Matter Server into that directory. If the Python server runs in a Docker container (for example on Home Assistant OS, accessible via the SSH add-on):
     - Find the container with `docker ps`.
     - List the files with `docker exec -it <container-id> ls /data/`.
-    - Copy them with `docker cp <container-id>:/data/chip.json ./chip.json` and `docker cp <container-id>:/data/<long-number>.json ./<long-number>.json`.
+    - Copy them with `docker cp <container-id>:/data/chip.json ~/matter-data/` and `docker cp <container-id>:/data/<long-number>.json ~/matter-data/`.
 3. Install the server as described in the [README](../README.md#manual-installation-from-npm) and start it with `npx matter-server --storage-path ~/matter-data`. If the host has several network interfaces, add `--primary-interface <interface-name>` (for example `eth0` on Linux or `en0` on macOS).
 
 See the [CLI documentation](cli.md) for all parameters and the differences from the Python Matter Server.
