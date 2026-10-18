@@ -18,6 +18,8 @@ npm run server -- --listen-address 192.168.1.100
 npm run server -- --bluetooth-adapter 0
 ```
 
+When the server is installed from npm, `npx matter-server` takes the same options without the extra `--`, for example `npx matter-server --port 5580`.
+
 ---
 
 ## Complete Argument Specification
@@ -238,10 +240,6 @@ On startup, legacy Python storage files are read and migrated when needed:
 - `chip.json` - Chip configuration (fabric credentials)
 - `{fabricId}.json` - Node data and vendor info
 
-Legacy files are kept updated for rollback compatibility - you can switch back to Python Matter Server with the same storage path.
+`{fabricId}.json` is updated when nodes are added or removed, so you can switch back to the Python Matter Server with the same storage path.
 
-> [!IMPORTANT]
-> Please ensure you have a backup of your storage files before switching to Matter.js.
-> Additionally, when using the python data files, you must ensure that the python-matter-server with these files is not running at the same time.
-
-The `{fabricId}.json` is also updated when nodes are added or removed, so reflect the changes when you switch back to python.
+See the [migration guide](migration.md) for backups, the first start, switching back, and troubleshooting.

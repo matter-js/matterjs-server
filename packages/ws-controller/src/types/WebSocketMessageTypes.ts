@@ -73,7 +73,7 @@ import type {
 
 /**
  * Error codes matching Python Matter Server for API compatibility.
- * @see https://github.com/home-assistant-libs/python-matter-server/blob/main/matter_server/common/errors.py
+ * @see https://github.com/matter-js/python-matter-server/blob/main/matter_server/common/errors.py
  */
 export enum ServerErrorCode {
     /** Generic/unknown error */

@@ -2,12 +2,6 @@
 
 ![Matter Logo](docs/matter_logo.svg)
 
-> [!WARNING]
-> This is an Beta version of a matter.js-based controller with a [Python Matter Server](https://github.com/matter-js/python-matter-server) compatible WebSocket interface.
-> This version is not yet officially re-certified by the CSA, but will be in the future.
->
-> Please refer to the [Beta testing instructions](ALPHABETATESTS.md) how to test this version.
-
 The Open Home Foundation Matter Server serves as the foundation to provide Matter support to [Home Assistant](https://home-assistant.io) but its universal approach makes it suitable to be used in other projects too.
 
 This project implements a Matter Controller Server over WebSockets using JavaScript Matter SDK [matter.js](https://github.com/matter-js/matter.js)
@@ -25,17 +19,15 @@ This repository consists of multiple packages that are provided in the `packages
 - `custom-clusters`: A set of community-provided custom Matter clusters used by the Matter Server (published to npmjs as `@matter-server/custom-clusters`)
 - `dashboard`: A dashboard to interact with the Matter Server and show node detailed data (published to npmjs as `@matter-server/dashboard`)
 
-## Beta testing instructions
+## Migrating from the Python Matter Server
 
-As mentioned above the enw Matter server is currently in a Testing phase.
-
-Please see the [Beta testing instructions](ALPHABETATESTS.md) for more information.
+The server reads the data files of the Python Matter Server and migrates them on the first start. See the [migration guide](docs/migration.md) for the steps, what to expect on the first start, how to switch back, and troubleshooting.
 
 ## Support
 
-During the Beta phase of the matter.js-based Matter server, we enabled issue creation for this version via GitHub issues. If you use the Python Matter server and your issue is not related to a Migration-issue from/to matter.js-Server, please use the options listed below.
+Report bugs in the Matter Server itself as [GitHub issues](https://github.com/matter-js/matterjs-server/issues) in this repository. Attach the complete log, see [Getting logs](docs/migration.md#getting-logs).
 
-For users of Home Assistant, seek support in the official Home Assistant support channels.
+For general questions about using Matter with Home Assistant, use the official Home Assistant support channels.
 
 - The Home Assistant [Community Forum](https://community.home-assistant.io/).
 - The Home Assistant [Discord Chat Server](https://discord.gg/c5DvZ4e).
@@ -66,7 +58,7 @@ comments posted without human review — are not accepted and will be closed.
 
 ## Installation / Running the Matter Server
 
-- Endusers of Home Assistant, refer to the [Home Assistant documentation](https://www.home-assistant.io/integrations/matter/) how to run Matter in Home Assistant using the official Matter Server add-on, which is based on this project. Choose the "Beta" version if you want to test the matter.js based server (soon)
+- Endusers of Home Assistant, refer to the [Home Assistant documentation](https://www.home-assistant.io/integrations/matter/) how to run Matter in Home Assistant using the official Matter Server add-on, which is based on this project.
 
 - For running the server and/or client in your development environment, see the [Development documentation](DEVELOPMENT.md).
 
@@ -78,7 +70,7 @@ comments posted without human review — are not accepted and will be closed.
 - `npm install matter-server`
 - `npx matter-server` or alternatively `cd node_modules/matter-server && npm run server`
 
-If you want to provide more parameters when using "npm run" (not needed when using npx!) use an extra "--" to separate parameters, see below.
+If you want to provide more parameters when using "npm run" (not needed when using npx) use an extra "--" to separate parameters, see below.
 
 ### Manual installation (for local development)
 
@@ -87,7 +79,7 @@ If you want to provide more parameters when using "npm run" (not needed when usi
 - (`npm run build`) if ever needed after changing code
 - `npm run server` to start it
 
-The server is started on port localhost:5580 and listens fpr WS on "/ws"
+The server is started on port localhost:5580 and listens for WebSocket connections on "/ws".
 
 Configure the HA instance against this server and have fun :-)
 
@@ -122,9 +114,9 @@ docker run ... -e PRODUCTION_MODE=true ghcr.io/matter-js/matterjs-server:stable
 
 This tells the dashboard to automatically connect to the WebSocket server at the current URL instead of prompting for a server address.
 
-It was in general tested with a simply slight bulb on network.
+### BLE commissioning
 
-Ble and Wifi should work when server gets startes with `--ble` flag, but Wifi only will work. For Thread Matter.js currently requires a network Name which is not provided.
+To commission devices over BLE with a local Bluetooth adapter, start the server with `--bluetooth-adapter <HCI ID>` (the ID is optional on Windows and macOS). See the [BLE requirements](docs/os_requirements.md#bluetooth-low-energy-requirements).
 
 ### BLE Proxy mode
 
@@ -321,7 +313,7 @@ A device can only pass device attestation when the server knows the PAA (Product
 
 ## Differences from Python Matter Server
 
-This implementation aims to be API-compatible with the [Python Matter Server](https://github.com/home-assistant-libs/python-matter-server), but there are some intentional differences:
+This implementation aims to be API-compatible with the [Python Matter Server](https://github.com/matter-js/python-matter-server), but there are some intentional differences:
 
 | Feature                 | Python Matter Server                                       | Matter.js Server                                                                                           |
 | ----------------------- | ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |

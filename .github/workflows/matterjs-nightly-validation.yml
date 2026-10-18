@@ -4,8 +4,8 @@ name: Matter.js Nightly Validation
 
 on:
   schedule:
-    # Run at 6am CET (5am UTC) daily
-    - cron: '0 5 * * *'
+    # Run at 8am CET (7am UTC) daily
+    - cron: '0 7 * * *'
   workflow_dispatch:
     inputs:
       force-cert:

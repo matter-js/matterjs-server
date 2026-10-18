@@ -19,6 +19,9 @@
     ],
     "type": "module",
     "main": "dist/esm/MatterServer.js",
+    "bin": {
+        "matter-server": "dist/esm/MatterServer.js"
+    },
     "exports": {
         ".": {
             "dev-types": {

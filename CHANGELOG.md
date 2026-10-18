@@ -120,6 +120,9 @@ This page shows a detailed overview of the changes between versions without the 
 - Fix: A BLE proxy client that answers `already_scanning` stays tracked as scanning, so its later `scan_stopped` still reaches the Matter stack
 - Fix: The Python BLE proxy client tracks subscriptions and the last written characteristic without requiring a prior `discover_services`, and re-arms a running scan when `start_scan` changes its parameters
 - Fix: Ensure a fabric label set with `set_default_fabric_label` is respected also for servers without any commissioned device
+- Fix: `npx matter-server` starts the server; the npm package now provides the `matter-server` command
+- Documentation: The beta test instructions are replaced by a [migration guide](docs/migration.md) for moving from the Python Matter Server, including troubleshooting
+- Adjustment: The Python BLE proxy client package is marked as stable
 
 ## 1.4.0 (2026-08-07)
 

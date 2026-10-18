@@ -2322,7 +2322,7 @@ Node IDs and some other fields (e.g., `fabric_id`, `compressed_fabric_id`, `even
 
 ## Error Codes
 
-Error codes match the [Python Matter Server](https://github.com/home-assistant-libs/python-matter-server) for API compatibility.
+Error codes match the [Python Matter Server](https://github.com/matter-js/python-matter-server) for API compatibility.
 
 | Code | Name | Description |
 |------|------|-------------|
@@ -2410,7 +2410,7 @@ A caller that asks for audio and gets none can also see error 103 (capacity), er
 
 ## Python Matter Server Compatibility
 
-This API is designed to be compatible with the [Python Matter Server](https://github.com/home-assistant-libs/python-matter-server) WebSocket API.
+This API is designed to be compatible with the [Python Matter Server](https://github.com/matter-js/python-matter-server) WebSocket API.
 
 ### Stub Commands
 

@@ -6,7 +6,7 @@ For testing/evaluation purposes or as a guideline for application developers tha
 > **Attention Home Assistant users:** The Docker image is provided as-is and without official support (due to all the complex requirements to the underlying host/OS). Use it at your own risk if you know what you're doing.
 
 > [!NOTE]
-> **Attention Python server docker users:** This Matter server is designed as a drop-in replacement for the Python Matter Server, and supports the same WebSocket API. The only difference is that the new container runs unprivileged by default and so needs a [permission-change of the data dir](#permission-issues)! Content-wise just use the same data directory and command-line arguments. The first start will include a data migration.
+> **Attention Python server docker users:** This Matter server is designed as a drop-in replacement for the Python Matter Server, and supports the same WebSocket API. The only difference is that the new container runs unprivileged by default and so needs a [permission-change of the data dir](#permission-issues)! Content-wise just use the same data directory and command-line arguments. The first start will include a data migration, see the [migration guide](migration.md).
 
 We strongly recommend using Home Assistant OS along with the official Matter Server add-on to use Matter with Home Assistant. The Matter integration automatically installs the Matter Server as an add-on. Please refer to the [Home Assistant documentation](https://www.home-assistant.io/integrations/matter/).
 
