@@ -143,6 +143,21 @@ describe("cert/run-cert.mjs", function () {
         ).to.equal("abc1234^{commit}");
     });
 
+    it("names the evidence directory after the test step, also when it fails", () => {
+        const certDir = mkdtempSync(join(tmpdir(), "cert-evidence-"));
+        try {
+            const result = runCert(["--matterjs-ref", "abc1234"], {
+                RUN_CERT_TEST_PLATFORM: "linux",
+                RUN_CERT_TEST_DIR: certDir,
+                RUN_CERT_TEST_STEPS: "test",
+            });
+            expect(result.status).to.not.equal(0);
+            expect(result.stderr).to.contain(`cert: evidence in ${join(certDir, "evidence")}`);
+        } finally {
+            rmSync(certDir, { recursive: true, force: true });
+        }
+    });
+
     it("runs the steps in order", () => {
         const names = plan(["--matterjs-ref", "abc1234"]).map(s => s.step);
         expect(names.filter(n => n !== "clone")).to.deep.equal([

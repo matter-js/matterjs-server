@@ -15,9 +15,11 @@ Steps: build this repo, clone (or fetch) matter.js into `.cert/matter.js` (git-i
 - `--dry-run`: print the planned steps as one JSON object per line and run nothing. It still checks the arguments, the ref and the platform, and on macOS with `chip-local` that `MATTER_CERT_APP_DIR` is set.
 - `--device <chip-local|matterjs>`: the test devices the suite commissions (default `chip-local`). `chip-local` runs the CHIP example apps; `matterjs` runs matter.js test devices and needs no CHIP apps, so neither the `cert-bins` image nor `MATTER_CERT_APP_DIR`.
 - `MATTER_CERT_APP_DIR` (macOS only, required with `chip-local`): directory with the locally built CHIP example apps.
-- Evidence is written to `.cert/evidence`.
+- Evidence is written to `.cert/evidence`, one `<timestamp>-<test case>` directory per test case with `result.json`
+  (verdict, steps and checks) and the logs: `controller-dut.log` (the server) and `device-*.log` (the test devices). The
+  last output line of a run names that directory. In CI the same files are the `cert-evidence-<device>` artifact.
 - The checkout always ends detached at the current remote state of the ref (branch, tag or commit), discarding changes to tracked files in `.cert/matter.js`; untracked files stay. A ref of 7 to 40 lowercase hex characters is taken as a commit sha: all branches and tags are fetched, and tags moved upstream are updated. A short commit sha must be reachable from a remote branch or tag; only a full 40-character sha can be fetched on its own.
-- `RUN_CERT_TEST_PLATFORM=linux|darwin`, `RUN_CERT_TEST_DIR`, `RUN_CERT_TEST_MATTERJS_URL`, `RUN_CERT_TEST_PACKAGE_JSON` and `RUN_CERT_TEST_SOURCE_ONLY=1` are for testing the runner only.
+- `RUN_CERT_TEST_PLATFORM=linux|darwin`, `RUN_CERT_TEST_DIR`, `RUN_CERT_TEST_MATTERJS_URL`, `RUN_CERT_TEST_PACKAGE_JSON`, `RUN_CERT_TEST_SOURCE_ONLY=1` and `RUN_CERT_TEST_STEPS=<step,...>` are for testing the runner only.
 
 Prerequisites: Docker running for every cert run, for the test harness containers; on Linux with `chip-local` the CHIP binaries are also extracted from the `cert-bins` image, which exists for `linux/arm64` only, so this needs an arm64 host (`cert/run-cert.mjs` sets `MATTER_CHIP_PLATFORM=linux/arm64`). On macOS with `chip-local` the locally built CHIP apps in `MATTER_CERT_APP_DIR` run as host processes.
 
