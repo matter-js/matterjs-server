@@ -95,6 +95,16 @@ describe("cert/run-cert.mjs", function () {
             expect(checkout.args.at(-2)).to.equal(commit === undefined ? "FETCH_HEAD" : `${commit}^{commit}`);
         });
 
+        it("names the ref and the version it comes from", () => {
+            const result = runCert(["--dry-run"], {
+                RUN_CERT_TEST_PLATFORM: "linux",
+                RUN_CERT_TEST_PACKAGE_JSON: packageJson({ "@matter/main": "0.18.0-alpha.0-20261008-6066b7499" }),
+            });
+            expect(result.stderr).to.contain(
+                "cert: matter.js ref 6066b7499 (@matter/main 0.18.0-alpha.0-20261008-6066b7499 of the server)",
+            );
+        });
+
         it("fails when @matter/main is not a dependency", () => {
             const result = runCert(["--dry-run"], {
                 RUN_CERT_TEST_PLATFORM: "linux",
@@ -116,6 +126,14 @@ describe("cert/run-cert.mjs", function () {
         const fetchRef = find(plan(["--matterjs-ref", sha]), "fetch-ref");
         expect(fetchRef.args).to.deep.equal(["fetch", "origin", sha]);
         expect(fetchRef.optional).to.equal(true);
+    });
+
+    it("names an overriding ref and where it comes from", () => {
+        const env = { RUN_CERT_TEST_PLATFORM: "linux", MATTERJS_REF: "feature/x" };
+        expect(runCert(["--dry-run"], env).stderr).to.contain("cert: matter.js ref feature/x (MATTERJS_REF)");
+        expect(runCert(["--dry-run", "--matterjs-ref", "abc1234"], env).stderr).to.contain(
+            "cert: matter.js ref abc1234 (--matterjs-ref)",
+        );
     });
 
     it("lets MATTERJS_REF override the default and the flag override MATTERJS_REF", () => {

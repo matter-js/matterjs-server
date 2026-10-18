@@ -68,14 +68,20 @@ function defaultRef() {
     const pkg = JSON.parse(readFileSync(PACKAGE_JSON, "utf8"));
     const version = pkg.dependencies?.["@matter/main"];
     if (typeof version !== "string") fail("@matter/main is not a dependency of packages/matter-server");
-    return DEV_VERSION_PATTERN.exec(version)?.[1] ?? `v${version}`;
+    return { ref: DEV_VERSION_PATTERN.exec(version)?.[1] ?? `v${version}`, source: `@matter/main ${version} of the server` };
 }
 
 function resolveRef(options) {
-    const ref = options.ref ?? (process.env.MATTERJS_REF || defaultRef());
+    const { ref, source } =
+        options.ref !== undefined
+            ? { ref: options.ref, source: "--matterjs-ref" }
+            : process.env.MATTERJS_REF
+              ? { ref: process.env.MATTERJS_REF, source: "MATTERJS_REF" }
+              : defaultRef();
     if (!REF_PATTERN.test(ref) || ref.includes("..") || ref.endsWith("/") || ref.endsWith(".lock")) {
         fail(`invalid matter.js ref "${ref}"`);
     }
+    console.error(`cert: matter.js ref ${ref} (${source})`);
     return ref;
 }
 
