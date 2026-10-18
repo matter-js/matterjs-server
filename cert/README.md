@@ -121,6 +121,22 @@ and moves `.cert/matter.js` to the matter.js version the new server uses, instal
 version's suite; `.cert` does not need to be deleted. Delete `.cert` only to free disk space, the next run clones
 matter.js again.
 
+### Stopping the test containers
+
+The harness containers `matter.js-chip`, `matter.js-mdns` and `matter.js-dbus` keep running after a run on purpose: the
+next run reuses them and starts faster. To stop them (they remove themselves when stopped):
+
+```bash
+docker stop matter.js-chip matter.js-mdns matter.js-dbus
+```
+
+To also free the disk space of the images and the mDNS volume:
+
+```bash
+docker volume rm matter.js-mdns
+docker image ls   # then docker image rm the ghcr.io/matter-js/chip and chip-cert-bins images
+```
+
 ## Server configuration
 
 The matter.js adapter (`support/chip-testing/src/matter-server/matter-server-process.ts`) starts the server with these
