@@ -260,10 +260,6 @@ jobs:
                     npm publish --workspaces
                   fi
 
-            - name: Wait for npm registry
-              if: steps.publish_tasks.outputs.pr_merged == 'true' && steps.publish_tasks.outputs.npm_needed == 'true'
-              run: sleep 120
-
             - name: Set up Python for PyPI publish
               if: steps.publish_tasks.outputs.pr_merged == 'true' && (steps.publish_tasks.outputs.pypi_needed == 'true' || steps.publish_tasks.outputs.pypi_ble_proxy_needed == 'true')
               uses: actions/setup-python@v7
@@ -341,6 +337,46 @@ jobs:
                   echo "patch=${version}" >> $GITHUB_OUTPUT
                   echo "minor=${version%.*}" >> $GITHUB_OUTPUT
                   echo "major=${version%.*.*}" >> $GITHUB_OUTPUT
+
+            # npm install in the Docker build fails with ETARGET while the registry CDN still serves the old
+            # package document. The CDN caches per Accept header, so the check sends the header npm install sends.
+            - name: Wait until npm serves the published packages
+              if: steps.publish_tasks.outputs.pr_merged == 'true' && steps.publish_tasks.outputs.docker_needed == 'true'
+              timeout-minutes: 55
+              env:
+                  VERSION: ${{ steps.version.outputs.result }}
+                  JUST_PUBLISHED: ${{ steps.publish_tasks.outputs.npm_needed }}
+                  NPM_INSTALL_ACCEPT: "application/vnd.npm.install-v1+json; q=1.0, application/json; q=0.8, */*"
+              run: |
+                  workspaces=$(npm pkg get name private --workspaces --json)
+                  mapfile -t PACKAGES < <(jq -r '.[] | select(.private != true) | .name' <<< "$workspaces")
+                  if [[ ${#PACKAGES[@]} -eq 0 ]]; then
+                    echo "::error::No publishable workspace packages found"
+                    exit 1
+                  fi
+                  if [[ "$JUST_PUBLISHED" == "true" ]]; then
+                    sleep 300
+                  fi
+                  deadline=$((SECONDS + 40 * 60))
+                  while true; do
+                    missing=()
+                    for pkg in "${PACKAGES[@]}"; do
+                      if ! curl -sf --max-time 30 -H "Accept: ${NPM_INSTALL_ACCEPT}" "https://registry.npmjs.org/${pkg/\//%2f}" \
+                        | jq -e --arg v "$VERSION" '.versions[$v] != null' >/dev/null; then
+                        missing+=("$pkg")
+                      fi
+                    done
+                    if [[ ${#missing[@]} -eq 0 ]]; then
+                      echo "All ${#PACKAGES[@]} packages available on npm at ${VERSION}"
+                      exit 0
+                    fi
+                    if (( SECONDS >= deadline )); then
+                      echo "::error::Packages still not available on npm: ${missing[*]}"
+                      exit 1
+                    fi
+                    echo "Not yet available: ${missing[*]}"
+                    sleep 120
+                  done
 
             - name: Build and push Docker image (release)
               if: steps.publish_tasks.outputs.pr_merged == 'true' && steps.publish_tasks.outputs.docker_needed == 'true' && !contains(steps.version.outputs.result, '-')

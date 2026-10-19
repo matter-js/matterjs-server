@@ -38,6 +38,7 @@ RUN \
     # Install matter-server from npm and optimize image size
     && set -x \
     && npm install --foreground-scripts "matter-server@${MATTERJS_SERVER_VERSION}" \
+    && test -f node_modules/matter-server/dist/esm/MatterServer.js \
     # Remove build dependencies (no longer needed after native modules are compiled)
     && apt-get purge -y --auto-remove \
         python3 \
@@ -56,16 +57,16 @@ RUN \
     && npm cache clean --force \
     # Remove CJS builds from Matter packages (we use ESM only)
     && find ./node_modules -type d -name "cjs" \
-        -path "*/@matter/*" -exec rm -rf {} + 2>/dev/null || true \
+        -path "*/@matter/*" -prune -exec rm -rf {} + \
     && find ./node_modules -type d -name "cjs" \
-        -path "*/@project-chip/*" -exec rm -rf {} + 2>/dev/null || true \
+        -path "*/@project-chip/*" -prune -exec rm -rf {} + \
     # Remove development/documentation files
-    && find ./node_modules -type d -name ".github" -exec rm -rf {} + 2>/dev/null || true \
-    && find ./node_modules -type d -name ".vscode" -exec rm -rf {} + 2>/dev/null || true \
-    && find ./node_modules -type d -name "docs" -exec rm -rf {} + 2>/dev/null || true \
-    && find ./node_modules -name "*.md" -delete 2>/dev/null || true \
-    && find ./node_modules -name "LICENSE*" -delete 2>/dev/null || true \
-    && find ./node_modules -name "CHANGELOG*" -delete 2>/dev/null || true \
+    && find ./node_modules -type d -name ".github" -prune -exec rm -rf {} + \
+    && find ./node_modules -type d -name ".vscode" -prune -exec rm -rf {} + \
+    && find ./node_modules -type d -name "docs" -prune -exec rm -rf {} + \
+    && find ./node_modules -type f -name "*.md" -delete \
+    && find ./node_modules -type f -name "LICENSE*" -delete \
+    && find ./node_modules -type f -name "CHANGELOG*" -delete \
     # Clean temp directories
     && rm -rf /tmp/* /var/tmp/* /root/.npm /root/.cache \
     # Initialize data volume with user permissions
