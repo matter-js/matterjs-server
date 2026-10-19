@@ -1,3 +1,6 @@
+# Replaced by `--build-context npm-packages=<dir>` with the release tarballs; empty by default
+FROM scratch AS npm-packages
+
 FROM node:24-trixie-slim
 
 # Set shell
@@ -5,7 +8,7 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 WORKDIR /app
 
-# Version of matter-server to install from npm
+# Version of matter-server to install from npm when no npm-packages build context is given
 ARG MATTERJS_SERVER_VERSION
 
 # Install required system dependencies
@@ -18,7 +21,7 @@ ARG MATTERJS_SERVER_VERSION
 # - make, gcc, g++: C/C++ toolchain for native module compilation
 # - libbluetooth-dev, libudev-dev: Headers for native BLE/udev bindings
 # - libcap2-bin: provides setcap to grant ping CAP_NET_RAW (purged afterwards)
-RUN \
+RUN --mount=type=bind,from=npm-packages,target=/npm-packages \
     set -x \
     && apt-get update \
     && apt-get install -y --no-install-recommends \
@@ -35,9 +38,13 @@ RUN \
     # ping_node runs as the non-root user; CAP_NET_RAW on the binary lets it open
     # an ICMP socket regardless of the host's net.ipv4.ping_group_range.
     && setcap cap_net_raw+ep "$(command -v ping)" \
-    # Install matter-server from npm and optimize image size
+    # Install matter-server and optimize image size
     && set -x \
-    && npm install --foreground-scripts "matter-server@${MATTERJS_SERVER_VERSION}" \
+    && if compgen -G "/npm-packages/*.tgz" >/dev/null; then \
+        npm install --foreground-scripts /npm-packages/*.tgz; \
+    else \
+        npm install --foreground-scripts "matter-server@${MATTERJS_SERVER_VERSION}"; \
+    fi \
     && test -f node_modules/matter-server/dist/esm/MatterServer.js \
     # Remove build dependencies (no longer needed after native modules are compiled)
     && apt-get purge -y --auto-remove \

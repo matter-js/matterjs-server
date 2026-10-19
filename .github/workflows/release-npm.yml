@@ -249,16 +249,58 @@ jobs:
               if: steps.publish_tasks.outputs.pr_merged == 'true'
               run: npm run version -- --apply
 
+            # npm and the Docker image get the same tarballs, so the image build does not wait for the registry CDN.
+            # npm-packages.tsv lists them in dependency order, so matter-server is published last: publish_tasks
+            # checks only matter-server to decide npm_needed, and a re-run publishes the packages still missing.
+            - name: Pack npm packages
+              if: steps.publish_tasks.outputs.pr_merged == 'true' && (steps.publish_tasks.outputs.npm_needed == 'true' || steps.publish_tasks.outputs.docker_needed == 'true')
+              run: |
+                  workspaces=$(npm query .workspace)
+                  order=$(jq -r '
+                    [.[] | select(.private != true)
+                         | {name, deps: ((.dependencies // {}) + (.peerDependencies // {}) + (.optionalDependencies // {}) | keys)}] as $all
+                    | ($all | map(.name)) as $names
+                    | def sorted($done):
+                        if ($done | length) == ($all | length) then $done
+                        else
+                          ([$all[] | select(.name as $n | $done | index([$n]) | not)
+                                   | select(all(.deps[]; . as $d | ($names | index([$d])) == null or ($done | index([$d])) != null))]
+                            | first // error("dependency cycle between workspaces")) as $next
+                          | sorted($done + [$next.name])
+                        end;
+                      sorted([]) | .[]' <<< "$workspaces")
+                  mapfile -t PACKAGES < <(printf '%s' "$order")
+                  if [[ ${#PACKAGES[@]} -eq 0 ]]; then
+                    echo "::error::No publishable workspace packages found"
+                    exit 1
+                  fi
+                  mkdir -p npm-packages
+                  : > npm-packages.tsv
+                  for pkg in "${PACKAGES[@]}"; do
+                    packed=$(npm pack --json --pack-destination npm-packages --workspace="$pkg")
+                    tarball=$(jq -r '.[0].filename' <<< "$packed")
+                    test -f "npm-packages/${tarball}"
+                    printf '%s\t%s\n' "$pkg" "$tarball" >> npm-packages.tsv
+                  done
+                  cat npm-packages.tsv
+
             - name: Publish npm
               if: steps.publish_tasks.outputs.pr_merged == 'true' && steps.publish_tasks.outputs.npm_needed == 'true'
               env:
+                  VERSION: ${{ steps.version.outputs.result }}
                   PRERELEASE: ${{ contains(steps.version.outputs.result, '-') }}
               run: |
-                  if [[ "$PRERELEASE" == "true" ]]; then
-                    npm publish --workspaces --tag dev
-                  else
-                    npm publish --workspaces
-                  fi
+                  while IFS=$'\t' read -r pkg tarball; do
+                    if [[ -n "$(npm view "${pkg}@${VERSION}" version 2>/dev/null)" ]]; then
+                      echo "${pkg}@${VERSION} is already on npm, skipping"
+                      continue
+                    fi
+                    if [[ "$PRERELEASE" == "true" ]]; then
+                      npm publish "./npm-packages/${tarball}" --tag dev
+                    else
+                      npm publish "./npm-packages/${tarball}"
+                    fi
+                  done < npm-packages.tsv
 
             - name: Set up Python for PyPI publish
               if: steps.publish_tasks.outputs.pr_merged == 'true' && (steps.publish_tasks.outputs.pypi_needed == 'true' || steps.publish_tasks.outputs.pypi_ble_proxy_needed == 'true')
@@ -338,44 +380,6 @@ jobs:
                   echo "minor=${version%.*}" >> $GITHUB_OUTPUT
                   echo "major=${version%.*.*}" >> $GITHUB_OUTPUT
 
-            # npm install in the Docker build fails with ETARGET while the registry CDN still serves the old
-            # package document. npm pack reads the same document as npm install; npm view reads another one.
-            - name: Wait until npm serves the published packages
-              if: steps.publish_tasks.outputs.pr_merged == 'true' && steps.publish_tasks.outputs.docker_needed == 'true'
-              timeout-minutes: 55
-              env:
-                  VERSION: ${{ steps.version.outputs.result }}
-                  JUST_PUBLISHED: ${{ steps.publish_tasks.outputs.npm_needed }}
-              run: |
-                  workspaces=$(npm pkg get name private --workspaces --json)
-                  mapfile -t PACKAGES < <(jq -r '.[] | select(.private != true) | .name' <<< "$workspaces")
-                  if [[ ${#PACKAGES[@]} -eq 0 ]]; then
-                    echo "::error::No publishable workspace packages found"
-                    exit 1
-                  fi
-                  if [[ "$JUST_PUBLISHED" == "true" ]]; then
-                    sleep 300
-                  fi
-                  deadline=$((SECONDS + 40 * 60))
-                  while true; do
-                    missing=()
-                    for pkg in "${PACKAGES[@]}"; do
-                      if ! npm pack --dry-run --fetch-timeout=30000 "${pkg}@${VERSION}" >/dev/null 2>&1; then
-                        missing+=("$pkg")
-                      fi
-                    done
-                    if [[ ${#missing[@]} -eq 0 ]]; then
-                      echo "All ${#PACKAGES[@]} packages available on npm at ${VERSION}"
-                      exit 0
-                    fi
-                    if (( SECONDS >= deadline )); then
-                      echo "::error::Packages still not available on npm: ${missing[*]}"
-                      exit 1
-                    fi
-                    echo "Not yet available: ${missing[*]}"
-                    sleep 120
-                  done
-
             - name: Build and push Docker image (release)
               if: steps.publish_tasks.outputs.pr_merged == 'true' && steps.publish_tasks.outputs.docker_needed == 'true' && !contains(steps.version.outputs.result, '-')
               uses: docker/build-push-action@v7
@@ -383,6 +387,7 @@ jobs:
                   context: ./docker/matterjs-server
                   platforms: linux/amd64,linux/arm64
                   file: ./docker/matterjs-server/Dockerfile
+                  build-contexts: npm-packages=./npm-packages
                   tags: |
                       ghcr.io/${{ github.repository_owner }}/matterjs-server:${{ steps.docker_tags.outputs.patch }}
                       ghcr.io/${{ github.repository_owner }}/matterjs-server:${{ steps.docker_tags.outputs.minor }}
@@ -401,6 +406,7 @@ jobs:
                   context: ./docker/matterjs-server
                   platforms: linux/amd64,linux/arm64
                   file: ./docker/matterjs-server/Dockerfile
+                  build-contexts: npm-packages=./npm-packages
                   tags: |
                       ghcr.io/${{ github.repository_owner }}/matterjs-server:${{ steps.docker_tags.outputs.patch }}
                       ghcr.io/${{ github.repository_owner }}/matterjs-server:dev
