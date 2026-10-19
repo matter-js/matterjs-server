@@ -339,14 +339,13 @@ jobs:
                   echo "major=${version%.*.*}" >> $GITHUB_OUTPUT
 
             # npm install in the Docker build fails with ETARGET while the registry CDN still serves the old
-            # package document. The CDN caches per Accept header, so the check sends the header npm install sends.
+            # package document. npm pack reads the same document as npm install; npm view reads another one.
             - name: Wait until npm serves the published packages
               if: steps.publish_tasks.outputs.pr_merged == 'true' && steps.publish_tasks.outputs.docker_needed == 'true'
               timeout-minutes: 55
               env:
                   VERSION: ${{ steps.version.outputs.result }}
                   JUST_PUBLISHED: ${{ steps.publish_tasks.outputs.npm_needed }}
-                  NPM_INSTALL_ACCEPT: "application/vnd.npm.install-v1+json; q=1.0, application/json; q=0.8, */*"
               run: |
                   workspaces=$(npm pkg get name private --workspaces --json)
                   mapfile -t PACKAGES < <(jq -r '.[] | select(.private != true) | .name' <<< "$workspaces")
@@ -361,8 +360,7 @@ jobs:
                   while true; do
                     missing=()
                     for pkg in "${PACKAGES[@]}"; do
-                      if ! curl -sf --max-time 30 -H "Accept: ${NPM_INSTALL_ACCEPT}" "https://registry.npmjs.org/${pkg/\//%2f}" \
-                        | jq -e --arg v "$VERSION" '.versions[$v] != null' >/dev/null; then
+                      if ! npm pack --dry-run --fetch-timeout=30000 "${pkg}@${VERSION}" >/dev/null 2>&1; then
                         missing+=("$pkg")
                       fi
                     done
