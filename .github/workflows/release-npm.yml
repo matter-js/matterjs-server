@@ -250,8 +250,8 @@ jobs:
               run: npm run version -- --apply
 
             # npm and the Docker image get the same tarballs, so the image build does not wait for the registry CDN.
-            # npm-packages.tsv lists them in dependency order, so matter-server is published last: publish_tasks
-            # checks only matter-server to decide npm_needed, and a re-run publishes the packages still missing.
+            # npm-packages.tsv lists them in dependency order. matter-server depends on every other published package,
+            # so it goes last; publish_tasks relies on that when it checks only matter-server to decide npm_needed.
             - name: Pack npm packages
               if: steps.publish_tasks.outputs.pr_merged == 'true' && (steps.publish_tasks.outputs.npm_needed == 'true' || steps.publish_tasks.outputs.docker_needed == 'true')
               run: |
