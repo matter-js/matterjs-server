@@ -7,7 +7,7 @@ This page shows a detailed overview of the changes between versions without the 
 	## **WORK IN PROGRESS**
 -->
 
-## **WORK IN PROGRESS**
+## 1.5.0 (2026-10-20)
 
 - Feature: Introduces Websocket Schema version 14 (backward compatible), detectable with `server_info.schema_version >= 14`. Details are in [docs/websockets_api.md](docs/websockets_api.md#camera-streaming-schema-14) and [docs/websocket-api-schema-changelog.md](docs/websocket-api-schema-changelog.md)
     - Adds a camera API that handles stream management and WebRTC sessions for the client, see[docs/CAMERA_LIMITATIONS.md](docs/CAMERA_LIMITATIONS.md) for information on defaults and known camera quirks. The Matter commands through `send_webrtc_provider_command` and `device_command` stay available
