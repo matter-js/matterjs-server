@@ -80,7 +80,7 @@ This page shows a detailed overview of the changes between versions without the 
 - Fix: `device_command` with `EndSession` updates the server's session records for that camera only, and a WebRTC callback with an invalid endpoint id no longer blocks the event for other listeners
 - Fix: A command sent before the controller finished starting fails with the SDK stack error code instead of a generic error
 - Fix: The server's debug log masks Wi-Fi passphrases, Thread datasets, setup codes, credential material in `device_command` requests, TURN credentials and SDP ICE credentials, and no longer logs the `open_commissioning_window` response. `device_command` responses are still logged in full. The TypeScript client logs very long strings as their length
-- Fix: The lient delivers `webrtc_callback` and the camera events to subscribers registered with `node_filter`, as Home Assistant does
+- Fix: The client delivers `webrtc_callback` and the camera events to subscribers registered with `node_filter`, as Home Assistant does
 - Fix: A wrong pairing code is reported as such instead of as a generic commissioning failure, so a client can ask for the code again. A pairing code that cannot be decoded fails with `InvalidArguments`
 - Fix: Commissioning with a pairing code that names a vendor and product skips a device whose advertisement names another vendor or product
 - Fix: A device that has only its root endpoint is commissioned and reported with its data
@@ -91,7 +91,7 @@ This page shows a detailed overview of the changes between versions without the 
 - Fix: `read_attribute` and `write_attribute` refuse a path with an id that is invalid for its kind (for example cluster 32768) with `InvalidArguments`
 - Fix: Dashboard shows manufacturer-specific enum values (vendor mode tags, operational and error states, closure errors) as "Manufacturer 0x…"
 - Fix: (@RAR) List values of decorator-defined custom clusters are converted in both directions, so bytes inside a list (Aqara `SetZones`) reach the device as bytes instead of strings. The same fix sends `SupportedModes` of the derived Mode clusters (RVC Run/Clean, Dishwasher, Laundry Washer, Oven, Microwave Oven, Refrigerator, Device Energy Management, EVSE and Water Heater Mode) keyed by tag like every other attribute value, instead of keyed by field name
-- Fix: (@RAR) The lient generator resolves struct, signed integer, list and response types of decorator-defined custom clusters; the `int32` attributes `DraftElectricalMeasurementCluster.activePower` and `ThirdRealityMeteringCluster.instantaneousDemand` are now generated as signed
+- Fix: (@RAR) The client generator resolves struct, signed integer, list and response types of decorator-defined custom clusters; the `int32` attributes `DraftElectricalMeasurementCluster.activePower` and `ThirdRealityMeteringCluster.instantaneousDemand` are now generated as signed
 - Fix: WebSocket clients that read slowly are no longer disconnected when the server queues messages for them; the queued messages are now delivered
 - Fix: Large negative 64-bit values keep their precision in WebSocket messages, and a text value starting with `__BIGINT__` is no longer turned into a number or rejected; the server and the ws-client share one bigint-aware JSON implementation
 - Fix: Verified endpoint and cluster existence for `device_command` and `write_attribute` and return proper errors
