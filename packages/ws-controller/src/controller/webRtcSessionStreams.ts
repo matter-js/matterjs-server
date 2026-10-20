@@ -135,24 +135,35 @@ export function isTrackableWebRtcSession(
     );
 }
 
-/** The fields matter.js's requestor keys `CurrentSessions` by: `WebRTCSessionID` is allocated per provider. */
+/** The fields matter.js's requestor keys `CurrentSessions` by: `WebRTCSessionID` is unique per node (§11.4.5.1). */
 export type WebRtcSessionKey = Pick<WebRtcTransportDefinitions.WebRtcSession, "id" | "fabricIndex" | "peerNodeId">;
+
+/** A session with the provider endpoint it runs on, the address every route uses for it. */
+export type WebRtcProviderSessionKey = WebRtcSessionKey &
+    Pick<WebRtcTransportDefinitions.WebRtcSession, "peerEndpointId">;
 
 export function sameWebRtcSession(a: WebRtcSessionKey, b: WebRtcSessionKey): boolean {
     return a.id === b.id && a.fabricIndex === b.fabricIndex && a.peerNodeId === b.peerNodeId;
 }
 
 /** The requestor's entry for this session on this endpoint, if it tracks one. */
-export function trackedSessionOf(
-    sessions: readonly WebRtcTransportDefinitions.WebRtcSession[],
+export function trackedSessionOf<S extends WebRtcProviderSessionKey>(
+    sessions: readonly S[],
     key: WebRtcSessionKey,
     endpointId: EndpointNumber,
-): WebRtcTransportDefinitions.WebRtcSession | undefined {
+): S | undefined {
     return sessions.find(session => sameWebRtcSession(session, key) && session.peerEndpointId === endpointId);
 }
 
 export interface WebRtcProviderSessionIo {
     invoke(command: "provideOffer" | "solicitOffer" | "endSession", fields: Record<string, unknown>): Promise<unknown>;
+    /**
+     * Records the SDP a ProvideOffer sends for this session id, so the camera's answer can be checked
+     * against it. Returns the withdraw function for a path on which the camera will not answer it.
+     */
+    offerSent(webRtcSessionId: number, sdp: string): () => void;
+    /** Whether the local requestor holds this provider's session now. */
+    tracks(webRtcSessionId: number): boolean;
     /** Store the session in the local requestor so its Answer/ICECandidates are accepted, not NotFound. */
     upsertSession(
         session: WebRtcTransportDefinitions.WebRtcSession,
@@ -202,6 +213,8 @@ async function endSessionWithinBudget(
     });
 }
 
+type EstablishedSession = { webRtcSessionId: number } & Record<string, unknown>;
+
 /**
  * The session must be stored in the local requestor, which answers NotFound to Answer/ICECandidates
  * otherwise. A session that cannot be tracked (no stream usage, or no video/audio stream, e.g. a
@@ -209,51 +222,71 @@ async function endSessionWithinBudget(
  *
  * A ProvideOffer naming a session id is a re-offer for a session the camera already holds (§11.5.6.3.12).
  * It never ends a session and never overwrites a local requestor entry, because a re-offer may omit
- * StreamUsage and the streams and changes neither. The entry is only added when absent (the camera kept the
- * session across a restart of this server) and the re-offer carries enough to track it. Such a session is not
- * being established by a managed start, so `sessionEstablishing` is not called. An id the camera does not hold
- * is answered NOT_FOUND by the camera.
+ * StreamUsage and the streams and changes neither. The entry is only added when absent and the re-offer
+ * carries enough to track it. Such a session is not being established by a managed start, so
+ * `sessionEstablishing` is not called. An id the camera does not hold is answered NOT_FOUND by the camera.
+ *
+ * The offer is recorded with {@link WebRtcProviderSessionIo.offerSent} only while the camera can still
+ * answer it: it is withdrawn when the camera refuses it, and when the local requestor does not hold the
+ * session at the end, since the requestor refuses the answer of a session it does not hold.
  */
 export async function establishWebRtcProviderSession(
     io: WebRtcProviderSessionIo,
     args: WebRtcProviderSessionArgs,
-): Promise<{ webRtcSessionId: number } & Record<string, unknown>> {
-    const { commandName, nodeId, endpointId, originatingEndpointId, fabricIndex, clusterRevision, formatNode } = args;
-    const command = commandName === "ProvideOffer" ? "provideOffer" : "solicitOffer";
-
-    const fields: Record<string, unknown> = { ...args.fields, originatingEndpointId };
-    selectWebRtcStreamFields(fields, clusterRevision);
-    const isReOffer = typeof fields.webRtcSessionId === "number";
-
-    const response = await io.invoke(command, fields);
-    if (
-        typeof response !== "object" ||
-        response === null ||
-        !("webRtcSessionId" in response) ||
-        typeof response.webRtcSessionId !== "number"
-    ) {
-        throw ServerError.sdkStackError(
-            `${commandName} did not return a WebRTCSessionID for node ${formatNode(nodeId)}`,
-        );
+): Promise<EstablishedSession> {
+    const fields: Record<string, unknown> = { ...args.fields, originatingEndpointId: args.originatingEndpointId };
+    selectWebRtcStreamFields(fields, args.clusterRevision);
+    const offer = typeof fields.sdp === "string" ? fields.sdp : undefined;
+    if (typeof fields.webRtcSessionId === "number") {
+        return reOffer(io, args, fields, fields.webRtcSessionId, offer);
     }
-    // `in` narrowing gives no string index signature, so TS cannot express this shape without a cast.
-    const established = response as { webRtcSessionId: number } & Record<string, unknown>;
-    const webRtcSessionId = response.webRtcSessionId;
-    if (!isReOffer) {
-        args.sessionEstablishing?.(webRtcSessionId);
-    }
+    return newSession(io, args, fields, offer);
+}
 
-    const streamUsage = fields.streamUsage;
-    const metadataEnabled = fields.metadataEnabled === true;
-    const responseVideoStreamId = "videoStreamId" in response ? response.videoStreamId : undefined;
-    const responseAudioStreamId = "audioStreamId" in response ? response.audioStreamId : undefined;
-    const videoStreams = resolveWebRtcSessionStreams(fields.videoStreams, fields.videoStreamId, responseVideoStreamId);
-    const audioStreams = resolveWebRtcSessionStreams(fields.audioStreams, fields.audioStreamId, responseAudioStreamId);
-
-    if (!isTrackableWebRtcSession(streamUsage, videoStreams, audioStreams)) {
-        if (isReOffer) {
-            return established;
+async function reOffer(
+    io: WebRtcProviderSessionIo,
+    args: WebRtcProviderSessionArgs,
+    fields: Record<string, unknown>,
+    webRtcSessionId: number,
+    offer: string | undefined,
+): Promise<EstablishedSession> {
+    // The requestor already holds the session, so the camera's answer can arrive before the response.
+    const withdraw = offer === undefined ? undefined : io.offerSent(webRtcSessionId, offer);
+    let accepted = false;
+    try {
+        const established = await invokeEstablishing(io, args, fields);
+        accepted = true;
+        const session = trackableSession(args, fields, established);
+        if (session !== undefined) {
+            try {
+                await io.upsertSession(session, { onlyIfAbsent: true });
+            } catch (error) {
+                logger.warn(
+                    `Could not track re-offered WebRTC session id=${webRtcSessionId} for node ${args.formatNode(args.nodeId)}: ${
+                        error instanceof Error ? error.message : String(error)
+                    }`,
+                );
+            }
         }
+        return established;
+    } finally {
+        if (!accepted || !io.tracks(webRtcSessionId)) withdraw?.();
+    }
+}
+
+async function newSession(
+    io: WebRtcProviderSessionIo,
+    args: WebRtcProviderSessionArgs,
+    fields: Record<string, unknown>,
+    offer: string | undefined,
+): Promise<EstablishedSession> {
+    const { commandName, nodeId, formatNode } = args;
+    const established = await invokeEstablishing(io, args, fields);
+    const { webRtcSessionId } = established;
+    args.sessionEstablishing?.(webRtcSessionId);
+
+    const session = trackableSession(args, fields, established);
+    if (session === undefined) {
         logger.warn(
             `Tearing down untrackable WebRTC session id=${webRtcSessionId} for node ${formatNode(
                 nodeId,
@@ -266,35 +299,15 @@ export async function establishWebRtcProviderSession(
         );
     }
 
-    const session: WebRtcTransportDefinitions.WebRtcSession = {
-        id: webRtcSessionId,
-        peerNodeId: nodeId,
-        peerEndpointId: endpointId,
-        streamUsage: streamUsage as WebRtcTransportDefinitions.WebRtcSession["streamUsage"],
-        metadataEnabled,
-        videoStreams,
-        audioStreams,
-        fabricIndex,
-    };
-
     logger.info(
-        `upserting WebRTC session id=${session.id} peerNodeId=${nodeId} peerEndpointId=${endpointId} fabricIndex=${fabricIndex} streamUsage=${streamUsage} originatingEndpointId=${originatingEndpointId}`,
+        `upserting WebRTC session id=${webRtcSessionId} peerNodeId=${nodeId} peerEndpointId=${args.endpointId} fabricIndex=${args.fabricIndex} streamUsage=${session.streamUsage} originatingEndpointId=${args.originatingEndpointId}`,
     );
-    if (isReOffer) {
-        try {
-            await io.upsertSession(session, { onlyIfAbsent: true });
-        } catch (error) {
-            logger.warn(
-                `Could not track re-offered WebRTC session id=${webRtcSessionId} for node ${formatNode(nodeId)}: ${
-                    error instanceof Error ? error.message : String(error)
-                }`,
-            );
-        }
-        return established;
-    }
+    // Before the requestor holds the session: it accepts the camera's answer from then on.
+    const withdraw = offer === undefined ? undefined : io.offerSent(webRtcSessionId, offer);
     try {
         await io.upsertSession(session);
     } catch (error) {
+        withdraw?.();
         // Only this scope knows the id; not ending it here would pin its streams on the device.
         logger.warn(
             `Tearing down WebRTC session id=${webRtcSessionId} for node ${formatNode(
@@ -304,6 +317,48 @@ export async function establishWebRtcProviderSession(
         await endSessionWithinBudget(io, webRtcSessionId, "untracked");
         throw error;
     }
-
     return established;
+}
+
+async function invokeEstablishing(
+    io: WebRtcProviderSessionIo,
+    args: WebRtcProviderSessionArgs,
+    fields: Record<string, unknown>,
+): Promise<EstablishedSession> {
+    const response = await io.invoke(args.commandName === "ProvideOffer" ? "provideOffer" : "solicitOffer", fields);
+    if (
+        typeof response !== "object" ||
+        response === null ||
+        !("webRtcSessionId" in response) ||
+        typeof response.webRtcSessionId !== "number"
+    ) {
+        throw ServerError.sdkStackError(
+            `${args.commandName} did not return a WebRTCSessionID for node ${args.formatNode(args.nodeId)}`,
+        );
+    }
+    // `in` narrowing gives no string index signature, so TS cannot express this shape without a cast.
+    return response as EstablishedSession;
+}
+
+/** The requestor entry for the session, or undefined when the request lacks what the struct requires. */
+function trackableSession(
+    args: WebRtcProviderSessionArgs,
+    fields: Record<string, unknown>,
+    response: EstablishedSession,
+): WebRtcTransportDefinitions.WebRtcSession | undefined {
+    const { nodeId, endpointId, fabricIndex } = args;
+    const streamUsage = fields.streamUsage;
+    const videoStreams = resolveWebRtcSessionStreams(fields.videoStreams, fields.videoStreamId, response.videoStreamId);
+    const audioStreams = resolveWebRtcSessionStreams(fields.audioStreams, fields.audioStreamId, response.audioStreamId);
+    if (!isTrackableWebRtcSession(streamUsage, videoStreams, audioStreams)) return undefined;
+    return {
+        id: response.webRtcSessionId,
+        peerNodeId: nodeId,
+        peerEndpointId: endpointId,
+        streamUsage: streamUsage as WebRtcTransportDefinitions.WebRtcSession["streamUsage"],
+        metadataEnabled: fields.metadataEnabled === true,
+        videoStreams,
+        audioStreams,
+        fabricIndex,
+    };
 }

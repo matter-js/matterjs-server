@@ -276,4 +276,8 @@ export class MatterCameraDeviceIo implements CameraDeviceIo {
             await dropWebRtcSessionTracking(this.#handler, sessionId, args.nodeId, args.endpointId);
         });
     }
+
+    async abandonSession(nodeId: NodeId, endpointId: EndpointNumber, webRtcSessionId: number): Promise<void> {
+        await this.#handler.abandonWebRtcSession(webRtcSessionId, nodeId, endpointId);
+    }
 }

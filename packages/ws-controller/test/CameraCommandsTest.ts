@@ -10,6 +10,7 @@ import { CameraAvStreamManagement } from "@matter/main/clusters/camera-av-stream
 import { StreamUsage } from "@matter/main/types";
 import {
     parseCapabilitiesArgs,
+    parseIceCandidatesArgs,
     parseReleaseStreamArgs,
     parseSnapshotArgs,
     parseStartStreamArgs,
@@ -695,9 +696,9 @@ describe("cameraCommands", () => {
 
     describe("parseStopStreamArgs", () => {
         it("reads webrtc_session_id", () => {
-            expect(parseStopStreamArgs({ node_id: 5, endpoint_id: 1, webrtc_session_id: 7 }).webRtcSessionId).to.equal(
-                7,
-            );
+            expect(parseStopStreamArgs({ node_id: 5, endpoint_id: 1, webrtc_session_id: 7 }).session).to.deep.equal({
+                webRtcSessionId: 7,
+            });
         });
 
         it("rejects a missing webrtc_session_id", () => {
@@ -721,9 +722,9 @@ describe("cameraCommands", () => {
         });
 
         it("takes the highest webrtc_session_id the field holds and refuses the one above it", () => {
-            expect(
-                parseStopStreamArgs({ node_id: 5, endpoint_id: 1, webrtc_session_id: 65535 }).webRtcSessionId,
-            ).to.equal(65535);
+            expect(parseStopStreamArgs({ node_id: 5, endpoint_id: 1, webrtc_session_id: 65535 }).session).to.deep.equal(
+                { webRtcSessionId: 65535 },
+            );
 
             let thrown: unknown;
             try {
@@ -805,6 +806,48 @@ describe("cameraCommands", () => {
                 thrown = error;
             }
             expect((thrown as ServerError).code).to.equal(ServerErrorCode.InvalidArguments);
+        });
+
+        it("accepts a resolution target with a width, a height, or both", () => {
+            const parse = (resolution: unknown) =>
+                parseSnapshotArgs({ node_id: 5, endpoint_id: 1, resolution }).resolution;
+            expect(parse({ width: 320 })).to.deep.equal({ width: 320 });
+            expect(parse({ height: 240 })).to.deep.equal({ height: 240 });
+            expect(parse({ width: 320, height: 240 })).to.deep.equal({ width: 320, height: 240 });
+            expect(parseSnapshotArgs({ node_id: 5, endpoint_id: 1 })).to.not.have.property("resolution");
+        });
+
+        it("rejects a resolution target that is not an object, states no side, or names an unknown key", () => {
+            for (const bad of [null, 5, "320", [], {}, { width: undefined }, { width: 320, depth: 1 }]) {
+                let thrown: unknown;
+                try {
+                    parseSnapshotArgs({ node_id: 5, endpoint_id: 1, resolution: bad });
+                } catch (error) {
+                    thrown = error;
+                }
+                expect((thrown as ServerError).code, JSON.stringify(bad)).to.equal(ServerErrorCode.InvalidArguments);
+            }
+        });
+
+        it("rejects a zero, negative, fractional, NaN, or infinite resolution width or height", () => {
+            for (const bad of [-1, 0, 1.5, NaN, Infinity, 65536, "320", null]) {
+                for (const resolution of [
+                    { width: bad },
+                    { height: bad },
+                    { width: bad, height: 240 },
+                    { width: 320, height: bad },
+                ]) {
+                    let thrown: unknown;
+                    try {
+                        parseSnapshotArgs({ node_id: 5, endpoint_id: 1, resolution });
+                    } catch (error) {
+                        thrown = error;
+                    }
+                    expect((thrown as ServerError).code, JSON.stringify(resolution)).to.equal(
+                        ServerErrorCode.InvalidArguments,
+                    );
+                }
+            }
         });
 
         it("rejects a negative, zero, fractional, NaN, or infinite max_resolution width or height", () => {
@@ -1331,5 +1374,19 @@ describe("cameraCommands", () => {
         const { nodeId, endpointId } = parseCapabilitiesArgs({ node_id: 5, endpoint_id: 1 });
         expect(nodeId).to.equal(NodeId(5));
         expect(endpointId).to.equal(EndpointNumber(1));
+    });
+
+    describe("parseIceCandidatesArgs", () => {
+        const candidate = (n: number) => ({ candidate: `candidate:${n}`, sdpMid: "0", sdpMLineIndex: 0 });
+
+        it("counts the candidates, which bounds how many may wait for a starting session", () => {
+            const parsed = parseIceCandidatesArgs({
+                node_id: 5,
+                endpoint_id: 1,
+                client_session_key: "key-a",
+                ice_candidates: [candidate(1), candidate(2), candidate(3)],
+            });
+            expect(parsed.candidateCount).to.equal(3);
+        });
     });
 });

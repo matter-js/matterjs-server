@@ -246,6 +246,8 @@ describe("establishWebRtcProviderSession", () => {
     it("throws when the device response carries no numeric webRtcSessionId", async () => {
         const io: WebRtcProviderSessionIo = {
             invoke: async () => ({}),
+            offerSent: () => () => {},
+            tracks: () => false,
             upsertSession: async () => {},
         };
 
@@ -266,6 +268,8 @@ describe("establishWebRtcProviderSession", () => {
                 invokedFields.push(fields);
                 return { webRtcSessionId: 9 };
             },
+            offerSent: () => () => {},
+            tracks: () => false,
             upsertSession: async () => {},
         };
 
@@ -281,6 +285,8 @@ describe("establishWebRtcProviderSession", () => {
                 invoked.push(command);
                 return { webRtcSessionId: 9 };
             },
+            offerSent: () => () => {},
+            tracks: () => false,
             upsertSession: async () => {},
         };
 
@@ -307,6 +313,8 @@ describe("establishWebRtcProviderSession", () => {
                 invokedFields.push(fields);
                 return { webRtcSessionId: 9 };
             },
+            offerSent: () => () => {},
+            tracks: () => false,
             upsertSession: async () => {},
         };
 
@@ -326,6 +334,8 @@ describe("establishWebRtcProviderSession", () => {
                 invokedFields.push(fields);
                 return { webRtcSessionId: 9 };
             },
+            offerSent: () => () => {},
+            tracks: () => false,
             upsertSession: async () => {},
         };
 
@@ -348,6 +358,8 @@ describe("establishWebRtcProviderSession", () => {
         const steps = new Array<string>();
         const io: WebRtcProviderSessionIo = {
             invoke: async () => ({ webRtcSessionId: 9 }),
+            offerSent: () => () => {},
+            tracks: () => false,
             upsertSession: async () => {
                 steps.push("upsert");
             },
@@ -364,10 +376,62 @@ describe("establishWebRtcProviderSession", () => {
         expect(steps).to.deep.equal(["establishing:9", "upsert"]);
     });
 
+    it("states a new session's offer before the local requestor is given the session", async () => {
+        const steps = new Array<string>();
+        const io: WebRtcProviderSessionIo = {
+            invoke: async () => {
+                steps.push("invoke");
+                return { webRtcSessionId: 9 };
+            },
+            offerSent: (webRtcSessionId, sdp) => {
+                steps.push(`offer:${webRtcSessionId}:${sdp}`);
+                return () => steps.push(`withdraw:${webRtcSessionId}`);
+            },
+            tracks: () => false,
+            upsertSession: async () => {
+                steps.push("upsert");
+            },
+        };
+
+        await establishWebRtcProviderSession(
+            io,
+            baseArgs({ commandName: "ProvideOffer", fields: { streamUsage: 3, videoStreams: [1], sdp: "v=0" } }),
+        );
+
+        expect(steps).to.deep.equal(["invoke", "offer:9:v=0", "upsert"]);
+    });
+
+    it("states a re-offer before it is sent, and withdraws it when the requestor does not hold the session", async () => {
+        const steps = new Array<string>();
+        const io: WebRtcProviderSessionIo = {
+            invoke: async () => {
+                steps.push("invoke");
+                return { webRtcSessionId: 5 };
+            },
+            offerSent: (webRtcSessionId, sdp) => {
+                steps.push(`offer:${webRtcSessionId}:${sdp}`);
+                return () => steps.push(`withdraw:${webRtcSessionId}`);
+            },
+            tracks: () => false,
+            upsertSession: async () => {
+                steps.push("upsert");
+            },
+        };
+
+        await establishWebRtcProviderSession(
+            io,
+            baseArgs({ commandName: "ProvideOffer", fields: { webRtcSessionId: 5, sdp: "v=0" } }),
+        );
+
+        expect(steps).to.deep.equal(["offer:5:v=0", "invoke", "withdraw:5"]);
+    });
+
     it("tracks a trackable ProvideOffer session in the local requestor", async () => {
         const upserted = new Array<unknown>();
         const io: WebRtcProviderSessionIo = {
             invoke: async () => ({ webRtcSessionId: 9 }),
+            offerSent: () => () => {},
+            tracks: () => false,
             upsertSession: async session => {
                 upserted.push(session);
             },
@@ -397,6 +461,8 @@ describe("establishWebRtcProviderSession", () => {
                 invokedCommands.push(command);
                 return { webRtcSessionId: 11 };
             },
+            offerSent: () => () => {},
+            tracks: () => false,
             upsertSession: async session => {
                 upserted.push(session);
             },
@@ -426,6 +492,8 @@ describe("establishWebRtcProviderSession", () => {
         const upserted = new Array<unknown>();
         const io: WebRtcProviderSessionIo = {
             invoke: async () => ({ webRtcSessionId: 9 }),
+            offerSent: () => () => {},
+            tracks: () => false,
             upsertSession: async session => {
                 upserted.push(session);
             },
@@ -447,6 +515,8 @@ describe("establishWebRtcProviderSession", () => {
                 invokedCommands.push(command);
                 return { webRtcSessionId: 7 };
             },
+            offerSent: () => () => {},
+            tracks: () => false,
             upsertSession: async () => {
                 steps.push("upsert");
             },
@@ -474,6 +544,8 @@ describe("establishWebRtcProviderSession", () => {
                 invokedCommands.push(command);
                 return { webRtcSessionId: 7 };
             },
+            offerSent: () => () => {},
+            tracks: () => false,
             upsertSession: async (session, options) => {
                 upserts.push({ session, onlyIfAbsent: options?.onlyIfAbsent });
             },
@@ -503,6 +575,8 @@ describe("establishWebRtcProviderSession", () => {
                 invokedCommands.push(command);
                 return { webRtcSessionId: 7 };
             },
+            offerSent: () => () => {},
+            tracks: () => false,
             upsertSession: async () => {
                 throw new Error("requestor unavailable");
             },
@@ -524,6 +598,8 @@ describe("establishWebRtcProviderSession", () => {
                 invokedCommands.push(command);
                 throw new Error("NOT_FOUND");
             },
+            offerSent: () => () => {},
+            tracks: () => false,
             upsertSession: async () => {},
         };
 
@@ -546,6 +622,8 @@ describe("establishWebRtcProviderSession", () => {
                 invokedCommands.push(command);
                 return { webRtcSessionId: 9 };
             },
+            offerSent: () => () => {},
+            tracks: () => false,
             upsertSession: async () => {
                 upserted = true;
             },
@@ -572,6 +650,8 @@ describe("establishWebRtcProviderSession", () => {
                 invokedCommands.push(command);
                 return { webRtcSessionId: 9 };
             },
+            offerSent: () => () => {},
+            tracks: () => false,
             upsertSession: async () => {
                 throw new Error("requestor endpoint is gone");
             },
@@ -596,6 +676,8 @@ describe("establishWebRtcProviderSession", () => {
                 if (command === "provideOffer") return { webRtcSessionId: 9 };
                 throw new Error("device unreachable");
             },
+            offerSent: () => () => {},
+            tracks: () => false,
             upsertSession: async () => {},
         };
 
@@ -625,6 +707,8 @@ describe("establishWebRtcProviderSession", () => {
                     entered();
                     return new Promise<never>(() => {});
                 },
+                offerSent: () => () => {},
+                tracks: () => false,
                 upsertSession: async () => {},
             };
 
@@ -656,6 +740,8 @@ describe("establishWebRtcProviderSession", () => {
                     entered();
                     return new Promise<never>(() => {});
                 },
+                offerSent: () => () => {},
+                tracks: () => false,
                 upsertSession: async () => {
                     throw new Error("requestor endpoint is gone");
                 },
@@ -672,6 +758,121 @@ describe("establishWebRtcProviderSession", () => {
         } finally {
             MockTime.disable();
         }
+    });
+
+    describe("recorded offers", () => {
+        interface OfferRecording {
+            io: WebRtcProviderSessionIo;
+            steps: string[];
+        }
+
+        function recording(behaviour: {
+            invoke?: (command: string) => Promise<unknown>;
+            tracked?: boolean;
+            upsert?: () => Promise<void>;
+        }): OfferRecording {
+            const steps = new Array<string>();
+            const io: WebRtcProviderSessionIo = {
+                invoke: async command => {
+                    steps.push(command);
+                    return behaviour.invoke === undefined ? { webRtcSessionId: 9 } : behaviour.invoke(command);
+                },
+                offerSent: (webRtcSessionId, sdp) => {
+                    steps.push(`offer:${webRtcSessionId}:${sdp}`);
+                    return () => steps.push(`withdraw:${webRtcSessionId}`);
+                },
+                tracks: () => behaviour.tracked ?? false,
+                upsertSession: async () => {
+                    steps.push("upsert");
+                    await behaviour.upsert?.();
+                },
+            };
+            return { io, steps };
+        }
+
+        async function failureOf(work: Promise<unknown>): Promise<unknown> {
+            try {
+                await work;
+            } catch (error) {
+                return error;
+            }
+            return undefined;
+        }
+
+        const NEW_OFFER = { streamUsage: 3, videoStreams: [1], sdp: "v=0" };
+        const RE_OFFER = { webRtcSessionId: 9, sdp: "v=0" };
+
+        it("withdraws a new session's offer when the local requestor refuses the session", async () => {
+            const { io, steps } = recording({
+                upsert: async () => {
+                    throw new Error("requestor endpoint is gone");
+                },
+            });
+
+            await failureOf(establishWebRtcProviderSession(io, baseArgs({ fields: NEW_OFFER })));
+
+            expect(steps).to.deep.equal(["provideOffer", "offer:9:v=0", "upsert", "withdraw:9", "endSession"]);
+        });
+
+        it("keeps a new session's offer once the requestor holds the session", async () => {
+            const { io, steps } = recording({ tracked: true });
+
+            await establishWebRtcProviderSession(io, baseArgs({ fields: NEW_OFFER }));
+
+            expect(steps).to.deep.equal(["provideOffer", "offer:9:v=0", "upsert"]);
+        });
+
+        it("records no offer for a new session it cannot track", async () => {
+            const { io, steps } = recording({});
+
+            await failureOf(establishWebRtcProviderSession(io, baseArgs({ fields: { sdp: "v=0" } })));
+
+            expect(steps).to.deep.equal(["provideOffer", "endSession"]);
+        });
+
+        it("withdraws a re-offer the camera refused, although the requestor holds the session", async () => {
+            const { io, steps } = recording({
+                tracked: true,
+                invoke: async () => {
+                    throw new Error("busy");
+                },
+            });
+
+            await failureOf(establishWebRtcProviderSession(io, baseArgs({ fields: RE_OFFER })));
+
+            expect(steps).to.deep.equal(["offer:9:v=0", "provideOffer", "withdraw:9"]);
+        });
+
+        it("withdraws a re-offer whose response names no session", async () => {
+            const { io, steps } = recording({ tracked: true, invoke: async () => ({}) });
+
+            await failureOf(establishWebRtcProviderSession(io, baseArgs({ fields: RE_OFFER })));
+
+            expect(steps).to.deep.equal(["offer:9:v=0", "provideOffer", "withdraw:9"]);
+        });
+
+        it("keeps an accepted re-offer of a session the requestor holds", async () => {
+            const { io, steps } = recording({ tracked: true });
+
+            await establishWebRtcProviderSession(io, baseArgs({ fields: RE_OFFER }));
+
+            expect(steps).to.deep.equal(["offer:9:v=0", "provideOffer"]);
+        });
+
+        it("withdraws an accepted re-offer when tracking it failed and the requestor does not hold it", async () => {
+            const { io, steps } = recording({
+                upsert: async () => {
+                    throw new Error("requestor endpoint is gone");
+                },
+            });
+
+            await establishWebRtcProviderSession(
+                io,
+                baseArgs({ fields: { ...RE_OFFER, streamUsage: 3, videoStreams: [1] } }),
+            );
+
+            expect(steps).to.deep.equal(["offer:9:v=0", "provideOffer", "upsert", "withdraw:9"]);
+        });
     });
 });
 

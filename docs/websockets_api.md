@@ -1237,10 +1237,10 @@ Each command below starts with the **minimal request** — the arguments it need
 #### Typical flow
 
 1. *(Optional)* `camera_get_capabilities`: check `features` and `privacy`, and see which codecs the camera states and what is already allocated on it.
-2. Register a handler for the `webrtc_callback` event **before** the next step. The camera's answer can arrive before the response to `camera_start_stream` (see [Signalling](#camera_start_stream)).
-3. `camera_start_stream` with `stream_usage` and your SDP offer in `sdp`. The server picks or allocates the streams and sends `ProvideOffer`. The response names the session in `webrtc_session_id`.
-4. Complete the WebRTC connection. Apply the camera's `answer` from `webrtc_callback`, add the camera's candidates from its `ice_candidates` events, and send your own with `camera_provide_ice_candidates`. If you sent no `sdp`, the camera sends an `offer` event instead, and you answer it with `camera_provide_answer`.
-5. `camera_stop_stream` ends the session. The streams stay allocated, so the next `camera_start_stream` can reuse them without a new allocation.
+2. Register a handler for the `webrtc_callback` event **before** the next step. The handler matches the session's events by the `client_session_key` you choose in the next step (see **A key of your own** under [camera_start_stream](#camera_start_stream)).
+3. `camera_start_stream` with `stream_usage`, your SDP offer in `sdp` and your own name for the session in `client_session_key`. The server picks or allocates the streams and sends `ProvideOffer`. The response names the session in `webrtc_session_id`.
+4. Complete the WebRTC connection. Apply the camera's `answer` from `webrtc_callback`, add the camera's candidates from its `ice_candidates` events, and send your own with `camera_provide_ice_candidates` and the key, without waiting for the response. If you sent no `sdp`, the camera sends an `offer` event instead, and you answer it with `camera_provide_answer`.
+5. `camera_stop_stream` with the key ends the session, also while `camera_start_stream` is still running. The streams stay allocated, so the next `camera_start_stream` can reuse them without a new allocation.
 6. *(Optional)* `camera_release_stream` frees a stream you no longer need.
 
 `camera_snapshot` stands on its own: it needs no session and no signalling.
@@ -1254,7 +1254,7 @@ Each command below starts with the **minimal request** — the arguments it need
 
 Do not use `send_webrtc_provider_command` or `device_command` `EndSession` for such a session. The server keeps a record of each session it opens — which connection receives its signalling, which streams it holds, and that it is ended exactly once — and only the `camera_*` commands keep that record correct.
 
-- Each of these commands takes `node_id`, `endpoint_id` and `webrtc_session_id` in the spelling the rest of this API uses. A client never needs a cluster field name or the raw route in the middle of a session.
+- Each of these commands takes `node_id`, `endpoint_id` and `webrtc_session_id` in the spelling the rest of this API uses. `camera_provide_ice_candidates` and `camera_stop_stream` take the session's `client_session_key` in place of the id. A client never needs a cluster field name or the raw route in the middle of a session.
 - One exception: a re-offer. An ICE restart, or a change to the tracks of a live session, goes through `send_webrtc_provider_command` with `ProvideOffer`, because `camera_start_stream` always opens a new session (see **Re-offers** under `camera_start_stream`). The session stays the server's for teardown.
 - `device_command` `EndSession` still drops the server's records for the session (see `camera_stop_stream`). But it does not share the one `EndSession` the other paths send, and if the camera no longer holds the session it fails with the camera's error instead of returning `ended: false`.
 
@@ -1361,7 +1361,7 @@ There is no resolution list, because the camera does not state one. `codecs` is 
 | `sessions[]` | `webrtc_session_id`, `peer_node_id`, `peer_endpoint_id`, `stream_usage`, `video_stream_ids`, `audio_stream_ids`, `established_by_this_server` |
 
 - This list, not this server's own tracking, is what holds a `reference_count` above zero.
-- It is the only place to learn a session id after this server restarted. The server tracks sessions in memory, so a restart loses them, while the camera keeps holding them. Only `EndSession` decrements a stream's reference count.
+- It is the only place to learn a session id after this server restarted. The server tracks sessions in memory, so a restart loses them, while the camera keeps holding them. Only `EndSession` decrements a stream's reference count. The server therefore ends such leftover sessions itself (see **Leftover sessions** under `camera_stop_stream`), so after a restart this list shows them until a later report from the camera no longer lists them.
 - A session listed here can be ended with `camera_stop_stream` whether or not this server established it in its current run. The stream it pins can then be released.
 - The attribute is fabric-sensitive, so only sessions on this server's own fabric appear.
 - Within the fabric, `established_by_this_server` says the camera recorded this server as the session's peer. That is exactly when `camera_stop_stream` can end it: a camera answers `NOT_FOUND` for any other peer's session.
@@ -1403,7 +1403,16 @@ What the client gets: the best video stream the camera can serve, within what th
 - After `"provide_offer"` the camera answers with an `answer` event, and the client only trickles candidates with `camera_provide_ice_candidates`.
 - After `"solicit_offer"` the camera sends an `offer` event, and the client owes the SDP answer through `camera_provide_answer`.
 
-**Signalling can arrive before this response.** The server applies the `webrtc_callback` opt-in before it dispatches the command, because the camera answers the offer while `camera_start_stream` is still in flight. For `mode: "provide_offer"`, the camera's `answer` and its first ICE candidates can reach the connection before the response frame carrying `webrtc_session_id`. A client that installs its handlers keyed on the id from the response drops them. Register the `webrtc_callback` handler before sending the command, buffer events by their own `webrtc_session_id` until the response lands, then attach the buffered ones to the session it names. There is no ordering guarantee either way — a response bypasses the outbox an event queues into — so a client must handle both orders.
+**Signalling arrives after this response.** The camera can send its `answer`, `offer`, ICE candidates or `end` while `camera_start_stream` is still in flight. The server holds these `webrtc_callback` events of the new session, and a `camera_session_ended` for it, and sends them right after the response, in the order they arrived. So the response carrying `webrtc_session_id` reaches the connection before the first event of its session. A client library that handles several frames of one socket read without yielding (Node's `ws`, possibly others) must record the id while it handles the response, not after the caller's `await` resumes. On an error response the held events are discarded: the server sends `EndSession` for the session before it answers with the error, and the client never learned its id. Events of every other session, and events on other connections, are not held. A re-offer through `send_webrtc_provider_command` is not covered: its answer can arrive before or after that command's response.
+
+**A key of your own.** `client_session_key` is a string of 1 to 128 characters the client chooses. With it, the client never has to learn the id before it can act on the session:
+
+- Every `webrtc_callback` and `camera_session_ended` event of the session carries it as `client_session_key`. A handler can match events by the key, so it does not matter whether the client library dispatches an event before or after the code that awaits the response runs.
+- `camera_provide_ice_candidates` and `camera_stop_stream` take it in place of `webrtc_session_id`, also while this command is still running. Candidates sent that early are queued and sent to the camera right after this response; `camera_stop_stream` cancels the start (see those commands).
+- The key is scoped to the connection. Events of the session reach only the connection that started it, and only that connection can name the session by the key. Two connections may use the same key.
+- A key already in use on the connection, by a session that is starting or open on any camera, is refused with error 8, because events and commands naming it would be ambiguous. The key is free again once its session ended, or once its `camera_start_stream` failed.
+- A re-offer through `send_webrtc_provider_command` keeps the session's key. A session the camera gave a reused id belongs to the new start, so its events carry the new start's key, never the old one.
+- Without a key, the events carry none, and commands name the session by its id. Sessions opened on the raw `send_webrtc_provider_command` route never have a key.
 
 ##### More control
 
@@ -1419,6 +1428,7 @@ Every optional argument, stated or not:
 | `metadata_enabled` | boolean, optional | Passed to the WebRTC session setup; absent is `false` |
 | `allow_eviction` | boolean, optional | Whether the server may deallocate a stream nothing references to serve this request. Absent is `true`; `false` skips that step. See **Making room** below |
 | `talkback` | boolean, optional | Whether the offer may ask the camera to play the client's audio. Absent is `false`: the server makes the offer's audio sections not send. `true` requires `sdp`. See **The offer's media sections** below |
+| `client_session_key` | string, optional | The client's own name for the session, 1 to 128 characters, unique among the connection's starting and open sessions. See **A key of your own** above |
 
 `video` hints are **ranges**:
 
@@ -1502,6 +1512,7 @@ A track the caller *asked for* that the offer refuses is `reason: "offer"` inste
 - The struct states the ceilings. The floor of one character is this server's: it refuses an empty string wherever the struct takes one.
 - Any other key, an entry naming no URL, or a value past those limits is refused with error 8. The refusal names the field and both ends of its range.
 - The server translates each entry into the cluster's `ICEServerStruct` (spec § 11.4.5.3), whose field is `URLs` and always a list.
+- A camera refuses a `SolicitOffer` (spec § 11.5.6.1.10), and a `ProvideOffer` for a new session (`WebRTCSessionID` null, § 11.5.6.3.12), with a `turns:` or `stuns:` URL while its UTC time is not set. A re-offer is not checked. The server sends such an offer as it is. When the camera refuses it with `INVALID_IN_STATE`, the server pushes its time (the regular time sync, which also sets the time zone on a camera that supports it) and sends the same offer once more. The server cannot check the clock first: the subscribed `UTCTime` can be stale, because the attribute's changes are not reported (quality `C X`, table in § 11.17.8). An offer the camera accepts costs no extra request. A refused offer creates no session on the camera (§ 11.5.6.1.10, § 11.5.6.3.12), so the second offer cannot open a second one. If the push fails, or the second offer fails without a status from the camera, the client gets the camera's first refusal, as it would without this step. If the camera refuses the second offer, the client gets that refusal. For `camera_start_stream` either refusal becomes the privacy error 106 when a privacy switch covers it. This holds for `camera_start_stream` and for `send_webrtc_provider_command` with `ProvideOffer` or `SolicitOffer`.
 
 **Debug-log masking:**
 
@@ -1513,7 +1524,7 @@ A track the caller *asked for* that the offer refuses is `reason: "offer"` inste
 
 - `talkback` absent or `false`: before `ProvideOffer`, the server rewrites the direction of every audio section that can send. `a=sendrecv` becomes `a=recvonly`, and `a=sendonly` becomes `a=inactive`. A section stating no direction gets the new line added at its end. That overrides a session-level direction for that section only; the session-level line stays for the other sections. Nothing else in the offer changes.
 - The client keeps its own local description. A camera that follows the rewritten direction answers a section the client offered `sendrecv` with `a=sendonly` or `a=inactive`, and a section the client offered `sendonly` with `a=inactive`. Each is a valid answer to the client's original section (RFC 3264 §6.1), so the client applies the answer unchanged.
-- The rewrite only asks the camera. Some cameras answer `a=sendrecv` whatever was offered (the Matter SDK example camera does), and the server relays the answer unchanged, so the client's audio sender can still negotiate sending. A client that must not send audio keeps the track off its audio sender.
+- Some cameras answer `a=sendrecv` whatever was offered (the Matter SDK example camera does). Before the `answer` event, the server narrows the direction of each media section of the camera's answer to what the offer it sent allows (RFC 3264 §6.1). A section's direction is its own line, else the session-level line, else `sendrecv`; a narrowed section gets a direction line of its own. Such an answer reaches the client as `a=sendonly`, so the client's audio sender does not negotiate sending. This applies to answers for offers sent with `camera_start_stream` or `send_webrtc_provider_command` (re-offers included), not with `device_command`. The offer is kept only while the camera can still answer it: the server drops it when the camera refuses the offer, when the session cannot be tracked, and when the session ends.
 - `talkback: true`: the offer goes to the camera unchanged. The call does not fail when the camera does not state `TwoWayTalkSupport` `HalfDuplex` or `FullDuplex` (the server logs it), or when no audio section can send, or when the session gets no audio stream. The response's `talkback` is `false` in these cases.
 - Only `camera_start_stream` applies this. A re-offer through `send_webrtc_provider_command` goes to the camera as given (see **Re-offers** below), so a client that re-offers from its own `sendrecv` local description asks for talkback again.
 - An audio section the client only sends on (`a=sendonly`) refuses the camera's audio, so such a section gets no audio stream, with or without `talkback`.
@@ -1592,7 +1603,7 @@ Reporting:
 - A track is `null` when the caller declined it with `false`, or left it out and no stream could be resolved. A track the caller asked for is never `null`: the call fails instead.
 - The `webrtc_session_id` names a session that had not ended when the server recorded it. A session ended between the camera answering the offer and that record — by the camera itself, or by another connection's `camera_stop_stream` or `EndSession` for the id the camera just issued — fails the call with error 7 and gives the streams back. An id whose signalling would reach nothing is never returned.
 - Any failed call deallocates the streams it allocated for the attempt. The caller never receives their ids, so it could not release them itself. A stream allocated back in place of a taken one stays.
-- `talkback` is always present. It is `true` when `talkback: true` was stated, an audio section of the offer can send, the camera states `TwoWayTalkSupport` `HalfDuplex` or `FullDuplex`, and `audio` is not `null`; otherwise `false`. The audio stream is required because the Matter SDK example camera (with its audio playback option on) plays the client's audio only while the session's audio stream runs. It is the server's reading of the offer and the camera's attributes. The audio direction in the camera's answer is the final word: `a=recvonly` or `a=sendrecv` means the camera takes the client's audio. The answer can arrive before or after this response.
+- `talkback` is always present. It is `true` when `talkback: true` was stated, an audio section of the offer can send, the camera states `TwoWayTalkSupport` `HalfDuplex` or `FullDuplex`, and `audio` is not `null`; otherwise `false`. The audio stream is required because the Matter SDK example camera (with its audio playback option on) plays the client's audio only while the session's audio stream runs. It is the server's reading of the offer and the camera's attributes. The audio direction in the camera's answer is the final word: `a=recvonly` or `a=sendrecv` means the camera takes the client's audio. The answer arrives after this response.
 
 | Field | On | Meaning |
 |---|---|---|
@@ -1616,7 +1627,7 @@ Reporting:
 - A caller that needs a frame rate states `min_frame_rate`, which the budget may not narrow past. Freeing one of its own streams with `camera_release_stream` or `camera_stop_stream` gives the budget back.
 - Refusals by the camera may have lowered the range too. These values are the first request's ceilings, not a measure of what the budget alone cost.
 
-**Re-offers.** An ICE restart, or a change to the tracks a live session carries, is a second `ProvideOffer` naming the existing session id (§11.5.6.3, with `WebRTCSessionID` stated instead of null). `camera_start_stream` always opens a new session, so a re-offer goes through `send_webrtc_provider_command` with `command_name: "ProvideOffer"` and the existing `webRtcSessionId` in the payload. The server sends a re-offer as given and returns the camera's `ProvideOfferResponse`. It never overwrites or ends a session the server tracks, so a re-offer may leave out `streamUsage`, `videoStreams` and `audioStreams`. When the server tracks no such session, for example after a restart while the camera kept it, a re-offer that states `streamUsage` and its streams adds the session, so the camera's answer is accepted. The camera answers NOT_FOUND for a session id it does not hold. Send a re-offer for a `camera_start_stream` session on the connection that opened it: the camera's answer and ICE candidates go only to that connection. For teardown the session stays the server's: `camera_stop_stream` still ends it, and `camera_session_ended` still reports another connection ending it.
+**Re-offers.** An ICE restart, or a change to the tracks a live session carries, is a second `ProvideOffer` naming the existing session id (§11.5.6.3, with `WebRTCSessionID` stated instead of null). `camera_start_stream` always opens a new session, so a re-offer goes through `send_webrtc_provider_command` with `command_name: "ProvideOffer"` and the existing `webRtcSessionId` in the payload. The server sends a re-offer as given and returns the camera's `ProvideOfferResponse`. It never overwrites or ends a session the server tracks, so a re-offer may leave out `streamUsage`, `videoStreams` and `audioStreams`. When the server tracks no such session, a re-offer that states `streamUsage` and its streams adds the session, so the camera's answer is accepted. A session from before a server restart is usually gone by then: the server ends such sessions at the camera's first report (see **Leftover sessions** under `camera_stop_stream`). The camera answers NOT_FOUND for a session id it does not hold. Send a re-offer for a `camera_start_stream` session on the connection that opened it: the camera's answer and ICE candidates go only to that connection. For teardown the session stays the server's: `camera_stop_stream` still ends it, and `camera_session_ended` still reports another connection ending it.
 
 #### camera_provide_answer
 
@@ -1646,7 +1657,7 @@ Response: `null`. The cluster defines no response payload for `ProvideAnswer`. A
 
 #### camera_provide_ice_candidates
 
-Trickle ICE candidates into a session. All four arguments are required.
+Trickle ICE candidates into a session. `node_id`, `endpoint_id` and `ice_candidates` are required, and exactly one of `webrtc_session_id` and `client_session_key` names the session.
 
 ```json
 {
@@ -1655,7 +1666,7 @@ Trickle ICE candidates into a session. All four arguments are required.
   "args": {
     "node_id": 1,
     "endpoint_id": 1,
-    "webrtc_session_id": 3,
+    "client_session_key": "living-room-1",
     "ice_candidates": [{ "candidate": "candidate:1 1 UDP 2130706431 192.0.2.1 50000 typ host", "sdpMid": "0", "sdpMLineIndex": 0 }]
   }
 }
@@ -1665,6 +1676,10 @@ Trickle ICE candidates into a session. All four arguments are required.
 - `sdpMid` and `sdpMLineIndex` are stated on every entry and may be `null`.
 - The list takes at least one entry, the floor `ProvideIceCandidates`' own field states.
 - `webrtc_session_id` and the sending connection follow the same rules as for `camera_provide_answer`.
+- Both or neither of `webrtc_session_id` and `client_session_key` is error 8.
+- `client_session_key` names a session this connection started with that key on this node and endpoint. While its `camera_start_stream` is still running, the candidates are queued, and sent with `ProvideIceCandidates` in the order they came, right after that command's response. This command then answers once its own candidates were sent, with the camera's error if the camera refused them. At most 64 candidates wait per start; one more is error 8.
+- Once a session is named by its key, keep naming it so. Only candidates sent with the key are kept in order behind the queued ones; a command naming the id goes out at once.
+- A key that names no starting or open session of this connection is error 8, and so are candidates queued for a start that failed or was cancelled. The camera is not asked, so no `NOT_FOUND` status comes back as it does for an unknown id.
 
 Without trickled candidates a camera learns its peer's addresses from the initial SDP alone. That can decide whether a session connects through a relay after the first round or does not connect at all.
 
@@ -1672,7 +1687,7 @@ Response: `null`, as for `camera_provide_answer`.
 
 #### camera_stop_stream
 
-End the WebRTC session and keep the allocation. All three arguments are required.
+End the WebRTC session and keep the allocation. `node_id` and `endpoint_id` are required, and exactly one of `webrtc_session_id` and `client_session_key` names the session.
 
 ```json
 {
@@ -1689,7 +1704,12 @@ End the WebRTC session and keep the allocation. All three arguments are required
 Response: `{ "ended": true }`. The session's streams stay allocated, so a later `camera_start_stream` can reuse them; `camera_release_stream` frees them.
 
 - `webrtc_session_id` is a uint16, so an integer 0 to 65535. A value outside that names no session the camera can have and is refused with error 8, not answered as an unknown session.
-- The id does not have to be one this server established in its current run. A session `camera_get_capabilities` lists can be ended too. That is the way back after an ungraceful restart: the server's own tracking is gone, the camera still holds the session, and its streams stay pinned at `reference_count` above zero until it is ended.
+- The id does not have to be one this server established in its current run. A session `camera_get_capabilities` lists can be ended too.
+- Both or neither of `webrtc_session_id` and `client_session_key` is error 8.
+- `client_session_key` names a session this connection started with that key on this node and endpoint. A key that names none is answered `ended: false`, as an unknown id is.
+- A key whose `camera_start_stream` is still running cancels that start. If the start has not sent its offer yet, it sends none: it stops before its audio stream or before the offer, whichever comes next. A stream it is already allocating is finished and then given back, together with the other streams it allocated. Otherwise the server ends the session the camera opened as soon as the offer is answered. That `camera_start_stream` fails with error 7, and its held events are discarded. This command answers once the start has given up: `ended` is `true` when the camera had opened the session and the server ended it, `false` when no session was opened or the camera answered `NOT_FOUND`. An `EndSession` the camera refuses otherwise is an error response, as for an id.
+
+**Leftover sessions.** The server tracks sessions in memory and ends them on a clean shutdown. After a crash or a forced stop the camera still holds sessions whose peer is this server, and their streams stay pinned at `reference_count` above zero, so later starts can fail with error 103. When a camera's subscription delivers its first report after the server started, the server sends `EndSession` (reason `UnknownReason`) for every session in its `CurrentSessions` whose `PeerNodeID` is this server and which the server's WebRTC requestor does not hold. The requestor holds every session opened with `camera_start_stream` or `send_webrtc_provider_command` in the current run, so this ends the sessions from before a restart. It also ends a session a client opened with `device_command` `ProvideOffer` or `SolicitOffer` (the requestor never holds those, so their answers never reach a client), but only one that exists when the check runs. The server checks once per camera endpoint, and again for a new endpoint and for a session it gave up and could not end (for example a `camera_start_stream` cancelled while the camera made its session). While a `ProvideOffer` or `SolicitOffer` to that camera is in flight, it waits for the next report, because the camera can list the new session before the server records it. Each ended session is logged at notice level. Sessions another controller holds are not touched.
 - The camera checks the server, not the WebSocket connection: any connection can end any session this server holds on that camera, including one another connection started.
 - There is one `EndSession` per session, however many paths reach it. A closing connection and the shutdown pass end the sessions they own. A `camera_stop_stream` naming a session one of them is already ending waits on that same invoke and reports its outcome.
 - `ended` is `false` when the camera answered `NOT_FOUND`: an id it could not resolve to one of its own sessions with this server — one the peer had already ended, one it never held, or one belonging to another controller. The server then drops its local records for the id as well.
@@ -1721,7 +1741,7 @@ What the client gets: a frame from the largest snapshot capability the camera st
 **Response:** `{ data, codec, resolution, degraded, stream_id, provenance }`.
 
 - `data` is the image bytes, base64-encoded.
-- `degraded: true` says the frame is smaller than the best capability the request's own bounds allowed.
+- `degraded: true` says the frame is smaller than the request allowed. Without `resolution`, that is the best capability within `max_resolution` and `codec`. With `resolution`, see **Asking for a size** below.
 - `stream_id` names the snapshot stream the frame came from. A successful call always leaves that stream on the camera, so this is the id `camera_release_stream` takes. That release can still fail with error 104 while something references the stream.
 - `provenance` says where that stream came from, with the values and meaning `camera_start_stream` uses: `allocated` (this call allocated it), `reused` (already there, and this server allocated it earlier in this run) or `adopted` (already there, not allocated by this server). A client that releases only the snapshot streams it caused releases the ones answered with `allocated`.
 
@@ -1730,6 +1750,7 @@ What the client gets: a frame from the largest snapshot capability the camera st
 | Argument | Type | What it controls |
 |---|---|---|
 | `max_resolution` | resolution, optional | Ceiling on the frame size. A capability larger in either dimension is not used |
+| `resolution` | width and/or height, optional | The size you want, such as a thumbnail's. See **Asking for a size** below |
 | `codec` | name, optional | Image codec, from `snapshot.capabilities[].image_codec` |
 | `watermark_enabled` | boolean, optional | Whether the camera burns in its watermark. See the overlay rules below |
 | `osd_enabled` | boolean, optional | Whether the camera burns in a date/time/name banner |
@@ -1742,6 +1763,7 @@ What the client gets: a frame from the largest snapshot capability the camera st
     "node_id": 1,
     "endpoint_id": 1,
     "max_resolution": { "width": 1280, "height": 720 },
+    "resolution": { "width": 320 },
     "codec": "JPEG",
     "watermark_enabled": false,
     "osd_enabled": false
@@ -1749,7 +1771,18 @@ What the client gets: a frame from the largest snapshot capability the camera st
 }
 ```
 
-`max_resolution`, `codec`, `watermark_enabled` and `osd_enabled` are the only arguments besides `node_id` and `endpoint_id`. Any other key is refused with error 8.
+`max_resolution`, `resolution`, `codec`, `watermark_enabled` and `osd_enabled` are the only arguments besides `node_id` and `endpoint_id`. Any other key is refused with error 8.
+
+##### Asking for a size
+
+`resolution` is `{ "width": n }`, `{ "height": n }` or both. Each side is an integer from 1 to 65535. An empty object, a zero, a negative or fractional number, or an unknown key is refused with error 8. A client that has only a width, as a thumbnail usually does, states only the width.
+
+- Without `resolution`, the server uses the largest snapshot capability that `max_resolution` and `codec` allow, and the client scales the frame itself.
+- With `resolution`, the server uses the smallest allowed capability that is at least as large as the target in every stated side. When none is that large, it uses the largest allowed one. `max_resolution` stays a ceiling and wins over the target.
+- The server then asks the camera for the target scaled to fit inside that capability's aspect ratio (`CaptureSnapshot` `RequestedResolution`, spec §11.2.8.13.2). A stated width alone fixes the height, and the other way round. With both sides stated, the frame fits inside that box and keeps the capability's aspect ratio. The request is never larger than the capability.
+- The camera **may** scale the image down to that size when it has the resources (spec §11.2.8.13.3). It may also return the full capability size. The response's `resolution` states what came back, so a client still scales when the frame is larger than it wanted.
+- `degraded: true` means the frame is smaller than the target in every stated side and also smaller than the capability the target selected. A frame that reaches the target is never degraded, however much smaller it is than the camera's best capability. When no capability reaches the target, a frame of the largest allowed capability is not degraded.
+- Already allocated snapshot streams are used when their range covers the size that would be requested. A larger stream than the selected capability can serve a thumbnail request this way, and with several fitting streams the smallest one that reaches the target is used.
 
 ##### camera_snapshot details
 
@@ -1758,13 +1791,13 @@ Overlays work as under `camera_start_stream`'s `video` (see **The overlays** the
 - Mandatory on `SnapshotStreamAllocate` for a camera advertising the matching feature, forbidden for one that does not (spec §11.2.8.8, conformance `WMARK` / `OSD`).
 - `true` for a feature the camera does not advertise fails with error 102 naming it; `false` is accepted there; unset asks for no overlay.
 - A snapshot stream whose overlays differ from what the request resolved to is not adopted.
-- If the camera answers the allocate with a snapshot stream it already has, the server checks the stated `codec` and the stated overlays (an unstated overlay is not checked) and captures at the size it chose. The call fails with error 102 `reason: "bounds"` when the stream breaks one of these, or when the returned frame is larger than `max_resolution`. The stream stays on the camera.
+- If the camera answers the allocate with a snapshot stream it already has, the server checks the stated `codec` and the stated overlays (an unstated overlay is not checked) and captures at the size it chose (the `resolution` target fitted into that capability, if one was stated). The call fails with error 102 `reason: "bounds"` when the stream breaks one of these, or when the returned frame is larger than `max_resolution`. The stream stays on the camera.
 - Weaker than for video: at a capability whose `requires_hardware_encoder` is false the camera **may** ignore both fields and apply the source video stream's setting instead (spec §11.2.8.8.6). The request is not a guarantee; `camera_get_capabilities`'s `allocated.snapshot` reports what the camera actually did.
 
 Choosing a stream:
 
-- The call captures from a snapshot stream the camera already has, whoever allocated it, whenever one fits the request's own bounds and is no smaller than the capability it would otherwise allocate. Allocating a stream per call is what the cluster asks controllers to avoid.
-- When the camera's encoders are all taken, the server prefers a capability that needs no hardware encoder. How many are taken is counted from the referenced video streams plus the snapshot streams with `hardware_encoder` set, against `max_concurrent_encoders`. So one viewer on a camera that states four encoders costs nothing.
+- The call captures from a snapshot stream the camera already has, whoever allocated it, whenever one fits the request's own bounds and is no smaller than the capability it would otherwise allocate (than the size asked from it, when `resolution` is stated). Allocating a stream per call is what the cluster asks controllers to avoid.
+- When the camera's encoders are all taken, the server prefers a capability that needs no hardware encoder, ahead of any ordering by `resolution`: a target never puts an encoder-using capability first. The camera can take the picture from the running video stream for such a capability, and it may scale it to the target. How many are taken is counted from the referenced video streams plus the snapshot streams with `hardware_encoder` set, against `max_concurrent_encoders`. So one viewer on a camera that states four encoders costs nothing.
 - A stream the call allocates is left in place for the next call, whatever capability it came from. A call that fails deallocates the stream it allocated for the attempt. At most one such stream exists per snapshot capability, because `SnapshotStreamAllocate` answers a matching request with the id it already issued.
 - A stream allocated at a capability that requires the hardware encoder holds one of `max_concurrent_encoders` while it exists. After a successful capture `camera_snapshot` never gives it back itself: a deallocate it cannot await to the end would make this response name a stream that is being removed. A later `camera_start_stream` that runs out of capacity takes it instead of failing, under the rules in **Making room** under `camera_start_stream`, and reports it in a `camera_stream_evicted` event. The client therefore does not have to release it to start a stream, and the next `camera_snapshot` allocates one again.
 - A stream left in place shows under `camera_get_capabilities`'s `allocated.snapshot`, and `camera_release_stream` frees it. Both read what the camera reports: on a camera that never reports its allocated snapshot streams, the stream is there but neither command can name it.
@@ -2175,7 +2208,8 @@ pre-schema-13 clients never receive it.
 
 The camera's half of the WebRTC signalling: its offer, its answer, its ICE candidates and its end of
 the session, each carrying `event_type`, `webrtc_session_id`, `node_id`, `endpoint_id`, `fabric_index`
-and a per-type `data`, which is `null` on a callback that carried no payload.
+and a per-type `data`, which is `null` on a callback that carried no payload. An event of a session
+started with a `client_session_key` also carries that key as `client_session_key`.
 
 ```json
 {
@@ -2209,7 +2243,9 @@ know.
 
 Among those connections it is **routed to the one that owns the session**: a session opened by
 `camera_start_stream` reaches the connection that opened it and no other, for every event type,
-including the camera's `end`.
+including the camera's `end`. Its events wait until the `camera_start_stream` response is sent. Such a
+client does not need the `end` event: `camera_session_ended` reports every end of its session, the
+camera's own included.
 
 A session this server holds no record of reaches every opted-in connection instead: nothing names an
 owner for it, and withholding the signalling would strand a session no client could complete. Three
@@ -2221,16 +2257,26 @@ WebRTC requestor and recording it — the requestor answers `NOT_FOUND` for ever
 naming a session it has not registered, the camera's offer included, so nothing arrives before that
 registration.
 
-**camera_session_ended** *(schema 14+)* - Another connection ended a session this connection opened
+**camera_session_ended** *(schema 14+)* - A session this connection opened ended without its own command
 
 ```json
 {
   "event": "camera_session_ended",
-  "data": { "node_id": 1, "endpoint_id": 1, "webrtc_session_id": 3 }
+  "data": { "node_id": 1, "endpoint_id": 1, "webrtc_session_id": 3, "cause": "peer", "reason": 2 }
 }
 ```
 
-Any connection may end any of this server's sessions, with `camera_stop_stream` or with `EndSession` through the generic `device_command` route. The camera's own `PeerNodeID` and fabric check decides that, not this server's records. So a session can end without the client that opened it doing anything. This event tells that client, instead of its next command failing.
+A client that opens sessions with `camera_start_stream` can listen here alone to learn that a session ended. The event is sent for every end the client did not ask for itself, the camera's own `End` included. The camera's `End` still arrives as a `webrtc_callback` `end` event as well, for clients of the raw route. A session started with a `client_session_key` carries that key as `client_session_key`; a session the camera lost because it gave the id to a new session carries the old session's key.
+
+| `cause` | What happened |
+|---|---|
+| `peer` | The camera sent `End`. `reason` is its `WebRTCEndReasonEnum` value, present when the camera stated one. |
+| `other_connection` | Another connection sent `camera_stop_stream`, or `EndSession` through `device_command`. Any connection may end any of this server's sessions: the camera's own `PeerNodeID` and fabric check decides that, not this server's records. |
+| `camera_restarted` | The camera restarted. Either the camera reported a `StartUp` event and then, within 30 seconds, the first change of that endpoint's `CurrentSessions` no longer lists the session, or the camera gave the session's id to a new session. A `CurrentSessions` the server reads from its own copy of the camera's state, without a change from the camera, does not count. A camera hands out only an id it no longer holds: the Matter SDK camera numbers sessions from 0 again after a reboot. An id can also come back after the camera's counter wrapped, so this cause can name a session that ended without a restart. From then on the id's signalling goes to whoever opened the new session. |
+| `camera_dropped` | A report of the camera's `CurrentSessions` no longer lists the session, without an `End` and not counted as a restart (see `camera_restarted`). |
+| `node_removed` | The node was removed from the fabric. |
+
+The server reads `CurrentSessions` from the node's subscription. It ends a session there only after a report listed the session and a later report no longer does, because a report built before the camera answered the offer does not list the new session yet. The attribute has no N (non-volatile) quality (§11.5.5), so it is not persistent data (§7.12.1) and a camera can start with an empty list after a reboot. A node that goes unavailable does not end its sessions: media can still flow, and the browser detects a failed connection itself. Without a subscription (`--disable-auto-subscription`) the server sees no reports, so neither cause comes from a report: only a reissued id ends a session, as `camera_restarted`.
 
 Delivery:
 
@@ -2239,11 +2285,10 @@ Delivery:
 - Never to the connection whose `camera_stop_stream` or `device_command` `EndSession` ended it. That connection has the answer to its own command, and a second report of the same fact would give it two messages with no order between them.
 - A session this server holds no record of — one opened on the raw `send_webrtc_provider_command` route — is announced to every other such connection instead. Nothing names an owner, so withholding it would tell nobody; `webrtc_callback` broadcasts such a session's signalling for the same reason.
 
-Four endings send nothing, because the client already knows or cannot be told:
+Three endings send nothing, because the client already knows or cannot be told:
 
 | Ending | Why no event |
 |---|---|
-| The peer sent `End` | The owner receives it as a `webrtc_callback` `end` event |
 | The client's own `camera_stop_stream`, or its own `EndSession` on the `device_command` route | That command's response is the answer |
 | The owning connection closed | The only connection this concerns is the one that went away |
 | The server is shutting down | Every socket is closed before the sessions are ended; the `server_shutdown` event is what a client sees |

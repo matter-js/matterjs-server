@@ -14,6 +14,7 @@ import {
     AUDIO_HINT_KEYS,
     CAMERA_ARG_KEYS,
     parseCapabilitiesArgs,
+    parseIceCandidatesArgs,
     parseReleaseStreamArgs,
     parseSignallingArgs,
     parseSnapshotArgs,
@@ -522,19 +523,28 @@ describe("camera wire contract", () => {
                         "metadata_enabled",
                         "allow_eviction",
                         "talkback",
+                        "client_session_key",
                     ],
                 },
                 {
                     command: "camera_stop_stream",
                     parse: parseStopStreamArgs,
                     args: { webrtc_session_id: 1 },
-                    accepted: ["node_id", "endpoint_id", "webrtc_session_id"],
+                    accepted: ["node_id", "endpoint_id", "webrtc_session_id", "client_session_key"],
                 },
                 {
                     command: "camera_snapshot",
                     parse: parseSnapshotArgs,
                     args: {},
-                    accepted: ["node_id", "endpoint_id", "max_resolution", "codec", "watermark_enabled", "osd_enabled"],
+                    accepted: [
+                        "node_id",
+                        "endpoint_id",
+                        "max_resolution",
+                        "resolution",
+                        "codec",
+                        "watermark_enabled",
+                        "osd_enabled",
+                    ],
                 },
                 {
                     command: "camera_release_stream",
@@ -550,9 +560,12 @@ describe("camera wire contract", () => {
                 },
                 {
                     command: "camera_provide_ice_candidates",
-                    parse: args => parseSignallingArgs(args, "camera_provide_ice_candidates"),
-                    args: { webrtc_session_id: 1, ice_candidates: [{ candidate: "candidate:1" }] },
-                    accepted: ["node_id", "endpoint_id", "webrtc_session_id", "ice_candidates"],
+                    parse: parseIceCandidatesArgs,
+                    args: {
+                        webrtc_session_id: 1,
+                        ice_candidates: [{ candidate: "candidate:1", sdpMid: null, sdpMLineIndex: null }],
+                    },
+                    accepted: ["node_id", "endpoint_id", "webrtc_session_id", "client_session_key", "ice_candidates"],
                 },
             ];
             expect(routes.map(route => route.command).sort()).to.deep.equal(Object.keys(CAMERA_ARG_KEYS).sort());

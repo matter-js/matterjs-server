@@ -13,6 +13,7 @@ import { ThreadCredentialsRegistry } from "@matter/thread-br-client";
 import { createServer } from "node:http";
 import WebSocket from "ws";
 import type { CameraSessionEnded, CameraStreamEvicted } from "../src/camera/cameraTypes.js";
+import type { SessionOwner } from "../src/camera/sessionRegistry.js";
 import { ConfigStorage } from "../src/server/ConfigStorage.js";
 import { WebSocketControllerHandler } from "../src/server/WebSocketControllerHandler.js";
 import type {
@@ -35,14 +36,37 @@ function freshEnv(): Environment {
 
 interface StubCameraStreams {
     releaseConnection(connectionId: string): Promise<void>;
-    startStream?(args: { connectionId: string; allowEviction?: boolean; talkback?: boolean }): Promise<unknown>;
+    startStream?(args: {
+        connectionId: string;
+        allowEviction?: boolean;
+        talkback?: boolean;
+        sessionEstablishing?: (webRtcSessionId: number) => void;
+        clientSessionKey?: string;
+    }): Promise<unknown>;
     stopStream?(nodeId: bigint, endpointId: number, webRtcSessionId: number, requestedBy?: string): Promise<boolean>;
+    stopStreamByClientKey?(
+        nodeId: bigint,
+        endpointId: number,
+        connectionId: string,
+        clientSessionKey: string,
+    ): Promise<boolean>;
+    clientSessionId?(
+        nodeId: bigint,
+        endpointId: number,
+        connectionId: string,
+        clientSessionKey: string,
+    ): number | undefined;
     /** What the manager reports on nobody's request: a session that ended, a stream that was taken. */
     events?: {
         sessionEnded: Observable<[CameraSessionEnded]>;
         streamEvicted: Observable<[CameraStreamEvicted]>;
     };
-    snapshot?(args: { watermarkEnabled?: boolean; osdEnabled?: boolean }): Promise<unknown>;
+    snapshot?(args: {
+        watermarkEnabled?: boolean;
+        osdEnabled?: boolean;
+        resolution?: unknown;
+        maxResolution?: unknown;
+    }): Promise<unknown>;
     releaseStream?(args: { streamId: number }): Promise<void>;
     endedByClient?(
         nodeId: bigint,
@@ -51,8 +75,9 @@ interface StubCameraStreams {
         requestedBy: string,
         deviceHeldSession: boolean,
     ): boolean;
+    sessionIdIssued?(nodeId: bigint, endpointId: number, webRtcSessionId: number): void;
     /** Which connections may receive a session's signalling; absent means the manager holds no record. */
-    signallingOwners?(nodeId: bigint, endpointId: number, webRtcSessionId: number): ReadonlySet<string> | undefined;
+    signallingOwner?(nodeId: bigint, endpointId: number, webRtcSessionId: number): SessionOwner | undefined;
 }
 
 /** The command-handler behaviour a test needs to vary; everything else is fixed in the stub. */
@@ -63,7 +88,11 @@ interface StubCommandHandlerOverrides {
     handleGroupWriteAttribute?(data: unknown): Promise<void>;
     handleGroupInvoke?(data: unknown): Promise<void>;
     removeTrackedWebRtcSession?(webRtcSessionId: number, nodeId: bigint, endpointId: number): Promise<void>;
-    invokeWebRtcProviderCommand?(args: { commandName: string; fields: Record<string, unknown> }): Promise<unknown>;
+    invokeWebRtcProviderCommand?(args: {
+        commandName: string;
+        fields: Record<string, unknown>;
+        sessionEstablishing?: (webRtcSessionId: number) => void;
+    }): Promise<unknown>;
     invokeWebRtcSignallingCommand?(args: { commandName: string; fields: Record<string, unknown> }): Promise<void>;
     commissionNode?(request: CommissioningRequest): Promise<{ nodeId: NodeId }>;
 }
@@ -135,7 +164,7 @@ function makeStubController(
     // An unowned session is what the WebSocket route reads as "send to every opted-in connection".
     const stubCameraStreams: StubCameraStreams = {
         async releaseConnection() {},
-        signallingOwners: () => undefined,
+        signallingOwner: () => undefined,
         events: { sessionEnded: new Observable(), streamEvicted: new Observable() },
         ...cameraStreams,
     };
@@ -682,27 +711,6 @@ describe("WebSocket Credentials API", () => {
             await h.close();
         }
     }
-
-    it("delivers a webrtc_callback emitted while camera_start_stream is still in flight", async () => {
-        // Signaling for this session starts at ProvideOffer, not at the command's response.
-        const { order, response } = await webRtcAnswerDuring(
-            "camera_start_stream",
-            { node_id: 1, endpoint_id: 1, stream_usage: "LiveView" },
-            (reached, answered) =>
-                createHarness({
-                    async releaseConnection() {},
-                    async startStream() {
-                        reached();
-                        await answered;
-                        return { webRtcSessionId: 1, mode: "provide_offer", talkback: false };
-                    },
-                }),
-        );
-
-        expect(order).to.deep.equal(["webrtc_callback", "response"]);
-        expect(response.error_code).to.equal(undefined);
-        expect((response.result as { webrtc_session_id?: number }).webrtc_session_id).to.equal(1);
-    });
 
     it("delivers a webrtc_callback emitted while send_webrtc_provider_command is still in flight", async () => {
         // On the raw provider route the session is tracked before ProvideOffer returns.
@@ -1378,6 +1386,219 @@ describe("WebSocket camera session tracking on the raw path", () => {
     }
 });
 
+describe("WebSocket camera_start_stream signalling order", () => {
+    const STARTED = { node_id: 1, endpoint_id: 1, stream_usage: "LiveView" };
+    const SESSION = 5;
+
+    function callback(webRtcSessionId: number, eventType: string) {
+        return { webrtc_session_id: webRtcSessionId, node_id: 1, endpoint_id: 1, event_type: eventType, data: null };
+    }
+
+    /** Responses (by message id) and `webrtc_callback` events (by session and type) in arrival order. */
+    function collectOrder(ws: WebSocket): string[] {
+        const seen = new Array<string>();
+        ws.on("message", raw => {
+            const msg = JSON.parse(raw.toString()) as {
+                event?: string;
+                message_id?: string;
+                error_code?: number;
+                data?: { webrtc_session_id?: number; event_type?: string };
+            };
+            if (msg.event === "webrtc_callback") seen.push(`${msg.data?.event_type}:${msg.data?.webrtc_session_id}`);
+            else if (msg.event === "camera_session_ended")
+                seen.push(`camera_session_ended:${msg.data?.webrtc_session_id}`);
+            else if (msg.message_id !== undefined) seen.push(msg.error_code === undefined ? "response" : "error");
+        });
+        return seen;
+    }
+
+    /**
+     * A harness whose `camera_start_stream` hands out {@link SESSION}, owned by the starting connection,
+     * then waits for `proceed` before it answers.
+     */
+    async function startingHarness(outcome: "succeeds" | "fails") {
+        const owners = new Map<number, string>();
+        let reachedCamera = () => {};
+        const atCamera = new Promise<void>(resolve => {
+            reachedCamera = resolve;
+        });
+        let proceed = () => {};
+        const proceeding = new Promise<void>(resolve => {
+            proceed = resolve;
+        });
+        const sessionEnded = new Observable<[CameraSessionEnded]>();
+        const h = await createHarness({
+            async releaseConnection() {},
+            events: { sessionEnded, streamEvicted: new Observable<[CameraStreamEvicted]>() },
+            signallingOwner: (_nodeId, _endpointId, webRtcSessionId) => {
+                const owner = owners.get(webRtcSessionId);
+                return owner === undefined ? undefined : { connectionId: owner };
+            },
+            async startStream(args) {
+                owners.set(SESSION, args.connectionId);
+                args.sessionEstablishing?.(SESSION);
+                reachedCamera();
+                await proceeding;
+                if (outcome === "fails") {
+                    owners.delete(SESSION);
+                    throw new Error("the camera ended the session before it was tracked");
+                }
+                return { webRtcSessionId: SESSION, mode: "provide_offer", talkback: false };
+            },
+        });
+        return { h, owners, atCamera, proceed, sessionEnded };
+    }
+
+    async function settle(): Promise<void> {
+        await new Promise(resolve => setTimeout(resolve, 50));
+    }
+
+    it("sends the session's events after the response, in the order they arrived", async () => {
+        const { h, atCamera, proceed } = await startingHarness("succeeds");
+        try {
+            const ws = await h.openClient();
+            try {
+                const order = collectOrder(ws);
+                const started = h.sendOn(ws, "camera_start_stream", STARTED);
+                await atCamera;
+                h.emitWebRtcCallback(callback(SESSION, "answer"));
+                h.emitWebRtcCallback(callback(SESSION, "ice_candidates"));
+                await settle();
+                expect(order).to.deep.equal([]);
+
+                proceed();
+                await started;
+                await settle();
+                expect(order).to.deep.equal(["response", `answer:${SESSION}`, `ice_candidates:${SESSION}`]);
+
+                h.emitWebRtcCallback(callback(SESSION, "ice_candidates"));
+                await settle();
+                expect(order.at(-1)).to.equal(`ice_candidates:${SESSION}`);
+                expect(order).to.have.length(4);
+            } finally {
+                ws.close();
+            }
+        } finally {
+            proceed();
+            await h.close();
+        }
+    });
+
+    it("sends a camera_session_ended for the starting session after the response too", async () => {
+        const { h, owners, atCamera, proceed, sessionEnded } = await startingHarness("succeeds");
+        try {
+            const ws = await h.openClient();
+            try {
+                const order = collectOrder(ws);
+                const started = h.sendOn(ws, "camera_start_stream", STARTED);
+                await atCamera;
+                sessionEnded.emit({
+                    nodeId: NodeId(1n),
+                    endpointId: EndpointNumber(1),
+                    webRtcSessionId: SESSION,
+                    ownerId: owners.get(SESSION),
+                    cause: "peer",
+                });
+                await settle();
+                expect(order).to.deep.equal([]);
+
+                proceed();
+                await started;
+                await settle();
+                expect(order).to.deep.equal(["response", `camera_session_ended:${SESSION}`]);
+            } finally {
+                ws.close();
+            }
+        } finally {
+            proceed();
+            await h.close();
+        }
+    });
+
+    it("drops the held events with an error response and holds nothing afterwards", async () => {
+        const { h, atCamera, proceed } = await startingHarness("fails");
+        try {
+            const ws = await h.openClient();
+            try {
+                const order = collectOrder(ws);
+                const started = h.sendOn(ws, "camera_start_stream", STARTED).then(
+                    () => "resolved",
+                    () => "rejected",
+                );
+                await atCamera;
+                h.emitWebRtcCallback(callback(SESSION, "end"));
+                proceed();
+                expect(await started).to.equal("rejected");
+                await settle();
+                expect(order).to.deep.equal(["error"]);
+
+                // Now ownerless, so it is broadcast; a hold left behind would swallow it.
+                h.emitWebRtcCallback(callback(SESSION, "answer"));
+                await settle();
+                expect(order).to.deep.equal(["error", `answer:${SESSION}`]);
+            } finally {
+                ws.close();
+            }
+        } finally {
+            proceed();
+            await h.close();
+        }
+    });
+
+    it("holds nothing for other sessions or other connections while a start is in flight", async () => {
+        const { h, owners, atCamera, proceed } = await startingHarness("succeeds");
+        try {
+            const starter = await h.openClient();
+            const other = await h.openClient();
+            try {
+                const starterOrder = collectOrder(starter);
+                const otherOrder = collectOrder(other);
+                // Opts in even though the stub refuses it.
+                await h
+                    .sendOn(other, "send_webrtc_provider_command", {
+                        node_id: 1,
+                        endpoint_id: 1,
+                        command_name: "ProvideIceCandidates",
+                        payload: { webRtcSessionId: 9, iceCandidates: [] },
+                    })
+                    .catch(() => undefined);
+                otherOrder.length = 0;
+                const started = h.sendOn(starter, "camera_start_stream", STARTED);
+                await atCamera;
+                // A session the starting connection already has.
+                owners.set(3, owners.get(SESSION) ?? "");
+
+                h.emitWebRtcCallback(callback(3, "ice_candidates"));
+                h.emitWebRtcCallback(callback(9, "offer"));
+                h.emitWebRtcCallback(callback(SESSION, "answer"));
+                // The same id on another endpoint is another provider's session.
+                h.emitWebRtcCallback({ ...callback(SESSION, "end"), endpoint_id: 2 });
+                await settle();
+                expect(starterOrder).to.deep.equal(["ice_candidates:3", "offer:9", `end:${SESSION}`]);
+                expect(otherOrder).to.deep.equal(["offer:9"]);
+
+                proceed();
+                await started;
+                await settle();
+                expect(starterOrder).to.deep.equal([
+                    "ice_candidates:3",
+                    "offer:9",
+                    `end:${SESSION}`,
+                    "response",
+                    `answer:${SESSION}`,
+                ]);
+                expect(otherOrder).to.deep.equal(["offer:9"]);
+            } finally {
+                starter.close();
+                other.close();
+            }
+        } finally {
+            proceed();
+            await h.close();
+        }
+    });
+});
+
 describe("WebSocket camera_start_stream arguments", () => {
     it("forwards allow_eviction to the stream manager", async () => {
         const stated = new Array<boolean | undefined>();
@@ -1494,6 +1715,43 @@ describe("WebSocket camera_snapshot arguments", () => {
     });
 });
 
+describe("WebSocket camera_snapshot resolution target", () => {
+    it("forwards resolution and max_resolution to the stream manager as separate arguments", async () => {
+        const stated = new Array<{ resolution?: unknown; maxResolution?: unknown }>();
+        const h = await createHarness({
+            async releaseConnection() {},
+            async snapshot(args: { resolution?: unknown; maxResolution?: unknown }) {
+                stated.push({ resolution: args.resolution, maxResolution: args.maxResolution });
+                return {
+                    data: new Uint8Array([1]),
+                    imageCodec: 0,
+                    resolution: { width: 320, height: 240 },
+                    degraded: false,
+                    snapshotStreamId: 3,
+                };
+            },
+        });
+        try {
+            const client = await h.openClient();
+            try {
+                await h.sendOn(client, "camera_snapshot", {
+                    node_id: 1,
+                    endpoint_id: 1,
+                    resolution: { width: 320 },
+                    max_resolution: { width: 1280, height: 720 },
+                });
+                expect(stated).to.deep.equal([
+                    { resolution: { width: 320 }, maxResolution: { width: 1280, height: 720 } },
+                ]);
+            } finally {
+                client.close();
+            }
+        } finally {
+            await h.close();
+        }
+    });
+});
+
 describe("WebSocket camera session cleanup on disconnect", () => {
     it("releases camera sessions owned by the connection that closed, and no others", async () => {
         const released = new Array<string>();
@@ -1585,6 +1843,7 @@ describe("WebSocket camera lifecycle events", () => {
                     endpointId: EndpointNumber(endpointId),
                     webRtcSessionId,
                     ownerId: ownerBySession.get(webRtcSessionId),
+                    cause: "other_connection",
                     requestedBy,
                 });
                 return true;
@@ -1620,7 +1879,12 @@ describe("WebSocket camera lifecycle events", () => {
                 expect(seenByOwner).to.deep.equal([
                     {
                         event: "camera_session_ended",
-                        data: { node_id: 1, endpoint_id: 1, webrtc_session_id: session.webrtc_session_id },
+                        data: {
+                            node_id: 1,
+                            endpoint_id: 1,
+                            webrtc_session_id: session.webrtc_session_id,
+                            cause: "other_connection",
+                        },
                     },
                 ]);
                 expect(seenByOther).to.deep.equal([]);
@@ -1688,6 +1952,7 @@ describe("WebSocket camera lifecycle events", () => {
                         endpointId: EndpointNumber(endpointId),
                         webRtcSessionId,
                         ownerId,
+                        cause: "other_connection",
                         requestedBy,
                     });
                     return ownerId !== undefined;
@@ -1729,7 +1994,12 @@ describe("WebSocket camera lifecycle events", () => {
                 expect(seenByOwner).to.deep.equal([
                     {
                         event: "camera_session_ended",
-                        data: { node_id: 1, endpoint_id: 1, webrtc_session_id: session.webrtc_session_id },
+                        data: {
+                            node_id: 1,
+                            endpoint_id: 1,
+                            webrtc_session_id: session.webrtc_session_id,
+                            cause: "other_connection",
+                        },
                     },
                 ]);
                 expect(seenByOther).to.deep.equal([]);
@@ -1768,7 +2038,10 @@ describe("WebSocket camera lifecycle events", () => {
                 await new Promise(resolve => setTimeout(resolve, 100));
 
                 expect(seenByRawRouteClient).to.deep.equal([
-                    { event: "camera_session_ended", data: { node_id: 1, endpoint_id: 1, webrtc_session_id: 99 } },
+                    {
+                        event: "camera_session_ended",
+                        data: { node_id: 1, endpoint_id: 1, webrtc_session_id: 99, cause: "other_connection" },
+                    },
                 ]);
                 expect(seenByEnder).to.deep.equal([]);
             } finally {
@@ -1837,6 +2110,7 @@ describe("WebSocket camera lifecycle events", () => {
                     nodeId: NodeId(1n),
                     endpointId: EndpointNumber(1),
                     webRtcSessionId: 4,
+                    cause: "other_connection",
                     requestedBy: "conn-elsewhere",
                 });
                 streamEvicted.emit({
@@ -1848,7 +2122,10 @@ describe("WebSocket camera lifecycle events", () => {
                 await new Promise(resolve => setTimeout(resolve, 100));
 
                 expect(seenByRaw).to.deep.equal([
-                    { event: "camera_session_ended", data: { node_id: 1, endpoint_id: 1, webrtc_session_id: 4 } },
+                    {
+                        event: "camera_session_ended",
+                        data: { node_id: 1, endpoint_id: 1, webrtc_session_id: 4, cause: "other_connection" },
+                    },
                     {
                         event: "camera_stream_evicted",
                         data: { node_id: 1, endpoint_id: 1, kind: "video", stream_id: 2 },
@@ -1860,6 +2137,76 @@ describe("WebSocket camera lifecycle events", () => {
                 raw.close();
                 bystander.close();
             }
+        } finally {
+            await h.close();
+        }
+    });
+});
+
+describe("WebSocket camera session end causes", () => {
+    function sessionEndedFrames(ws: WebSocket): Array<Record<string, unknown>> {
+        const seen = new Array<Record<string, unknown>>();
+        ws.on("message", raw => {
+            const msg = JSON.parse(raw.toString()) as { event?: string; data?: Record<string, unknown> };
+            if (msg.event === "camera_session_ended") seen.push(msg.data ?? {});
+        });
+        return seen;
+    }
+
+    it("sends the cause and the camera's reason, and never a release this server made", async () => {
+        const sessionEnded = new Observable<[CameraSessionEnded]>();
+        const streamEvicted = new Observable<[CameraStreamEvicted]>();
+        const h = await createHarness({ async releaseConnection() {}, events: { sessionEnded, streamEvicted } });
+        try {
+            const client = await h.openClient();
+            try {
+                const frames = sessionEndedFrames(client);
+                await h
+                    .sendOn(client, "camera_get_capabilities", { node_id: 1, endpoint_id: 1 })
+                    .catch(() => undefined);
+                const session = { nodeId: NodeId(1n), endpointId: EndpointNumber(1), webRtcSessionId: 4 };
+
+                sessionEnded.emit({ ...session, cause: "released" });
+                sessionEnded.emit({ ...session, cause: "peer", reason: 9 });
+                sessionEnded.emit({ ...session, cause: "camera_dropped" });
+                await new Promise(resolve => setTimeout(resolve, 100));
+
+                expect(frames).to.deep.equal([
+                    { node_id: 1, endpoint_id: 1, webrtc_session_id: 4, cause: "peer", reason: 9 },
+                    { node_id: 1, endpoint_id: 1, webrtc_session_id: 4, cause: "camera_dropped" },
+                ]);
+            } finally {
+                client.close();
+            }
+        } finally {
+            await h.close();
+        }
+    });
+
+    it("tells the camera manager the id a send_webrtc_provider_command session got", async () => {
+        const issued = new Array<string>();
+        const h = await createHarness(
+            {
+                async releaseConnection() {},
+                sessionIdIssued(nodeId, endpointId, webRtcSessionId) {
+                    issued.push(`${nodeId}/${endpointId}/${webRtcSessionId}`);
+                },
+            },
+            {
+                async invokeWebRtcProviderCommand(args) {
+                    args.sessionEstablishing?.(5);
+                    return { webRtcSessionId: 5 };
+                },
+            },
+        );
+        try {
+            await h.handle("send_webrtc_provider_command", {
+                node_id: 1,
+                endpoint_id: 1,
+                command_name: "ProvideOffer",
+                payload: { webRtcSessionId: null, sdp: "v=0" },
+            });
+            expect(issued).to.deep.equal(["1/1/5"]);
         } finally {
             await h.close();
         }
@@ -1892,6 +2239,7 @@ describe("WebSocket camera event opt-in", () => {
                     nodeId: NodeId(1n),
                     endpointId: EndpointNumber(1),
                     webRtcSessionId: 4,
+                    cause: "other_connection",
                     requestedBy: "conn-elsewhere",
                 });
                 streamEvicted.emit({ nodeId: NodeId(1n), endpointId: EndpointNumber(1), kind: "video", streamId: 2 });
@@ -1920,11 +2268,11 @@ describe("WebSocket camera signalling routing", () => {
             },
             // What the real manager answers: the connection whose camera_start_stream established the
             // session, and nothing for a session it holds no record of.
-            signallingOwners(nodeId, _endpointId, webRtcSessionId) {
+            signallingOwner(nodeId, _endpointId, webRtcSessionId) {
                 // Pins the branded NodeId; the registry's own key would match a plain number by chance.
                 if (typeof nodeId !== "bigint") return undefined;
                 const owner = ownerBySession.get(webRtcSessionId);
-                return owner === undefined ? undefined : new Set([owner]);
+                return owner === undefined ? undefined : { connectionId: owner };
             },
         });
         const started = { node_id: 1, endpoint_id: 1, stream_usage: "LiveView" };
@@ -2975,6 +3323,712 @@ describe("groupcast on the generic commands", () => {
             expect(answer.details).to.contain("requires endpoint_id");
         } finally {
             await h.close();
+        }
+    });
+});
+
+describe("WebSocket client_session_key", () => {
+    const STARTED = { node_id: 1, endpoint_id: 1, stream_usage: "LiveView" };
+    const SESSION = 5;
+    const CANDIDATE = { candidate: "candidate:1 1 UDP 1 192.0.2.1 5000 typ host", sdpMid: "0", sdpMLineIndex: 0 };
+
+    /** The whole answer frame, so a test can read `error_code`. */
+    function frameOf(ws: WebSocket, command: string, args: unknown): Promise<WireFrame> {
+        const messageId = `key-${Math.random()}`;
+        const answer = nextFrame(ws, `${command} response`, msg => msg.message_id === messageId);
+        answer.catch(() => undefined);
+        ws.send(JSON.stringify({ message_id: messageId, command, args }));
+        return answer;
+    }
+
+    function events(ws: WebSocket, event: string): WireFrame[] {
+        const seen = new Array<WireFrame>();
+        ws.on("message", raw => {
+            const msg = JSON.parse(raw.toString()) as WireFrame;
+            if (msg.event === event) seen.push(msg);
+        });
+        return seen;
+    }
+
+    async function settle(): Promise<void> {
+        await new Promise(resolve => setTimeout(resolve, 50));
+    }
+
+    /**
+     * A manager whose `camera_start_stream` hands out {@link SESSION} with the key it was given and waits
+     * for `proceed`; `failStart` makes it fail instead. The provider records every `ProvideIceCandidates`.
+     */
+    async function keyedHarness() {
+        const keys = new Map<number, { connectionId: string; clientSessionKey?: string }>();
+        const tracked = new Map<string, number>();
+        let reachedCamera = () => {};
+        let atCamera = new Promise<void>(resolve => {
+            reachedCamera = resolve;
+        });
+        let proceed = (_outcome: "succeeds" | "fails") => {};
+        let proceeding = new Promise<"succeeds" | "fails">(resolve => {
+            proceed = resolve;
+        });
+        const provided = new Array<Record<string, unknown>>();
+        const invoked = new Array<Record<string, unknown>>();
+        let refuseCandidates = false;
+        let candidateGate: Promise<void> | undefined;
+        const stoppedByKey = new Array<string>();
+        const sessionEnded = new Observable<[CameraSessionEnded]>();
+        const h = await createHarness(
+            {
+                async releaseConnection() {},
+                events: { sessionEnded, streamEvicted: new Observable<[CameraStreamEvicted]>() },
+                signallingOwner: (_nodeId, _endpointId, webRtcSessionId) => keys.get(webRtcSessionId),
+                async startStream(args) {
+                    keys.set(SESSION, {
+                        connectionId: args.connectionId,
+                        ...(args.clientSessionKey === undefined ? {} : { clientSessionKey: args.clientSessionKey }),
+                    });
+                    args.sessionEstablishing?.(SESSION);
+                    reachedCamera();
+                    const outcome = await proceeding;
+                    if (outcome === "fails") {
+                        keys.delete(SESSION);
+                        throw new Error("the camera ended the session before it was tracked");
+                    }
+                    if (args.clientSessionKey !== undefined) {
+                        tracked.set(`${args.connectionId}/${args.clientSessionKey}`, SESSION);
+                    }
+                    return { webRtcSessionId: SESSION, mode: "provide_offer", talkback: false };
+                },
+                async stopStreamByClientKey(_nodeId, _endpointId, connectionId, clientSessionKey) {
+                    stoppedByKey.push(`${connectionId}/${clientSessionKey}`);
+                    return true;
+                },
+                clientSessionId: (_nodeId, _endpointId, connectionId, clientSessionKey) =>
+                    tracked.get(`${connectionId}/${clientSessionKey}`),
+            },
+            {
+                async invokeWebRtcSignallingCommand(args) {
+                    invoked.push(args.fields);
+                    await candidateGate;
+                    if (refuseCandidates) throw new Error("the camera refused the candidates");
+                    provided.push(args.fields);
+                },
+            },
+        );
+        return {
+            h,
+            keys,
+            provided,
+            invoked,
+            stoppedByKey,
+            sessionEnded,
+            atCamera: () => atCamera,
+            proceed: (outcome: "succeeds" | "fails" = "succeeds") => proceed(outcome),
+            refuseCandidates: () => {
+                refuseCandidates = true;
+            },
+            /** Holds every `ProvideIceCandidates` until the returned function runs. */
+            gateCandidates: () => {
+                let open = () => {};
+                candidateGate = new Promise<void>(resolve => {
+                    open = resolve;
+                });
+                return open;
+            },
+            nextStart: () => {
+                atCamera = new Promise<void>(resolve => {
+                    reachedCamera = resolve;
+                });
+                proceeding = new Promise<"succeeds" | "fails">(resolve => {
+                    proceed = resolve;
+                });
+            },
+        };
+    }
+
+    function candidatesOf(fields: Record<string, unknown>): unknown {
+        return fields.iceCandidates;
+    }
+
+    it("echoes the key on the session's webrtc_callback and camera_session_ended events", async () => {
+        const k = await keyedHarness();
+        try {
+            const ws = await k.h.openClient();
+            try {
+                const callbacks = events(ws, "webrtc_callback");
+                const ended = events(ws, "camera_session_ended");
+                const started = frameOf(ws, "camera_start_stream", { ...STARTED, client_session_key: "key-a" });
+                await k.atCamera();
+                k.proceed();
+                expect((await started).error_code).to.equal(undefined);
+
+                k.h.emitWebRtcCallback({
+                    webrtc_session_id: SESSION,
+                    node_id: 1,
+                    endpoint_id: 1,
+                    event_type: "answer",
+                    data: null,
+                });
+                k.sessionEnded.emit({
+                    nodeId: NodeId(1n),
+                    endpointId: EndpointNumber(1),
+                    webRtcSessionId: SESSION,
+                    ownerId: k.keys.get(SESSION)?.connectionId,
+                    clientSessionKey: "key-a",
+                    cause: "peer",
+                });
+                await settle();
+                expect(callbacks.map(frame => frame.data)).to.deep.equal([
+                    {
+                        webrtc_session_id: SESSION,
+                        node_id: 1,
+                        endpoint_id: 1,
+                        event_type: "answer",
+                        data: null,
+                        client_session_key: "key-a",
+                    },
+                ]);
+                expect(ended.map(frame => frame.data)).to.deep.equal([
+                    {
+                        node_id: 1,
+                        endpoint_id: 1,
+                        webrtc_session_id: SESSION,
+                        cause: "peer",
+                        client_session_key: "key-a",
+                    },
+                ]);
+            } finally {
+                ws.close();
+            }
+        } finally {
+            k.proceed();
+            await k.h.close();
+        }
+    });
+
+    it("sends no key on events of a session started without one", async () => {
+        const k = await keyedHarness();
+        try {
+            const ws = await k.h.openClient();
+            try {
+                const callbacks = events(ws, "webrtc_callback");
+                const started = frameOf(ws, "camera_start_stream", STARTED);
+                await k.atCamera();
+                k.proceed();
+                await started;
+                k.h.emitWebRtcCallback({
+                    webrtc_session_id: SESSION,
+                    node_id: 1,
+                    endpoint_id: 1,
+                    event_type: "answer",
+                    data: null,
+                });
+                await settle();
+                expect(callbacks).to.have.length(1);
+                expect(callbacks[0].data).to.not.have.property("client_session_key");
+            } finally {
+                ws.close();
+            }
+        } finally {
+            k.proceed();
+            await k.h.close();
+        }
+    });
+
+    it("refuses a key that is not a string of 1 to 128 characters", async () => {
+        const k = await keyedHarness();
+        try {
+            const ws = await k.h.openClient();
+            try {
+                for (const key of ["", "x".repeat(129), 7]) {
+                    const frame = await frameOf(ws, "camera_start_stream", { ...STARTED, client_session_key: key });
+                    expect(frame.error_code, String(key)).to.equal(8);
+                }
+                const longest = frameOf(ws, "camera_start_stream", { ...STARTED, client_session_key: "x".repeat(128) });
+                await k.atCamera();
+                k.proceed();
+                expect((await longest).error_code).to.equal(undefined);
+            } finally {
+                ws.close();
+            }
+        } finally {
+            k.proceed();
+            await k.h.close();
+        }
+    });
+
+    for (const command of ["camera_stop_stream", "camera_provide_ice_candidates"]) {
+        it(`${command} takes exactly one of webrtc_session_id and client_session_key`, async () => {
+            const k = await keyedHarness();
+            try {
+                const ws = await k.h.openClient();
+                try {
+                    const extra = command === "camera_stop_stream" ? {} : { ice_candidates: [CANDIDATE] };
+                    const both = await frameOf(ws, command, {
+                        node_id: 1,
+                        endpoint_id: 1,
+                        webrtc_session_id: SESSION,
+                        client_session_key: "key-a",
+                        ...extra,
+                    });
+                    const neither = await frameOf(ws, command, { node_id: 1, endpoint_id: 1, ...extra });
+                    expect([both.error_code, neither.error_code]).to.deep.equal([8, 8]);
+                    expect(both.details).to.contain("exactly one of webrtc_session_id and client_session_key");
+                } finally {
+                    ws.close();
+                }
+            } finally {
+                await k.h.close();
+            }
+        });
+    }
+
+    it("camera_stop_stream with a key asks the manager for this connection's session", async () => {
+        const k = await keyedHarness();
+        try {
+            const ws = await k.h.openClient();
+            try {
+                const started = frameOf(ws, "camera_start_stream", { ...STARTED, client_session_key: "key-a" });
+                await k.atCamera();
+                const stopped = await frameOf(ws, "camera_stop_stream", {
+                    node_id: 1,
+                    endpoint_id: 1,
+                    client_session_key: "key-a",
+                });
+                expect(stopped.result).to.deep.equal({ ended: true });
+                const owner = k.keys.get(SESSION)?.connectionId;
+                expect(k.stoppedByKey).to.deep.equal([`${owner}/key-a`]);
+                k.proceed();
+                await started;
+            } finally {
+                ws.close();
+            }
+        } finally {
+            k.proceed();
+            await k.h.close();
+        }
+    });
+
+    it("queues candidates named by the key of a starting session and sends them in order after the response", async () => {
+        const k = await keyedHarness();
+        try {
+            const ws = await k.h.openClient();
+            try {
+                const order = new Array<string>();
+                ws.on("message", raw => {
+                    const msg = JSON.parse(raw.toString()) as WireFrame;
+                    if (msg.message_id !== undefined) order.push(String(msg.message_id).split(":")[0]);
+                });
+                const send = (label: string, command: string, args: unknown) => {
+                    const answer = nextFrame(ws, label, msg => msg.message_id === label);
+                    answer.catch(() => undefined);
+                    ws.send(JSON.stringify({ message_id: label, command, args }));
+                    return answer;
+                };
+                const started = send("start", "camera_start_stream", { ...STARTED, client_session_key: "key-a" });
+                await k.atCamera();
+                const keyed = (n: number) => ({
+                    node_id: 1,
+                    endpoint_id: 1,
+                    client_session_key: "key-a",
+                    ice_candidates: [{ ...CANDIDATE, candidate: `candidate:${n}` }],
+                });
+                const first = send("ice1", "camera_provide_ice_candidates", keyed(1));
+                const second = send("ice2", "camera_provide_ice_candidates", keyed(2));
+                await settle();
+                expect(k.provided).to.deep.equal([]);
+                expect(order).to.deep.equal([]);
+
+                k.proceed();
+                expect((await started).error_code).to.equal(undefined);
+                expect((await first).result).to.equal(null);
+                expect((await second).result).to.equal(null);
+                expect(order).to.deep.equal(["start", "ice1", "ice2"]);
+                expect(k.provided.map(fields => fields.webRtcSessionId)).to.deep.equal([SESSION, SESSION]);
+                expect(k.provided.map(candidatesOf)).to.deep.equal([
+                    [{ candidate: "candidate:1", sdpMid: "0", sdpmLineIndex: 0 }],
+                    [{ candidate: "candidate:2", sdpMid: "0", sdpmLineIndex: 0 }],
+                ]);
+
+                // The start is answered, so the key now resolves through the manager and goes out at once.
+                const later = await send("ice3", "camera_provide_ice_candidates", keyed(3));
+                expect(later.result).to.equal(null);
+                expect(k.provided).to.have.length(3);
+            } finally {
+                ws.close();
+            }
+        } finally {
+            k.proceed();
+            await k.h.close();
+        }
+    });
+
+    it("answers a queued command with the camera's refusal of its candidates", async () => {
+        const k = await keyedHarness();
+        try {
+            const ws = await k.h.openClient();
+            try {
+                const started = frameOf(ws, "camera_start_stream", { ...STARTED, client_session_key: "key-a" });
+                await k.atCamera();
+                const queued = frameOf(ws, "camera_provide_ice_candidates", {
+                    node_id: 1,
+                    endpoint_id: 1,
+                    client_session_key: "key-a",
+                    ice_candidates: [CANDIDATE],
+                });
+                await settle();
+                k.refuseCandidates();
+                k.proceed();
+                await started;
+                const answer = await queued;
+                expect(answer.error_code).to.equal(0);
+                expect(answer.details).to.equal("the camera refused the candidates");
+            } finally {
+                ws.close();
+            }
+        } finally {
+            k.proceed();
+            await k.h.close();
+        }
+    });
+
+    it("refuses queued candidates with error 8 when the start fails, and holds the key no longer", async () => {
+        const k = await keyedHarness();
+        try {
+            const ws = await k.h.openClient();
+            try {
+                const started = frameOf(ws, "camera_start_stream", { ...STARTED, client_session_key: "key-a" });
+                await k.atCamera();
+                const keyed = {
+                    node_id: 1,
+                    endpoint_id: 1,
+                    client_session_key: "key-a",
+                    ice_candidates: [CANDIDATE],
+                };
+                const queued = frameOf(ws, "camera_provide_ice_candidates", keyed);
+                await settle();
+                k.proceed("fails");
+                expect((await started).error_code).to.not.equal(undefined);
+                const answer = await queued;
+                expect(answer.error_code).to.equal(8);
+                expect(answer.details).to.contain('client_session_key "key-a" names no session');
+                expect(k.provided).to.deep.equal([]);
+
+                const unknown = await frameOf(ws, "camera_provide_ice_candidates", keyed);
+                expect(unknown.error_code).to.equal(8);
+            } finally {
+                ws.close();
+            }
+        } finally {
+            k.proceed();
+            await k.h.close();
+        }
+    });
+
+    it("refuses candidates past the queue bound of a starting session", async () => {
+        const k = await keyedHarness();
+        try {
+            const ws = await k.h.openClient();
+            try {
+                const started = frameOf(ws, "camera_start_stream", { ...STARTED, client_session_key: "key-a" });
+                await k.atCamera();
+                const many = (count: number) => ({
+                    node_id: 1,
+                    endpoint_id: 1,
+                    client_session_key: "key-a",
+                    ice_candidates: Array.from({ length: count }, (_, n) => ({ ...CANDIDATE, candidate: `c${n}` })),
+                });
+                const filling = frameOf(ws, "camera_provide_ice_candidates", many(63));
+                const last = frameOf(ws, "camera_provide_ice_candidates", many(1));
+                const over = await frameOf(ws, "camera_provide_ice_candidates", many(1));
+                expect(over.error_code).to.equal(8);
+                expect(over.details).to.contain("at most 64 ICE candidates");
+                k.proceed();
+                await started;
+                expect((await filling).error_code).to.equal(undefined);
+                expect((await last).error_code).to.equal(undefined);
+                expect(k.provided).to.have.length(2);
+            } finally {
+                ws.close();
+            }
+        } finally {
+            k.proceed();
+            await k.h.close();
+        }
+    });
+
+    it("never queues for or resolves another connection's key", async () => {
+        const k = await keyedHarness();
+        try {
+            const owner = await k.h.openClient();
+            const other = await k.h.openClient();
+            try {
+                const started = frameOf(owner, "camera_start_stream", { ...STARTED, client_session_key: "key-a" });
+                await k.atCamera();
+                const keyed = {
+                    node_id: 1,
+                    endpoint_id: 1,
+                    client_session_key: "key-a",
+                    ice_candidates: [CANDIDATE],
+                };
+                expect((await frameOf(other, "camera_provide_ice_candidates", keyed)).error_code).to.equal(8);
+                k.proceed();
+                await started;
+                expect((await frameOf(other, "camera_provide_ice_candidates", keyed)).error_code).to.equal(8);
+                expect(k.provided).to.deep.equal([]);
+            } finally {
+                owner.close();
+                other.close();
+            }
+        } finally {
+            k.proceed();
+            await k.h.close();
+        }
+    });
+
+    it("holds no event of the session while its queued candidates are being sent", async () => {
+        const k = await keyedHarness();
+        try {
+            const ws = await k.h.openClient();
+            try {
+                const callbacks = events(ws, "webrtc_callback");
+                const started = frameOf(ws, "camera_start_stream", { ...STARTED, client_session_key: "key-a" });
+                await k.atCamera();
+                const queued = frameOf(ws, "camera_provide_ice_candidates", {
+                    node_id: 1,
+                    endpoint_id: 1,
+                    client_session_key: "key-a",
+                    ice_candidates: [CANDIDATE],
+                });
+                await settle();
+                const openCandidates = k.gateCandidates();
+                k.proceed();
+                await started;
+                k.h.emitWebRtcCallback({
+                    webrtc_session_id: SESSION,
+                    node_id: 1,
+                    endpoint_id: 1,
+                    event_type: "answer",
+                    data: null,
+                });
+                await settle();
+                expect(callbacks).to.have.length(1);
+                openCandidates();
+                expect((await queued).result).to.equal(null);
+            } finally {
+                ws.close();
+            }
+        } finally {
+            k.proceed();
+            await k.h.close();
+        }
+    });
+
+    it("sends queued candidates one at a time", async () => {
+        const k = await keyedHarness();
+        try {
+            const ws = await k.h.openClient();
+            try {
+                const started = frameOf(ws, "camera_start_stream", { ...STARTED, client_session_key: "key-a" });
+                await k.atCamera();
+                const keyed = {
+                    node_id: 1,
+                    endpoint_id: 1,
+                    client_session_key: "key-a",
+                    ice_candidates: [CANDIDATE],
+                };
+                const first = frameOf(ws, "camera_provide_ice_candidates", keyed);
+                const second = frameOf(ws, "camera_provide_ice_candidates", keyed);
+                await settle();
+                const openCandidates = k.gateCandidates();
+                k.proceed();
+                await started;
+                await settle();
+                expect(k.invoked).to.have.length(1);
+                openCandidates();
+                expect((await first).result).to.equal(null);
+                expect((await second).result).to.equal(null);
+                expect(k.invoked).to.have.length(2);
+            } finally {
+                ws.close();
+            }
+        } finally {
+            k.proceed();
+            await k.h.close();
+        }
+    });
+
+    it("queues candidates for a reused key on the new start, not on the old one still sending its queue", async () => {
+        const k = await keyedHarness();
+        try {
+            const ws = await k.h.openClient();
+            try {
+                const keyed = {
+                    node_id: 1,
+                    endpoint_id: 1,
+                    client_session_key: "key-a",
+                    ice_candidates: [CANDIDATE],
+                };
+                const first = frameOf(ws, "camera_start_stream", { ...STARTED, client_session_key: "key-a" });
+                await k.atCamera();
+                const oldQueue = [
+                    frameOf(ws, "camera_provide_ice_candidates", keyed),
+                    frameOf(ws, "camera_provide_ice_candidates", keyed),
+                ];
+                await settle();
+                const openCandidates = k.gateCandidates();
+                k.proceed();
+                await first;
+
+                k.nextStart();
+                const second = frameOf(ws, "camera_start_stream", { ...STARTED, client_session_key: "key-a" });
+                await k.atCamera();
+                const forNewStart = frameOf(ws, "camera_provide_ice_candidates", keyed);
+                await settle();
+                openCandidates();
+                for (const queued of oldQueue) expect((await queued).result).to.equal(null);
+                await settle();
+                expect(k.provided).to.have.length(2);
+
+                k.proceed();
+                await second;
+                expect((await forNewStart).result).to.equal(null);
+                expect(k.provided).to.have.length(3);
+            } finally {
+                ws.close();
+            }
+        } finally {
+            k.proceed();
+            await k.h.close();
+        }
+    });
+
+    it("refuses a key no start of the connection named, while another start is in flight", async () => {
+        const k = await keyedHarness();
+        try {
+            const ws = await k.h.openClient();
+            try {
+                const started = frameOf(ws, "camera_start_stream", { ...STARTED, client_session_key: "key-a" });
+                await k.atCamera();
+                const other = await frameOf(ws, "camera_provide_ice_candidates", {
+                    node_id: 1,
+                    endpoint_id: 1,
+                    client_session_key: "key-b",
+                    ice_candidates: [CANDIDATE],
+                });
+                expect(other.error_code).to.equal(8);
+                k.proceed();
+                await started;
+                await settle();
+                expect(k.provided).to.deep.equal([]);
+            } finally {
+                ws.close();
+            }
+        } finally {
+            k.proceed();
+            await k.h.close();
+        }
+    });
+
+    /** Never rejects, so an answer that does not come fails the assertion on it and does not crash the suite. */
+    const answerOf = (frame: Promise<WireFrame>) => frame.catch(() => undefined);
+
+    it("sends the queued candidates once the start is answered", async () => {
+        const k = await keyedHarness();
+        try {
+            const ws = await k.h.openClient();
+            try {
+                const started = answerOf(
+                    frameOf(ws, "camera_start_stream", { ...STARTED, client_session_key: "key-a" }),
+                );
+                await k.atCamera();
+                const queued = answerOf(
+                    frameOf(ws, "camera_provide_ice_candidates", {
+                        node_id: 1,
+                        endpoint_id: 1,
+                        client_session_key: "key-a",
+                        ice_candidates: [CANDIDATE],
+                    }),
+                );
+                await settle();
+                expect(k.invoked).to.have.length(0);
+
+                k.proceed();
+                await started;
+                await settle();
+                expect(k.provided.map(fields => fields.webRtcSessionId)).to.deep.equal([SESSION]);
+                expect((await queued)?.result).to.equal(null);
+            } finally {
+                ws.close();
+            }
+        } finally {
+            k.proceed();
+            await k.h.close();
+        }
+    });
+
+    it("answers a queued candidates command only after the camera took the candidates", async () => {
+        const k = await keyedHarness();
+        try {
+            const ws = await k.h.openClient();
+            try {
+                const started = answerOf(
+                    frameOf(ws, "camera_start_stream", { ...STARTED, client_session_key: "key-a" }),
+                );
+                await k.atCamera();
+                let answered = false;
+                const queued = answerOf(
+                    frameOf(ws, "camera_provide_ice_candidates", {
+                        node_id: 1,
+                        endpoint_id: 1,
+                        client_session_key: "key-a",
+                        ice_candidates: [CANDIDATE],
+                    }),
+                ).then(frame => {
+                    answered = true;
+                    return frame;
+                });
+                await settle();
+                const openCandidates = k.gateCandidates();
+                k.proceed();
+                await started;
+                await settle();
+                expect(k.invoked).to.have.length(1);
+                expect(answered).to.equal(false);
+
+                openCandidates();
+                expect((await queued)?.result).to.equal(null);
+                expect(k.provided).to.have.length(1);
+            } finally {
+                ws.close();
+            }
+        } finally {
+            k.proceed();
+            await k.h.close();
+        }
+    });
+
+    it("sends candidates with an id at once while a start is in flight", async () => {
+        const k = await keyedHarness();
+        try {
+            const ws = await k.h.openClient();
+            try {
+                const started = frameOf(ws, "camera_start_stream", { ...STARTED, client_session_key: "key-a" });
+                await k.atCamera();
+                const byId = await frameOf(ws, "camera_provide_ice_candidates", {
+                    node_id: 1,
+                    endpoint_id: 1,
+                    webrtc_session_id: SESSION,
+                    ice_candidates: [CANDIDATE],
+                });
+                expect(byId.result).to.equal(null);
+                expect(k.provided.map(fields => fields.webRtcSessionId)).to.deep.equal([SESSION]);
+                k.proceed();
+                await started;
+            } finally {
+                ws.close();
+            }
+        } finally {
+            k.proceed();
+            await k.h.close();
         }
     });
 });

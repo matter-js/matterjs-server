@@ -163,6 +163,7 @@ class WebRTCCallbackData:
       - "answer": {"sdp": str}
       - "ice_candidates": {"ice_candidates": list[WebRTCIceCandidate]}
       - "end": {"reason": int}
+    `client_session_key` is the key the session was started with, absent when it had none.
     """
 
     event_type: str
@@ -171,6 +172,7 @@ class WebRTCCallbackData:
     endpoint_id: int
     fabric_index: int
     data: dict | None
+    client_session_key: str | None = None
 
 
 @dataclass
@@ -453,6 +455,13 @@ class MatterSoftwareVersion:
 
 class CameraResolutionHint(TypedDict):
     """A resolution in a camera command's arguments."""
+
+    width: int
+    height: int
+
+
+class CameraResolutionTarget(TypedDict, total=False):
+    """The size `camera_snapshot` should aim for. State `width`, `height` or both; at least one."""
 
     width: int
     height: int
@@ -775,11 +784,19 @@ class CameraSnapshotResult:
 
 @dataclass
 class CameraSessionEndedData:
-    """Payload of the `camera_session_ended` event."""
+    """Payload of the `camera_session_ended` event.
+
+    `cause` is `peer`, `other_connection`, `camera_restarted`, `camera_dropped` or `node_removed`.
+    `reason` is the camera's WebRTCEndReasonEnum value, sent with `cause` `peer` when the camera stated one.
+    `client_session_key` is the key the session was started with, absent when it had none.
+    """
 
     node_id: int
     endpoint_id: int
     webrtc_session_id: int
+    cause: str
+    reason: int | None = None
+    client_session_key: str | None = None
 
 
 @dataclass

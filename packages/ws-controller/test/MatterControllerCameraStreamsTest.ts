@@ -5,6 +5,7 @@
  */
 
 import { Crypto, Entropy, Environment, MockStorageService, Network, NetworkSimulator } from "@matter/general";
+import { EndpointNumber, NodeId } from "@matter/main";
 import { MatterController } from "../src/controller/MatterController.js";
 import { ConfigStorage } from "../src/server/ConfigStorage.js";
 import { ServerError, ServerErrorCode } from "../src/types/WebSocketMessageTypes.js";
@@ -88,8 +89,8 @@ describe("MatterController.cameraStreamsIfCreated", () => {
         const controller = await MatterController.create(freshEnv(), config, {});
         const manager = controller.cameraStreams;
         const forgotten = new Array<string>();
-        manager.forgetSession = (nodeId, endpointId, webRtcSessionId) => {
-            forgotten.push(`${nodeId}/${endpointId}/${webRtcSessionId}`);
+        manager.endedByPeer = (nodeId, endpointId, webRtcSessionId, reason) => {
+            forgotten.push(`${nodeId}/${endpointId}/${webRtcSessionId} reason ${reason}`);
             return true;
         };
 
@@ -109,12 +110,12 @@ describe("MatterController.cameraStreamsIfCreated", () => {
             node_id: 5n,
             endpoint_id: 1,
             fabric_index: 1,
-            data: { reason: 0 },
+            data: { reason: 9 },
         });
         // Observers behind this one still need the entry to find the session's owner, so the drop runs after the emit.
         expect(forgotten).to.deep.equal([]);
         await Promise.resolve();
-        expect(forgotten).to.deep.equal(["5/1/7"]);
+        expect(forgotten).to.deep.equal(["5/1/7 reason 9"]);
 
         await controller.stop();
     });
@@ -124,7 +125,7 @@ describe("MatterController.cameraStreamsIfCreated", () => {
         const controller = await MatterController.create(freshEnv(), config, {});
         const manager = controller.cameraStreams;
         const forgotten = new Array<number>();
-        manager.forgetSession = (_nodeId, _endpointId, webRtcSessionId) => {
+        manager.endedByPeer = (_nodeId, _endpointId, webRtcSessionId) => {
             forgotten.push(webRtcSessionId);
             return true;
         };
@@ -146,6 +147,50 @@ describe("MatterController.cameraStreamsIfCreated", () => {
         await Promise.resolve();
         expect(forgotten).to.deep.equal([]);
 
+        await controller.stop();
+    });
+
+    it("applies a camera's session report and drops the requestor tracking of each session that vanished", async () => {
+        const controller = await MatterController.create(freshEnv(), config, {});
+        const manager = controller.cameraStreams;
+        const handler = controller.commandHandler;
+        const reports = new Array<string>();
+        manager.sessionsReported = (nodeId, endpointId, present, restarted) => {
+            reports.push(`${nodeId}/${endpointId} [${[...present].join(",")}] restarted=${restarted}`);
+            return [
+                {
+                    webRtcSessionId: 7,
+                    nodeId,
+                    endpointId,
+                    connectionId: "conn-1",
+                    videoStreamIds: new Array<number>(),
+                    audioStreamIds: new Array<number>(),
+                },
+            ];
+        };
+        const dropped = new Array<string>();
+        handler.removeTrackedWebRtcSession = async (webRtcSessionId, nodeId, endpointId) => {
+            dropped.push(`${nodeId}/${endpointId}/${webRtcSessionId}`);
+        };
+
+        handler.events.webRtcProviderSessionsReported.emit(NodeId(5), EndpointNumber(1), new Set([3]), true);
+
+        expect(reports).to.deep.equal(["5/1 [3] restarted=true"]);
+        expect(dropped).to.deep.equal(["5/1/7"]);
+        await controller.stop();
+    });
+
+    it("drops the camera sessions of a node removed from the fabric", async () => {
+        const controller = await MatterController.create(freshEnv(), config, {});
+        const manager = controller.cameraStreams;
+        const removed = new Array<NodeId>();
+        manager.nodeRemoved = nodeId => {
+            removed.push(nodeId);
+        };
+
+        controller.commandHandler.events.nodeDecommissioned.emit(NodeId(5));
+
+        expect(removed).to.deep.equal([NodeId(5)]);
         await controller.stop();
     });
 

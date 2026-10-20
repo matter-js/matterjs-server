@@ -13,20 +13,29 @@ import type {
     CameraStartStreamResult,
     CameraStartStreamVideoResult,
     CameraResolution,
+    CameraResolutionTarget,
     CameraVideoHints,
 } from "@matter-server/ws-client";
 import { Bytes, EndpointNumber, NodeId } from "@matter/main";
 import type { WebRtcTransportDefinitions } from "@matter/main/clusters";
 import { StreamUsage } from "@matter/main/types";
 import { ServerError } from "../types/WebSocketMessageTypes.js";
+import { formatNodeId } from "../util/formatNodeId.js";
 import { nodeIdTarget } from "../util/nodeIdClasses.js";
 import { CAMERA_FIELD_RANGES, ICE_SERVER_LIMITS } from "./cameraFieldRanges.js";
 import type { FieldRange } from "./cameraFieldRanges.js";
 import type { CameraCapabilities, SnapshotResult, StartStreamResult } from "./CameraStreamManager.js";
-import type { AudioEnvelope, Resolution, ResolvedStream, StreamKind, VideoEnvelope } from "./cameraTypes.js";
+import type {
+    AudioEnvelope,
+    Resolution,
+    ResolutionTarget,
+    ResolvedStream,
+    StreamKind,
+    VideoEnvelope,
+} from "./cameraTypes.js";
 import type { AudioHints, VideoHints } from "./streamPolicy.js";
 import type { SignallingCommandName } from "./webRtcProviderArguments.js";
-import { toIceServers } from "./webRtcProviderArguments.js";
+import { toIceServers, toProviderCommandFields } from "./webRtcProviderArguments.js";
 import {
     isInRange,
     isRecord,
@@ -75,6 +84,26 @@ function toResolution(value: unknown, field: string): Resolution {
         throw ServerError.invalidArguments(expected);
     }
     return { width, height };
+}
+
+const RESOLUTION_TARGET_KEY_SET: Record<keyof Required<CameraResolutionTarget>, true> = {
+    width: true,
+    height: true,
+};
+
+const RESOLUTION_TARGET_KEYS: readonly string[] = Object.keys(RESOLUTION_TARGET_KEY_SET);
+
+function toResolutionTarget(value: unknown, field: string): ResolutionTarget {
+    const { resolutionWidth, resolutionHeight } = CAMERA_FIELD_RANGES;
+    const expected = `${field} must be an object with a width (${rangeText(resolutionWidth)}), a height (${rangeText(resolutionHeight)}), or both`;
+    if (!isRecord(value)) throw ServerError.invalidArguments(expected);
+    rejectUnknownKeys(value, RESOLUTION_TARGET_KEYS, field);
+    const { width, height } = value;
+    if (width !== undefined && !isInRange(width, resolutionWidth)) throw ServerError.invalidArguments(expected);
+    if (height !== undefined && !isInRange(height, resolutionHeight)) throw ServerError.invalidArguments(expected);
+    if (isInRange(width, resolutionWidth)) return isInRange(height, resolutionHeight) ? { width, height } : { width };
+    if (isInRange(height, resolutionHeight)) return { height };
+    throw ServerError.invalidArguments(expected);
 }
 
 function toOptionalString(value: unknown, field: string): string | undefined {
@@ -184,6 +213,7 @@ const SNAPSHOT_ARG_KEY_SET: Record<keyof Required<ArgsOf<"camera_snapshot">>, tr
     node_id: true,
     endpoint_id: true,
     max_resolution: true,
+    resolution: true,
     codec: true,
     watermark_enabled: true,
     osd_enabled: true,
@@ -201,6 +231,7 @@ const START_STREAM_ARG_KEY_SET: Record<keyof Required<ArgsOf<"camera_start_strea
     metadata_enabled: true,
     allow_eviction: true,
     talkback: true,
+    client_session_key: true,
 };
 
 const CAPABILITIES_ARG_KEY_SET: Record<keyof Required<ArgsOf<"camera_get_capabilities">>, true> = {
@@ -212,6 +243,7 @@ const STOP_STREAM_ARG_KEY_SET: Record<keyof Required<ArgsOf<"camera_stop_stream"
     node_id: true,
     endpoint_id: true,
     webrtc_session_id: true,
+    client_session_key: true,
 };
 
 const PROVIDE_ANSWER_ARG_KEY_SET: Record<keyof Required<ArgsOf<"camera_provide_answer">>, true> = {
@@ -225,6 +257,7 @@ const PROVIDE_ICE_CANDIDATES_ARG_KEY_SET: Record<keyof Required<ArgsOf<"camera_p
     node_id: true,
     endpoint_id: true,
     webrtc_session_id: true,
+    client_session_key: true,
     ice_candidates: true,
 };
 
@@ -266,6 +299,61 @@ export function parseSignallingArgs(args: unknown, command: CameraSignallingComm
     delete payload.node_id;
     delete payload.endpoint_id;
     return { ...target, commandName: SIGNALLING_PROVIDER_COMMANDS[command], payload };
+}
+
+export const CLIENT_SESSION_KEY_MAX_LENGTH = 128;
+
+/** How a command names a session: the camera's id, or the key its connection gave `camera_start_stream`. */
+export type SessionReference = { readonly webRtcSessionId: number } | { readonly clientSessionKey: string };
+
+function toClientSessionKey(value: unknown): string {
+    return toBoundedString(value, "client_session_key", CLIENT_SESSION_KEY_MAX_LENGTH);
+}
+
+function parseSessionReference(fields: Record<string, unknown>, command: CameraCommandName): SessionReference {
+    const { webrtc_session_id: webRtcSessionId, client_session_key: clientSessionKey } = fields;
+    if ((webRtcSessionId === undefined) === (clientSessionKey === undefined)) {
+        throw ServerError.invalidArguments(
+            `${command} requires exactly one of webrtc_session_id and client_session_key`,
+        );
+    }
+    if (clientSessionKey !== undefined) return { clientSessionKey: toClientSessionKey(clientSessionKey) };
+    return {
+        webRtcSessionId: toRequiredNumber(
+            webRtcSessionId,
+            `${command} webrtc_session_id`,
+            CAMERA_FIELD_RANGES.webRtcSessionId,
+        ),
+    };
+}
+
+export interface ParsedIceCandidatesArgs extends ParsedCameraTarget {
+    session: SessionReference;
+    candidateCount: number;
+    /** `ProvideIceCandidates` fields for `webRtcSessionId`; with a key, call it once the id is known. */
+    fieldsFor(webRtcSessionId: number): Record<string, unknown>;
+}
+
+/** The candidates are converted here, so a refusal answers this command even while they wait for the id. */
+export function parseIceCandidatesArgs(args: unknown): ParsedIceCandidatesArgs {
+    const command = "camera_provide_ice_candidates";
+    const { target, fields } = parseCameraCommand(args, command);
+    const session = parseSessionReference(fields, command);
+    const convert = (webRtcSessionId: number) =>
+        toProviderCommandFields(
+            "ProvideIceCandidates",
+            { webrtc_session_id: webRtcSessionId, ice_candidates: fields.ice_candidates },
+            `node ${formatNodeId(target.nodeId)} endpoint ${target.endpointId}`,
+            command,
+        );
+    // Any in-range id converts the same; `fieldsFor` puts in the real one.
+    const converted = convert("webRtcSessionId" in session ? session.webRtcSessionId : 0);
+    return {
+        ...target,
+        session,
+        candidateCount: Array.isArray(fields.ice_candidates) ? fields.ice_candidates.length : 0,
+        fieldsFor: webRtcSessionId => ({ ...converted, webRtcSessionId }),
+    };
 }
 
 export function parseCapabilitiesArgs(args: unknown): ParsedCameraTarget {
@@ -336,6 +424,7 @@ export interface ParsedStartStreamArgs extends ParsedCameraTarget {
     metadataEnabled?: boolean;
     allowEviction?: boolean;
     talkback?: boolean;
+    clientSessionKey?: string;
 }
 
 export function parseStartStreamArgs(args: unknown): ParsedStartStreamArgs {
@@ -358,6 +447,8 @@ export function parseStartStreamArgs(args: unknown): ParsedStartStreamArgs {
     const metadataEnabled = toOptionalBoolean(fields.metadata_enabled, "metadata_enabled");
     const allowEviction = toOptionalBoolean(fields.allow_eviction, "allow_eviction");
     const talkback = toOptionalBoolean(fields.talkback, "talkback");
+    const clientSessionKey =
+        fields.client_session_key === undefined ? undefined : toClientSessionKey(fields.client_session_key);
     if (talkback === true && sdp === undefined) {
         throw ServerError.invalidArguments("talkback: true requires sdp; without it the answer decides talkback");
     }
@@ -376,21 +467,17 @@ export function parseStartStreamArgs(args: unknown): ParsedStartStreamArgs {
         ...(metadataEnabled === undefined ? {} : { metadataEnabled }),
         ...(allowEviction === undefined ? {} : { allowEviction }),
         ...(talkback === undefined ? {} : { talkback }),
+        ...(clientSessionKey === undefined ? {} : { clientSessionKey }),
     };
 }
 
 export interface ParsedStopStreamArgs extends ParsedCameraTarget {
-    webRtcSessionId: number;
+    session: SessionReference;
 }
 
 export function parseStopStreamArgs(args: unknown): ParsedStopStreamArgs {
     const { target, fields } = parseCameraCommand(args, "camera_stop_stream");
-    const webRtcSessionId = toRequiredNumber(
-        fields.webrtc_session_id,
-        "camera_stop_stream webrtc_session_id",
-        CAMERA_FIELD_RANGES.webRtcSessionId,
-    );
-    return { ...target, webRtcSessionId };
+    return { ...target, session: parseSessionReference(fields, "camera_stop_stream") };
 }
 
 function toImageCodec(value: unknown): number {
@@ -405,6 +492,7 @@ function toImageCodec(value: unknown): number {
 
 export interface ParsedSnapshotArgs extends ParsedCameraTarget {
     maxResolution?: Resolution;
+    resolution?: ResolutionTarget;
     codec?: number;
     watermarkEnabled?: boolean;
     osdEnabled?: boolean;
@@ -412,13 +500,14 @@ export interface ParsedSnapshotArgs extends ParsedCameraTarget {
 
 export function parseSnapshotArgs(args: unknown): ParsedSnapshotArgs {
     const { target, fields } = parseCameraCommand(args, "camera_snapshot");
-    const { max_resolution: maxResolution, codec } = fields;
+    const { max_resolution: maxResolution, resolution, codec } = fields;
     const imageCodec = codec === undefined ? undefined : toImageCodec(codec);
     const watermarkEnabled = toOptionalBoolean(fields.watermark_enabled, "watermark_enabled");
     const osdEnabled = toOptionalBoolean(fields.osd_enabled, "osd_enabled");
     return {
         ...target,
         ...(maxResolution === undefined ? {} : { maxResolution: toResolution(maxResolution, "max_resolution") }),
+        ...(resolution === undefined ? {} : { resolution: toResolutionTarget(resolution, "resolution") }),
         ...(imageCodec === undefined ? {} : { codec: imageCodec }),
         ...(watermarkEnabled === undefined ? {} : { watermarkEnabled }),
         ...(osdEnabled === undefined ? {} : { osdEnabled }),

@@ -41,6 +41,10 @@ Picture size is kept longest. Each step is one request to the camera, and a star
 
 If the camera refused every one, the last request is the one the Matter certification tests use, which a certified camera must accept. This request is a frame rate range from 30 up to the camera's maximum, so the camera picks the rate itself.
 
+### TURN over TLS needs the camera's clock
+
+A camera refuses an offer with a `turns:` or `stuns:` ICE server while its UTC time is not set, which is common right after a reboot. When the camera refuses such an offer, the server pushes its time to the camera and sends the offer once more. If that push fails, or the camera refuses the offer again, the camera's refusal reaches the client.
+
 ## Camera capacity and other users
 
 A camera has a limited number of encoders and a limited encoding capacity. When the camera is full, the server does this, in order:
@@ -56,13 +60,15 @@ Things to know:
 - **The camera can pick an existing stream itself.** When the server asks for a new stream, the camera may answer with a stream that already exists and is close enough, whatever its purpose. When a video stream breaks a limit the client set, such as `max_resolution`, the server looks for another existing stream within the limits first, and fails with error 102 only when there is none. For a snapshot, the size of the picture the camera returns decides. The server never frees such a stream, because it existed before the request.
 - **No freeing:** `allow_eviction: false` on `camera_start_stream` stops the server from freeing streams. The request can then fail with error 103 when the camera is full.
 - **After a server restart,** the server no longer knows which streams it allocated itself. It treats the streams it allocated before the restart as another controller's. They are freed later, and one the server could hand out as it is is not freed at all.
+- **Sessions left from before a crash** are ended by the server once the camera's first report arrives, so they stop holding streams. Sessions another controller holds are not touched.
+- **A camera restart ends its sessions without telling the server.** The camera sends no `End`; the server learns it from the camera's `StartUp` event and its emptied session list, or when the camera hands an old session id to a new session. The client gets `camera_session_ended` with `cause: "camera_restarted"`. A camera that drops a session from its list without either is reported as `camera_dropped`.
 
 ## Snapshots
 
-- **Size:** the largest snapshot size the camera offers, unless `max_resolution` limits it.
+- **Size:** the largest snapshot size the camera offers, unless `max_resolution` limits it. With `resolution`, the smallest offered size that is at least as large as the one asked for (the largest allowed one when none is). The server asks the camera to scale the picture to the asked size, and the camera may refuse to scale and send the full offered size.
 - **Quality:** the server asks for image quality 90 (of 100).
 - **The snapshot stream stays.** A snapshot allocates a snapshot stream on the camera and leaves it there, so the next snapshot is fast. A later live view may free it to make room. The next snapshot then allocates it again.
-- **Snapshots can be worse while video runs.** When all of the camera's encoders are busy, for example with a live view, the server picks a snapshot size that needs no encoder of its own. The camera can then take the picture from the running video stream. The image can be smaller, and it can show the video's watermark or date banner even when the snapshot asked for none. The response says `degraded: true` when the picture is smaller than the best size the request allowed.
+- **Snapshots can be worse while video runs.** When all of the camera's encoders are busy, for example with a live view, the server picks a snapshot size that needs no encoder of its own. The camera can then take the picture from the running video stream. The image can be smaller, and it can show the video's watermark or date banner even when the snapshot asked for none. The response says `degraded: true` when the picture is smaller than the best size the request allowed. When the request asked for a `resolution`, the picture is not degraded as long as it reaches that size, and encoder-free sizes still come first while the encoders are busy.
 
 ## Audio
 
@@ -70,7 +76,6 @@ Things to know:
 - A camera that states 8 channels therefore gets 8 channels, although a browser plays at most 2. Whether the server should ask for fewer channels is an open question to the Matter camera experts.
 - When the camera cannot serve audio, the live view still starts, without sound.
 - **Talkback needs an audio stream.** The response's `talkback` is `true` only when `camera_start_stream` gets `talkback: true` and the session carries an audio stream, because the Matter SDK example camera (with its audio playback option on) plays the client's audio only while that stream runs.
-- **Leaving talkback off only asks the camera.** Some cameras answer `a=sendrecv` whatever the offer says, so the client can still send. A client that must not send audio keeps the track off its audio sender.
 
 ## Overlays
 
@@ -82,4 +87,5 @@ Seen on tested cameras. The server works around them where it can.
 
 - **Accepting a frame rate the camera cannot deliver.** A camera accepted 640x480 at 90 fps and then sent black video. This is the reason for the 30 fps default.
 - **Wrong stream ids in `CurrentSessions`.** A camera reported random stream ids for each WebRTC session, not the streams the session uses. The server relies on the stream ids it sent itself, not on this list.
+- **An answer direction the offer does not allow.** A camera answered `a=sendrecv` to a section offered `a=recvonly`, and browsers reject such an answer. The server narrows the direction of each media section of the camera's answer to what its offer allows (RFC 3264 §6.1) before it sends the `answer` event, also for a section whose direction comes from a session-level line or from the `sendrecv` default. With talkback off, the client's audio section is then `recvonly` as well, so the client cannot send.
 - **Hidden limits.** Cameras refuse frame rate ranges below a floor, bit rates above a ceiling, or key frame intervals other than 4000 ms, without stating any of these in their attributes.

@@ -14,7 +14,6 @@ import {
     type CameraStartStreamVideoResult,
     ServerCommandError,
 } from "@matter-server/ws-client";
-import { sanitizeAnswerSdp } from "../src/components/webrtc-stream-view.js";
 import {
     buildSnapshotOverlays,
     buildVideoRequest,
@@ -443,83 +442,6 @@ describe("camera API helpers", () => {
             expect(cameraErrorText(new ServerCommandError("bad argument", 8))).to.equal("bad argument");
             expect(cameraErrorText(new Error("boom"))).to.equal("boom");
             expect(cameraErrorText("text")).to.equal("text");
-        });
-    });
-
-    describe("sanitizeAnswerSdp", () => {
-        const VIDEO = "m=video 9 UDP/TLS/RTP/SAVPF 96";
-        const AUDIO = "m=audio 9 UDP/TLS/RTP/SAVPF 111";
-
-        it("coerces sendrecv to sendonly in a section offered recvonly, never at session level", () => {
-            const offer = ["v=0", AUDIO, "a=mid:0", "a=recvonly"].join("\r\n");
-            const answer = ["v=0", "a=sendrecv", AUDIO, "a=mid:0", "a=sendrecv"].join("\r\n");
-            expect(sanitizeAnswerSdp(answer, offer).split("\r\n")).to.deep.equal([
-                "v=0",
-                "a=sendrecv",
-                AUDIO,
-                "a=mid:0",
-                "a=sendonly",
-            ]);
-        });
-
-        it("keeps a sendrecv answer to a section offered sendrecv", () => {
-            const offer = ["v=0", VIDEO, "a=mid:0", "a=recvonly", AUDIO, "a=mid:1", "a=sendrecv"].join("\r\n");
-            const answer = ["v=0", VIDEO, "a=mid:0", "a=sendrecv", AUDIO, "a=mid:1", "a=sendrecv", ""].join("\r\n");
-            expect(sanitizeAnswerSdp(answer, offer).split("\r\n")).to.deep.equal([
-                "v=0",
-                VIDEO,
-                "a=mid:0",
-                "a=sendonly",
-                AUDIO,
-                "a=mid:1",
-                "a=sendrecv",
-                "",
-            ]);
-        });
-
-        it("pairs sections by mid, not by order", () => {
-            const offer = ["v=0", VIDEO, "a=mid:v", "a=recvonly", AUDIO, "a=mid:a", "a=sendrecv"].join("\r\n");
-            const answer = ["v=0", AUDIO, "a=mid:a", "a=sendrecv", VIDEO, "a=mid:v", "a=sendrecv"].join("\r\n");
-            expect(sanitizeAnswerSdp(answer, offer).split("\r\n")).to.deep.equal([
-                "v=0",
-                AUDIO,
-                "a=mid:a",
-                "a=sendrecv",
-                VIDEO,
-                "a=mid:v",
-                "a=sendonly",
-            ]);
-        });
-
-        it("rewrites a section the offer has no counterpart for", () => {
-            const offer = ["v=0", VIDEO, "a=mid:0", "a=sendrecv"].join("\r\n");
-            const answer = ["v=0", VIDEO, "a=mid:0", "a=sendrecv", AUDIO, "a=mid:1", "a=sendrecv"].join("\r\n");
-            expect(sanitizeAnswerSdp(answer, offer).split("\r\n")).to.deep.equal([
-                "v=0",
-                VIDEO,
-                "a=mid:0",
-                "a=sendrecv",
-                AUDIO,
-                "a=mid:1",
-                "a=sendonly",
-            ]);
-            expect(sanitizeAnswerSdp(["v=0", AUDIO, "a=sendrecv"].join("\r\n"), "").split("\r\n")).to.deep.equal([
-                "v=0",
-                AUDIO,
-                "a=sendonly",
-            ]);
-        });
-
-        it("pairs sections by order when the answer states no mid", () => {
-            const offer = ["v=0", VIDEO, "a=mid:0", "a=recvonly", AUDIO, "a=mid:1", "a=sendrecv"].join("\r\n");
-            const answer = ["v=0", VIDEO, "a=sendrecv", AUDIO, "a=sendrecv"].join("\r\n");
-            expect(sanitizeAnswerSdp(answer, offer).split("\r\n")).to.deep.equal([
-                "v=0",
-                VIDEO,
-                "a=sendonly",
-                AUDIO,
-                "a=sendrecv",
-            ]);
         });
     });
 

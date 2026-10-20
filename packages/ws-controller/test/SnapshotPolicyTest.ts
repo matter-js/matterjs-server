@@ -11,6 +11,8 @@ import {
     chooseSnapshotStreamToFree,
     encodersExhausted,
     findAdoptableSnapshotStream,
+    isDegradedFrom,
+    requestedResolution,
     selectSnapshotCapabilities,
     usesHardwareEncoder,
 } from "../src/camera/snapshotPolicy.js";
@@ -327,6 +329,166 @@ describe("snapshotPolicy", () => {
         });
     });
 
+    describe("selectSnapshotCapabilities with a target", () => {
+        const capability = (width: number, height: number, carried: Partial<SnapshotCapability> = {}) => ({
+            ...SNAPSHOT_CAPABILITIES[0],
+            resolution: { width, height },
+            ...carried,
+        });
+        const LADDER = [capability(640, 360), capability(1280, 720), capability(1920, 1080)];
+        const widths = (selection: SnapshotSelection) => chosen(selection).map(entry => entry.resolution.width);
+
+        it("puts the smallest capability that reaches the target first, then the larger, then the short ones", () => {
+            expect(
+                widths(selectSnapshotCapabilities(LADDER, { encodersExhausted: false, target: { width: 1000 } })),
+            ).to.deep.equal([1280, 1920, 640]);
+        });
+
+        it("keeps the largest-first order when no capability reaches the target", () => {
+            expect(
+                widths(selectSnapshotCapabilities(LADDER, { encodersExhausted: false, target: { width: 4000 } })),
+            ).to.deep.equal([1920, 1280, 640]);
+        });
+
+        it("reads a height-only target against the height", () => {
+            expect(
+                widths(selectSnapshotCapabilities(LADDER, { encodersExhausted: false, target: { height: 700 } })),
+            ).to.deep.equal([1280, 1920, 640]);
+        });
+
+        it("requires every stated dimension of a two-sided target", () => {
+            const wideShort = capability(2000, 500);
+            expect(
+                widths(
+                    selectSnapshotCapabilities([wideShort, ...LADDER], {
+                        encodersExhausted: false,
+                        target: { width: 640, height: 360 },
+                    }),
+                )[0],
+            ).to.equal(640);
+            expect(
+                widths(
+                    selectSnapshotCapabilities([wideShort, ...LADDER], {
+                        encodersExhausted: false,
+                        target: { width: 1000, height: 600 },
+                    }),
+                )[0],
+            ).to.equal(1280);
+        });
+
+        it("never picks a capability above the ceiling, whatever the target", () => {
+            expect(
+                widths(
+                    selectSnapshotCapabilities(LADDER, {
+                        encodersExhausted: false,
+                        maxResolution: { width: 1280, height: 720 },
+                        target: { width: 1500 },
+                    }),
+                ),
+            ).to.deep.equal([1280, 640]);
+        });
+
+        it("still puts encoder-free capabilities first when encoders are exhausted", () => {
+            const mixed = [
+                capability(640, 360),
+                capability(1280, 720, { requiresEncodedPixels: true, requiresHardwareEncoder: true }),
+            ];
+            expect(
+                widths(selectSnapshotCapabilities(mixed, { encodersExhausted: true, target: { width: 1000 } })),
+            ).to.deep.equal([640, 1280]);
+        });
+
+        it("takes bestWithinCallerBounds from the target order, before the encoder split", () => {
+            const mixed = [
+                capability(640, 360),
+                capability(1280, 720, { requiresEncodedPixels: true, requiresHardwareEncoder: true }),
+            ];
+            const selection = selectSnapshotCapabilities(mixed, { encodersExhausted: true, target: { width: 1000 } });
+            if ("unsatisfiable" in selection) throw new Error("unsatisfiable");
+            expect(selection.bestWithinCallerBounds?.resolution.width).to.equal(1280);
+        });
+    });
+
+    describe("requestedResolution", () => {
+        const FULL = { width: 1920, height: 1080 };
+
+        it("returns the source size without a target", () => {
+            expect(requestedResolution(FULL, undefined)).to.deep.equal(FULL);
+        });
+
+        it("derives the height from the aspect ratio for a width-only target", () => {
+            expect(requestedResolution(FULL, { width: 640 })).to.deep.equal({ width: 640, height: 360 });
+        });
+
+        it("derives the width from the aspect ratio for a height-only target", () => {
+            expect(requestedResolution(FULL, { height: 360 })).to.deep.equal({ width: 640, height: 360 });
+        });
+
+        it("fits a two-sided target inside the source aspect ratio instead of stretching", () => {
+            expect(requestedResolution(FULL, { width: 640, height: 640 })).to.deep.equal({ width: 640, height: 360 });
+        });
+
+        it("scales a height-only target by the height ratio alone when it is above one half", () => {
+            expect(requestedResolution(FULL, { height: 810 })).to.deep.equal({ width: 1440, height: 810 });
+        });
+
+        it("never asks for more than the source has", () => {
+            expect(requestedResolution(FULL, { width: 4000 })).to.deep.equal(FULL);
+            expect(requestedResolution(FULL, { width: 4000, height: 4000 })).to.deep.equal(FULL);
+            expect(requestedResolution(FULL, { width: 4000, height: 100 })).to.deep.equal({ width: 178, height: 100 });
+        });
+
+        it("never asks for a zero side", () => {
+            expect(requestedResolution({ width: 1920, height: 10 }, { width: 1 })).to.deep.equal({
+                width: 1,
+                height: 1,
+            });
+            expect(requestedResolution({ width: 10, height: 1920 }, { height: 1 })).to.deep.equal({
+                width: 1,
+                height: 1,
+            });
+        });
+    });
+
+    describe("isDegradedFrom with a target", () => {
+        const best = { ...SNAPSHOT_CAPABILITIES[1] };
+
+        it("does not flag a frame that meets the target although the capability is larger", () => {
+            expect(isDegradedFrom({ width: 320, height: 180 }, best, { width: 320 })).to.equal(false);
+        });
+
+        it("flags a frame below the requested size", () => {
+            expect(isDegradedFrom({ width: 160, height: 90 }, best, { width: 320 })).to.equal(true);
+        });
+
+        it("does not flag a correct frame from a stream whose aspect ratio differs from the capability", () => {
+            const fourThirds = SNAPSHOT_CAPABILITIES[0];
+            expect(isDegradedFrom({ width: 320, height: 180 }, fourThirds, { width: 320 })).to.equal(false);
+            expect(isDegradedFrom({ width: 427, height: 240 }, fourThirds, { height: 240 })).to.equal(false);
+        });
+
+        it("accepts a frame that reaches either side of a two-sided target", () => {
+            const target = { width: 320, height: 320 };
+            expect(isDegradedFrom({ width: 320, height: 180 }, best, target)).to.equal(false);
+            expect(isDegradedFrom({ width: 160, height: 90 }, best, target)).to.equal(true);
+        });
+
+        it("measures a height-only target against the height", () => {
+            expect(isDegradedFrom({ width: 1000, height: 100 }, best, { height: 200 })).to.equal(true);
+            expect(isDegradedFrom({ width: 100, height: 200 }, best, { height: 200 })).to.equal(false);
+        });
+
+        it("never flags a frame when the camera states no capability", () => {
+            expect(isDegradedFrom({ width: 160, height: 90 }, undefined)).to.equal(false);
+            expect(isDegradedFrom({ width: 160, height: 90 }, undefined, { width: 320 })).to.equal(false);
+        });
+
+        it("measures against the whole capability when the target is larger than it", () => {
+            expect(isDegradedFrom({ width: 1280, height: 720 }, best, { width: 4000 })).to.equal(true);
+            expect(isDegradedFrom({ width: 1920, height: 1080 }, best, { width: 4000 })).to.equal(false);
+        });
+    });
+
     describe("chooseSnapshotStreamToFree", () => {
         const BUDGETED = { maxEncodedPixelRate: 248832000 };
         const held = (
@@ -487,6 +649,28 @@ describe("snapshotPolicy", () => {
         it("takes the largest of several candidates", () => {
             const candidates = [stream(8, 1920, 1080), stream(9, 2560, 1440)];
             expect(findAdoptableSnapshotStream(candidates, best, { overlays: {} })?.snapshotStreamId).to.equal(9);
+        });
+
+        it("adopts a stream that covers the requested size although it is below the capability", () => {
+            const mid = stream(8, 1280, 720);
+            expect(findAdoptableSnapshotStream([mid], best, { overlays: {} })).to.equal(undefined);
+            expect(
+                findAdoptableSnapshotStream([mid], best, { overlays: {}, target: { width: 1000 } })?.snapshotStreamId,
+            ).to.equal(8);
+        });
+
+        it("refuses a stream whose floor is below the requested size", () => {
+            expect(
+                findAdoptableSnapshotStream([stream(8, 640, 360)], best, { overlays: {}, target: { width: 1000 } }),
+            ).to.equal(undefined);
+        });
+
+        it("takes the smallest candidate that reaches the target", () => {
+            const candidates = [stream(8, 1920, 1080), stream(9, 1280, 720), stream(10, 640, 360)];
+            expect(
+                findAdoptableSnapshotStream(candidates, best, { overlays: {}, target: { width: 1000 } })
+                    ?.snapshotStreamId,
+            ).to.equal(9);
         });
     });
 });

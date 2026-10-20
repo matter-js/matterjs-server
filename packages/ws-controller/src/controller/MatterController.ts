@@ -542,20 +542,41 @@ export class MatterController {
             if (this.#stopped) {
                 throw ServerError.sdkStackError("Controller is stopped");
             }
-            const manager = new CameraStreamManager(new MatterCameraDeviceIo(this.commandHandler));
-            this.commandHandler.events.webRtcCallback.on(data => {
+            const handler = this.commandHandler;
+            const manager = new CameraStreamManager(new MatterCameraDeviceIo(handler));
+            handler.events.webRtcCallback.on(data => {
                 if (data.event_type !== "end") return;
                 // Deferred: connection observers of this same emit still resolve the session's owner from
                 // the entry, and a throw inside the emit would abort it for them.
                 Promise.resolve()
                     .then(() =>
-                        manager.forgetSession(
+                        manager.endedByPeer(
                             NodeId(data.node_id),
                             EndpointNumber(data.endpoint_id),
                             data.webrtc_session_id,
+                            data.data?.reason,
                         ),
                     )
                     .catch(error => logger.warn("Failed to drop the camera session a peer ended:", error));
+            });
+            // Shared Observables: an uncaught throw here aborts the emit for every other listener.
+            handler.events.webRtcProviderSessionsReported.on((nodeId, endpointId, present, restarted) => {
+                try {
+                    for (const gone of manager.sessionsReported(nodeId, endpointId, present, restarted)) {
+                        handler
+                            .removeTrackedWebRtcSession(gone.webRtcSessionId, nodeId, endpointId)
+                            .catch(error => logger.warn("Failed to drop a vanished camera session:", error));
+                    }
+                } catch (error) {
+                    logger.warn("Failed to apply a camera's session report:", error);
+                }
+            });
+            handler.events.nodeDecommissioned.on(nodeId => {
+                try {
+                    manager.nodeRemoved(nodeId);
+                } catch (error) {
+                    logger.warn("Failed to drop the camera sessions of a removed node:", error);
+                }
             });
             this.#cameraStreams = manager;
         }

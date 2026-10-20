@@ -31,7 +31,9 @@ import type {
     LeaseStatement,
     ManagedSession,
     Resolution,
+    ResolutionTarget,
     ResolvedStream,
+    SessionEnd,
     StreamKind,
     StreamLease,
     VideoEnvelope,
@@ -55,12 +57,13 @@ import {
 } from "./sdpConstraints.js";
 import type { MediaRefusal, SdpVideoConstraints, SelectedVideoCodecLimits } from "./sdpConstraints.js";
 import { CameraSessionRegistry } from "./sessionRegistry.js";
-import type { PendingSession, SessionScope } from "./sessionRegistry.js";
+import type { PendingSession, SessionOwner, SessionScope, SessionTrackRefusal } from "./sessionRegistry.js";
 import {
     chooseSnapshotStreamToFree,
     encodersExhausted,
     findAdoptableSnapshotStream,
     isDegradedFrom,
+    requestedResolution,
     selectSnapshotCapabilities,
     SNAPSHOT_QUALITY,
     usesHardwareEncoder,
@@ -103,6 +106,54 @@ type LadderReaction =
     /** Malformed request (`min > max`, a field out of range, an unknown codec). No retry can fix it. */
     | "fail-incompatible"
     | "rethrow";
+
+/** The answer to the `EndSession` a start sent for the session it gave up; `undefined`: none within the cleanup budget. */
+type GivenUpEnd = { ended: boolean } | { error: unknown } | undefined;
+
+function refusalReason(refusal: SessionTrackRefusal): string | undefined {
+    if (refusal === "claimed") return "the requesting connection closed or the server shut down";
+    if (refusal === "stopped") return "camera_stop_stream named its client_session_key";
+    return undefined;
+}
+
+/** Error 7 for a start that stopped before it sent the offer. */
+function cancelledBeforeOfferError(refusal: SessionTrackRefusal): ServerError {
+    return ServerError.sdkStackError(
+        `camera_start_stream was cancelled before the offer: ${refusalReason(refusal) ?? "it ended"}`,
+    );
+}
+
+/** Error 7 for a start that gave up the session the camera made; it says whether the camera confirmed the end. */
+function givenUpSessionError(refusal: SessionTrackRefusal, webRtcSessionId: number, end: GivenUpEnd): ServerError {
+    const reason = refusalReason(refusal);
+    if (end === undefined || "error" in end) {
+        const failure =
+            end === undefined
+                ? `the camera did not answer EndSession within ${DEVICE_CLEANUP_BUDGET_MS} ms`
+                : `EndSession failed (${end.error instanceof Error ? end.error.message : String(end.error)})`;
+        return ServerError.sdkStackError(
+            `WebRTC session ${webRtcSessionId} was given up (${reason ?? "it ended before this server could track it"}), but ${failure}; the server ends it at the camera's next report if the camera still lists it`,
+        );
+    }
+    if (reason === undefined) {
+        return ServerError.sdkStackError(
+            `WebRTC session ${webRtcSessionId} was ended before this server could track it, so it is no longer usable`,
+        );
+    }
+    if (!end.ended) {
+        return ServerError.sdkStackError(
+            `WebRTC session ${webRtcSessionId} was given up: ${reason} while the camera was establishing it; the camera no longer held it (EndSession answered NOT_FOUND)`,
+        );
+    }
+    return ServerError.sdkStackError(
+        `WebRTC session ${webRtcSessionId} was ended: ${reason} while the camera was establishing it`,
+    );
+}
+
+/** The route never tells `requestedBy`, which has its own response, so every receiver reads it as another connection. */
+function stoppedBy(requestedBy: string): SessionEnd {
+    return { cause: "other_connection", requestedBy };
+}
 
 /** The single place a Matter status becomes a ladder decision (statuses per `CameraAVStreamManagementCluster.cpp`). */
 function ladderReaction(status: number | undefined): LadderReaction {
@@ -440,6 +491,11 @@ export interface CameraDeviceIo {
          */
         sessionEstablishing?: (webRtcSessionId: number) => void;
     }): Promise<unknown>;
+    /**
+     * A session this server gave up and failed to end: its signalling stops, and the leftover sweep at the
+     * node's next report batch ends it if the camera still lists it.
+     */
+    abandonSession(nodeId: NodeId, endpointId: EndpointNumber, webRtcSessionId: number): Promise<void>;
 }
 
 export interface CameraCapabilities {
@@ -494,6 +550,13 @@ export interface StartStreamArgs {
     allowEviction?: boolean;
     /** Defaults to false, which rewrites the offer's sending audio sections so they do not send. */
     talkback?: boolean;
+    /** Called with the camera's session id before the camera can send signalling for it. */
+    sessionEstablishing?: (webRtcSessionId: number) => void;
+    /**
+     * The owner's own name for the session, unique among its starting and tracked sessions. It names the
+     * session in events and in {@link CameraStreamManager.stopStreamByClientKey} before the id exists.
+     */
+    clientSessionKey?: string;
 }
 
 /**
@@ -542,7 +605,11 @@ export interface SnapshotResult {
     data: Uint8Array;
     imageCodec: number;
     resolution: Resolution;
-    /** True when the frame is smaller than the best capability the caller's own bounds allowed. */
+    /**
+     * Without a target: the frame has fewer pixels than the best capability the caller's own bounds allowed.
+     * With a target: in every side the target states, the frame is smaller than the target and than the
+     * capability the target selects (`isDegradedFrom`).
+     */
     degraded: boolean;
     /** The stream the frame came from, which a successful call always leaves on the camera. */
     snapshotStreamId: number;
@@ -1854,7 +1921,10 @@ export class CameraStreamManager {
                 cluster: "webrtcProvider",
                 command: offer === undefined ? "solicitOffer" : "provideOffer",
                 // Must record the id before the local requestor can route an `End` for it.
-                sessionEstablishing: webRtcSessionId => this.#sessions.establishing(pending, webRtcSessionId),
+                sessionEstablishing: webRtcSessionId => {
+                    this.#sessions.establishing(pending, webRtcSessionId);
+                    args.sessionEstablishing?.(webRtcSessionId);
+                },
                 fields: {
                     // §11.5.6.3.1: mandatory and nullable; null asks for a new session.
                     ...(offer === undefined ? {} : { webRtcSessionId: null, sdp: offer }),
@@ -1885,12 +1955,22 @@ export class CameraStreamManager {
                 `Node ${nodeId} endpoint ${endpointId}: talkback not asked for; offer audio m-sections ${sdp?.sendingAudioSections.map(section => section.index).join(", ")} rewritten so they do not send`,
             );
         }
+        const { clientSessionKey } = args;
+        if (
+            clientSessionKey !== undefined &&
+            this.#sessions.clientSessionKeyInUse(args.connectionId, clientSessionKey)
+        ) {
+            throw ServerError.invalidArguments(
+                `client_session_key "${clientSessionKey}" already names a session of this connection that is starting or open`,
+            );
+        }
         // Before the first await, so a connection closing from here on claims this registration.
-        const pending = this.#sessions.begin(nodeId, endpointId, args.connectionId);
+        const pending = this.#sessions.begin(nodeId, endpointId, args.connectionId, clientSessionKey);
         try {
             // One lock through the offer: ReferenceCount rises only at session establishment, so until
             // then another request could evict the stream this call resolved.
             return await this.withEndpointLock(nodeId, endpointId, async () => {
+                this.#throwIfClaimed(pending);
                 const state = await this.requireStreamingState(nodeId, endpointId);
                 return this.withAllocationScope(scope =>
                     this.#establishSession(pending, args, offer, state, sdp, scope),
@@ -1976,6 +2056,7 @@ export class CameraStreamManager {
             video = this.resolveTrack("video", nodeId, videoRequest, outcome);
         }
 
+        this.#throwIfClaimed(pending);
         if (audioRequest.state !== "declined") {
             const outcome = await this.resolveAudioStreamLocked(
                 {
@@ -2004,6 +2085,7 @@ export class CameraStreamManager {
             });
         }
 
+        this.#throwIfClaimed(pending);
         const response = await this.#invokeEstablishingOffer(pending, args, offer, video, audio);
 
         const webRtcSessionId =
@@ -2020,20 +2102,45 @@ export class CameraStreamManager {
             nodeId,
             endpointId,
             connectionId: args.connectionId,
+            ...(args.clientSessionKey === undefined ? {} : { clientSessionKey: args.clientSessionKey }),
             videoStreamIds: video === undefined ? new Array<number>() : [video.streamId],
             audioStreamIds: audio === undefined ? new Array<number>() : [audio.streamId],
         };
-        scope.returnOnFailure(async () => {
-            // Not announced: the session never reached the registry.
-            await this.#endSession(session, undefined);
-        });
         const refusal = this.#sessions.track(pending, session);
         if (refusal !== undefined) {
-            throw ServerError.sdkStackError(
-                refusal === "claimed"
-                    ? `WebRTC session ${webRtcSessionId} was ended: the requesting connection closed while the camera was establishing it`
-                    : `WebRTC session ${webRtcSessionId} was ended before this server could track it, so it is no longer usable`,
+            // Not announced: the session never reached the registry.
+            const end = withCleanupBudget(
+                `ending WebRTC session ${webRtcSessionId}, given up while it was established`,
+                () =>
+                    this.#endSession(session, { cause: "released" }).then<GivenUpEnd, GivenUpEnd>(
+                        ended => ({ ended }),
+                        error => {
+                            logger.warn(`Ending given-up WebRTC session ${webRtcSessionId} failed:`, error);
+                            return { error };
+                        },
+                    ),
             );
+            const cancelAnswer = end.then(outcome => {
+                if (outcome === undefined) {
+                    throw ServerError.sdkStackError(
+                        `The camera did not answer EndSession for WebRTC session ${webRtcSessionId} within ${DEVICE_CLEANUP_BUDGET_MS} ms`,
+                    );
+                }
+                if ("error" in outcome) throw outcome.error;
+                return outcome.ended;
+            });
+            // Only a cancel reads this answer; without one its rejection would go unhandled.
+            cancelAnswer.catch(() => undefined);
+            this.#sessions.ending(pending, cancelAnswer);
+            const outcome = await end;
+            if (outcome === undefined || "error" in outcome) {
+                await this.io
+                    .abandonSession(nodeId, endpointId, webRtcSessionId)
+                    .catch(error =>
+                        logger.warn(`Could not hand WebRTC session ${webRtcSessionId} to the leftover sweep:`, error),
+                    );
+            }
+            throw givenUpSessionError(refusal, webRtcSessionId, outcome);
         }
 
         return {
@@ -2043,6 +2150,15 @@ export class CameraStreamManager {
             audio,
             talkback: talkbackOffered && cameraTalks && audio !== undefined,
         };
+    }
+
+    /**
+     * Checked once the endpoint is ours, after the video stream, and before the offer. A claim made while a
+     * stream is being resolved lets that resolution finish; the scope then gives back what it allocated.
+     */
+    #throwIfClaimed(pending: PendingSession): void {
+        const claimed = this.#sessions.claimRefusal(pending);
+        if (claimed !== undefined) throw cancelledBeforeOfferError(claimed);
     }
 
     /**
@@ -2069,7 +2185,7 @@ export class CameraStreamManager {
      * whether the device still had the session. A failed invoke keeps the entry, so a later stop,
      * disconnect or shutdown can retry; {@link invokeEndSession} decides the `NotFound` case.
      */
-    async #endSession(session: ManagedSession, requestedBy: string | undefined): Promise<boolean> {
+    async #endSession(session: ManagedSession, end: SessionEnd): Promise<boolean> {
         const { nodeId, endpointId, webRtcSessionId } = session;
         try {
             await invokeEndSession(
@@ -2082,7 +2198,7 @@ export class CameraStreamManager {
                         fields: { webRtcSessionId, reason: WEBRTC_END_REASON_USER_HANGUP },
                     }),
                 async () => {
-                    this.#sessions.forgetEstablished(session, requestedBy);
+                    this.#sessions.forgetEstablished(session, end);
                 },
             );
         } catch (error) {
@@ -2093,6 +2209,36 @@ export class CameraStreamManager {
             return false;
         }
         return true;
+    }
+
+    /**
+     * {@link stopStream} for the session `connectionId` named `clientSessionKey`. A session still being
+     * established is cancelled: its `startStream` fails with error 7, ending the session the camera may
+     * have opened, and this resolves once that call finished, with whether it ended one. A failed
+     * `EndSession` rejects, as {@link stopStream} does.
+     * False for a key that names no session of the connection, as for an id the camera does not hold.
+     */
+    async stopStreamByClientKey(
+        nodeId: NodeId,
+        endpointId: EndpointNumber,
+        connectionId: string,
+        clientSessionKey: string,
+    ): Promise<boolean> {
+        const keyed = this.#sessions.byClientKey(nodeId, endpointId, connectionId, clientSessionKey);
+        if (keyed === undefined) return false;
+        if ("pending" in keyed) return this.#sessions.cancel(keyed.pending);
+        return this.stopStream(nodeId, endpointId, keyed.session.webRtcSessionId, connectionId);
+    }
+
+    /** The id of the tracked session `connectionId` named `clientSessionKey`; `undefined` while it is still being established. */
+    clientSessionId(
+        nodeId: NodeId,
+        endpointId: EndpointNumber,
+        connectionId: string,
+        clientSessionKey: string,
+    ): number | undefined {
+        const keyed = this.#sessions.byClientKey(nodeId, endpointId, connectionId, clientSessionKey);
+        return keyed !== undefined && "session" in keyed ? keyed.session.webRtcSessionId : undefined;
     }
 
     /**
@@ -2108,7 +2254,9 @@ export class CameraStreamManager {
     ): Promise<boolean> {
         const session = this.#sessions.get(nodeId, endpointId, webRtcSessionId);
         if (session !== undefined) {
-            return this.#sessions.releaseOnce(session, held => this.#endSession(held, requestedBy));
+            return this.#sessions.releaseOnce(session, held =>
+                this.#endSession(held, requestedBy === undefined ? { cause: "released" } : stoppedBy(requestedBy)),
+            );
         }
         return this.#endUntrackedSession(nodeId, endpointId, webRtcSessionId, requestedBy);
     }
@@ -2155,16 +2303,68 @@ export class CameraStreamManager {
         webRtcSessionId: number,
         requestedBy: string | undefined,
     ): void {
-        this.#announce(this.events.sessionEnded, { nodeId, endpointId, webRtcSessionId, requestedBy });
+        this.#announce(this.events.sessionEnded, {
+            nodeId,
+            endpointId,
+            webRtcSessionId,
+            ...(requestedBy === undefined ? { cause: "released" } : stoppedBy(requestedBy)),
+        });
     }
 
     /**
-     * Stop tracking a session the peer ended, without invoking `EndSession`. Not announced: the peer's
-     * `End` already reaches the owner as a `webrtc_callback` event. A client's own `EndSession` goes
+     * Stop tracking a session the peer ended, without invoking `EndSession`, and announce it as `peer`
+     * (the owner also gets the `End` as a `webrtc_callback` event). A client's own `EndSession` goes
      * through {@link endedByClient}.
      */
-    forgetSession(nodeId: NodeId, endpointId: EndpointNumber, webRtcSessionId: number): boolean {
-        return this.#sessions.forget(nodeId, endpointId, webRtcSessionId);
+    endedByPeer(nodeId: NodeId, endpointId: EndpointNumber, webRtcSessionId: number, reason?: number): boolean {
+        const session = this.#sessions.get(nodeId, endpointId, webRtcSessionId);
+        if (session !== undefined) {
+            return this.#sessions.forgetEstablished(session, {
+                cause: "peer",
+                ...(reason === undefined ? {} : { reason }),
+            });
+        }
+        this.#sessions.forget(nodeId, endpointId, webRtcSessionId);
+        return false;
+    }
+
+    /**
+     * The camera handed this id to a session another route established (`send_webrtc_provider_command`).
+     * @see CameraSessionRegistry.issued
+     */
+    sessionIdIssued(nodeId: NodeId, endpointId: EndpointNumber, webRtcSessionId: number): void {
+        this.#sessions.issued(nodeId, endpointId, webRtcSessionId);
+    }
+
+    /**
+     * Applies a `CurrentSessions` report: `present` holds the ids it lists for this server. A tracked
+     * session an earlier report listed and this one does not is dropped and announced, as
+     * `camera_restarted` when the node reported a restart, else `camera_dropped`. Returns the dropped
+     * sessions, whose local requestor tracking the caller must drop.
+     */
+    sessionsReported(
+        nodeId: NodeId,
+        endpointId: EndpointNumber,
+        present: ReadonlySet<number>,
+        restarted: boolean,
+    ): ManagedSession[] {
+        const gone = this.#sessions.reconcile(
+            nodeId,
+            endpointId,
+            present,
+            restarted ? "camera_restarted" : "camera_dropped",
+        );
+        for (const session of gone) {
+            logger.notice(
+                `Node ${nodeId} endpoint ${endpointId} no longer lists WebRTC session ${session.webRtcSessionId}${restarted ? " after a restart" : ""}; the server stopped tracking it`,
+            );
+        }
+        return gone;
+    }
+
+    /** Stop tracking every session of a node removed from the fabric. */
+    nodeRemoved(nodeId: NodeId): void {
+        this.#sessions.forgetNode(nodeId);
     }
 
     /**
@@ -2183,23 +2383,19 @@ export class CameraStreamManager {
         deviceHeldSession: boolean,
     ): boolean {
         const session = this.#sessions.get(nodeId, endpointId, webRtcSessionId);
-        if (session !== undefined) return this.#sessions.forgetEstablished(session, requestedBy);
+        if (session !== undefined) return this.#sessions.forgetEstablished(session, stoppedBy(requestedBy));
         this.#sessions.forget(nodeId, endpointId, webRtcSessionId);
         if (deviceHeldSession) this.#announceUntrackedEnd(nodeId, endpointId, webRtcSessionId, requestedBy);
         return false;
     }
 
     /**
-     * Which WebSocket connections may receive one session's WebRTC signalling.
+     * The WebSocket connection that receives one session's WebRTC signalling.
      *
-     * @see CameraSessionRegistry.signallingOwners for what an absent answer means.
+     * @see CameraSessionRegistry.signallingOwner for what an absent answer means.
      */
-    signallingOwners(
-        nodeId: NodeId,
-        endpointId: EndpointNumber,
-        webRtcSessionId: number,
-    ): ReadonlySet<string> | undefined {
-        return this.#sessions.signallingOwners(nodeId, endpointId, webRtcSessionId);
+    signallingOwner(nodeId: NodeId, endpointId: EndpointNumber, webRtcSessionId: number): SessionOwner | undefined {
+        return this.#sessions.signallingOwner(nodeId, endpointId, webRtcSessionId);
     }
 
     /** End every session a closing connection owned; only `EndSession` lowers a stream's ReferenceCount. */
@@ -2220,7 +2416,7 @@ export class CameraStreamManager {
      */
     async #releaseSessions(matches: (scope: SessionScope) => boolean): Promise<void> {
         const inFlight = this.#sessions.claim(matches, session =>
-            this.#endSession(session, undefined).catch(error => {
+            this.#endSession(session, { cause: "released" }).catch(error => {
                 logger.warn(`Failed to end session ${session.webRtcSessionId} on node ${session.nodeId}:`, error);
                 // Rethrown so a joined `camera_stop_stream` learns the session is still open.
                 throw error;
@@ -2272,6 +2468,7 @@ export class CameraStreamManager {
         nodeId: NodeId;
         endpointId: EndpointNumber;
         maxResolution?: Resolution;
+        resolution?: ResolutionTarget;
         codec?: number;
         watermarkEnabled?: boolean;
         osdEnabled?: boolean;
@@ -2318,6 +2515,7 @@ export class CameraStreamManager {
                     }),
                     maxResolution: args.maxResolution,
                     codec: args.codec,
+                    target: args.resolution,
                 });
                 const deviceCodecs = new Array<string>();
                 for (const entry of state.snapshotCapabilities) {
@@ -2349,7 +2547,9 @@ export class CameraStreamManager {
                     ...this.unreportedSnapshotStreams(nodeId, endpointId, state.allocatedSnapshotStreams),
                 ];
                 const adopted = findAdoptableSnapshotStream(state.allocatedSnapshotStreams, best, {
-                    ...args,
+                    maxResolution: args.maxResolution,
+                    codec: args.codec,
+                    target: args.resolution,
                     overlays,
                 });
                 if (adopted !== undefined) {
@@ -2358,14 +2558,14 @@ export class CameraStreamManager {
                         endpointId,
                         state,
                         snapshotStreamId: adopted.snapshotStreamId,
-                        requestedResolution: adopted.maxResolution,
+                        requestedResolution: requestedResolution(adopted.maxResolution, args.resolution),
                         deviceCodecs,
                         requestedCodecs,
                     });
                     if (captured !== undefined) {
                         return {
                             ...captured,
-                            degraded: isDegradedFrom(captured.resolution, bestWithinCallerBounds),
+                            degraded: isDegradedFrom(captured.resolution, bestWithinCallerBounds, args.resolution),
                             snapshotStreamId: adopted.snapshotStreamId,
                             provenance: existingStreamProvenance(
                                 this.ownsStream(nodeId, endpointId, "snapshot", adopted.snapshotStreamId),
@@ -2461,7 +2661,7 @@ export class CameraStreamManager {
                         endpointId,
                         state,
                         snapshotStreamId,
-                        requestedResolution: capability.resolution,
+                        requestedResolution: requestedResolution(capability.resolution, args.resolution),
                         deviceCodecs,
                         requestedCodecs,
                     });
@@ -2475,7 +2675,7 @@ export class CameraStreamManager {
                     }
                     return {
                         ...captured,
-                        degraded: isDegradedFrom(captured.resolution, bestWithinCallerBounds),
+                        degraded: isDegradedFrom(captured.resolution, bestWithinCallerBounds, args.resolution),
                         snapshotStreamId,
                         provenance: existingStreamProvenance(
                             this.ownsStream(nodeId, endpointId, "snapshot", snapshotStreamId),
@@ -2502,13 +2702,13 @@ export class CameraStreamManager {
                     endpointId,
                     state,
                     snapshotStreamId,
-                    requestedResolution: capability.resolution,
+                    requestedResolution: requestedResolution(capability.resolution, args.resolution),
                     deviceCodecs,
                     requestedCodecs,
                 });
                 return {
                     ...captured,
-                    degraded: isDegradedFrom(captured.resolution, bestWithinCallerBounds),
+                    degraded: isDegradedFrom(captured.resolution, bestWithinCallerBounds, args.resolution),
                     snapshotStreamId,
                     provenance: "allocated",
                 };

@@ -393,6 +393,23 @@ async def test_snapshot_sends_stated_arguments_and_parses_the_result() -> None:
     )
 
 
+async def test_snapshot_sends_a_width_only_resolution_target() -> None:
+    client = _bare_client(
+        {
+            "data": "",
+            "codec": "JPEG",
+            "resolution": _RESOLUTION,
+            "degraded": False,
+            "stream_id": 4,
+            "provenance": "allocated",
+        }
+    )
+    await client.camera_snapshot(5, 1, resolution={"width": 320})
+    _, kwargs = _sent(client)
+    assert kwargs["resolution"] == {"width": 320}
+    assert "max_resolution" not in kwargs
+
+
 async def test_snapshot_sends_overlay_flags_including_false() -> None:
     client = _bare_client(
         {
@@ -417,6 +434,35 @@ async def test_stop_stream_parses_ended() -> None:
     assert await client.camera_stop_stream(5, 1, 9) == CameraStopStreamResult(ended=False)
     _, kwargs = _sent(client)
     assert kwargs["webrtc_session_id"] == 9
+
+
+async def test_stop_stream_by_key_sends_the_key_and_no_id() -> None:
+    client = _bare_client({"ended": True})
+    assert await client.camera_stop_stream(5, 1, client_session_key="k1") == CameraStopStreamResult(ended=True)
+    _, kwargs = _sent(client)
+    assert kwargs["client_session_key"] == "k1"
+    assert "webrtc_session_id" not in kwargs
+
+
+async def test_provide_ice_candidates_by_key_sends_the_key_and_no_id() -> None:
+    client = _bare_client()
+    await client.camera_provide_ice_candidates(5, 1, None, [{"candidate": "c"}], client_session_key="k1")
+    _, kwargs = _sent(client)
+    assert kwargs["client_session_key"] == "k1"
+    assert "webrtc_session_id" not in kwargs
+    assert kwargs["ice_candidates"] == [{"candidate": "c"}]
+
+
+async def test_start_stream_sends_the_key_only_when_given() -> None:
+    client = _bare_client(
+        {"webrtc_session_id": 9, "mode": "provide_offer", "video": None, "audio": None, "talkback": False}
+    )
+    await client.camera_start_stream(5, 1, "LiveView", client_session_key="k1")
+    _, kwargs = _sent(client)
+    assert kwargs["client_session_key"] == "k1"
+    await client.camera_start_stream(5, 1, "LiveView")
+    _, kwargs = _sent(client)
+    assert "client_session_key" not in kwargs
 
 
 async def test_provide_answer_sends_session_and_sdp() -> None:

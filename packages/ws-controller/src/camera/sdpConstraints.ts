@@ -358,22 +358,35 @@ export function parseSdpVideoConstraints(sdp: string): SdpVideoConstraints {
     };
 }
 
+type Direction = "sendrecv" | "sendonly" | "recvonly" | "inactive";
+
 // Same prefix match as sdp-transform's `direction` grammar, so the rewrite hits exactly the lines the parser read.
 const DIRECTION_LINE = /^a=(?:sendrecv|sendonly|recvonly|inactive)/;
-const TALKBACK_REFUSED: Record<SendingAudioSection["direction"], string> = {
-    sendrecv: "a=recvonly",
-    sendonly: "a=inactive",
+const TALKBACK_REFUSED: Record<SendingAudioSection["direction"], Direction> = {
+    sendrecv: "recvonly",
+    sendonly: "inactive",
 };
 
 /**
  * The offer with each of `sections` set to a direction that does not send: `sendrecv` becomes `recvonly`,
- * `sendonly` becomes `inactive`. A section that states no direction gets one, which overrides a
- * session-level direction for that section only (RFC 4566 §5). Every other line is kept.
+ * `sendonly` becomes `inactive`. Every other line is kept.
  * `sections` must come from {@link parseSdpVideoConstraints} on the same `sdp`, which counts m-lines the
  * same way: every line starting with `m=`.
  */
 export function withoutTalkback(sdp: string, sections: readonly SendingAudioSection[]): string {
     if (sections.length === 0) return sdp;
+    return withSectionDirections(
+        sdp,
+        new Map(sections.map(({ index, direction }) => [index, TALKBACK_REFUSED[direction]])),
+    );
+}
+
+/**
+ * `sdp` with each section in `directions` (by position, counted from 0) set to its direction. A section
+ * that states no direction gets a line, which overrides a session-level direction for that section only
+ * (RFC 4566 §5). Every other line is kept.
+ */
+function withSectionDirections(sdp: string, directions: ReadonlyMap<number, Direction>): string {
     const parts = sdp.split(/(\r\n|\r|\n)/);
     const lines = new Array<{ text: string; eol: string }>();
     for (let i = 0; i < parts.length; i += 2) lines.push({ text: parts[i], eol: parts[i + 1] ?? "" });
@@ -384,11 +397,11 @@ export function withoutTalkback(sdp: string, sections: readonly SendingAudioSect
     });
 
     // Back to front, so an inserted line does not move a section still to be rewritten.
-    for (const { index, direction } of [...sections].sort((a, b) => b.index - a.index)) {
+    for (const [index, direction] of [...directions].sort(([a], [b]) => b - a)) {
         const start = sectionStarts[index];
         if (start === undefined) continue;
         const end = sectionStarts[index + 1] ?? lines.length;
-        const target = TALKBACK_REFUSED[direction];
+        const target = `a=${direction}`;
         let stated = false;
         let last = start;
         for (let lineIndex = start; lineIndex < end; lineIndex++) {
@@ -406,4 +419,49 @@ export function withoutTalkback(sdp: string, sections: readonly SendingAudioSect
         after.eol = eol;
     }
     return lines.map(line => line.text + line.eol).join("");
+}
+
+function sends(direction: Direction): boolean {
+    return direction === "sendrecv" || direction === "sendonly";
+}
+
+function receives(direction: Direction): boolean {
+    return direction === "sendrecv" || direction === "recvonly";
+}
+
+function directionOf(send: boolean, receive: boolean): Direction {
+    if (send) return receive ? "sendrecv" : "sendonly";
+    return receive ? "recvonly" : "inactive";
+}
+
+/**
+ * The answer with each section's direction narrowed to what the offer allows (RFC 3264 §6.1): the answerer
+ * sends only where the offer receives, and receives only where the offer sends. Some cameras answer
+ * `a=sendrecv` to a `recvonly` section, which the client's WebRTC stack rejects. Sections are paired by
+ * position, as RFC 3264 §6 requires. A section's direction is its own line, else the session-level line,
+ * else `sendrecv` (RFC 4566 §5, §6), in offer and answer alike; a narrowed section gets a line of its own.
+ * A section with no offered counterpart is kept.
+ *
+ * `corrected` lists the positions of the rewritten sections, counted from 0.
+ */
+export function answerWithinOfferedDirections(
+    answer: string,
+    offer: string,
+): { readonly sdp: string; readonly corrected: readonly number[] } {
+    const offered = parse(offer);
+    const offeredDirections = (offered.media ?? []).map(media => media.direction ?? offered.direction ?? "sendrecv");
+    const answered = parse(answer);
+    const narrowed = new Map<number, Direction>();
+    (answered.media ?? []).forEach((media, section) => {
+        const offeredDirection = offeredDirections[section];
+        if (offeredDirection === undefined) return;
+        const stated = media.direction ?? answered.direction ?? "sendrecv";
+        const allowed = directionOf(
+            sends(stated) && receives(offeredDirection),
+            receives(stated) && sends(offeredDirection),
+        );
+        if (allowed !== stated) narrowed.set(section, allowed);
+    });
+    if (narrowed.size === 0) return { sdp: answer, corrected: [] };
+    return { sdp: withSectionDirections(answer, narrowed), corrected: [...narrowed.keys()] };
 }

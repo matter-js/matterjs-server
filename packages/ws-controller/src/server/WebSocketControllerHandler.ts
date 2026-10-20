@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { redactSensitiveCommandFields } from "@matter-server/ws-client";
+import { redactSensitiveCommandFields, type WebRtcCallbackData } from "@matter-server/ws-client";
 import {
     MatterError,
     Diagnostic,
@@ -30,6 +30,7 @@ import { WebSocketServer } from "ws";
 import type { CameraSignallingCommandName } from "../camera/cameraCommands.js";
 import {
     parseCapabilitiesArgs,
+    parseIceCandidatesArgs,
     parseReleaseStreamArgs,
     parseSignallingArgs,
     parseSnapshotArgs,
@@ -89,6 +90,7 @@ import {
 } from "./Converters.js";
 import { readRequestOf, subscribeRequestOf, subscriptionIdOf } from "./interactionArguments.js";
 import { serializeBatch } from "./serializeBatch.js";
+import { StartingSessionSignalling, unknownClientSessionKey } from "./startingSessionSignalling.js";
 import { WebSocketConnection } from "./WebSocketConnection.js";
 
 const logger = Logger.get("WebSocketControllerHandler");
@@ -697,31 +699,34 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 });
             };
 
+            const startingSessions = new StartingSessionSignalling();
             const ensureCameraObservers = () => {
                 if (cameraObserversRegistered || this.#closed || this.#shuttingDown) return;
                 // Set the flag only after the getter: it can throw, and a set flag would never retry.
                 const camera = this.#controller.cameraStreams;
                 cameraObserversRegistered = true;
                 observers.on(camera.events.sessionEnded, ended => {
-                    if (this.#closed || this.#shuttingDown) return;
+                    if (this.#closed || this.#shuttingDown || ended.cause === "released") return;
                     // Skip the requester (it has its response) and non-owners; ownerless ends go to all.
                     if (ended.requestedBy === ownerId) return;
                     if (ended.ownerId !== undefined && ended.ownerId !== ownerId) return;
+                    const data = {
+                        node_id: ended.nodeId,
+                        endpoint_id: ended.endpointId,
+                        webrtc_session_id: ended.webRtcSessionId,
+                        cause: ended.cause,
+                        ...(ended.reason === undefined ? {} : { reason: ended.reason }),
+                        ...(ended.clientSessionKey === undefined ? {} : { client_session_key: ended.clientSessionKey }),
+                    };
                     // Shared Observable: an uncaught throw here aborts the emit and starves other connections.
-                    try {
-                        connection.sendReliable(
-                            toBigIntAwareJson({
-                                event: "camera_session_ended",
-                                data: {
-                                    node_id: ended.nodeId,
-                                    endpoint_id: ended.endpointId,
-                                    webrtc_session_id: ended.webRtcSessionId,
-                                },
-                            }),
-                        );
-                    } catch (err) {
-                        logger.error(`[${connId}] Failed to send camera_session_ended`, err);
-                    }
+                    const send = () => {
+                        try {
+                            connection.sendReliable(toBigIntAwareJson({ event: "camera_session_ended", data }));
+                        } catch (err) {
+                            logger.error(`[${connId}] Failed to send camera_session_ended`, err);
+                        }
+                    };
+                    if (!startingSessions.hold(ended.nodeId, ended.endpointId, ended.webRtcSessionId, send)) send();
                 });
                 observers.on(camera.events.streamEvicted, evicted => {
                     if (this.#closed || this.#shuttingDown) return;
@@ -743,20 +748,39 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 });
             };
 
+            // WebRTC signaling is control-plane: never coalesced or dropped, so send reliably.
+            const sendWebRtcCallback = (data: WebRtcCallbackData) => {
+                try {
+                    connection.sendReliable(toBigIntAwareJson({ event: "webrtc_callback", data }));
+                } catch (err) {
+                    logger.error(`[${connId}] Failed to send webrtc_callback`, err);
+                }
+            };
             observers.on(this.#commandHandler.events.webRtcCallback, data => {
                 if (this.#closed || this.#shuttingDown || !optIns.webRtc) return;
-                // WebRTC signaling is control-plane: never coalesced or dropped, so send reliably.
+                // Shared Observable: an uncaught throw here aborts the emit and starves other connections.
                 try {
-                    const owners = this.#controller.cameraStreamsIfCreated?.signallingOwners(
+                    // Resolved now, not at release: the id of a peer `End` is dropped right after this emit.
+                    const owner = this.#controller.cameraStreamsIfCreated?.signallingOwner(
                         NodeId(data.node_id),
                         EndpointNumber(data.endpoint_id),
                         data.webrtc_session_id,
                     );
                     // Ownerless sessions go to every opted-in connection; withholding would strand them.
-                    if (owners !== undefined && !owners.has(ownerId)) return;
-                    connection.sendReliable(toBigIntAwareJson({ event: "webrtc_callback", data }));
+                    if (owner !== undefined && owner.connectionId !== ownerId) return;
+                    const routed =
+                        owner?.clientSessionKey === undefined
+                            ? data
+                            : { ...data, client_session_key: owner.clientSessionKey };
+                    const held = startingSessions.hold(
+                        NodeId(data.node_id),
+                        EndpointNumber(data.endpoint_id),
+                        data.webrtc_session_id,
+                        () => sendWebRtcCallback(routed),
+                    );
+                    if (!held) sendWebRtcCallback(routed);
                 } catch (err) {
-                    logger.error(`[${connId}] Failed to send webrtc_callback`, err);
+                    logger.error(`[${connId}] Failed to route webrtc_callback`, err);
                 }
             });
 
@@ -797,6 +821,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
                     connection,
                     data.toString(),
                     optInToEventsFor,
+                    startingSessions,
                     req?.socket?.remoteAddress,
                 )
                     .then(({ response, enableListeners, afterResponse }) => {
@@ -806,8 +831,12 @@ export class WebSocketControllerHandler implements WebServerHandler {
                             // answered: its result is the node list the events then update.
                             listening = true;
                         }
-                        connection.sendReliable(toBigIntAwareJson(response));
-                        afterResponse?.();
+                        try {
+                            connection.sendReliable(toBigIntAwareJson(response));
+                        } finally {
+                            // Ends a hold of the command's events, which would otherwise last until disconnect.
+                            afterResponse?.();
+                        }
                     })
                     .catch(err => logger.error(`[${connId}] WebSocket request error`, err));
             });
@@ -879,6 +908,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
         connection: WebSocketConnection,
         data: string,
         optInToEventsFor: (command: string) => void,
+        startingSessions: StartingSessionSignalling,
         peerAddress?: string,
     ): Promise<{
         response: ErrorResultMessage | SuccessResultMessage;
@@ -981,7 +1011,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
                     result = await this.#handleCameraGetCapabilities(args);
                     break;
                 case "camera_start_stream":
-                    result = await this.#handleCameraStartStream(args, ownerId);
+                    ({ result, afterResponse } = await this.#handleCameraStartStream(args, ownerId, startingSessions));
                     break;
                 case "camera_stop_stream":
                     result = await this.#handleCameraStopStream(args, ownerId);
@@ -993,8 +1023,10 @@ export class WebSocketControllerHandler implements WebServerHandler {
                     result = await this.#handleCameraReleaseStream(args);
                     break;
                 case "camera_provide_answer":
-                case "camera_provide_ice_candidates":
                     result = await this.#handleCameraSignallingCommand(args, command);
+                    break;
+                case "camera_provide_ice_candidates":
+                    result = await this.#handleCameraProvideIceCandidates(args, ownerId, startingSessions);
                     break;
                 case "write_attribute":
                     result = await this.#handleWriteAttribute(args);
@@ -1897,6 +1929,9 @@ export class WebSocketControllerHandler implements WebServerHandler {
             endpointId,
             commandName: command_name,
             fields,
+            // A managed session still holding the id is one the camera lost; its owner must stop getting the id's events.
+            sessionEstablishing: webRtcSessionId =>
+                this.#controller.cameraStreamsIfCreated?.sessionIdIssued(nodeId, endpointId, webRtcSessionId),
         });
         // Convert the matter.js response to WebSocket format the same way #handleDeviceCommand
         // does for generic invokes (bytes, epochs, bitmaps, struct member filtering).
@@ -1919,43 +1954,111 @@ export class WebSocketControllerHandler implements WebServerHandler {
         return null;
     }
 
+    /**
+     * Answers `null` once the candidates were sent. With a `client_session_key` whose start is unanswered,
+     * that is after the start's response.
+     */
+    async #handleCameraProvideIceCandidates(
+        args: unknown,
+        ownerId: string,
+        startingSessions: StartingSessionSignalling,
+    ): Promise<ResponseOf<"camera_provide_ice_candidates">> {
+        const { nodeId, endpointId, session, candidateCount, fieldsFor } = parseIceCandidatesArgs(args);
+        const provide = this.#iceCandidatesProvider(nodeId, endpointId);
+        if ("webRtcSessionId" in session) {
+            await provide(fieldsFor(session.webRtcSessionId));
+            return null;
+        }
+        const { clientSessionKey } = session;
+        const queued = startingSessions.queueCandidates(
+            nodeId,
+            endpointId,
+            clientSessionKey,
+            candidateCount,
+            fieldsFor,
+        );
+        if (queued !== undefined) {
+            await queued;
+            return null;
+        }
+        const webRtcSessionId = this.#controller.cameraStreamsIfCreated?.clientSessionId(
+            nodeId,
+            endpointId,
+            ownerId,
+            clientSessionKey,
+        );
+        if (webRtcSessionId === undefined) throw unknownClientSessionKey(clientSessionKey, nodeId, endpointId);
+        await provide(fieldsFor(webRtcSessionId));
+        return null;
+    }
+
+    #iceCandidatesProvider(nodeId: NodeId, endpointId: EndpointNumber) {
+        return (fields: Record<string, unknown>) =>
+            this.#commandHandler.invokeWebRtcSignallingCommand({
+                nodeId,
+                endpointId,
+                commandName: "ProvideIceCandidates",
+                fields,
+            });
+    }
+
     async #handleCameraGetCapabilities(args: unknown): Promise<ResponseOf<"camera_get_capabilities">> {
         const { nodeId, endpointId } = parseCapabilitiesArgs(args);
         const capabilities = await this.#controller.cameraStreams.getCapabilities(nodeId, endpointId);
         return toWireCapabilities(capabilities);
     }
 
-    async #handleCameraStartStream(args: unknown, ownerId: string): Promise<ResponseOf<"camera_start_stream">> {
+    /** The session's `webrtc_callback` and `camera_session_ended` events are held until the response is sent, so the client knows the id first. */
+    async #handleCameraStartStream(
+        args: unknown,
+        ownerId: string,
+        startingSessions: StartingSessionSignalling,
+    ): Promise<{ result: ResponseOf<"camera_start_stream">; afterResponse: () => void }> {
         const parsed = parseStartStreamArgs(args);
-        const result = await this.#controller.cameraStreams.startStream({
-            nodeId: parsed.nodeId,
-            endpointId: parsed.endpointId,
-            connectionId: ownerId,
-            streamUsage: parsed.streamUsage,
-            sdp: parsed.sdp,
-            video: parsed.video,
-            audio: parsed.audio,
-            iceServers: parsed.iceServers,
-            iceTransportPolicy: parsed.iceTransportPolicy,
-            metadataEnabled: parsed.metadataEnabled,
-            allowEviction: parsed.allowEviction,
-            talkback: parsed.talkback,
-        });
-        return toWireStartStreamResult(result);
+        const starting = startingSessions.begin(parsed.nodeId, parsed.endpointId, parsed.clientSessionKey);
+        try {
+            const result = await this.#controller.cameraStreams.startStream({
+                nodeId: parsed.nodeId,
+                endpointId: parsed.endpointId,
+                connectionId: ownerId,
+                streamUsage: parsed.streamUsage,
+                sdp: parsed.sdp,
+                video: parsed.video,
+                audio: parsed.audio,
+                iceServers: parsed.iceServers,
+                iceTransportPolicy: parsed.iceTransportPolicy,
+                metadataEnabled: parsed.metadataEnabled,
+                allowEviction: parsed.allowEviction,
+                talkback: parsed.talkback,
+                sessionEstablishing: webRtcSessionId => starting.established(webRtcSessionId),
+                ...(parsed.clientSessionKey === undefined ? {} : { clientSessionKey: parsed.clientSessionKey }),
+            });
+            const provide = this.#iceCandidatesProvider(parsed.nodeId, parsed.endpointId);
+            return { result: toWireStartStreamResult(result), afterResponse: () => starting.release(provide) };
+        } catch (error) {
+            starting.drop();
+            throw error;
+        }
     }
 
     async #handleCameraStopStream(args: unknown, ownerId: string): Promise<ResponseOf<"camera_stop_stream">> {
-        const { nodeId, endpointId, webRtcSessionId } = parseStopStreamArgs(args);
-        const ended = await this.#controller.cameraStreams.stopStream(nodeId, endpointId, webRtcSessionId, ownerId);
+        const { nodeId, endpointId, session } = parseStopStreamArgs(args);
+        const camera = this.#controller.cameraStreams;
+        const ended =
+            "webRtcSessionId" in session
+                ? await camera.stopStream(nodeId, endpointId, session.webRtcSessionId, ownerId)
+                : await camera.stopStreamByClientKey(nodeId, endpointId, ownerId, session.clientSessionKey);
         return { ended };
     }
 
     async #handleCameraSnapshot(args: unknown): Promise<ResponseOf<"camera_snapshot">> {
-        const { nodeId, endpointId, maxResolution, codec, watermarkEnabled, osdEnabled } = parseSnapshotArgs(args);
+        const { nodeId, endpointId, maxResolution, resolution, codec, watermarkEnabled, osdEnabled } =
+            parseSnapshotArgs(args);
         const result = await this.#controller.cameraStreams.snapshot({
             nodeId,
             endpointId,
             maxResolution,
+            resolution,
             codec,
             watermarkEnabled,
             osdEnabled,

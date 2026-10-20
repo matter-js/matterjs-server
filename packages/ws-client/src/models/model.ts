@@ -397,6 +397,8 @@ interface WebRtcCallbackBase {
     node_id: number | bigint;
     endpoint_id: number;
     fabric_index: number;
+    /** The `client_session_key` the session was started with. Absent when it was started without one. */
+    client_session_key?: string;
 }
 
 export type WebRtcCallbackData =
@@ -443,6 +445,9 @@ export interface CameraResolution {
     width: number;
     height: number;
 }
+
+/** A size a caller wants. At least one side is stated; an unstated side follows the camera's aspect ratio. */
+export type CameraResolutionTarget = { width: number; height?: number } | { width?: number; height: number };
 
 /**
  * Limits for the video stream. Equal min and max ask for exactly that value; the call fails if the
@@ -808,12 +813,45 @@ export type CameraPrivacyMode = keyof CameraCapabilitiesResult["privacy"];
 /** Which track a stream belongs to, as `camera_release_stream` and error 103 spell it. */
 export type CameraStreamKind = "video" | "audio" | "snapshot";
 
+/**
+ * Why a session opened with `camera_start_stream` ended.
+ *
+ * - `peer`: the camera sent `End`; `reason` carries its `WebRTCEndReasonEnum` value.
+ * - `other_connection`: another connection sent `camera_stop_stream` or a `device_command` `EndSession`.
+ * - `camera_restarted`: the camera restarted. Either the session is gone from its `CurrentSessions` in the
+ *   endpoint's first change of that attribute within 30 seconds after a `StartUp` event (only the first change
+ *   counts, even one that removes nothing), or the camera gave
+ *   the session's id to a new session (also possible after its id counter wrapped).
+ * - `camera_dropped`: the session is gone from the camera's `CurrentSessions` without an `End`, in a report
+ *   not counted as a restart.
+ * - `node_removed`: the node was removed from the fabric.
+ */
+export type CameraSessionEndCause =
+    | "peer"
+    | "other_connection"
+    | "camera_restarted"
+    | "camera_dropped"
+    | "node_removed";
+
 /** The `camera_session_ended` payload. */
 export interface CameraSessionEndedData {
     node_id: number | bigint;
     endpoint_id: number;
     webrtc_session_id: number;
+    cause: CameraSessionEndCause;
+    /** `cause: "peer"` only, and only when the camera stated one: its `WebRTCEndReasonEnum` value. */
+    reason?: number;
+    /** The `client_session_key` the session was started with. Absent when it was started without one. */
+    client_session_key?: string;
 }
+
+/**
+ * Names a session in `camera_stop_stream` and `camera_provide_ice_candidates`: the camera's id, or the
+ * `client_session_key` this connection gave `camera_start_stream`. Exactly one of the two.
+ */
+export type CameraSessionReference =
+    | { webrtc_session_id: number; client_session_key?: never }
+    | { client_session_key: string; webrtc_session_id?: never };
 
 /** The `camera_stream_evicted` payload: a stream that no longer exists on the camera. */
 export interface CameraStreamEvictedData {
@@ -920,7 +958,11 @@ export interface CameraSnapshotResult {
     /** Image codec name, e.g. "JPEG". */
     codec: string;
     resolution: CameraResolution;
-    /** True when the image is smaller than the best one the request allowed. */
+    /**
+     * Without `resolution`: the image has fewer pixels than the best capability the request allowed. With
+     * `resolution`: in every side the target states, the image is smaller than the target and than the
+     * capability the target selected.
+     */
     degraded: boolean;
     /**
      * The snapshot stream the image came from. It stays allocated; free it with `camera_release_stream`.
@@ -1144,10 +1186,16 @@ export interface APICommands {
             allow_eviction?: boolean;
             /**
              * Defaults to false: the server rewrites the offer's sending audio sections so the camera is not
-             * asked to play audio. `true` forwards the offer unchanged and requires `sdp`. A camera may still
-             * answer `sendrecv`, so a client that must not send audio keeps the track off its sender.
+             * asked to play audio. `true` forwards the offer unchanged and requires `sdp`.
              */
             talkback?: boolean;
+            /**
+             * 1 to 128 characters, unique among this connection's sessions that are starting or open. Echoed
+             * on every `webrtc_callback` and `camera_session_ended` event of the session, and accepted by
+             * `camera_stop_stream` and `camera_provide_ice_candidates` in place of `webrtc_session_id`, also
+             * while this command is still running.
+             */
+            client_session_key?: string;
         };
         response: CameraStartStreamResult;
     };
@@ -1157,7 +1205,11 @@ export interface APICommands {
      * controller's session. Other failures throw.
      */
     camera_stop_stream: {
-        requestArgs: { node_id: number | bigint; endpoint_id: number; webrtc_session_id: number };
+        /**
+         * A `client_session_key` whose `camera_start_stream` is still running cancels that start: it fails
+         * with error 7, and `ended` says whether the camera had opened a session that the server then ended.
+         */
+        requestArgs: { node_id: number | bigint; endpoint_id: number } & CameraSessionReference;
         response: { ended: boolean };
     };
     /**
@@ -1178,20 +1230,33 @@ export interface APICommands {
      * as in a `webrtc_callback` `ice_candidates` event.
      */
     camera_provide_ice_candidates: {
+        /**
+         * A `client_session_key` whose `camera_start_stream` is still running queues the candidates; they
+         * are sent once that command has answered, and this command answers when they were sent.
+         */
         requestArgs: {
             node_id: number | bigint;
             endpoint_id: number;
-            webrtc_session_id: number;
             /** At least one entry. */
             ice_candidates: WebRtcIceCandidate[];
-        };
+        } & CameraSessionReference;
         response: null;
     };
     camera_snapshot: {
         requestArgs: {
             node_id: number | bigint;
             endpoint_id: number;
+            /** Ceiling: a capability larger than this in either dimension is not used. */
             max_resolution?: { width: number; height: number };
+            /**
+             * The size wanted, such as a thumbnail's. The server uses the smallest capability that reaches
+             * it in every stated dimension (within `max_resolution`), or the largest allowed one when none
+             * does, and asks the camera for the target fitted into that capability's aspect ratio, so the
+             * camera can scale the image down. A camera that cannot scale returns the capability's own
+             * size. `degraded` compares each side the target states with the smaller of the target and that
+             * capability. Absent: the largest allowed capability.
+             */
+            resolution?: CameraResolutionTarget;
             /** Image codec name from `camera_get_capabilities`, e.g. "JPEG". */
             codec?: string;
             /**
@@ -1514,7 +1579,8 @@ export interface APIEvents {
     };
     /**
      * WebRTC signalling from the camera. For a session from `camera_start_stream`, sent only to the
-     * connection that opened it. Otherwise sent to every connection that has issued a WebRTC command.
+     * connection that opened it, and only after that command's response. Otherwise sent to every
+     * connection that has issued a WebRTC command.
      */
     webrtc_callback: {
         data: WebRtcCallbackData;
@@ -1526,13 +1592,14 @@ export interface APIEvents {
         data: SubscriptionEndedData;
     };
     /**
-     * Another connection ended a session with `camera_stop_stream` or a `device_command` `EndSession`.
+     * A session ended without this connection's own `camera_stop_stream` or `EndSession`. `cause` says why.
+     * For a session opened with `camera_start_stream` this is the one end event a client needs: it is sent
+     * for every end, the camera's own `End` included (which also arrives as a `webrtc_callback` `end`).
      *
      * Sent to the connection that opened the session. For a session the server has no record of, sent
-     * to every connection that has issued a camera command, including `send_webrtc_provider_command`.
+     * to every connection that has issued a `camera_*` command (`send_webrtc_provider_command` does not count).
      * Never sent to the connection that ended it, and not sent when a session ends because a
-     * connection closed or the server stopped. When the camera ends a session, a `webrtc_callback`
-     * `end` event arrives instead.
+     * connection closed or the server stopped.
      */
     camera_session_ended: {
         data: CameraSessionEndedData;

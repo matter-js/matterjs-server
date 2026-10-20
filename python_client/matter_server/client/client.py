@@ -31,6 +31,7 @@ from matter_server.common.models import (
     CameraCapabilities,
     CameraIceServer,
     CameraResolutionHint,
+    CameraResolutionTarget,
     CameraSessionEndedData,
     CameraSnapshotResult,
     CameraStartStreamResult,
@@ -114,6 +115,16 @@ NODE_SCOPED_CAMERA_EVENTS: Final = frozenset(
 )
 
 # pylint: disable=too-many-public-methods,too-many-locals,too-many-branches
+
+
+def _session_reference(webrtc_session_id: int | None, client_session_key: str | None) -> dict[str, Any]:
+    """Return the arguments naming a session; the server refuses both or neither with error 8."""
+    reference: dict[str, Any] = {}
+    if webrtc_session_id is not None:
+        reference["webrtc_session_id"] = webrtc_session_id
+    if client_session_key is not None:
+        reference["client_session_key"] = client_session_key
+    return reference
 
 
 def _command_name(command: ClusterCommand) -> str:
@@ -1058,6 +1069,7 @@ class MatterClient:
         metadata_enabled: bool | None = None,
         allow_eviction: bool | None = None,
         talkback: bool | None = None,
+        client_session_key: str | None = None,
     ) -> CameraStartStreamResult:
         """Open a WebRTC session, allocating or reusing the streams it needs.
 
@@ -1065,9 +1077,15 @@ class MatterClient:
         offer arrives as a ``webrtc_callback`` ``offer`` event. For ``video`` and ``audio``, ``None``
         lets the server decide, a hints dict sets hard requirements, and ``False`` leaves the track
         out. ``talkback=True`` (requires ``sdp``) forwards the offer unchanged so the camera can play
-        the caller's audio; otherwise the server makes the offer's audio sections not send. That only
-        asks the camera: it may still answer ``sendrecv``, so a caller that must not send audio keeps
-        the track off its audio sender. Arguments left ``None`` are not sent.
+        the caller's audio; otherwise the server makes the offer's audio sections not send. A camera
+        that answers ``sendrecv`` anyway gets its answer narrowed by the server to the directions the
+        offer allows. Arguments left ``None`` are not sent.
+
+        ``client_session_key`` (1 to 128 characters, unique among this connection's starting and open
+        sessions) is the caller's own name for the session. Every ``webrtc_callback`` and
+        ``camera_session_ended`` event of the session carries it, so a handler can match events
+        before this call returns. ``camera_provide_ice_candidates`` and ``camera_stop_stream`` accept
+        it in place of the session id, also while this call is still running.
 
         Requires schema 14.
         """
@@ -1080,6 +1098,7 @@ class MatterClient:
             "metadata_enabled": metadata_enabled,
             "allow_eviction": allow_eviction,
             "talkback": talkback,
+            "client_session_key": client_session_key,
         }
         data = await self.send_command(
             APICommand.CAMERA_START_STREAM,
@@ -1109,12 +1128,18 @@ class MatterClient:
         self,
         node_id: int,
         endpoint_id: int,
-        webrtc_session_id: int,
+        webrtc_session_id: int | None,
         ice_candidates: Sequence[WebRTCIceCandidate | dict[str, Any]],
+        *,
+        client_session_key: str | None = None,
     ) -> None:
-        """Send one or more ICE candidates to an existing session.
+        """Send one or more ICE candidates to a session.
 
-        A candidate from a ``webrtc_callback`` ``ice_candidates`` event can be passed unchanged.
+        Name the session by ``webrtc_session_id`` or by ``client_session_key`` (pass ``None`` for the
+        id then), not both. With the key of a session whose ``camera_start_stream`` is still running,
+        the server queues the candidates and this call returns once they were sent, after that
+        response. A candidate from a ``webrtc_callback`` ``ice_candidates`` event can be passed
+        unchanged.
 
         Requires schema 14.
         """
@@ -1123,7 +1148,7 @@ class MatterClient:
             require_schema=14,
             node_id=node_id,
             endpoint_id=endpoint_id,
-            webrtc_session_id=webrtc_session_id,
+            **_session_reference(webrtc_session_id, client_session_key),
             ice_candidates=[
                 asdict(candidate) if isinstance(candidate, WebRTCIceCandidate) else candidate
                 for candidate in ice_candidates
@@ -1131,9 +1156,18 @@ class MatterClient:
         )
 
     async def camera_stop_stream(
-        self, node_id: int, endpoint_id: int, webrtc_session_id: int
+        self,
+        node_id: int,
+        endpoint_id: int,
+        webrtc_session_id: int | None = None,
+        *,
+        client_session_key: str | None = None,
     ) -> CameraStopStreamResult:
         """End a WebRTC session; the stream allocation is kept.
+
+        Name the session by ``webrtc_session_id`` or by ``client_session_key``, not both. The key of a
+        session whose ``camera_start_stream`` is still running cancels that start; ``ended`` then says
+        whether the camera had opened a session that the server ended.
 
         Requires schema 14.
         """
@@ -1142,7 +1176,7 @@ class MatterClient:
             require_schema=14,
             node_id=node_id,
             endpoint_id=endpoint_id,
-            webrtc_session_id=webrtc_session_id,
+            **_session_reference(webrtc_session_id, client_session_key),
         )
         return dataclass_from_dict(CameraStopStreamResult, data)
 
@@ -1154,8 +1188,14 @@ class MatterClient:
         codec: str | None = None,
         watermark_enabled: bool | None = None,
         osd_enabled: bool | None = None,
+        resolution: CameraResolutionTarget | None = None,
     ) -> CameraSnapshotResult:
         """Capture one image. An argument left ``None`` is not sent.
+
+        ``resolution`` is the size you want, such as a thumbnail's: ``{"width": 320}``,
+        ``{"height": 240}`` or both. The server uses the smallest capability that reaches it
+        (within ``max_resolution``) and asks the camera to scale to it. The camera may return
+        a larger frame, so check the result's ``resolution``.
 
         The snapshot stream stays allocated; free it with ``camera_release_stream``.
 
@@ -1163,6 +1203,7 @@ class MatterClient:
         """
         optional = {
             "max_resolution": max_resolution,
+            "resolution": resolution,
             "codec": codec,
             "watermark_enabled": watermark_enabled,
             "osd_enabled": osd_enabled,

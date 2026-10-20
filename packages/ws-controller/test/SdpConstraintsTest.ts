@@ -6,6 +6,7 @@
 
 import { CameraAvStreamManagement } from "@matter/main/clusters/camera-av-stream-management";
 import {
+    answerWithinOfferedDirections,
     decodableVideoCodecs,
     mediaRefusal,
     parseSdpVideoConstraints,
@@ -952,5 +953,93 @@ describe("withoutTalkback", () => {
         const sdp = offer("m=audio 9 UDP/TLS/RTP/SAVPF 111", "a=recvonly");
         expect(rewritten(sdp)).to.equal(sdp);
         expect(rewritten("not an sdp")).to.equal("not an sdp");
+    });
+});
+
+describe("answerWithinOfferedDirections", () => {
+    const VIDEO = "m=video 9 UDP/TLS/RTP/SAVPF 96";
+    const AUDIO = "m=audio 9 UDP/TLS/RTP/SAVPF 111";
+    const sdp = (...lines: string[]) => ["v=0", "o=- 1 1 IN IP4 127.0.0.1", "s=-", "t=0 0", ...lines, ""].join("\r\n");
+
+    it("narrows sendrecv to sendonly in a section offered recvonly and keeps a sendrecv offer's answer", () => {
+        const offer = sdp(VIDEO, "a=recvonly", AUDIO, "a=sendrecv");
+        const answer = sdp(VIDEO, "a=sendrecv", AUDIO, "a=sendrecv");
+
+        expect(answerWithinOfferedDirections(answer, offer)).to.deep.equal({
+            sdp: sdp(VIDEO, "a=sendonly", AUDIO, "a=sendrecv"),
+            corrected: [0],
+        });
+    });
+
+    it("answers a section offered inactive with inactive and one offered sendonly with recvonly", () => {
+        const offer = sdp(VIDEO, "a=inactive", AUDIO, "a=sendonly");
+        const answer = sdp(VIDEO, "a=sendrecv", AUDIO, "a=sendrecv");
+
+        expect(answerWithinOfferedDirections(answer, offer)).to.deep.equal({
+            sdp: sdp(VIDEO, "a=inactive", AUDIO, "a=recvonly"),
+            corrected: [0, 1],
+        });
+    });
+
+    it("reads the offer's session-level direction for a section that states none", () => {
+        const offer = sdp("a=recvonly", VIDEO);
+        const answer = sdp(VIDEO, "a=sendrecv");
+
+        expect(answerWithinOfferedDirections(answer, offer).sdp).to.equal(sdp(VIDEO, "a=sendonly"));
+    });
+
+    it("keeps the answer's session-level lines and a section with no offered counterpart", () => {
+        const offer = sdp(VIDEO, "a=recvonly");
+        const answer = sdp("a=sendrecv", VIDEO, "a=sendonly", AUDIO, "a=sendrecv");
+
+        expect(answerWithinOfferedDirections(answer, offer)).to.deep.equal({ sdp: answer, corrected: [] });
+    });
+
+    it("keeps a section where neither offer nor answer states a direction: both are sendrecv", () => {
+        const offer = sdp(VIDEO);
+        const answer = sdp(VIDEO);
+
+        expect(answerWithinOfferedDirections(answer, offer)).to.deep.equal({ sdp: answer, corrected: [] });
+    });
+
+    it("reads a section without a direction in the offer as sendrecv", () => {
+        const offer = sdp(VIDEO);
+        const answer = sdp(VIDEO, "a=sendonly");
+
+        expect(answerWithinOfferedDirections(answer, offer)).to.deep.equal({ sdp: answer, corrected: [] });
+    });
+
+    it("gives a section a direction of its own when the answer states none, read as sendrecv", () => {
+        const offer = sdp(VIDEO, "a=recvonly");
+        const answer = sdp(VIDEO, "a=rtpmap:96 H264/90000");
+
+        expect(answerWithinOfferedDirections(answer, offer)).to.deep.equal({
+            sdp: sdp(VIDEO, "a=rtpmap:96 H264/90000", "a=sendonly"),
+            corrected: [0],
+        });
+    });
+
+    it("narrows a section that takes the answer's session-level direction", () => {
+        const offer = sdp(VIDEO, "a=recvonly", AUDIO, "a=sendrecv");
+        const answer = sdp("a=sendrecv", VIDEO, AUDIO);
+
+        expect(answerWithinOfferedDirections(answer, offer)).to.deep.equal({
+            sdp: sdp("a=sendrecv", VIDEO, "a=sendonly", AUDIO),
+            corrected: [0],
+        });
+    });
+
+    it("keeps a section whose answer-level direction the offer allows", () => {
+        const offer = sdp(VIDEO, "a=recvonly");
+        const answer = sdp("a=sendonly", VIDEO);
+
+        expect(answerWithinOfferedDirections(answer, offer)).to.deep.equal({ sdp: answer, corrected: [] });
+    });
+
+    it("keeps the answer's line endings", () => {
+        const offer = sdp(VIDEO, "a=recvonly");
+        const answer = ["v=0", VIDEO, "a=sendrecv", ""].join("\n");
+
+        expect(answerWithinOfferedDirections(answer, offer).sdp).to.equal(["v=0", VIDEO, "a=sendonly", ""].join("\n"));
     });
 });

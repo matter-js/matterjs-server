@@ -39,20 +39,31 @@ New commands:
   asked to play the client's audio only with `talkback: true`; otherwise the server makes the
   offer's audio sections not send. The response's `talkback` says whether the server expects the
   camera to take the client's audio: it needs the flag, an offer that sends audio, a camera that
-  states it can talk back and an audio stream in the session.
+  states it can talk back and an audio stream in the session. An optional `client_session_key` (1 to
+  128 characters, unique among the connection's starting and open sessions) is the client's own name
+  for the session: every event of the session carries it, and the two commands below accept it in
+  place of the session id, also before the response arrived.
 - **`camera_provide_answer`**, **`camera_provide_ice_candidates`** — send the client's SDP answer and
-  ICE candidates for a session, so a client never needs the raw WebRTC commands.
+  ICE candidates for a session, so a client never needs the raw WebRTC commands. Candidates sent with a
+  `client_session_key` while the session is still starting are queued and sent after the
+  `camera_start_stream` response.
 - **`camera_stop_stream`** — ends a session. The streams stay allocated for reuse. It also ends a
-  session left open by a server restart (the session id is listed by `camera_get_capabilities`).
+  session left open by a server restart (the session id is listed by `camera_get_capabilities`). With
+  a `client_session_key` whose start is still running, it cancels that start.
 - **`camera_snapshot`** — captures one image and returns it base64-encoded. The snapshot stream stays
-  allocated for the next call.
+  allocated for the next call. Optional `resolution` (`{ width }`, `{ height }` or both) states the size
+  the client wants: the server picks the smallest fitting capability and asks the camera to scale the
+  image to it. `max_resolution` stays a ceiling.
 - **`camera_release_stream`** — deallocates a stream. The camera refuses while a session still uses
   it (error 104).
 
 New events, sent only to connections that have used a `camera_*` command. `send_webrtc_provider_command`
 opts a connection in to `webrtc_callback` only:
 
-- **`camera_session_ended`** — another connection ended a session this connection opened.
+- **`camera_session_ended`** — a session this connection opened ended without its own command. Sent for
+  every such end, the camera's own `End` included, so a client listens in one place. `cause` says why:
+  `peer`, `other_connection`, `camera_restarted`, `camera_dropped` or `node_removed`; `reason` carries the
+  camera's end reason for `peer`.
 - **`camera_stream_evicted`** — the server deallocated an idle stream to make room for a new request.
   Whoever used that stream has to allocate it again.
 
@@ -74,8 +85,16 @@ Behaviour worth knowing:
   against the bounds the caller stated. For video it then looks for another existing stream within
   the bounds and fails with error 102 only when there is none. A snapshot stream outside the bounds
   fails with error 102; an audio stream outside them is dropped unless the caller demanded audio.
-- Events can arrive before the `camera_start_stream` response: register the `webrtc_callback` handler
-  first and buffer events by `webrtc_session_id`.
+- The `webrtc_callback` events of a session opened with `camera_start_stream` arrive after its
+  response. A client library may still run an event handler before the code after the awaited
+  response, so match events by `client_session_key` rather than by `webrtc_session_id`.
+- After an unclean stop, the server ends the sessions a camera still holds for it once the camera's
+  first report arrives, so they do not keep streams pinned.
+- When a camera refuses a `SolicitOffer`, or a `ProvideOffer` for a new session, with a `turns:` or
+  `stuns:` ICE server as `INVALID_IN_STATE` (`camera_start_stream` and `send_webrtc_provider_command`),
+  the server pushes its time and sends the same offer once more: the camera refuses such an offer while
+  its UTC time is not set (§ 11.5.6.1.10, § 11.5.6.3.12). An accepted offer costs no extra request. If the
+  push fails or the second offer is refused, the client gets the camera's refusal.
 - Changing a running session (ICE restart, other tracks) needs a new `ProvideOffer` on the raw
   `send_webrtc_provider_command` route; `camera_start_stream` always opens a new session.
 
@@ -99,6 +118,8 @@ OHF extensions; python-matter-server codes stop at 11. Each carries JSON details
 - **`send_webrtc_provider_command`**
   - Also relays `ProvideAnswer` and `ProvideIceCandidates`. `EndSession` goes through
     `camera_stop_stream`.
+  - The camera's answer to an offer sent this way reaches the `answer` event with each media section's
+    direction narrowed to what that offer allows (RFC 3264 §6.1), re-offers included.
   - Checks every payload field against the cluster definition and refuses a bad field with error 8.
     Newly refused: unknown keys, the same field given twice, missing mandatory fields, and a payload
     that gives both the stream list and the old single stream id.

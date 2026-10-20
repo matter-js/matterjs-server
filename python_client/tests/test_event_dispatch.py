@@ -54,8 +54,13 @@ _NODE_SCOPED_CAMERA_EVENTS = [
     (EventType.WEBRTC_CALLBACK, _WEBRTC_CALLBACK, _WEBRTC_CALLBACK),
     (
         EventType.CAMERA_SESSION_ENDED,
-        {"node_id": 7, "endpoint_id": 1, "webrtc_session_id": 5},
-        CameraSessionEndedData(node_id=7, endpoint_id=1, webrtc_session_id=5),
+        {"node_id": 7, "endpoint_id": 1, "webrtc_session_id": 5, "cause": "peer", "reason": 9},
+        CameraSessionEndedData(node_id=7, endpoint_id=1, webrtc_session_id=5, cause="peer", reason=9),
+    ),
+    (
+        EventType.CAMERA_SESSION_ENDED,
+        {"node_id": 7, "endpoint_id": 1, "webrtc_session_id": 5, "cause": "peer", "client_session_key": "k1"},
+        CameraSessionEndedData(node_id=7, endpoint_id=1, webrtc_session_id=5, cause="peer", client_session_key="k1"),
     ),
     (
         EventType.CAMERA_STREAM_EVICTED,

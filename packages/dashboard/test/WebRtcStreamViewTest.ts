@@ -68,6 +68,8 @@ class FakePeerConnection {
     static offerGate: Promise<void> | null = null;
     /** When set, the offer has one m-section per transceiver instead of a placeholder. */
     static sdpFromTransceivers = false;
+    /** Candidates found as soon as the local offer is set, which is before camera_start_stream is sent. */
+    static candidatesOnLocalOffer = new Array<FakeCandidate>();
     transceivers = new Array<string>();
     audioTransceiver: FakeTransceiver | null = null;
     #transceivers = new Array<FakeTransceiver>();
@@ -139,6 +141,9 @@ class FakePeerConnection {
         this.localDescription = description;
         this.signalingState = description.type === "offer" ? "have-local-offer" : "stable";
         if (description.type === "answer") this.#negotiate(this.remoteDescription?.sdp ?? "");
+        if (description.type === "offer") {
+            for (const candidate of FakePeerConnection.candidatesOnLocalOffer) this.onicecandidate?.({ candidate });
+        }
     }
 
     /** When set, setRemoteDescription stays pending until close(), which rejects it like a browser does. */
@@ -202,13 +207,22 @@ function fakeClient(handlers: Record<string, Handler> = {}) {
             return () => evicted.delete(listener);
         },
     };
+    /** The key the latest `camera_start_stream` named its session with, as the server echoes it. */
+    const latestKey = () => {
+        const key = calls.filter(call => call.command === "camera_start_stream").at(-1)?.args.client_session_key;
+        return typeof key === "string" ? { client_session_key: key } : {};
+    };
     return {
         // The view only uses the members above; a full MatterClient needs a live connection.
         client: fake as unknown as MatterClient,
         calls,
         commands: () => calls.map(call => call.command),
-        emitWebRtc: (data: WebRtcCallbackData) => [...webrtc].forEach(listener => listener(data)),
-        emitEnded: (data: CameraSessionEndedData) => [...ended].forEach(listener => listener(data)),
+        latestKey,
+        /** Carries the latest start's key unless `data` names one. */
+        emitWebRtc: (data: WebRtcCallbackData) =>
+            [...webrtc].forEach(listener => listener({ ...latestKey(), ...data })),
+        emitEnded: (data: CameraSessionEndedData) =>
+            [...ended].forEach(listener => listener({ ...latestKey(), ...data })),
         emitEvicted: (data: CameraStreamEvictedData) => [...evicted].forEach(listener => listener(data)),
         listenerCounts: () => ({ webrtc: webrtc.size, ended: ended.size, evicted: evicted.size }),
     };
@@ -330,6 +344,7 @@ describe("WebRtcStreamView", () => {
         FakePeerConnection.instances = [];
         FakePeerConnection.offerGate = null;
         FakePeerConnection.sdpFromTransceivers = false;
+        FakePeerConnection.candidatesOnLocalOffer = [];
     });
 
     describe("start", () => {
@@ -416,8 +431,10 @@ describe("WebRtcStreamView", () => {
                     stream_usage: "LiveView",
                     sdp: "offer-sdp",
                     video: { max_resolution: { width: 1280, height: 720 }, watermark_enabled: true },
+                    ...fake.latestKey(),
                 },
             });
+            expect(fake.latestKey().client_session_key).to.be.a("string");
             expect(lastPeer().transceivers).to.deep.equal(["video", "audio"]);
             expect(view.videoStreamId).to.equal(3);
         });
@@ -445,29 +462,52 @@ describe("WebRtcStreamView", () => {
             expect(view.audioOnlySession).to.equal(true);
         });
 
-        it("applies an answer that arrives before the camera_start_stream response", async () => {
+        it("applies its session's signalling by key, also before the camera_start_stream response is handled", async () => {
             const fake: ReturnType<typeof fakeClient> = fakeClient({
                 camera_start_stream: () => {
-                    fake.emitWebRtc(answerEvent(SESSION_ID + 1));
-                    fake.emitWebRtc(answerEvent(SESSION_ID, 99));
-                    fake.emitWebRtc(answerEvent(SESSION_ID, BigInt(NODE_ID)));
+                    fake.emitWebRtc(answerEvent());
                     return startResult();
                 },
             });
             const view = createView(fake.client);
 
             await view.start();
-
+            await settle();
             expect(lastPeer().remoteDescription).to.deep.equal({ type: "answer", sdp: `answer-${SESSION_ID}` });
             expect(view.state).to.equal("streaming");
         });
 
-        it("ignores signalling for another session once the session is known", async () => {
+        it("names each attempt's session with its own key", async () => {
+            const fake = fakeClient({ camera_start_stream: () => startResult() });
+            const view = createView(fake.client);
+            await view.start();
+            const first = fake.latestKey().client_session_key;
+            await view.stop();
+            await view.start();
+            expect(fake.latestKey().client_session_key).to.not.equal(first);
+        });
+
+        it("ignores another node's signalling and matches its own node id as a bigint", async () => {
             const fake = fakeClient({ camera_start_stream: () => startResult() });
             const view = createView(fake.client);
             await view.start();
 
-            fake.emitWebRtc(answerEvent(SESSION_ID + 1));
+            fake.emitWebRtc(answerEvent(SESSION_ID, 99));
+            await settle();
+            expect(lastPeer().remoteDescription).to.equal(null);
+
+            fake.emitWebRtc(answerEvent(SESSION_ID, BigInt(NODE_ID)));
+            await settle();
+            expect(lastPeer().remoteDescription).to.deep.equal({ type: "answer", sdp: `answer-${SESSION_ID}` });
+        });
+
+        it("ignores signalling of a session with another key or none", async () => {
+            const fake = fakeClient({ camera_start_stream: () => startResult() });
+            const view = createView(fake.client);
+            await view.start();
+
+            fake.emitWebRtc({ ...answerEvent(), client_session_key: "another-key" });
+            fake.emitWebRtc({ ...answerEvent(), client_session_key: undefined });
             await settle();
             expect(lastPeer().remoteDescription).to.equal(null);
 
@@ -476,12 +516,14 @@ describe("WebRtcStreamView", () => {
             expect(lastPeer().remoteDescription?.sdp).to.equal(`answer-${SESSION_ID}`);
         });
 
-        it("holds local ICE candidates until the session id is known, then sends later ones directly", async () => {
-            const early = { candidate: "candidate:1", sdpMid: "0", sdpMLineIndex: 0 };
+        it("sends local ICE candidates by key, holding only those found before camera_start_stream is sent", async () => {
+            const before = { candidate: "candidate:0", sdpMid: "0", sdpMLineIndex: 0 };
+            const during = { candidate: "candidate:1", sdpMid: "0", sdpMLineIndex: 0 };
             const late = { candidate: "candidate:2", sdpMid: "0", sdpMLineIndex: 0 };
+            FakePeerConnection.candidatesOnLocalOffer = [before];
             const fake = fakeClient({
                 camera_start_stream: () => {
-                    lastPeer().onicecandidate?.({ candidate: early });
+                    lastPeer().onicecandidate?.({ candidate: during });
                     return startResult();
                 },
             });
@@ -492,13 +534,29 @@ describe("WebRtcStreamView", () => {
             expect(fake.calls[1].args).to.deep.equal({
                 node_id: NODE_ID,
                 endpoint_id: ENDPOINT_ID,
-                webrtc_session_id: SESSION_ID,
-                ice_candidates: [early],
+                ...fake.latestKey(),
+                ice_candidates: [before, during],
             });
 
             lastPeer().onicecandidate?.({ candidate: late });
             await settle();
+            expect(fake.commands()).to.deep.equal([
+                "camera_start_stream",
+                "camera_provide_ice_candidates",
+                "camera_provide_ice_candidates",
+            ]);
             expect(fake.calls[2].args.ice_candidates).to.deep.equal([late]);
+        });
+
+        it("names the session with a client_session_key on camera_start_stream", async () => {
+            const fake = fakeClient({ camera_start_stream: () => startResult() });
+            const view = createView(fake.client);
+
+            await view.start();
+
+            const key = fake.calls[0].args.client_session_key;
+            expect(key).to.be.a("string");
+            expect(key).to.not.equal("");
         });
 
         it("keeps the session when sending held ICE candidates fails", async () => {
@@ -507,7 +565,6 @@ describe("WebRtcStreamView", () => {
                     lastPeer().onicecandidate?.({
                         candidate: { candidate: "candidate:1", sdpMid: "0", sdpMLineIndex: 0 },
                     });
-                    fake.emitWebRtc(answerEvent());
                     return startResult();
                 },
                 camera_provide_ice_candidates: () => {
@@ -517,36 +574,35 @@ describe("WebRtcStreamView", () => {
             const view = createView(fake.client);
 
             await view.start();
+            fake.emitWebRtc(answerEvent());
             await settle();
 
             expect(view.state).to.equal("streaming");
             expect(fake.commands()).to.not.include("camera_stop_stream");
         });
 
-        it("keeps the session when a buffered camera offer cannot be applied", async () => {
-            const fake: ReturnType<typeof fakeClient> = fakeClient({
-                camera_start_stream: () => {
-                    const pc = lastPeer();
-                    const applyAnswer = pc.setRemoteDescription.bind(pc);
-                    pc.setRemoteDescription = async (description: FakeDescription) => {
-                        if (description.type === "offer") throw new Error("bad offer");
-                        await applyAnswer(description);
-                    };
-                    fake.emitWebRtc(answerEvent());
-                    fake.emitWebRtc({
-                        event_type: "offer",
-                        webrtc_session_id: SESSION_ID,
-                        node_id: NODE_ID,
-                        endpoint_id: ENDPOINT_ID,
-                        fabric_index: 1,
-                        data: { sdp: "camera-offer" },
-                    });
-                    return startResult();
-                },
-            });
+        it("keeps the session when a camera offer cannot be applied", async () => {
+            const fake = fakeClient({ camera_start_stream: () => startResult() });
             const view = createView(fake.client);
-
             await view.start();
+            const pc = lastPeer();
+            const applyAnswer = pc.setRemoteDescription.bind(pc);
+            pc.setRemoteDescription = async (description: FakeDescription) => {
+                if (description.type === "offer") throw new Error("bad offer");
+                await applyAnswer(description);
+            };
+
+            fake.emitWebRtc(answerEvent());
+            await settle();
+            fake.emitWebRtc({
+                event_type: "offer",
+                webrtc_session_id: SESSION_ID,
+                node_id: NODE_ID,
+                endpoint_id: ENDPOINT_ID,
+                fabric_index: 1,
+                data: { sdp: "camera-offer" },
+            });
+            await settle();
 
             expect(view.state).to.equal("streaming");
             expect(fake.commands()).to.deep.equal(["camera_start_stream"]);
@@ -686,7 +742,7 @@ describe("WebRtcStreamView", () => {
             expect(fake.calls.slice(1)).to.deep.equal([
                 {
                     command: "camera_stop_stream",
-                    args: { node_id: NODE_ID, endpoint_id: ENDPOINT_ID, webrtc_session_id: SESSION_ID },
+                    args: { node_id: NODE_ID, endpoint_id: ENDPOINT_ID, ...fake.latestKey() },
                 },
                 {
                     command: "camera_release_stream",
@@ -849,7 +905,8 @@ describe("WebRtcStreamView", () => {
             expect(fake.listenerCounts().webrtc).to.equal(1);
             lastPeer().onicecandidate?.({ candidate: { candidate: "candidate:3", sdpMid: "0", sdpMLineIndex: 0 } });
             await settle();
-            expect(fake.calls.at(-1)?.args.webrtc_session_id).to.equal(SESSION_ID + 1);
+            expect(fake.calls.at(-1)?.command).to.equal("camera_provide_ice_candidates");
+            expect(fake.calls.at(-1)?.args.client_session_key).to.equal(fake.latestKey().client_session_key);
         });
 
         it("starts again only after a start stopped in flight has been ended", async () => {
@@ -863,12 +920,15 @@ describe("WebRtcStreamView", () => {
 
             const starting = view.start();
             await settle();
-            await view.stop();
+            const stopping = view.stop();
             const retry = view.start();
             await settle();
-            expect(fake.commands()).to.deep.equal(["camera_start_stream"]);
+            // The stop by key cancels the start on the server; the start's own answer then settles it.
+            expect(fake.commands()).to.deep.equal(["camera_start_stream", "camera_stop_stream"]);
+            expect(fake.calls[1].args.client_session_key).to.equal(fake.calls[0].args.client_session_key);
 
             firstStart.resolve(startResult());
+            await stopping;
             await Promise.all([starting, retry]);
 
             expect(fake.commands()).to.deep.equal([
@@ -938,7 +998,7 @@ describe("WebRtcStreamView", () => {
             firstStart.reject(new Error("timed out"));
             await Promise.all([starting, retry]);
 
-            expect(fake.commands()).to.deep.equal(["camera_start_stream", "camera_start_stream"]);
+            expect(fake.commands()).to.deep.equal(["camera_start_stream", "camera_stop_stream", "camera_start_stream"]);
             expect(view.state).to.equal("connecting");
         });
 
@@ -968,6 +1028,7 @@ describe("WebRtcStreamView", () => {
             const view = createView(fake.client);
             await view.start();
 
+            // camera_session_ended carries every end of the session, so the webrtc_callback `end` is not read.
             fake.emitWebRtc({
                 event_type: "end",
                 webrtc_session_id: SESSION_ID,
@@ -975,6 +1036,16 @@ describe("WebRtcStreamView", () => {
                 endpoint_id: ENDPOINT_ID,
                 fabric_index: 1,
                 data: { reason: 2 },
+            });
+            await settle();
+            expect(view.state).to.equal("connecting");
+
+            fake.emitEnded({
+                node_id: NODE_ID,
+                endpoint_id: ENDPOINT_ID,
+                webrtc_session_id: SESSION_ID,
+                cause: "peer",
+                reason: 2,
             });
             await settle();
 
@@ -987,11 +1058,22 @@ describe("WebRtcStreamView", () => {
             const view = createView(fake.client);
             await view.start();
 
-            fake.emitEnded({ node_id: NODE_ID, endpoint_id: ENDPOINT_ID, webrtc_session_id: SESSION_ID + 1 });
+            fake.emitEnded({
+                node_id: NODE_ID,
+                endpoint_id: ENDPOINT_ID,
+                webrtc_session_id: SESSION_ID,
+                cause: "other_connection",
+                client_session_key: "another-key",
+            });
             await settle();
             expect(view.state).to.equal("connecting");
 
-            fake.emitEnded({ node_id: BigInt(NODE_ID), endpoint_id: ENDPOINT_ID, webrtc_session_id: SESSION_ID });
+            fake.emitEnded({
+                node_id: BigInt(NODE_ID),
+                endpoint_id: ENDPOINT_ID,
+                webrtc_session_id: SESSION_ID,
+                cause: "other_connection",
+            });
             await settle();
 
             expect(fake.commands()).to.deep.equal(["camera_start_stream", "camera_release_stream"]);
@@ -1064,7 +1146,44 @@ describe("WebRtcStreamView", () => {
             await starting;
 
             expect(view.state).to.equal("idle");
-            expect(fake.commands()).to.deep.equal(["camera_start_stream"]);
+            expect(fake.commands()).to.deep.equal(["camera_start_stream", "camera_stop_stream"]);
+        });
+
+        it("stops by key when the start fails without an answer from the server", async () => {
+            const fake = fakeClient({
+                camera_start_stream: () => {
+                    throw new Error("timed out");
+                },
+            });
+            const view = createView(fake.client);
+
+            await view.start();
+
+            expect(view.state).to.equal("error");
+            expect(fake.commands()).to.deep.equal(["camera_start_stream", "camera_stop_stream"]);
+            expect(fake.calls[1].args.client_session_key).to.equal(fake.calls[0].args.client_session_key);
+        });
+
+        it("sends the stop again after a late start when the first stop failed", async () => {
+            const firstStart = deferred<CameraStartStreamResult>();
+            let stops = 0;
+            const fake = fakeClient({
+                camera_start_stream: () => firstStart.promise,
+                camera_stop_stream: () => {
+                    if (++stops === 1) throw new Error("connection lost");
+                    return { ended: true };
+                },
+            });
+            const view = createView(fake.client);
+
+            const starting = view.start();
+            await settle();
+            await view.stop();
+            firstStart.resolve(startResult());
+            await starting;
+            await settle();
+
+            expect(fake.commands().filter(command => command === "camera_stop_stream")).to.have.length(2);
         });
 
         it("does not report streaming for an answer applied after stop", async () => {
@@ -1089,27 +1208,20 @@ describe("WebRtcStreamView", () => {
             expect(view.state).to.equal("idle");
         });
 
-        it("drops buffered signalling and held ICE candidates that follow a buffered end", async () => {
-            const fake: ReturnType<typeof fakeClient> = fakeClient({
-                camera_start_stream: () => {
-                    lastPeer().onicecandidate?.({
-                        candidate: { candidate: "candidate:1", sdpMid: "0", sdpMLineIndex: 0 },
-                    });
-                    fake.emitWebRtc({
-                        event_type: "end",
-                        webrtc_session_id: SESSION_ID,
-                        node_id: NODE_ID,
-                        endpoint_id: ENDPOINT_ID,
-                        fabric_index: 1,
-                        data: { reason: 2 },
-                    });
-                    fake.emitWebRtc(answerEvent());
-                    return startResult();
-                },
-            });
+        it("drops signalling that follows the camera's end without ending the session again", async () => {
+            const fake = fakeClient({ camera_start_stream: () => startResult() });
             const view = createView(fake.client);
-
             await view.start();
+
+            fake.emitEnded({
+                node_id: NODE_ID,
+                endpoint_id: ENDPOINT_ID,
+                webrtc_session_id: SESSION_ID,
+                cause: "peer",
+                reason: 2,
+            });
+            fake.emitWebRtc(answerEvent());
+            await settle();
 
             expect(lastPeer().remoteDescription).to.equal(null);
             expect(view.state).to.equal("idle");
@@ -1236,7 +1348,7 @@ describe("WebRtcStreamView", () => {
             const video = { muted: true, srcObject: null };
             Object.defineProperty(view, "_video", { value: video });
             await view.start();
-            fake.emitWebRtc(signalling("answer", cameraSdp("sendrecv", audioAnswer)));
+            fake.emitWebRtc(signalling("answer", cameraSdp("sendonly", audioAnswer)));
             await settle();
             return { fake, view, video };
         }
@@ -1252,10 +1364,9 @@ describe("WebRtcStreamView", () => {
             });
         }
 
-        it("keeps the camera's sendrecv answer on talk audio and makes the video sendonly", async () => {
+        it("talks when the camera answers the audio section sendrecv", async () => {
             await startTalkView();
 
-            expect(lastPeer().remoteDescription?.sdp).to.equal(cameraSdp("sendonly", "sendrecv"));
             expect(lastPeer().audioTransceiver?.currentDirection).to.equal("sendrecv");
         });
 
@@ -1461,7 +1572,12 @@ describe("WebRtcStreamView", () => {
             view.setMuted(false);
             await view.setTalking(true);
 
-            fake.emitEnded({ node_id: NODE_ID, endpoint_id: ENDPOINT_ID, webrtc_session_id: SESSION_ID });
+            fake.emitEnded({
+                node_id: NODE_ID,
+                endpoint_id: ENDPOINT_ID,
+                webrtc_session_id: SESSION_ID,
+                cause: "peer",
+            });
 
             expect(track.stopped).to.equal(true);
             expect(view.talking).to.equal(false);
@@ -1532,6 +1648,7 @@ describe("WebRtcStreamView", () => {
             const { view } = await startTalkView();
             const granted = deferred<unknown>();
             getUserMedia = () => granted.promise;
+            granted.promise.catch(() => undefined);
 
             const talking = view.setTalking(true);
             await view.stop();

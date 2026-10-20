@@ -155,13 +155,7 @@ import { AttributeChange, EventChange, PeerChangeBus } from "./PeerChangeBus.js"
 import { ThreadDetailsPoller } from "./ThreadDetailsPoller.js";
 import { pushNodeTime, TimeSyncInvokers } from "./timeSyncCommands.js";
 import { SyncTrigger, TIME_FAILURE_EVENT_ID, TIME_SYNC_CLUSTER_ID, TimeSyncManager } from "./TimeSyncManager.js";
-import { attachWebRtcCallbackBridge } from "./WebRtcCallbackBridge.js";
-import {
-    establishWebRtcProviderSession,
-    sameWebRtcSession,
-    trackedSessionOf,
-    type WebRtcProviderSessionIo,
-} from "./webRtcSessionStreams.js";
+import { WebRtcProviderSessions, type WebRtcProviderNodes } from "./WebRtcProviderSessions.js";
 
 const logger = Logger.get("ControllerCommandHandler");
 
@@ -347,6 +341,7 @@ export class ControllerCommandHandler {
     readonly #fabrics: FabricManager;
     #otaProvider?: Endpoint<typeof OtaProviderEndpoint>;
     #webRtcRequestor: Endpoint<CameraControllerEndpoint>;
+    readonly #webRtcProviders: WebRtcProviderSessions;
     #started = false;
     #connected = false;
     readonly #bleEnabled: boolean;
@@ -394,6 +389,10 @@ export class ControllerCommandHandler {
         nodeEndpointAdded: new Observable<[nodeId: NodeId, endpointId: EndpointNumber]>(),
         nodeEndpointRemoved: new Observable<[nodeId: NodeId, endpointId: EndpointNumber]>(),
         webRtcCallback: new Observable<[WebRtcCallbackData]>(),
+        /** @see WebRtcProviderSessionWatchIo.reported */
+        webRtcProviderSessionsReported: new Observable<
+            [nodeId: NodeId, endpointId: EndpointNumber, present: ReadonlySet<number>, restarted: boolean]
+        >(),
     };
     #peers?: PeerSet;
     #changeBus?: PeerChangeBus;
@@ -418,6 +417,20 @@ export class ControllerCommandHandler {
         this.#fabrics = controller.node.env.get(FabricManager);
         this.#otaProvider = controller.otaProvider;
         this.#webRtcRequestor = controller.webRtcRequestor;
+        const requestor = controller.webRtcRequestor;
+        this.#webRtcProviders = new WebRtcProviderSessions({
+            nodes: this.#webRtcProviderNodes(),
+            requestor: {
+                endpointId: () => EndpointNumber(requestor.number),
+                sessions: () => requestor.stateOf(WebRtcTransportRequestorServer).currentSessions,
+                act: async work => {
+                    await requestor.act(agent => work(agent.get(WebRtcTransportRequestorServer)));
+                },
+            },
+            fabricIndex: this.#fabricIndex,
+            reported: (nodeId, endpointId, present, restarted) =>
+                this.events.webRtcProviderSessionsReported.emit(nodeId, endpointId, present, restarted),
+        });
 
         this.#bleEnabled = bleEnabled;
         this.#bleProxyEnabled = bleProxyEnabled;
@@ -545,10 +558,14 @@ export class ControllerCommandHandler {
                     markNodeUpdatePending: reason => this.#markNodeUpdatePending(this.#nodes.get(nodeId), reason),
                 }),
             );
+            this.#guard(nodeId, "WebRTC session change", () =>
+                this.#webRtcProviders.attributeChanged(nodeId, data.path),
+            );
         });
 
         this.#busObservers.on(bus.events.eventTriggered, (nodeId, data) => {
             this.#guard(nodeId, "event", () => {
+                this.#webRtcProviders.eventTriggered(nodeId, data.path);
                 this.events.eventChanged.emit(nodeId, data);
                 if (
                     this.#timeSyncManager !== undefined &&
@@ -691,7 +708,7 @@ export class ControllerCommandHandler {
     async #setupWebRtcCallbackBridge() {
         try {
             await this.#webRtcRequestor.act(agent => {
-                attachWebRtcCallbackBridge(agent.get(WebRtcTransportRequestorServer).events, data =>
+                this.#webRtcProviders.attachCallbacks(agent.get(WebRtcTransportRequestorServer).events, data =>
                     this.events.webRtcCallback.emit(data),
                 );
             });
@@ -699,58 +716,6 @@ export class ControllerCommandHandler {
         } catch (error) {
             logger.warn("Failed to setup WebRTC callback bridge:", error);
         }
-    }
-
-    async #establishWebRtcProviderSession(args: {
-        nodeId: NodeId;
-        endpointId: EndpointNumber;
-        commandName: "ProvideOffer" | "SolicitOffer";
-        fields: Record<string, unknown>;
-        sessionEstablishing?: (webRtcSessionId: number) => void;
-    }): Promise<WebRtcTransportProvider.ProvideOfferResponse | WebRtcTransportProvider.SolicitOfferResponse> {
-        const { nodeId, endpointId, commandName, fields, sessionEstablishing } = args;
-
-        const requestorEndpoint = this.#webRtcRequestor;
-        const originatingEndpointId = EndpointNumber(requestorEndpoint.number);
-        const fabricIndex = this.#fabricIndex;
-        const node = this.#nodes.get(nodeId);
-        const providerEndpoint = this.#clusterEndpoint(nodeId, endpointId, WebRtcTransportProviderClient.id);
-
-        const io: WebRtcProviderSessionIo = {
-            invoke: (command, invokeFields) =>
-                this.#invokeCommand(node, {
-                    endpoint: endpointId,
-                    cluster: WebRtcTransportProvider,
-                    command,
-                    fields: invokeFields,
-                }),
-            upsertSession: async (session, options) => {
-                await requestorEndpoint.act(agent => {
-                    const requestor = agent.get(WebRtcTransportRequestorServer);
-                    if (
-                        options?.onlyIfAbsent &&
-                        requestor.state.currentSessions.some(s => sameWebRtcSession(s, session))
-                    ) {
-                        return;
-                    }
-                    requestor.upsertSession(session);
-                });
-            },
-        };
-
-        const response = await establishWebRtcProviderSession(io, {
-            commandName,
-            fields,
-            sessionEstablishing,
-            nodeId,
-            endpointId,
-            originatingEndpointId,
-            fabricIndex,
-            // Globals, not the attribute cache: the cache stays empty after a restart until a report carries it.
-            clusterRevision: providerEndpoint.globalsOf(WebRtcTransportProviderClient).clusterRevision,
-            formatNode: id => this.formatNode(id),
-        });
-        return response;
     }
 
     /**
@@ -765,7 +730,7 @@ export class ControllerCommandHandler {
         /** @see WebRtcProviderSessionArgs.sessionEstablishing */
         sessionEstablishing?: (webRtcSessionId: number) => void;
     }): Promise<WebRtcTransportProvider.ProvideOfferResponse | WebRtcTransportProvider.SolicitOfferResponse> {
-        return this.#establishWebRtcProviderSession(args);
+        return this.#webRtcProviders.establish(args);
     }
 
     /**
@@ -792,6 +757,42 @@ export class ControllerCommandHandler {
         return this.#fabric.nodeId;
     }
 
+    #webRtcProviderNodes(): WebRtcProviderNodes {
+        return {
+            localNodeId: () => this.localNodeId,
+            providerEndpoints: nodeId => {
+                const endpoints = new Array<EndpointNumber>();
+                for (const endpoint of this.#nodes.get(nodeId).endpoints) {
+                    if (endpoint.behaviors.has(WebRtcTransportProviderClient)) {
+                        endpoints.push(EndpointNumber(endpoint.number));
+                    }
+                }
+                return endpoints;
+            },
+            currentSessions: (nodeId, endpointId) => {
+                const { endpoints } = this.#nodes.get(nodeId);
+                if (!endpoints.has(endpointId)) return undefined;
+                const endpoint = endpoints.for(endpointId);
+                if (!endpoint.behaviors.has(WebRtcTransportProviderClient)) return undefined;
+                return endpoint.stateOf(WebRtcTransportProviderClient).currentSessions;
+            },
+            providerRevision: (nodeId, endpointId) =>
+                // Globals, not the attribute cache: the cache stays empty after a restart until a report carries it.
+                this.#clusterEndpoint(nodeId, endpointId, WebRtcTransportProviderClient.id).globalsOf(
+                    WebRtcTransportProviderClient,
+                ).clusterRevision,
+            invoke: (nodeId, endpointId, command, fields) =>
+                this.#invokeCommand(this.#nodes.get(nodeId), {
+                    endpoint: endpointId,
+                    cluster: WebRtcTransportProvider,
+                    command,
+                    fields,
+                }),
+            syncTime: nodeId => this.#syncNodeTime(nodeId),
+            formatNode: nodeId => this.formatNode(nodeId),
+        };
+    }
+
     /** @throws ServerError if node not found */
     getNode(nodeId: NodeId): ClientNode {
         return this.#nodes.get(nodeId);
@@ -805,30 +806,18 @@ export class ControllerCommandHandler {
         return this.#invokeCommand(node, request, options);
     }
 
-    /**
-     * Drop a locally ended WebRTC session from the requestor's CurrentSessions; peer-initiated ends
-     * are removed by the requestor itself. No-op if this camera's session is untracked.
-     */
+    /** @see WebRtcProviderSessions.removeTracked */
     async removeTrackedWebRtcSession(
         webRtcSessionId: number,
         nodeId: NodeId,
         endpointId: EndpointNumber,
     ): Promise<void> {
-        await this.#webRtcRequestor.act(agent => {
-            const requestor = agent.get(WebRtcTransportRequestorServer);
-            const tracked = trackedSessionOf(
-                requestor.state.currentSessions,
-                { id: webRtcSessionId, fabricIndex: this.#fabricIndex, peerNodeId: nodeId },
-                endpointId,
-            );
-            if (tracked === undefined) {
-                logger.debug(
-                    `WebRTC session ${webRtcSessionId} is not tracked for node ${this.formatNode(nodeId)} endpoint ${endpointId}; local tracking left unchanged`,
-                );
-                return;
-            }
-            requestor.removeSession(tracked);
-        });
+        await this.#webRtcProviders.removeTracked(webRtcSessionId, nodeId, endpointId);
+    }
+
+    /** @see WebRtcProviderSessions.abandon */
+    async abandonWebRtcSession(webRtcSessionId: number, nodeId: NodeId, endpointId: EndpointNumber): Promise<void> {
+        await this.#webRtcProviders.abandon(webRtcSessionId, nodeId, endpointId);
     }
 
     /**
@@ -918,6 +907,7 @@ export class ControllerCommandHandler {
                 if (this.#pendingNodeUpdates.has(nodeId)) {
                     this.#armNodeUpdate(node, true);
                 }
+                this.#webRtcProviders.reportCompleted(nodeId);
             }),
         );
         nodeObservers.on(node.lifecycle.connectionStateChanged, state => {
@@ -931,6 +921,7 @@ export class ControllerCommandHandler {
                     return;
                 }
                 this.#nodes.queueEndpointAdded(nodeId, EndpointNumber(endpoint.number));
+                this.#webRtcProviders.endpointAdded(nodeId);
                 this.#markNodeUpdatePending(node, "endpoint added");
             }),
         );
@@ -2269,6 +2260,11 @@ export class ControllerCommandHandler {
         this.#threadDetailsPoller?.unregisterNode(peer);
         this.#timeSyncManager?.unregisterNode(peer);
         this.#availableUpdates.delete(nodeId);
+        this.#webRtcProviders
+            .nodeRemoved(nodeId)
+            .catch(error =>
+                logger.warn(`Could not drop the WebRTC sessions of removed node ${this.formatNode(nodeId)}:`, error),
+            );
         return wasRegistered;
     }
 

@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import type { CameraStreamProvenance } from "@matter-server/ws-client";
+import type { CameraSessionEndCause, CameraStreamProvenance } from "@matter-server/ws-client";
 import type { EndpointNumber, NodeId } from "@matter/main";
 import type { CameraAvStreamManagementClient } from "@matter/node/behaviors/camera-av-stream-management";
 import type { OverlayBounds } from "./overlayPolicy.js";
@@ -15,6 +15,9 @@ export interface Resolution {
     width: number;
     height: number;
 }
+
+/** A size a caller wants; at least one side is stated. */
+export type ResolutionTarget = { width: number; height?: number } | { width?: number; height: number };
 
 /** The shape `VideoStreamAllocate` takes. An absent overlay flag must not be sent (§11.2.8.4). */
 export interface VideoEnvelope {
@@ -122,12 +125,25 @@ export interface ManagedSession {
     nodeId: NodeId;
     endpointId: EndpointNumber;
     connectionId: string;
+    /** @see StartStreamArgs.clientSessionKey */
+    clientSessionKey?: string;
     videoStreamIds: number[];
     audioStreamIds: number[];
 }
 
-/** Not raised for the peer's own `End`, which already reaches the owner as a `webrtc_callback` `end` event. */
-export interface CameraSessionEnded {
+/** `released`: this server ended it for its closing owner or at shutdown. Never sent to a client. */
+export type SessionEndCause = CameraSessionEndCause | "released";
+
+/** How a tracked session ended. @see CameraSessionEndCause for each cause. */
+export interface SessionEnd {
+    cause: SessionEndCause;
+    /** `peer` only: the camera's `WebRTCEndReasonEnum` (§11.4.5.2). */
+    reason?: number;
+    /** `other_connection` only: the connection whose `camera_stop_stream` or `EndSession` ended it. */
+    requestedBy?: string;
+}
+
+export interface CameraSessionEnded extends SessionEnd {
     nodeId: NodeId;
     endpointId: EndpointNumber;
     webRtcSessionId: number;
@@ -136,11 +152,8 @@ export interface CameraSessionEnded {
      * provider route, adopted from the camera); the route then tells every camera-aware connection.
      */
     ownerId?: string;
-    /**
-     * The connection whose `camera_stop_stream` or `EndSession` ended it; the route does not notify it.
-     * Absent when the server ended it on its own (owner disconnected, or shutdown).
-     */
-    requestedBy?: string;
+    /** The owner's own name for the session, when it gave one. */
+    clientSessionKey?: string;
 }
 
 export interface CameraStreamEvicted {

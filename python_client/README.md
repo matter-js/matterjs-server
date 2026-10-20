@@ -109,8 +109,18 @@ Beyond the `python-matter-server` API, the client exposes commands the Matter.js
   play your audio; without it the server makes the offer's audio sections not send, so a browser-style
   `sendrecv` audio offer goes to the camera as `recvonly`. `camera_session_ended` and
   `camera_stream_evicted` events arrive as `CameraSessionEndedData` / `CameraStreamEvictedData`;
-  `webrtc_callback` stays a dict. Errors 102 to 106 (`CameraStreamIncompatible`, ...) expose their
+  `webrtc_callback` stays a dict. `camera_session_ended` covers every end of a session opened with
+  `camera_start_stream` that the client did not ask for, the camera's own `End` included; its `cause` says why. Errors 102 to 106 (`CameraStreamIncompatible`, ...) expose their
   details as attributes, e.g. `err.reason` and `err.bound` on `CameraStreamIncompatible`
+
+  `camera_start_stream(..., client_session_key="...")` names the session with your own key (1 to 128
+  characters, unique among the connection's starting and open sessions). Every `webrtc_callback` and
+  `camera_session_ended` event of the session carries it as `client_session_key`, so a handler can
+  match events even when it runs before the awaited call returns. `camera_provide_ice_candidates(node_id,
+  endpoint_id, None, candidates, client_session_key=...)` and `camera_stop_stream(node_id, endpoint_id,
+  client_session_key=...)` take it in place of the session id, also while `camera_start_stream` is still
+  running: candidates are queued on the server and sent after the start's response, and the stop cancels
+  the start.
 
   The minimal `camera_start_stream` call is `node_id`, `endpoint_id`, `stream_usage` and your SDP
   offer: the server reuses or allocates the best stream the camera can serve that still fits what

@@ -59,6 +59,21 @@ def test_webrtc_callback_data_parses_from_the_wire():
     assert payload.data == {"reason": 3}
 
 
+def test_webrtc_callback_data_reads_the_client_session_key():
+    wire = {
+        "event_type": "answer",
+        "webrtc_session_id": 5,
+        "node_id": 100,
+        "endpoint_id": 2,
+        "fabric_index": 1,
+        "data": None,
+        "client_session_key": "k1",
+    }
+    assert dataclass_from_dict(WebRTCCallbackData, wire).client_session_key == "k1"
+    del wire["client_session_key"]
+    assert dataclass_from_dict(WebRTCCallbackData, wire).client_session_key is None
+
+
 def test_webrtc_callback_data_roundtrip():
     payload = WebRTCCallbackData(
         event_type="answer",
