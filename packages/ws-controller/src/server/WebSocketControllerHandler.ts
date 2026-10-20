@@ -721,6 +721,10 @@ export class WebSocketControllerHandler implements WebServerHandler {
                     // Shared Observable: an uncaught throw here aborts the emit and starves other connections.
                     const send = () => {
                         try {
+                            logger.debug(
+                                `[${connId}] Sending camera_session_ended event for Node ${formatNodeId(ended.nodeId)}`,
+                                data,
+                            );
                             connection.sendReliable(toBigIntAwareJson({ event: "camera_session_ended", data }));
                         } catch (err) {
                             logger.error(`[${connId}] Failed to send camera_session_ended`, err);

@@ -41,11 +41,11 @@
         "test": "matter-test --force-exit"
     },
     "dependencies": {
-        "@matter/thread-br-client": "0.18.0-alpha.0-20261017-d02c422c9"
+        "@matter/thread-br-client": "0.18.0"
     },
     "devDependencies": {
-        "@matter/testing": "0.18.0-alpha.0-20261017-d02c422c9",
-        "@types/node": "^26.6.4",
+        "@matter/testing": "0.18.0",
+        "@types/node": "^26.6.5",
         "@types/ws": "^8.18.2",
         "ws": "^8.22.0"
     },
