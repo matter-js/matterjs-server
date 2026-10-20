@@ -5,7 +5,7 @@
  */
 
 import { createServer } from "node:http";
-import { WebSocketServer } from "ws";
+import { type WebSocket, WebSocketServer } from "ws";
 import { BLE_PROXY_PROTOCOL_VERSION, BleProxyCommand } from "../src/BleProxyProtocol.js";
 import {
     type Characteristic,
@@ -18,7 +18,7 @@ import {
 
 const TEST_PORT = 15583;
 const TEST_BLE_URL = `ws://localhost:${TEST_PORT}/ble`;
-const SCAN_TIMEOUT_MS = 100;
+const SCAN_TIMEOUT_MS = 1_000;
 const C1_UUID = "18ee2ef5263d4559959f4f9c429f9d11";
 const C2_UUID = "18ee2ef5263d4559959f4f9c429f9d12";
 
@@ -37,6 +37,8 @@ class ScanRecordingNoble implements NobleApi {
     readonly overlaps = new Array<string>();
     scanning = false;
     hangOn?: "start" | "stop";
+    /** While set, every scan call waits for it before settling. */
+    gate?: Promise<void>;
     #inFlight?: string;
 
     async startScanningAsync(serviceUuids: string[], allowDuplicates: boolean): Promise<void> {
@@ -80,6 +82,7 @@ class ScanRecordingNoble implements NobleApi {
         if (this.hangOn === call.op) {
             return new Promise<never>(() => {});
         }
+        await this.gate;
         await new Promise(resolve => setTimeout(resolve, 0));
         this.#inFlight = undefined;
     }
@@ -252,6 +255,8 @@ describe("NobleBleProxyClient", () => {
         let responses: Array<Record<string, unknown>>;
         let events: Array<Record<string, unknown>>;
         let sendCommand: (id: number, command: string, args?: Record<string, unknown>) => void;
+        /** Resolves once the client has dispatched every command sent before the call. */
+        let whenClientDispatched: () => Promise<void>;
 
         const startScan = (id: number, serviceUuids: string[], allowDuplicates = false) =>
             sendCommand(id, BleProxyCommand.StartScan, {
@@ -267,7 +272,7 @@ describe("NobleBleProxyClient", () => {
             responses = [];
             events = [];
 
-            const commandSender = new Promise<(payload: unknown) => void>(resolve => {
+            const serverSocket = new Promise<WebSocket>(resolve => {
                 wss.on("connection", ws => {
                     ws.on("message", (data, isBinary) => {
                         if (isBinary) {
@@ -276,7 +281,7 @@ describe("NobleBleProxyClient", () => {
                         const message = JSON.parse(data.toString());
                         if (message.type === "hello") {
                             ws.send(JSON.stringify({ type: "hello_response", version: BLE_PROXY_PROTOCOL_VERSION }));
-                            resolve(payload => ws.send(JSON.stringify(payload)));
+                            resolve(ws);
                             return;
                         }
                         if (typeof message.id === "number") {
@@ -300,8 +305,14 @@ describe("NobleBleProxyClient", () => {
             });
             await client.connect();
 
-            const send = await commandSender;
-            sendCommand = (id, command, args = {}) => send({ id, command, args });
+            const ws = await serverSocket;
+            sendCommand = (id, command, args = {}) => ws.send(JSON.stringify({ id, command, args }));
+            // The client's ws answers a ping only after emitting every frame received before it.
+            whenClientDispatched = () =>
+                new Promise<void>(resolve => {
+                    ws.once("pong", () => resolve());
+                    ws.ping();
+                });
         });
 
         afterEach(async () => {
@@ -349,14 +360,27 @@ describe("NobleBleProxyClient", () => {
             });
         });
 
-        it("collapses requests that queue behind one another into a single noble cycle", async () => {
-            startScan(1, ["fff6"]);
-            startScan(2, ["abcd"]);
-            sendCommand(3, BleProxyCommand.StopScan);
+        it("skips a scan request that a later one superseded while it queued", async () => {
+            let openGate = () => {};
+            noble.gate = new Promise<void>(resolve => {
+                openGate = resolve;
+            });
+            try {
+                startScan(1, ["fff6"]);
+                await waitFor(() => noble.calls.length === 1);
+                startScan(2, ["abcd"]);
+                sendCommand(3, BleProxyCommand.StopScan);
+                await whenClientDispatched();
+            } finally {
+                openGate();
+            }
 
             await waitFor(() => responses.length === 3);
 
-            expect(noble.calls).to.deep.equal([{ op: "stop" }]);
+            expect(noble.calls.filter(call => call.op === "stop")).to.have.length(2);
+            expect(noble.calls.some(call => call.serviceUuids?.includes("abcd"))).to.equal(false);
+            expect(noble.calls[noble.calls.length - 1]).to.deep.equal({ op: "stop" });
+            expect(noble.overlaps).to.deep.equal([]);
             expect(noble.scanning).to.equal(false);
             expect(responses.every(response => response.success === true)).to.equal(true);
         });
