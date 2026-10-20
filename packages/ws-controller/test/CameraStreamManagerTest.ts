@@ -4397,12 +4397,14 @@ describe("CameraStreamManager", () => {
             expect(endedSessions(invokes)).to.deep.equal([]);
         });
 
-        it("refuses a registration whose id the camera gave to a session of another route meanwhile", async () => {
-            const { manager } = managerWith(STATE, async invoke => {
+        it("refuses a registration whose id the camera gave to a session of another route meanwhile, leaving that session alone", async () => {
+            let ownerOnceIssued: SessionOwner | undefined;
+            const { manager, invokes } = managerWith(STATE, async invoke => {
                 if (invoke.command === "videoStreamAllocate") return { videoStreamId: 9 };
                 if (invoke.command === "provideOffer") {
                     invoke.sessionEstablishing?.(42);
                     manager.sessionIdIssued(NODE, ENDPOINT, 42);
+                    ownerOnceIssued = manager.signallingOwner(NODE, ENDPOINT, 42);
                     return { webRtcSessionId: 42 };
                 }
                 return undefined;
@@ -4416,6 +4418,27 @@ describe("CameraStreamManager", () => {
             }
 
             expect(thrown).to.be.instanceOf(ServerError);
+            expect(ownerOnceIssued).to.equal(undefined);
+            expect(endedSessions(invokes)).to.deep.equal([]);
+        });
+
+        it("counts a CurrentSessions report that lists the session while it is being established", async () => {
+            const { manager } = managerWith(STATE, async invoke => {
+                if (invoke.command === "videoStreamAllocate") return { videoStreamId: 9 };
+                if (invoke.command === "provideOffer") {
+                    invoke.sessionEstablishing?.(42);
+                    manager.sessionsReported(NODE, ENDPOINT, new Set([42]), false);
+                    return { webRtcSessionId: 42 };
+                }
+                return undefined;
+            });
+            await start(manager, "conn-1");
+            const endings = endingsOf(manager);
+
+            const gone = manager.sessionsReported(NODE, ENDPOINT, new Set<number>(), false);
+
+            expect(gone.map(session => session.webRtcSessionId)).to.deep.equal([42]);
+            expect(endings.map(ended => ended.cause)).to.deep.equal(["camera_dropped"]);
         });
 
         it("gives back the streams it allocated when the provider call fails", async () => {

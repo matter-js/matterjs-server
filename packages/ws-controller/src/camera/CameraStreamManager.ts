@@ -2107,6 +2107,11 @@ export class CameraStreamManager {
             audioStreamIds: audio === undefined ? new Array<number>() : [audio.streamId],
         };
         const refusal = this.#sessions.track(pending, session);
+        if (refusal === "superseded") {
+            throw ServerError.sdkStackError(
+                `WebRTC session ${webRtcSessionId} ended before this server could track it, and the camera gave its id to another session`,
+            );
+        }
         if (refusal !== undefined) {
             // Not announced: the session never reached the registry.
             const end = withCleanupBudget(

@@ -125,12 +125,29 @@ describe("CameraSessionRegistry client session keys", () => {
     });
 
     describe("an id issued to another route", () => {
-        it("ends the registration holding the id on the same node and endpoint", () => {
+        it("supersedes the registration holding the id on the same node and endpoint", () => {
             const registry = new CameraSessionRegistry(() => {});
             const waiting = registry.begin(NODE, ENDPOINT, "conn-1");
             registry.establishing(waiting, 42);
             registry.issued(NODE, ENDPOINT, 42);
-            expect(registry.track(waiting, sessionOf(42, "conn-1"))).to.equal("already_ended");
+            expect(registry.signallingOwner(NODE, ENDPOINT, 42)).to.equal(undefined);
+            expect(registry.track(waiting, sessionOf(42, "conn-1"))).to.equal("superseded");
+        });
+
+        it("keeps a superseded registration superseded when it is also claimed, forgotten or its node removed", async () => {
+            const registry = new CameraSessionRegistry(() => {});
+            const waiting = registry.begin(NODE, ENDPOINT, "conn-1");
+            registry.establishing(waiting, 42);
+            registry.issued(NODE, ENDPOINT, 42);
+            registry.forget(NODE, ENDPOINT, 42);
+            registry.forgetNode(NODE);
+            const claimed = registry.claim(
+                () => true,
+                () => Promise.resolve(true),
+            );
+            expect(registry.track(waiting, sessionOf(42, "conn-1"))).to.equal("superseded");
+            registry.finish(waiting);
+            await Promise.all(claimed);
         });
 
         it("leaves a registration on another endpoint holding the same id", () => {
@@ -151,6 +168,40 @@ describe("CameraSessionRegistry client session keys", () => {
             expect(registry.track(waiting, sessionOf(42, "conn-1", undefined, OTHER_NODE, ENDPOINT))).to.equal(
                 undefined,
             );
+        });
+    });
+
+    describe("a CurrentSessions report during establishment", () => {
+        it("counts a listing between establishing and track, so a later report without the id ends it", () => {
+            const registry = new CameraSessionRegistry(() => {});
+            const waiting = registry.begin(NODE, ENDPOINT, "conn-1");
+            registry.establishing(waiting, 42);
+            expect(registry.reconcile(NODE, ENDPOINT, new Set([42]), "camera_dropped")).to.deep.equal([]);
+            const session = sessionOf(42, "conn-1");
+            registry.track(waiting, session);
+
+            expect(registry.reconcile(NODE, ENDPOINT, new Set<number>(), "camera_dropped")).to.deep.equal([session]);
+        });
+
+        it("ignores a listing on another endpoint or node", () => {
+            const registry = new CameraSessionRegistry(() => {});
+            const waiting = registry.begin(NODE, ENDPOINT, "conn-1");
+            registry.establishing(waiting, 42);
+            registry.reconcile(NODE, OTHER_ENDPOINT, new Set([42]), "camera_dropped");
+            registry.reconcile(OTHER_NODE, ENDPOINT, new Set([42]), "camera_dropped");
+            registry.track(waiting, sessionOf(42, "conn-1"));
+
+            expect(registry.reconcile(NODE, ENDPOINT, new Set<number>(), "camera_dropped")).to.deep.equal([]);
+        });
+
+        it("ignores a listing before the camera gave the registration its id", () => {
+            const registry = new CameraSessionRegistry(() => {});
+            const waiting = registry.begin(NODE, ENDPOINT, "conn-1");
+            registry.reconcile(NODE, ENDPOINT, new Set([42]), "camera_dropped");
+            registry.establishing(waiting, 42);
+            registry.track(waiting, sessionOf(42, "conn-1"));
+
+            expect(registry.reconcile(NODE, ENDPOINT, new Set<number>(), "camera_dropped")).to.deep.equal([]);
         });
     });
 

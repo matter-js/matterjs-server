@@ -32,13 +32,22 @@ interface PendingRecord {
     settled: Promise<void>;
     markSettled: () => void;
     webRtcSessionId?: number;
-    ended: boolean;
+    /**
+     * `ended`: the session is gone. `superseded`: the camera gave the id to another session, so this
+     * registration neither receives its signalling nor ends it.
+     */
+    gone?: "ended" | "superseded";
+    /** A report listed the id after {@link CameraSessionRegistry.establishing}; {@link CameraSessionRegistry.track} carries it to the entry. */
+    seenByCamera: boolean;
     /** The `EndSession` the establishing call sent for the session it gave up. */
     ending?: Promise<boolean>;
 }
 
 /** Either way the caller must end the session. */
 export type SessionTrackRefusal = "claimed" | "stopped" | "already_ended";
+
+/** The id names another session now: the caller must not end it or drop its local tracking. */
+export type SessionSuperseded = "superseded";
 
 /** Keyed by node, endpoint and id: `WebRTCSessionID` is unique per node (§11.4.5.1), and every route names a session by all three. */
 export class CameraSessionRegistry {
@@ -72,7 +81,7 @@ export class CameraSessionRegistry {
         const settled = new Promise<void>(resolve => {
             markSettled = resolve;
         });
-        this.#pending.set(pending, { settled, markSettled, ended: false });
+        this.#pending.set(pending, { settled, markSettled, seenByCamera: false });
         return pending;
     }
 
@@ -108,7 +117,8 @@ export class CameraSessionRegistry {
     /**
      * The owner stops a session it is still establishing: {@link track} refuses it with `stopped`, so the
      * establishing call ends it. Resolves once that call finished, with the outcome of its `EndSession`
-     * (see {@link ending}), or `false` when it gave up before the camera opened a session.
+     * (see {@link ending}), or `false` when it ended nothing: it gave up before the camera opened a session,
+     * or the session's id names another session now.
      */
     cancel(pending: PendingSession): Promise<boolean> {
         const record = this.#pending.get(pending);
@@ -144,7 +154,7 @@ export class CameraSessionRegistry {
     /**
      * The camera handed this id to a session another route established. A session still recorded under it is
      * one the camera lost: an established entry is dropped and announced as `camera_restarted`, and a
-     * registration waiting for it is marked ended.
+     * registration waiting for it is marked superseded.
      */
     issued(nodeId: NodeId, endpointId: EndpointNumber, webRtcSessionId: number): void {
         this.#issued(nodeId, endpointId, webRtcSessionId, undefined);
@@ -153,27 +163,40 @@ export class CameraSessionRegistry {
     #issued(nodeId: NodeId, endpointId: EndpointNumber, webRtcSessionId: number, to: PendingSession | undefined): void {
         const lost = this.get(nodeId, endpointId, webRtcSessionId);
         if (lost !== undefined) this.forgetEstablished(lost, { cause: "camera_restarted" });
+        for (const [pending, record] of this.#holding(nodeId, endpointId, webRtcSessionId)) {
+            if (pending !== to) record.gone = "superseded";
+        }
+    }
+
+    *#holding(
+        nodeId: NodeId,
+        endpointId: EndpointNumber,
+        webRtcSessionId: number,
+    ): Generator<[PendingSession, PendingRecord]> {
         for (const [pending, record] of this.#pending) {
             if (
-                pending !== to &&
                 pending.nodeId === nodeId &&
                 pending.endpointId === endpointId &&
                 record.webRtcSessionId === webRtcSessionId
             ) {
-                record.ended = true;
+                yield [pending, record];
             }
         }
     }
 
     /**
      * `claimed`: a release path is waiting for it. `stopped`: its owner cancelled it. `already_ended`: it
-     * ended between the offer response and this call.
+     * ended between the offer response and this call. `superseded` wins over a claim, because ending the id
+     * would end another session.
      */
-    track(pending: PendingSession, session: ManagedSession): SessionTrackRefusal | undefined {
+    track(pending: PendingSession, session: ManagedSession): SessionTrackRefusal | SessionSuperseded | undefined {
+        const record = this.#pending.get(pending);
+        if (record?.gone === "superseded") return "superseded";
         const claimRefusal = this.claimRefusal(pending);
         if (claimRefusal !== undefined) return claimRefusal;
-        if (this.#pending.get(pending)?.ended === true) return "already_ended";
+        if (record?.gone === "ended") return "already_ended";
         this.#sessions.set(this.#key(session.nodeId, session.endpointId, session.webRtcSessionId), session);
+        if (record?.seenByCamera === true) this.#seenByCamera.add(session);
         return undefined;
     }
 
@@ -187,19 +210,13 @@ export class CameraSessionRegistry {
     /**
      * `undefined` when no entry names the session (raw provider route, or already dropped). An in-flight
      * registration counts once {@link establishing} gave it the id: the local requestor accepts the camera's
-     * signalling from then on, before {@link track} runs.
+     * signalling from then on, before {@link track} runs. A superseded registration does not.
      */
     signallingOwner(nodeId: NodeId, endpointId: EndpointNumber, webRtcSessionId: number): SessionOwner | undefined {
         const session = this.get(nodeId, endpointId, webRtcSessionId);
         if (session !== undefined) return ownerOf(session);
-        for (const [pending, record] of this.#pending) {
-            if (
-                pending.nodeId === nodeId &&
-                pending.endpointId === endpointId &&
-                record.webRtcSessionId === webRtcSessionId
-            ) {
-                return ownerOf(pending);
-            }
+        for (const [pending, record] of this.#holding(nodeId, endpointId, webRtcSessionId)) {
+            if (record.gone !== "superseded") return ownerOf(pending);
         }
         return undefined;
     }
@@ -214,15 +231,7 @@ export class CameraSessionRegistry {
      */
     forget(nodeId: NodeId, endpointId: EndpointNumber, webRtcSessionId: number): boolean {
         if (this.#sessions.delete(this.#key(nodeId, endpointId, webRtcSessionId))) return true;
-        for (const [pending, record] of this.#pending) {
-            if (
-                pending.nodeId === nodeId &&
-                pending.endpointId === endpointId &&
-                record.webRtcSessionId === webRtcSessionId
-            ) {
-                record.ended = true;
-            }
-        }
+        for (const [, record] of this.#holding(nodeId, endpointId, webRtcSessionId)) record.gone ??= "ended";
         return false;
     }
 
@@ -248,7 +257,8 @@ export class CameraSessionRegistry {
     /**
      * Applies one `CurrentSessions` report of an endpoint (`present`: the ids it lists for this server). An
      * entry is ended only when an earlier report listed it: a report built before a new session's offer
-     * would otherwise end a live session. Returns the entries it dropped.
+     * would otherwise end a live session. A listing that arrives after {@link establishing} and before
+     * {@link track} counts for the entry. Returns the entries it dropped.
      */
     reconcile(
         nodeId: NodeId,
@@ -264,6 +274,16 @@ export class CameraSessionRegistry {
             if (present.has(session.webRtcSessionId)) this.#seenByCamera.add(session);
             else if (this.#seenByCamera.has(session)) gone.push(session);
         }
+        for (const [pending, record] of this.#pending) {
+            if (
+                pending.nodeId === nodeId &&
+                pending.endpointId === endpointId &&
+                record.webRtcSessionId !== undefined &&
+                present.has(record.webRtcSessionId)
+            ) {
+                record.seenByCamera = true;
+            }
+        }
         return gone.filter(session => this.forgetEstablished(session, { cause }));
     }
 
@@ -273,7 +293,7 @@ export class CameraSessionRegistry {
             if (session.nodeId === nodeId) this.forgetEstablished(session, { cause: "node_removed" });
         }
         for (const [pending, record] of this.#pending) {
-            if (pending.nodeId === nodeId) record.ended = true;
+            if (pending.nodeId === nodeId) record.gone ??= "ended";
         }
     }
 
