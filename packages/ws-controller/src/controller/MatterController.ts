@@ -562,14 +562,15 @@ export class MatterController {
             // Shared Observables: an uncaught throw here aborts the emit for every other listener.
             handler.events.webRtcProviderSessionsReported.on((nodeId, endpointId, present, restarted) => {
                 try {
-                    for (const gone of manager.sessionsReported(nodeId, endpointId, present, restarted)) {
-                        handler
-                            .removeTrackedWebRtcSession(gone.webRtcSessionId, nodeId, endpointId)
-                            .catch(error => logger.warn("Failed to drop a vanished camera session:", error));
-                    }
+                    manager.sessionsReported(nodeId, endpointId, present, restarted);
                 } catch (error) {
                     logger.warn("Failed to apply a camera's session report:", error);
                 }
+            });
+            manager.events.sessionVanished.on(gone => {
+                handler
+                    .removeTrackedWebRtcSession(gone.webRtcSessionId, gone.nodeId, gone.endpointId)
+                    .catch(error => logger.warn("Failed to drop a vanished camera session:", error));
             });
             handler.events.nodeDecommissioned.on(nodeId => {
                 try {

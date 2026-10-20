@@ -10,7 +10,6 @@ import type { EndpointNumber, NodeId } from "@matter/main";
 import { CameraAvStreamManagement } from "@matter/main/clusters/camera-av-stream-management";
 import { WebRtcTransportDefinitions } from "@matter/main/clusters/web-rtc-transport-definitions";
 import { Status } from "@matter/main/types";
-import { deviceForgotSession, invokeEndSession } from "../controller/webRtcSessionTracking.js";
 import {
     ServerError,
     ServerErrorCode,
@@ -624,8 +623,18 @@ export class CameraStreamManager {
     readonly events = {
         sessionEnded: new Observable<[CameraSessionEnded], MaybePromise<void>>(),
         streamEvicted: new Observable<[CameraStreamEvicted], MaybePromise<void>>(),
+        /** A tracked session a `CurrentSessions` report no longer lists; its local requestor tracking must go. */
+        sessionVanished: new Observable<[ManagedSession], MaybePromise<void>>(),
     };
-    readonly #sessions = new CameraSessionRegistry(ended => this.#announce(this.events.sessionEnded, ended));
+    readonly #sessions = new CameraSessionRegistry(
+        ended => this.#announce(this.events.sessionEnded, ended),
+        (session, cause) => {
+            logger.notice(
+                `Node ${session.nodeId} endpoint ${session.endpointId} no longer lists WebRTC session ${session.webRtcSessionId}${cause === "camera_restarted" ? " after a restart" : ""}; the server stopped tracking it`,
+            );
+            this.#announce(this.events.sessionVanished, session);
+        },
+    );
     #nextLeaseGeneration = 0;
 
     constructor(io: CameraDeviceIo) {
@@ -2113,17 +2122,21 @@ export class CameraStreamManager {
             );
         }
         if (refusal !== undefined) {
-            // Not announced: the session never reached the registry.
+            // Through the registration, so a stop by id already in flight is joined instead of sent twice.
             const end = withCleanupBudget(
                 `ending WebRTC session ${webRtcSessionId}, given up while it was established`,
                 () =>
-                    this.#endSession(session, { cause: "released" }).then<GivenUpEnd, GivenUpEnd>(
-                        ended => ({ ended }),
-                        error => {
-                            logger.warn(`Ending given-up WebRTC session ${webRtcSessionId} failed:`, error);
-                            return { error };
-                        },
-                    ),
+                    this.#sessions
+                        .stop(nodeId, endpointId, webRtcSessionId, { cause: "released" }, () =>
+                            this.#sendEndSession(nodeId, endpointId, webRtcSessionId),
+                        )
+                        .then<GivenUpEnd, GivenUpEnd>(
+                            ended => ({ ended }),
+                            error => {
+                                logger.warn(`Ending given-up WebRTC session ${webRtcSessionId} failed:`, error);
+                                return { error };
+                            },
+                        ),
             );
             const cancelAnswer = end.then(outcome => {
                 if (outcome === undefined) {
@@ -2185,35 +2198,15 @@ export class CameraStreamManager {
         this.#dropLeaseIfCurrent(nodeId, endpointId, lease);
     }
 
-    /**
-     * The one path that ends a session: `EndSession` on the device, then the registry entry. Returns
-     * whether the device still had the session. A failed invoke keeps the entry, so a later stop,
-     * disconnect or shutdown can retry; {@link invokeEndSession} decides the `NotFound` case.
-     */
-    async #endSession(session: ManagedSession, end: SessionEnd): Promise<boolean> {
-        const { nodeId, endpointId, webRtcSessionId } = session;
-        try {
-            await invokeEndSession(
-                () =>
-                    this.io.invoke({
-                        nodeId,
-                        endpointId,
-                        cluster: "webrtcProvider",
-                        command: "endSession",
-                        fields: { webRtcSessionId, reason: WEBRTC_END_REASON_USER_HANGUP },
-                    }),
-                async () => {
-                    this.#sessions.forgetEstablished(session, end);
-                },
-            );
-        } catch (error) {
-            if (!deviceForgotSession(error)) throw error;
-            logger.info(
-                `Node ${nodeId} did not resolve WebRTC session ${webRtcSessionId} (NotFound); dropping the server's tracking of it`,
-            );
-            return false;
-        }
-        return true;
+    /** Only through {@link CameraSessionRegistry.stop}, which counts it as an end of the session. */
+    #sendEndSession(nodeId: NodeId, endpointId: EndpointNumber, webRtcSessionId: number): Promise<unknown> {
+        return this.io.invoke({
+            nodeId,
+            endpointId,
+            cluster: "webrtcProvider",
+            command: "endSession",
+            fields: { webRtcSessionId, reason: WEBRTC_END_REASON_USER_HANGUP },
+        });
     }
 
     /**
@@ -2249,7 +2242,8 @@ export class CameraStreamManager {
     /**
      * Ends the session on the device; the allocation is kept. Returns false when the device answers
      * `NotFound`. A failed `EndSession` is raised, also when this call joined one another path sent.
-     * Tracked ids share one `EndSession` through the registry; untracked ids are sent directly.
+     * An id no entry names is sent all the same: `CurrentSessions`, not this server, records which sessions
+     * exist, and `EndSession` (§11.5.6.7.3) fails `NOT_FOUND` unless fabric and `PeerNodeID` match.
      */
     async stopStream(
         nodeId: NodeId,
@@ -2257,80 +2251,25 @@ export class CameraStreamManager {
         webRtcSessionId: number,
         requestedBy?: string,
     ): Promise<boolean> {
-        const session = this.#sessions.get(nodeId, endpointId, webRtcSessionId);
-        if (session !== undefined) {
-            return this.#sessions.releaseOnce(session, held =>
-                this.#endSession(held, requestedBy === undefined ? { cause: "released" } : stoppedBy(requestedBy)),
-            );
-        }
-        return this.#endUntrackedSession(nodeId, endpointId, webRtcSessionId, requestedBy);
-    }
-
-    /**
-     * End a session this process run has no record of (for example one from before a restart). Sent
-     * unconditionally: `EndSession` (§11.5.6.7.3) fails `NOT_FOUND` unless fabric and `PeerNodeID`
-     * match, so it can only end a session of this server.
-     */
-    async #endUntrackedSession(
-        nodeId: NodeId,
-        endpointId: EndpointNumber,
-        webRtcSessionId: number,
-        requestedBy: string | undefined,
-    ): Promise<boolean> {
-        try {
-            await this.io.invoke({
-                nodeId,
-                endpointId,
-                cluster: "webrtcProvider",
-                command: "endSession",
-                fields: { webRtcSessionId, reason: WEBRTC_END_REASON_USER_HANGUP },
-            });
-        } catch (error) {
-            if (!deviceForgotSession(error)) throw error;
-            logger.info(
-                `Node ${nodeId} holds no WebRTC session ${webRtcSessionId} for this server (NotFound); nothing was ended`,
-            );
-            return false;
-        }
-        // Even without an entry: a registration in flight may hold this id, and `track` must refuse it.
-        this.#sessions.forget(nodeId, endpointId, webRtcSessionId);
-        this.#announceUntrackedEnd(nodeId, endpointId, webRtcSessionId, requestedBy);
-        return true;
-    }
-
-    /**
-     * Report a session this server ended but holds no record of. Announced with no owner ("tell
-     * everyone"), since nothing names its connection. Call only when the camera held the session.
-     */
-    #announceUntrackedEnd(
-        nodeId: NodeId,
-        endpointId: EndpointNumber,
-        webRtcSessionId: number,
-        requestedBy: string | undefined,
-    ): void {
-        this.#announce(this.events.sessionEnded, {
+        const ended = await this.#sessions.stop(
             nodeId,
             endpointId,
             webRtcSessionId,
-            ...(requestedBy === undefined ? { cause: "released" } : stoppedBy(requestedBy)),
-        });
+            requestedBy === undefined ? { cause: "released" } : stoppedBy(requestedBy),
+            () => this.#sendEndSession(nodeId, endpointId, webRtcSessionId),
+        );
+        if (!ended) {
+            logger.info(`Node ${nodeId} holds no WebRTC session ${webRtcSessionId} for this server (NotFound)`);
+        }
+        return ended;
     }
 
     /**
-     * Stop tracking a session the peer ended, without invoking `EndSession`, and announce it as `peer`
-     * (the owner also gets the `End` as a `webrtc_callback` event). A client's own `EndSession` goes
-     * through {@link endedByClient}.
+     * The peer ended the session (the owner also gets the `End` as a `webrtc_callback` event). Returns
+     * whether a tracked session had the id. A client's own `EndSession` goes through {@link endSessionForClient}.
      */
     endedByPeer(nodeId: NodeId, endpointId: EndpointNumber, webRtcSessionId: number, reason?: number): boolean {
-        const session = this.#sessions.get(nodeId, endpointId, webRtcSessionId);
-        if (session !== undefined) {
-            return this.#sessions.forgetEstablished(session, {
-                cause: "peer",
-                ...(reason === undefined ? {} : { reason }),
-            });
-        }
-        this.#sessions.forget(nodeId, endpointId, webRtcSessionId);
-        return false;
+        return this.#sessions.peerEnded(nodeId, endpointId, webRtcSessionId, reason);
     }
 
     /**
@@ -2343,28 +2282,16 @@ export class CameraStreamManager {
 
     /**
      * Applies a `CurrentSessions` report: `present` holds the ids it lists for this server. A tracked
-     * session an earlier report listed and this one does not is dropped and announced, as
-     * `camera_restarted` when the node reported a restart, else `camera_dropped`. Returns the dropped
-     * sessions, whose local requestor tracking the caller must drop.
+     * session an earlier report listed and this one does not ends as `camera_restarted` when the node
+     * reported a restart, else `camera_dropped`, and is reported on {@link events} `sessionVanished`.
      */
     sessionsReported(
         nodeId: NodeId,
         endpointId: EndpointNumber,
         present: ReadonlySet<number>,
         restarted: boolean,
-    ): ManagedSession[] {
-        const gone = this.#sessions.reconcile(
-            nodeId,
-            endpointId,
-            present,
-            restarted ? "camera_restarted" : "camera_dropped",
-        );
-        for (const session of gone) {
-            logger.notice(
-                `Node ${nodeId} endpoint ${endpointId} no longer lists WebRTC session ${session.webRtcSessionId}${restarted ? " after a restart" : ""}; the server stopped tracking it`,
-            );
-        }
-        return gone;
+    ): void {
+        this.#sessions.reconcile(nodeId, endpointId, present, restarted ? "camera_restarted" : "camera_dropped");
     }
 
     /** Stop tracking every session of a node removed from the fabric. */
@@ -2373,25 +2300,19 @@ export class CameraStreamManager {
     }
 
     /**
-     * Drop the record of a session a client's own `EndSession` (via `device_command`) ended, and
-     * announce it as {@link stopStream} does: to the entry's owner naming `requestedBy`, or with no
-     * owner for an untracked id.
-     *
-     * `deviceHeldSession`: whether the camera had the session. On `NotFound` a tracked entry is still
-     * dropped and announced; an untracked id is not announced.
+     * A client's own `EndSession` (via `device_command`): `send` invokes it, and its response or error is
+     * passed on. The end is announced as {@link stopStream} does: to the session's owner naming
+     * `requestedBy`, or with no owner for an id no entry names. On `NotFound` a tracked session is still
+     * announced; an id no entry names is not.
      */
-    endedByClient(
+    endSessionForClient<T>(
         nodeId: NodeId,
         endpointId: EndpointNumber,
         webRtcSessionId: number,
         requestedBy: string,
-        deviceHeldSession: boolean,
-    ): boolean {
-        const session = this.#sessions.get(nodeId, endpointId, webRtcSessionId);
-        if (session !== undefined) return this.#sessions.forgetEstablished(session, stoppedBy(requestedBy));
-        this.#sessions.forget(nodeId, endpointId, webRtcSessionId);
-        if (deviceHeldSession) this.#announceUntrackedEnd(nodeId, endpointId, webRtcSessionId, requestedBy);
-        return false;
+        send: () => Promise<T>,
+    ): Promise<T> {
+        return this.#sessions.endSession(nodeId, endpointId, webRtcSessionId, stoppedBy(requestedBy), send);
     }
 
     /**
@@ -2420,13 +2341,15 @@ export class CameraStreamManager {
      * abandoned `EndSession` keeps its entry; a later pass joins it rather than sending a second.
      */
     async #releaseSessions(matches: (scope: SessionScope) => boolean): Promise<void> {
-        const inFlight = this.#sessions.claim(matches, session =>
-            this.#endSession(session, { cause: "released" }).catch(error => {
-                logger.warn(`Failed to end session ${session.webRtcSessionId} on node ${session.nodeId}:`, error);
-                // Rethrown so a joined `camera_stop_stream` learns the session is still open.
-                throw error;
-            }),
-        );
+        const { tracked, starting } = this.#sessions.claim(matches);
+        const inFlight = [
+            ...starting,
+            ...tracked.map(session =>
+                this.stopStream(session.nodeId, session.endpointId, session.webRtcSessionId).catch(error =>
+                    logger.warn(`Failed to end session ${session.webRtcSessionId} on node ${session.nodeId}:`, error),
+                ),
+            ),
+        ];
         if (inFlight.length === 0) return;
         await withCleanupBudget("ending the sessions a connection or the server owned", async () => {
             await Promise.allSettled(inFlight);

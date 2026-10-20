@@ -157,16 +157,14 @@ describe("MatterController.cameraStreamsIfCreated", () => {
         const reports = new Array<string>();
         manager.sessionsReported = (nodeId, endpointId, present, restarted) => {
             reports.push(`${nodeId}/${endpointId} [${[...present].join(",")}] restarted=${restarted}`);
-            return [
-                {
-                    webRtcSessionId: 7,
-                    nodeId,
-                    endpointId,
-                    connectionId: "conn-1",
-                    videoStreamIds: new Array<number>(),
-                    audioStreamIds: new Array<number>(),
-                },
-            ];
+            manager.events.sessionVanished.emit({
+                webRtcSessionId: 7,
+                nodeId,
+                endpointId,
+                connectionId: "conn-1",
+                videoStreamIds: new Array<number>(),
+                audioStreamIds: new Array<number>(),
+            });
         };
         const dropped = new Array<string>();
         handler.removeTrackedWebRtcSession = async (webRtcSessionId, nodeId, endpointId) => {

@@ -40,6 +40,17 @@ export function deviceForgotSession(error: unknown): boolean {
     return deviceStatusOf(error) === Status.NotFound;
 }
 
+/** `true` when the device ended the session, `false` when it answered `NotFound`; any other failure rejects. */
+export function endedOnDevice(ending: Promise<unknown>): Promise<boolean> {
+    return ending.then(
+        () => true,
+        error => {
+            if (deviceForgotSession(error)) return false;
+            throw error;
+        },
+    );
+}
+
 /**
  * Drops local records on success (`deviceHeldSession` true) and on {@link deviceForgotSession} (false).
  * Any other failure keeps them, so a later stop, disconnect or shutdown still ends the session.

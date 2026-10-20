@@ -277,6 +277,30 @@ function endingsOf(manager: CameraStreamManager): CameraSessionEnded[] {
     return seen;
 }
 
+/** Ids of the sessions reported on `sessionVanished`, whose requestor tracking the controller drops. */
+function vanishedOf(manager: CameraStreamManager): number[] {
+    const seen = new Array<number>();
+    manager.events.sessionVanished.on(session => {
+        seen.push(session.webRtcSessionId);
+    });
+    return seen;
+}
+
+/** `device_command` EndSession through the manager; `answer` stands in for the camera. */
+async function endSessionAsClient(
+    manager: CameraStreamManager,
+    webRtcSessionId: number,
+    requestedBy: string,
+    answer: () => Promise<unknown> = async () => undefined,
+): Promise<"ended" | "not_found" | "failed"> {
+    try {
+        await manager.endSessionForClient(NODE, ENDPOINT, webRtcSessionId, requestedBy, answer);
+        return "ended";
+    } catch (error) {
+        return (error as { code?: number }).code === Status.NotFound ? "not_found" : "failed";
+    }
+}
+
 /** `leasedEndpointCount` is a protected test hook; this exposes it. */
 class LeaseProbe extends CameraStreamManager {
     get endpointsWithLeases(): number {
@@ -4002,7 +4026,7 @@ describe("CameraStreamManager", () => {
             const manager = await withTrackedSession();
             const announced = endingsOf(manager);
 
-            expect(manager.endedByClient(NODE, ENDPOINT, 42, "conn-2", true)).to.equal(true);
+            expect(await endSessionAsClient(manager, 42, "conn-2")).to.equal("ended");
             expect(announced).to.deep.equal([
                 {
                     nodeId: NODE,
@@ -4019,7 +4043,11 @@ describe("CameraStreamManager", () => {
             const manager = await withTrackedSession();
             const announced = endingsOf(manager);
 
-            expect(manager.endedByClient(NODE, ENDPOINT, 42, "conn-2", false)).to.equal(true);
+            expect(
+                await endSessionAsClient(manager, 42, "conn-2", async () => {
+                    throw statusError(Status.NotFound);
+                }),
+            ).to.equal("not_found");
             expect(announced).to.have.length(1);
             expect(announced[0]?.ownerId).to.equal("conn-1");
         });
@@ -4040,7 +4068,7 @@ describe("CameraStreamManager", () => {
             const { manager } = managerWith(STATE);
             const announced = endingsOf(manager);
 
-            expect(manager.endedByClient(NODE, ENDPOINT, 42, "conn-2", true)).to.equal(false);
+            expect(await endSessionAsClient(manager, 42, "conn-2")).to.equal("ended");
             expect(announced).to.deep.equal([
                 {
                     nodeId: NODE,
@@ -4056,7 +4084,11 @@ describe("CameraStreamManager", () => {
             const { manager } = managerWith(STATE);
             const announced = endingsOf(manager);
 
-            expect(manager.endedByClient(NODE, ENDPOINT, 42, "conn-2", false)).to.equal(false);
+            expect(
+                await endSessionAsClient(manager, 42, "conn-2", async () => {
+                    throw statusError(Status.NotFound);
+                }),
+            ).to.equal("not_found");
             expect(announced).to.deep.equal([]);
         });
 
@@ -4249,11 +4281,13 @@ describe("CameraStreamManager", () => {
             const { manager, invokes } = managerWith(STATE, sessionNumbering());
             await start(manager, "conn-1");
             const endings = endingsOf(manager);
+            const vanished = vanishedOf(manager);
 
-            expect(manager.sessionsReported(NODE, ENDPOINT, new Set([42]), false)).to.deep.equal([]);
-            const gone = manager.sessionsReported(NODE, ENDPOINT, new Set<number>(), false);
+            manager.sessionsReported(NODE, ENDPOINT, new Set([42]), false);
+            expect(vanished).to.deep.equal([]);
+            manager.sessionsReported(NODE, ENDPOINT, new Set<number>(), false);
 
-            expect(gone.map(session => session.webRtcSessionId)).to.deep.equal([42]);
+            expect(vanished).to.deep.equal([42]);
             expect(endings).to.deep.equal([
                 { nodeId: NODE, endpointId: ENDPOINT, webRtcSessionId: 42, ownerId: "conn-1", cause: "camera_dropped" },
             ]);
@@ -4281,13 +4315,163 @@ describe("CameraStreamManager", () => {
             manager.sessionsReported(NODE, ENDPOINT, new Set([42]), false);
 
             const stopping = manager.stopStream(NODE, ENDPOINT, 42, "conn-2");
-            expect(manager.sessionsReported(NODE, ENDPOINT, new Set<number>(), false)).to.deep.equal([]);
+            manager.sessionsReported(NODE, ENDPOINT, new Set<number>(), false);
+            expect(endings).to.deep.equal([]);
             releaseEnd();
             await stopping;
 
             expect(endings.map(ended => `${ended.cause} ${ended.requestedBy}`)).to.deep.equal([
                 "other_connection conn-2",
             ]);
+        });
+
+        /** A tracked session 42 of conn-1 a report listed, whose next `EndSession` waits for `answer`. */
+        async function listedSessionWithGatedEnd() {
+            let answer = (_outcome: "ok" | "busy" | "not_found") => {};
+            const answered = new Promise<"ok" | "busy" | "not_found">(resolve => {
+                answer = resolve;
+            });
+            const camera = async () => {
+                const outcome = await answered;
+                if (outcome === "busy") throw statusError(Status.Busy);
+                if (outcome === "not_found") throw statusError(Status.NotFound);
+                return undefined;
+            };
+            const numbering = sessionNumbering();
+            const { manager, invokes } = managerWith(STATE, async invoke =>
+                invoke.command === "endSession" ? camera() : numbering(invoke),
+            );
+            await start(manager, "conn-1");
+            manager.sessionsReported(NODE, ENDPOINT, new Set([42]), false);
+            return { manager, invokes, answer, camera };
+        }
+
+        it("ends a session a report dropped while its stop was in flight, once, when the stop fails", async () => {
+            const { manager, invokes, answer } = await listedSessionWithGatedEnd();
+            const endings = endingsOf(manager);
+            const vanished = vanishedOf(manager);
+
+            const stopping = manager.stopStream(NODE, ENDPOINT, 42, "conn-2").then(
+                () => "ended",
+                () => "failed",
+            );
+            manager.sessionsReported(NODE, ENDPOINT, new Set<number>(), false);
+            manager.sessionsReported(NODE, ENDPOINT, new Set<number>(), false);
+            expect(endings).to.deep.equal([]);
+            answer("busy");
+
+            expect(await stopping).to.equal("failed");
+            expect(endings).to.deep.equal([
+                { nodeId: NODE, endpointId: ENDPOINT, webRtcSessionId: 42, ownerId: "conn-1", cause: "camera_dropped" },
+            ]);
+            expect(vanished).to.deep.equal([42]);
+            expect(manager.signallingOwner(NODE, ENDPOINT, 42)).to.equal(undefined);
+            await manager.releaseConnection("conn-1");
+            expect(invokes.filter(invoke => invoke.command === "endSession")).to.have.length(1);
+        });
+
+        it("names the camera's end, not the stop, when a stop the report overtook finds no session", async () => {
+            const { manager, answer } = await listedSessionWithGatedEnd();
+            const endings = endingsOf(manager);
+
+            const stopping = manager.stopStream(NODE, ENDPOINT, 42, "conn-2");
+            manager.sessionsReported(NODE, ENDPOINT, new Set<number>(), true);
+            answer("not_found");
+
+            expect(await stopping).to.equal(false);
+            expect(endings.map(ended => `${ended.cause} ${ended.requestedBy}`)).to.deep.equal([
+                "camera_restarted undefined",
+            ]);
+        });
+
+        it("announces a device_command EndSession a removal report overtook once, to the owner, naming the requester", async () => {
+            const { manager, answer, camera } = await listedSessionWithGatedEnd();
+            const endings = endingsOf(manager);
+            const vanished = vanishedOf(manager);
+
+            const ending = endSessionAsClient(manager, 42, "conn-2", camera);
+            manager.sessionsReported(NODE, ENDPOINT, new Set<number>(), false);
+            expect(endings).to.deep.equal([]);
+            answer("ok");
+
+            expect(await ending).to.equal("ended");
+            expect(endings).to.deep.equal([
+                {
+                    nodeId: NODE,
+                    endpointId: ENDPOINT,
+                    webRtcSessionId: 42,
+                    ownerId: "conn-1",
+                    cause: "other_connection",
+                    requestedBy: "conn-2",
+                },
+            ]);
+            // The EndSession route drops the requestor tracking itself.
+            expect(vanished).to.deep.equal([]);
+        });
+
+        it("announces the owner's own device_command EndSession a removal report overtook with the owner as requester", async () => {
+            const { manager, answer, camera } = await listedSessionWithGatedEnd();
+            const endings = endingsOf(manager);
+
+            const ending = endSessionAsClient(manager, 42, "conn-1", camera);
+            manager.sessionsReported(NODE, ENDPOINT, new Set<number>(), false);
+            answer("ok");
+
+            expect(await ending).to.equal("ended");
+            // The route sends nothing for this one: the owner is the requester and has its response.
+            expect(endings.map(ended => `${ended.ownerId} ${ended.requestedBy}`)).to.deep.equal(["conn-1 conn-1"]);
+        });
+
+        describe("announces exactly once whatever order a report, the peer's End and the camera's answer arrive in", () => {
+            type Step = "report" | "peer" | "answer";
+            const orders: Step[][] = [
+                ["report", "peer", "answer"],
+                ["report", "answer", "peer"],
+                ["peer", "report", "answer"],
+                ["peer", "answer", "report"],
+                ["answer", "report", "peer"],
+                ["answer", "peer", "report"],
+            ];
+            const causeOf = (step: Step) => (step === "report" ? "camera_dropped" : "peer");
+
+            for (const route of ["camera_stop_stream", "device_command"] as const) {
+                for (const outcome of ["ok", "busy", "not_found"] as const) {
+                    for (const order of orders) {
+                        const evidence = order.filter(step => step !== "answer");
+                        const expected =
+                            outcome === "ok" || (outcome === "not_found" && order[0] === "answer")
+                                ? "other_connection conn-2"
+                                : `${causeOf(evidence[0])} undefined`;
+                        it(`${route}, camera answers ${outcome}, order ${order.join(" > ")}: ${expected}`, async () => {
+                            const { manager, answer, camera } = await listedSessionWithGatedEnd();
+                            const endings = endingsOf(manager);
+                            const vanished = vanishedOf(manager);
+                            const ending =
+                                route === "camera_stop_stream"
+                                    ? manager.stopStream(NODE, ENDPOINT, 42, "conn-2").catch(() => false)
+                                    : endSessionAsClient(manager, 42, "conn-2", camera);
+                            for (const step of order) {
+                                if (step === "report")
+                                    manager.sessionsReported(NODE, ENDPOINT, new Set<number>(), false);
+                                else if (step === "peer") manager.endedByPeer(NODE, ENDPOINT, 42);
+                                else {
+                                    answer(outcome);
+                                    await ending;
+                                }
+                            }
+
+                            expect(endings.map(ended => `${ended.cause} ${ended.requestedBy}`)).to.deep.equal([
+                                expected,
+                            ]);
+                            expect(endings[0]?.ownerId).to.equal("conn-1");
+                            // A finished EndSession drops the requestor tracking itself; only a failed one leaves it.
+                            expect(vanished).to.deep.equal(
+                                outcome === "busy" && expected.startsWith("camera_") ? [42] : [],
+                            );
+                        });
+                    }
+                }
+            }
         });
 
         it("names the restart as the cause when the node reported one", async () => {
@@ -4306,7 +4490,7 @@ describe("CameraStreamManager", () => {
             await start(manager, "conn-1");
             const endings = endingsOf(manager);
 
-            expect(manager.sessionsReported(NODE, ENDPOINT, new Set<number>(), true)).to.deep.equal([]);
+            manager.sessionsReported(NODE, ENDPOINT, new Set<number>(), true);
 
             expect(endings).to.deep.equal([]);
             expect(manager.signallingOwner(NODE, ENDPOINT, 42)?.connectionId).to.equal("conn-1");
@@ -4317,8 +4501,8 @@ describe("CameraStreamManager", () => {
             await start(manager, "conn-1");
             manager.sessionsReported(NODE, ENDPOINT, new Set([42]), false);
 
-            expect(manager.sessionsReported(NODE, EndpointNumber(2), new Set<number>(), false)).to.deep.equal([]);
-            expect(manager.sessionsReported(NodeId(6), ENDPOINT, new Set<number>(), false)).to.deep.equal([]);
+            manager.sessionsReported(NODE, EndpointNumber(2), new Set<number>(), false);
+            manager.sessionsReported(NodeId(6), ENDPOINT, new Set<number>(), false);
             expect(manager.signallingOwner(NODE, ENDPOINT, 42)?.connectionId).to.equal("conn-1");
         });
 
@@ -4434,11 +4618,73 @@ describe("CameraStreamManager", () => {
             });
             await start(manager, "conn-1");
             const endings = endingsOf(manager);
+            const vanished = vanishedOf(manager);
 
-            const gone = manager.sessionsReported(NODE, ENDPOINT, new Set<number>(), false);
+            manager.sessionsReported(NODE, ENDPOINT, new Set<number>(), false);
 
-            expect(gone.map(session => session.webRtcSessionId)).to.deep.equal([42]);
+            expect(vanished).to.deep.equal([42]);
             expect(endings.map(ended => ended.cause)).to.deep.equal(["camera_dropped"]);
+        });
+
+        it("joins a stop by id already in flight when a closing connection's start gives its session up", async () => {
+            let answer = () => {};
+            const answered = new Promise<void>(resolve => {
+                answer = resolve;
+            });
+            let stopping: Promise<boolean> | undefined;
+            const { manager, invokes } = managerWith(STATE, async invoke => {
+                if (invoke.command === "videoStreamAllocate") return { videoStreamId: 9 };
+                if (invoke.command === "provideOffer") {
+                    invoke.sessionEstablishing?.(42);
+                    stopping = manager.stopStream(NODE, ENDPOINT, 42, "conn-2");
+                    manager.releaseConnection("conn-1").catch(() => undefined);
+                    return { webRtcSessionId: 42 };
+                }
+                if (invoke.command === "endSession") await answered;
+                return undefined;
+            });
+            const endings = endingsOf(manager);
+
+            const starting = start(manager, "conn-1").then(
+                () => "started",
+                () => "failed",
+            );
+            while (endedSessions(invokes).length === 0) await new Promise(resolve => setImmediate(resolve));
+            await new Promise(resolve => setImmediate(resolve));
+            answer();
+
+            expect(await starting).to.equal("failed");
+            expect(await stopping).to.equal(true);
+            expect(endedSessions(invokes)).to.have.length(1);
+            expect(endings.map(ended => `${ended.cause} ${ended.requestedBy} ${ended.ownerId}`)).to.deep.equal([
+                "other_connection conn-2 undefined",
+            ]);
+        });
+
+        it("refuses a start whose session a report listed and a later report no longer did, before it was tracked", async () => {
+            const { manager } = managerWith(STATE, async invoke => {
+                if (invoke.command === "videoStreamAllocate") return { videoStreamId: 9 };
+                if (invoke.command === "provideOffer") {
+                    invoke.sessionEstablishing?.(42);
+                    manager.sessionsReported(NODE, ENDPOINT, new Set([42]), false);
+                    manager.sessionsReported(NODE, ENDPOINT, new Set<number>(), false);
+                    return { webRtcSessionId: 42 };
+                }
+                return undefined;
+            });
+            const endings = endingsOf(manager);
+
+            let thrown: unknown;
+            try {
+                await start(manager, "conn-1");
+            } catch (error) {
+                thrown = error;
+            }
+
+            expect(thrown).to.be.instanceOf(ServerError);
+            expect((thrown as ServerError).message).to.contain("was ended before this server could track it");
+            expect(manager.signallingOwner(NODE, ENDPOINT, 42)).to.equal(undefined);
+            expect(endings).to.deep.equal([]);
         });
 
         it("gives back the streams it allocated when the provider call fails", async () => {

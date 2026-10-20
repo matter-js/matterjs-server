@@ -2295,8 +2295,8 @@ Three endings send nothing, because the client already knows or cannot be told:
 
 When `EndSession` fails:
 
-- With anything but the camera's `NOT_FOUND`: the session is still open and is not announced. The next stop, disconnect or shutdown reaches it again.
-- With `NOT_FOUND`: the camera states it holds no such session. The server's records go, and the owner is told even though the command failed.
+- With anything but the camera's `NOT_FOUND`: the session is still open and is not announced. The next stop, disconnect or shutdown reaches it again. When a report or a peer `End` already showed the session gone, it ends with that cause (`camera_dropped`, `camera_restarted` or `peer`) and is announced to its owner.
+- With `NOT_FOUND`: the camera states it holds no such session. The server's records go, and the owner is told even though the command failed. When a report or a peer `End` already showed the session gone, the event names that cause, also to a requester that is the owner, because its command did not end the session.
 - For an id no record named, nothing is announced, because there was no session on either side to report.
 
 `send_webrtc_provider_command` cannot send `EndSession` at all.

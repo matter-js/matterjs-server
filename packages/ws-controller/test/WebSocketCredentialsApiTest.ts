@@ -68,13 +68,13 @@ interface StubCameraStreams {
         maxResolution?: unknown;
     }): Promise<unknown>;
     releaseStream?(args: { streamId: number }): Promise<void>;
-    endedByClient?(
+    endSessionForClient?<T>(
         nodeId: bigint,
         endpointId: number,
         webRtcSessionId: number,
         requestedBy: string,
-        deviceHeldSession: boolean,
-    ): boolean;
+        send: () => Promise<T>,
+    ): Promise<T>;
     sessionIdIssued?(nodeId: bigint, endpointId: number, webRtcSessionId: number): void;
     /** Which connections may receive a session's signalling; absent means the manager holds no record. */
     signallingOwner?(nodeId: bigint, endpointId: number, webRtcSessionId: number): SessionOwner | undefined;
@@ -1272,11 +1272,20 @@ describe("WebSocket camera session tracking on the raw path", () => {
         const harness = createHarness(
             {
                 async releaseConnection() {},
-                // `requestedBy` and `deviceHeldSession` are covered by `harnessWithRawEndAnnouncing`.
-                endedByClient(nodeId, endpointId, webRtcSessionId) {
-                    drops.push("registry");
-                    targets.push({ nodeId, endpointId, webRtcSessionId });
-                    return true;
+                // `requestedBy` is covered by `harnessWithRawEndAnnouncing`.
+                async endSessionForClient(nodeId, endpointId, webRtcSessionId, _requestedBy, send) {
+                    const drop = () => {
+                        drops.push("registry");
+                        targets.push({ nodeId, endpointId, webRtcSessionId });
+                    };
+                    try {
+                        const response = await send();
+                        drop();
+                        return response;
+                    } catch (error) {
+                        if (error instanceof StatusResponseError && error.code === Status.NotFound) drop();
+                        throw error;
+                    }
                 },
             },
             {
@@ -1943,19 +1952,28 @@ describe("WebSocket camera lifecycle events", () => {
                 // What the manager does for a client's own EndSession: an entry it holds is announced to
                 // that session's owner, and an id no entry names is announced with no owner unless the
                 // camera denied the session.
-                endedByClient(nodeId, endpointId, webRtcSessionId, requestedBy, deviceHeldSession) {
-                    const ownerId = ownerBySession.get(webRtcSessionId);
-                    if (ownerId === undefined && !deviceHeldSession) return false;
-                    ownerBySession.delete(webRtcSessionId);
-                    sessionEnded.emit({
-                        nodeId: NodeId(nodeId),
-                        endpointId: EndpointNumber(endpointId),
-                        webRtcSessionId,
-                        ownerId,
-                        cause: "other_connection",
-                        requestedBy,
-                    });
-                    return ownerId !== undefined;
+                async endSessionForClient(nodeId, endpointId, webRtcSessionId, requestedBy, send) {
+                    const announce = (deviceHeldSession: boolean) => {
+                        const ownerId = ownerBySession.get(webRtcSessionId);
+                        if (ownerId === undefined && !deviceHeldSession) return;
+                        ownerBySession.delete(webRtcSessionId);
+                        sessionEnded.emit({
+                            nodeId: NodeId(nodeId),
+                            endpointId: EndpointNumber(endpointId),
+                            webRtcSessionId,
+                            ownerId,
+                            cause: "other_connection",
+                            requestedBy,
+                        });
+                    };
+                    try {
+                        const response = await send();
+                        announce(true);
+                        return response;
+                    } catch (error) {
+                        if (error instanceof StatusResponseError && error.code === Status.NotFound) announce(false);
+                        throw error;
+                    }
                 },
             },
             invoke === undefined ? undefined : { handleInvoke: invoke },

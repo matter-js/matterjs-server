@@ -1792,15 +1792,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
         const result =
             sessionId === undefined
                 ? await invoke()
-                : await invokeEndSession(invoke, deviceHeldSession =>
-                      this.#dropWebRtcSessionRecords(
-                          nodeId,
-                          EndpointNumber(endpointId),
-                          sessionId,
-                          requestedBy,
-                          deviceHeldSession,
-                      ),
-                  );
+                : await this.#endWebRtcSession(nodeId, EndpointNumber(endpointId), sessionId, requestedBy, invoke);
 
         // Test nodes return null
         if (TestNodeCommandHandler.isTestNodeId(nodeId)) {
@@ -1875,24 +1867,24 @@ export class WebSocketControllerHandler implements WebServerHandler {
     }
 
     /**
-     * Never rejects, as {@link invokeEndSession} requires. The manager announces the end to the session's
-     * owner, but not to `requestedBy`.
+     * A client's `EndSession`. The camera manager counts it as an end of the session it names before it is
+     * sent and announces the end to the session's owner, but not to `requestedBy`.
      */
-    async #dropWebRtcSessionRecords(
+    async #endWebRtcSession(
         nodeId: NodeId,
         endpointId: EndpointNumber,
         sessionId: number,
         requestedBy: string,
-        deviceHeldSession: boolean,
-    ): Promise<void> {
-        this.#controller.cameraStreamsIfCreated?.endedByClient(
-            nodeId,
-            endpointId,
-            sessionId,
-            requestedBy,
-            deviceHeldSession,
+        invoke: () => Promise<unknown>,
+    ): Promise<unknown> {
+        const manager = this.#controller.cameraStreamsIfCreated;
+        return invokeEndSession(
+            () =>
+                manager === undefined
+                    ? invoke()
+                    : manager.endSessionForClient(nodeId, endpointId, sessionId, requestedBy, invoke),
+            () => dropWebRtcSessionTracking(this.#commandHandler, sessionId, nodeId, endpointId),
         );
-        await dropWebRtcSessionTracking(this.#commandHandler, sessionId, nodeId, endpointId);
     }
 
     async #handleSendWebRtcProviderCommand(args: unknown): Promise<ResponseOf<"send_webrtc_provider_command">> {
