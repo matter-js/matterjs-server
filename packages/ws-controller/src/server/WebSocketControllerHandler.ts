@@ -1963,20 +1963,14 @@ export class WebSocketControllerHandler implements WebServerHandler {
         ownerId: string,
         startingSessions: StartingSessionSignalling,
     ): Promise<ResponseOf<"camera_provide_ice_candidates">> {
-        const { nodeId, endpointId, session, candidateCount, fieldsFor } = parseIceCandidatesArgs(args);
+        const { nodeId, endpointId, session, candidates, fieldsFor } = parseIceCandidatesArgs(args);
         const provide = this.#iceCandidatesProvider(nodeId, endpointId);
         if ("webRtcSessionId" in session) {
             await provide(fieldsFor(session.webRtcSessionId));
             return null;
         }
         const { clientSessionKey } = session;
-        const queued = startingSessions.queueCandidates(
-            nodeId,
-            endpointId,
-            clientSessionKey,
-            candidateCount,
-            fieldsFor,
-        );
+        const queued = startingSessions.queueCandidates(nodeId, endpointId, clientSessionKey, candidates, fieldsFor);
         if (queued !== undefined) {
             await queued;
             return null;

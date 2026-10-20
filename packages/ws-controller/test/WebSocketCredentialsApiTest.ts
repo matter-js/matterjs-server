@@ -3642,16 +3642,18 @@ describe("WebSocket client_session_key", () => {
                 expect((await first).result).to.equal(null);
                 expect((await second).result).to.equal(null);
                 expect(order).to.deep.equal(["start", "ice1", "ice2"]);
-                expect(k.provided.map(fields => fields.webRtcSessionId)).to.deep.equal([SESSION, SESSION]);
+                expect(k.provided.map(fields => fields.webRtcSessionId)).to.deep.equal([SESSION]);
                 expect(k.provided.map(candidatesOf)).to.deep.equal([
-                    [{ candidate: "candidate:1", sdpMid: "0", sdpmLineIndex: 0 }],
-                    [{ candidate: "candidate:2", sdpMid: "0", sdpmLineIndex: 0 }],
+                    [
+                        { candidate: "candidate:1", sdpMid: "0", sdpmLineIndex: 0 },
+                        { candidate: "candidate:2", sdpMid: "0", sdpmLineIndex: 0 },
+                    ],
                 ]);
 
                 // The start is answered, so the key now resolves through the manager and goes out at once.
                 const later = await send("ice3", "camera_provide_ice_candidates", keyed(3));
                 expect(later.result).to.equal(null);
-                expect(k.provided).to.have.length(3);
+                expect(k.provided).to.have.length(2);
             } finally {
                 ws.close();
             }
@@ -3822,7 +3824,7 @@ describe("WebSocket client_session_key", () => {
         }
     });
 
-    it("sends queued candidates one at a time", async () => {
+    it("sends the candidates queued at the response in one invoke, and those queued during it in the next", async () => {
         const k = await keyedHarness();
         try {
             const ws = await k.h.openClient();
@@ -3843,10 +3845,16 @@ describe("WebSocket client_session_key", () => {
                 await started;
                 await settle();
                 expect(k.invoked).to.have.length(1);
+                expect(candidatesOf(k.invoked[0])).to.have.length(2);
+                const third = frameOf(ws, "camera_provide_ice_candidates", keyed);
+                await settle();
+                expect(k.invoked).to.have.length(1);
                 openCandidates();
                 expect((await first).result).to.equal(null);
                 expect((await second).result).to.equal(null);
+                expect((await third).result).to.equal(null);
                 expect(k.invoked).to.have.length(2);
+                expect(candidatesOf(k.invoked[1])).to.have.length(1);
             } finally {
                 ws.close();
             }
@@ -3886,12 +3894,13 @@ describe("WebSocket client_session_key", () => {
                 openCandidates();
                 for (const queued of oldQueue) expect((await queued).result).to.equal(null);
                 await settle();
-                expect(k.provided).to.have.length(2);
+                expect(k.provided).to.have.length(1);
+                expect(candidatesOf(k.provided[0])).to.have.length(2);
 
                 k.proceed();
                 await second;
                 expect((await forNewStart).result).to.equal(null);
-                expect(k.provided).to.have.length(3);
+                expect(k.provided).to.have.length(2);
             } finally {
                 ws.close();
             }

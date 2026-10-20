@@ -5,7 +5,12 @@
  */
 
 import { EndpointNumber, NodeId } from "@matter/main";
-import { MAX_QUEUED_ICE_CANDIDATES, StartingSessionSignalling } from "../src/server/startingSessionSignalling.js";
+import {
+    ICE_CANDIDATE_FRAMING_BYTES,
+    ICE_CANDIDATES_BYTE_BUDGET,
+    MAX_QUEUED_ICE_CANDIDATES,
+    StartingSessionSignalling,
+} from "../src/server/startingSessionSignalling.js";
 import { ServerErrorCode } from "../src/types/WebSocketMessageTypes.js";
 
 const NODE = NodeId(5);
@@ -14,6 +19,21 @@ const ENDPOINT = EndpointNumber(1);
 const OTHER_ENDPOINT = EndpointNumber(2);
 
 const fieldsFor = (webRtcSessionId: number) => ({ webRtcSessionId });
+
+/** `count` small candidates, labelled so a test can follow them through a merge. */
+const candidates = (count: number, label = "c") =>
+    Array.from({ length: count }, (_, index) => ({ candidate: `${label}${index}` }));
+
+/** A candidate whose estimated size in an invoke is exactly `bytes`. */
+const candidateOfBytes = (bytes: number, label: string) => ({
+    candidate: label.padEnd(bytes - ICE_CANDIDATE_FRAMING_BYTES, "x"),
+});
+
+/** The fields of one send: the session id and the candidates it carries. */
+const listFields = (id: number, carried: ReadonlyArray<unknown>) => ({ id, candidates: carried });
+
+const labelsOf = (fields: Record<string, unknown>) =>
+    Array.isArray(fields.candidates) ? fields.candidates.map(entry => String(entry.candidate).slice(0, 2)) : [];
 
 /** Records what `provide` received, in call order. */
 function recorder() {
@@ -60,7 +80,7 @@ describe("StartingSessionSignalling", () => {
             const order = new Array<string>();
             signalling.hold(NODE, ENDPOINT, 7, () => order.push("event-1"));
             signalling.hold(NODE, ENDPOINT, 7, () => order.push("event-2"));
-            const queued = signalling.queueCandidates(NODE, ENDPOINT, "key-a", 1, fieldsFor);
+            const queued = signalling.queueCandidates(NODE, ENDPOINT, "key-a", candidates(1), fieldsFor);
             expect(order).to.deep.equal([]);
 
             start.release(async () => {
@@ -77,26 +97,7 @@ describe("StartingSessionSignalling", () => {
         it("answers undefined when no start names the key", () => {
             const signalling = new StartingSessionSignalling();
             signalling.begin(NODE, ENDPOINT, "key-a");
-            expect(signalling.queueCandidates(NODE, ENDPOINT, "key-b", 1, fieldsFor)).to.equal(undefined);
-        });
-
-        it("provides the queued candidates in the order they were queued, with the session id", async () => {
-            const signalling = new StartingSessionSignalling();
-            const start = signalling.begin(NODE, ENDPOINT, "key-a");
-            const first = signalling.queueCandidates(NODE, ENDPOINT, "key-a", 1, id => ({ id, n: 1 }));
-            const second = signalling.queueCandidates(NODE, ENDPOINT, "key-a", 1, id => ({ id, n: 2 }));
-            const third = signalling.queueCandidates(NODE, ENDPOINT, "key-a", 1, id => ({ id, n: 3 }));
-            const { provided, provide } = recorder();
-
-            start.established(7);
-            start.release(provide, trackedAs(7));
-            expect(await outcomeOf(Promise.all([first!, second!, third!]).then(() => undefined))).to.equal("resolved");
-
-            expect(provided).to.deep.equal([
-                { id: 7, n: 1 },
-                { id: 7, n: 2 },
-                { id: 7, n: 3 },
-            ]);
+            expect(signalling.queueCandidates(NODE, ENDPOINT, "key-b", candidates(1), fieldsFor)).to.equal(undefined);
         });
 
         it("queues on the start that named the key, not on another start of the same node and endpoint", async () => {
@@ -105,7 +106,7 @@ describe("StartingSessionSignalling", () => {
             const second = signalling.begin(NODE, ENDPOINT, "key-b");
             first.established(7);
             second.established(8);
-            const queued = signalling.queueCandidates(NODE, ENDPOINT, "key-a", 1, fieldsFor);
+            const queued = signalling.queueCandidates(NODE, ENDPOINT, "key-a", candidates(1), fieldsFor);
             const { provided, provide } = recorder();
 
             second.release(provide, trackedAs(8));
@@ -121,7 +122,7 @@ describe("StartingSessionSignalling", () => {
             const newer = signalling.begin(NODE, ENDPOINT, "key-a");
             own.established(7);
             newer.established(8);
-            const queued = signalling.queueCandidates(OTHER_NODE, ENDPOINT, "key-a", 1, fieldsFor);
+            const queued = signalling.queueCandidates(OTHER_NODE, ENDPOINT, "key-a", candidates(1), fieldsFor);
             const { provided, provide } = recorder();
 
             newer.release(provide, trackedAs(8));
@@ -137,7 +138,7 @@ describe("StartingSessionSignalling", () => {
             const newer = signalling.begin(NODE, ENDPOINT, "key-a");
             own.established(7);
             newer.established(8);
-            const queued = signalling.queueCandidates(NODE, OTHER_ENDPOINT, "key-a", 1, fieldsFor);
+            const queued = signalling.queueCandidates(NODE, OTHER_ENDPOINT, "key-a", candidates(1), fieldsFor);
             const { provided, provide } = recorder();
 
             newer.release(provide, trackedAs(8));
@@ -150,10 +151,16 @@ describe("StartingSessionSignalling", () => {
         it("refuses with error 8 once more candidates than the bound wait, and accepts exactly the bound", async () => {
             const signalling = new StartingSessionSignalling();
             const start = signalling.begin(NODE, ENDPOINT, "key-a");
-            const filling = signalling.queueCandidates(NODE, ENDPOINT, "key-a", MAX_QUEUED_ICE_CANDIDATES, fieldsFor);
+            const filling = signalling.queueCandidates(
+                NODE,
+                ENDPOINT,
+                "key-a",
+                candidates(MAX_QUEUED_ICE_CANDIDATES),
+                fieldsFor,
+            );
             expect(filling).to.not.equal(undefined);
 
-            const refused = signalling.queueCandidates(NODE, ENDPOINT, "key-a", 1, fieldsFor);
+            const refused = signalling.queueCandidates(NODE, ENDPOINT, "key-a", candidates(1), fieldsFor);
             expect(refused).to.not.equal(undefined);
             expect(await outcomeOf(refused!)).to.have.nested.property(
                 "rejected.code",
@@ -168,7 +175,13 @@ describe("StartingSessionSignalling", () => {
         it("counts only the candidates still waiting once the queue is being sent", async () => {
             const signalling = new StartingSessionSignalling();
             const start = signalling.begin(NODE, ENDPOINT, "key-a");
-            const first = signalling.queueCandidates(NODE, ENDPOINT, "key-a", MAX_QUEUED_ICE_CANDIDATES, fieldsFor);
+            const first = signalling.queueCandidates(
+                NODE,
+                ENDPOINT,
+                "key-a",
+                candidates(MAX_QUEUED_ICE_CANDIDATES),
+                listFields,
+            );
             let finishSending = (): void => {};
             const sending = new Promise<void>(resolve => {
                 finishSending = resolve;
@@ -180,14 +193,21 @@ describe("StartingSessionSignalling", () => {
                 provided.push(fields);
                 await sending;
             }, trackedAs(7));
-            expect(provided).to.have.lengthOf(1);
+            expect(provided.length).to.be.greaterThan(0);
 
-            const second = signalling.queueCandidates(NODE, ENDPOINT, "key-a", MAX_QUEUED_ICE_CANDIDATES, fieldsFor);
+            const second = signalling.queueCandidates(
+                NODE,
+                ENDPOINT,
+                "key-a",
+                candidates(MAX_QUEUED_ICE_CANDIDATES),
+                listFields,
+            );
             expect(second).to.not.equal(undefined);
             finishSending();
             expect(await outcomeOf(first!)).to.equal("resolved");
             expect(await outcomeOf(second!)).to.equal("resolved");
-            expect(provided).to.have.lengthOf(2);
+            const sentCandidates = provided.reduce((sum, fields) => sum + labelsOf(fields).length, 0);
+            expect(sentCandidates).to.equal(2 * MAX_QUEUED_ICE_CANDIDATES);
         });
 
         for (const [what, current] of [
@@ -197,22 +217,29 @@ describe("StartingSessionSignalling", () => {
             it(`refuses the rest of the queue with error 8 once the session ${what}, during a send`, async () => {
                 const signalling = new StartingSessionSignalling();
                 const start = signalling.begin(NODE, ENDPOINT, "key-a");
-                const first = signalling.queueCandidates(NODE, ENDPOINT, "key-a", 1, fieldsFor);
-                const second = signalling.queueCandidates(NODE, ENDPOINT, "key-a", 1, fieldsFor);
+                const first = signalling.queueCandidates(NODE, ENDPOINT, "key-a", candidates(1), fieldsFor);
                 let tracked: number | undefined = 7;
                 const provided = new Array<Record<string, unknown>>();
 
                 start.established(7);
+                let queuedDuringSend: Promise<void> | undefined;
                 start.release(
                     async fields => {
                         provided.push(fields);
+                        queuedDuringSend = signalling.queueCandidates(
+                            NODE,
+                            ENDPOINT,
+                            "key-a",
+                            candidates(1),
+                            fieldsFor,
+                        );
                         tracked = current;
                     },
                     () => tracked,
                 );
 
                 expect(await outcomeOf(first!)).to.equal("resolved");
-                expect(await outcomeOf(second!)).to.have.nested.property(
+                expect(await outcomeOf(queuedDuringSend!)).to.have.nested.property(
                     "rejected.code",
                     ServerErrorCode.InvalidArguments,
                 );
@@ -223,12 +250,211 @@ describe("StartingSessionSignalling", () => {
         it("rejects the queued candidates with error 8 when the response was an error", async () => {
             const signalling = new StartingSessionSignalling();
             const start = signalling.begin(NODE, ENDPOINT, "key-a");
-            const queued = signalling.queueCandidates(NODE, ENDPOINT, "key-a", 1, fieldsFor);
+            const queued = signalling.queueCandidates(NODE, ENDPOINT, "key-a", candidates(1), fieldsFor);
 
             start.drop();
 
             expect(await outcomeOf(queued!)).to.have.nested.property("rejected.code", ServerErrorCode.InvalidArguments);
-            expect(signalling.queueCandidates(NODE, ENDPOINT, "key-a", 1, fieldsFor)).to.equal(undefined);
+            expect(signalling.queueCandidates(NODE, ENDPOINT, "key-a", candidates(1), fieldsFor)).to.equal(undefined);
+        });
+    });
+
+    describe("sending the queue", () => {
+        const half = Math.floor(ICE_CANDIDATES_BYTE_BUDGET / 2);
+        const tooBigForTwo = Math.floor(ICE_CANDIDATES_BYTE_BUDGET / 2) + 1;
+
+        /** A start that is established and not released yet, with a recorder whose `provide` can be told to fail. */
+        function startedWith(failures: Array<Error | undefined> = []) {
+            const signalling = new StartingSessionSignalling();
+            const start = signalling.begin(NODE, ENDPOINT, "key-a");
+            start.established(7);
+            const provided = new Array<Record<string, unknown>>();
+            const provide = async (fields: Record<string, unknown>) => {
+                provided.push(fields);
+                const failure = failures[provided.length - 1];
+                if (failure !== undefined) throw failure;
+            };
+            return { signalling, start, provided, provide };
+        }
+
+        it("sends the candidates of every queued command in one invoke, in order, and resolves each", async () => {
+            const { signalling, start, provided, provide } = startedWith();
+            const queued = [
+                signalling.queueCandidates(NODE, ENDPOINT, "key-a", candidates(2, "a"), listFields),
+                signalling.queueCandidates(NODE, ENDPOINT, "key-a", candidates(1, "b"), listFields),
+                signalling.queueCandidates(NODE, ENDPOINT, "key-a", candidates(2, "c"), listFields),
+            ];
+
+            start.release(provide, trackedAs(7));
+
+            for (const promise of queued) expect(await outcomeOf(promise!)).to.equal("resolved");
+            expect(provided).to.have.lengthOf(1);
+            expect(provided[0].id).to.equal(7);
+            expect(labelsOf(provided[0])).to.deep.equal(["a0", "a1", "b0", "c0", "c1"]);
+        });
+
+        it("keeps candidates in one invoke up to the byte budget and splits one byte over it", async () => {
+            const fitting = startedWith();
+            const fits = [
+                fitting.signalling.queueCandidates(
+                    NODE,
+                    ENDPOINT,
+                    "key-a",
+                    [candidateOfBytes(ICE_CANDIDATES_BYTE_BUDGET - 100, "a0")],
+                    listFields,
+                ),
+                fitting.signalling.queueCandidates(NODE, ENDPOINT, "key-a", [candidateOfBytes(100, "b0")], listFields),
+            ];
+            fitting.start.release(fitting.provide, trackedAs(7));
+            for (const promise of fits) expect(await outcomeOf(promise!)).to.equal("resolved");
+            expect(fitting.provided.map(labelsOf)).to.deep.equal([["a0", "b0"]]);
+
+            const over = startedWith();
+            const splits = [
+                over.signalling.queueCandidates(
+                    NODE,
+                    ENDPOINT,
+                    "key-a",
+                    [candidateOfBytes(ICE_CANDIDATES_BYTE_BUDGET - 100, "a0")],
+                    listFields,
+                ),
+                over.signalling.queueCandidates(
+                    NODE,
+                    ENDPOINT,
+                    "key-a",
+                    [candidateOfBytes(101, "b0"), candidateOfBytes(10, "b1")],
+                    listFields,
+                ),
+            ];
+            over.start.release(over.provide, trackedAs(7));
+            for (const promise of splits) expect(await outcomeOf(promise!)).to.equal("resolved");
+            expect(over.provided.map(labelsOf)).to.deep.equal([["a0"], ["b0", "b1"]]);
+        });
+
+        it("sends a candidate larger than the budget alone instead of dropping it", async () => {
+            const { signalling, start, provided, provide } = startedWith();
+            const queued = signalling.queueCandidates(
+                NODE,
+                ENDPOINT,
+                "key-a",
+                [candidateOfBytes(ICE_CANDIDATES_BYTE_BUDGET * 2, "a0"), candidateOfBytes(20, "b0")],
+                listFields,
+            );
+
+            start.release(provide, trackedAs(7));
+
+            expect(await outcomeOf(queued!)).to.equal("resolved");
+            expect(provided.map(labelsOf)).to.deep.equal([["a0"], ["b0"]]);
+        });
+
+        it("answers a command split across invokes with the first failure, else success", async () => {
+            const first = new Error("first");
+            const second = new Error("second");
+            for (const [failures, expected] of [
+                [[first, second], { rejected: first }],
+                [[undefined, second], { rejected: second }],
+                [[first, undefined], { rejected: first }],
+                [[undefined, undefined], "resolved"],
+            ] as const) {
+                const { signalling, start, provided, provide } = startedWith([...failures]);
+                const queued = signalling.queueCandidates(
+                    NODE,
+                    ENDPOINT,
+                    "key-a",
+                    [candidateOfBytes(tooBigForTwo, "a0"), candidateOfBytes(tooBigForTwo, "a1")],
+                    listFields,
+                );
+
+                start.release(provide, trackedAs(7));
+
+                expect(await outcomeOf(queued!)).to.deep.equal(expected);
+                expect(provided.map(labelsOf)).to.deep.equal([["a0"], ["a1"]]);
+            }
+        });
+
+        it("fails every command of a failed merged invoke, and not the commands of the next invoke", async () => {
+            const failure = new Error("refused");
+            const { signalling, start, provided, provide } = startedWith([failure]);
+            const inFirst = [
+                signalling.queueCandidates(NODE, ENDPOINT, "key-a", [candidateOfBytes(half, "a0")], listFields),
+                signalling.queueCandidates(NODE, ENDPOINT, "key-a", [candidateOfBytes(half, "b0")], listFields),
+            ];
+            const inSecond = signalling.queueCandidates(
+                NODE,
+                ENDPOINT,
+                "key-a",
+                [candidateOfBytes(half, "c0")],
+                listFields,
+            );
+
+            start.release(provide, trackedAs(7));
+
+            for (const promise of inFirst) {
+                expect(await outcomeOf(promise!)).to.deep.equal({ rejected: failure });
+            }
+            expect(await outcomeOf(inSecond!)).to.equal("resolved");
+            expect(provided.map(labelsOf)).to.deep.equal([["a0", "b0"], ["c0"]]);
+        });
+
+        it("sends candidates queued during an invoke in the next invoke, all together", async () => {
+            const { signalling, start } = startedWith();
+            const first = signalling.queueCandidates(NODE, ENDPOINT, "key-a", candidates(1, "a"), listFields);
+            const provided = new Array<Record<string, unknown>>();
+            let finishFirst = (): void => {};
+            const held = new Promise<void>(resolve => {
+                finishFirst = resolve;
+            });
+
+            start.release(async fields => {
+                provided.push(fields);
+                if (provided.length === 1) await held;
+            }, trackedAs(7));
+            expect(provided.map(labelsOf)).to.deep.equal([["a0"]]);
+            const during = [
+                signalling.queueCandidates(NODE, ENDPOINT, "key-a", candidates(1, "b"), listFields),
+                signalling.queueCandidates(NODE, ENDPOINT, "key-a", candidates(1, "c"), listFields),
+            ];
+            expect(provided).to.have.lengthOf(1);
+            finishFirst();
+
+            expect(await outcomeOf(first!)).to.equal("resolved");
+            for (const promise of during) expect(await outcomeOf(promise!)).to.equal("resolved");
+            expect(provided.map(labelsOf)).to.deep.equal([["a0"], ["b0", "c0"]]);
+        });
+
+        it("checks that the key still names the session before every invoke of a split queue", async () => {
+            const { signalling, start } = startedWith();
+            const sent = signalling.queueCandidates(
+                NODE,
+                ENDPOINT,
+                "key-a",
+                [candidateOfBytes(tooBigForTwo, "a0")],
+                listFields,
+            );
+            const refused = signalling.queueCandidates(
+                NODE,
+                ENDPOINT,
+                "key-a",
+                [candidateOfBytes(tooBigForTwo, "b0")],
+                listFields,
+            );
+            let tracked: number | undefined = 7;
+            const provided = new Array<Record<string, unknown>>();
+
+            start.release(
+                async fields => {
+                    provided.push(fields);
+                    tracked = undefined;
+                },
+                () => tracked,
+            );
+
+            expect(await outcomeOf(sent!)).to.equal("resolved");
+            expect(await outcomeOf(refused!)).to.have.nested.property(
+                "rejected.code",
+                ServerErrorCode.InvalidArguments,
+            );
+            expect(provided.map(labelsOf)).to.deep.equal([["a0"]]);
         });
     });
 });

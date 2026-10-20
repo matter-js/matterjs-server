@@ -329,9 +329,13 @@ function parseSessionReference(fields: Record<string, unknown>, command: CameraC
 
 export interface ParsedIceCandidatesArgs extends ParsedCameraTarget {
     session: SessionReference;
-    candidateCount: number;
-    /** `ProvideIceCandidates` fields for `webRtcSessionId`; with a key, call it once the id is known. */
-    fieldsFor(webRtcSessionId: number): Record<string, unknown>;
+    /** The converted candidates, in the order the client sent them. */
+    candidates: ReadonlyArray<unknown>;
+    /**
+     * `ProvideIceCandidates` fields for `webRtcSessionId` and `candidates` (default: all of this command's);
+     * with a key, call it once the id is known.
+     */
+    fieldsFor(webRtcSessionId: number, candidates?: ReadonlyArray<unknown>): Record<string, unknown>;
 }
 
 /** The candidates are converted here, so a refusal answers this command even while they wait for the id. */
@@ -348,11 +352,16 @@ export function parseIceCandidatesArgs(args: unknown): ParsedIceCandidatesArgs {
         );
     // Any in-range id converts the same; `fieldsFor` puts in the real one.
     const converted = convert("webRtcSessionId" in session ? session.webRtcSessionId : 0);
+    const candidates = Array.isArray(converted.iceCandidates) ? converted.iceCandidates : new Array<unknown>();
     return {
         ...target,
         session,
-        candidateCount: Array.isArray(fields.ice_candidates) ? fields.ice_candidates.length : 0,
-        fieldsFor: webRtcSessionId => ({ ...converted, webRtcSessionId }),
+        candidates,
+        fieldsFor: (webRtcSessionId, chosen = candidates) => ({
+            ...converted,
+            webRtcSessionId,
+            iceCandidates: chosen,
+        }),
     };
 }
 

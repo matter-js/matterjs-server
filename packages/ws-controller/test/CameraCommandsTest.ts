@@ -1379,14 +1379,20 @@ describe("cameraCommands", () => {
     describe("parseIceCandidatesArgs", () => {
         const candidate = (n: number) => ({ candidate: `candidate:${n}`, sdpMid: "0", sdpMLineIndex: 0 });
 
-        it("counts the candidates, which bounds how many may wait for a starting session", () => {
+        it("hands over the converted candidates in order, and fieldsFor builds the fields for any subset", () => {
             const parsed = parseIceCandidatesArgs({
                 node_id: 5,
                 endpoint_id: 1,
                 client_session_key: "key-a",
                 ice_candidates: [candidate(1), candidate(2), candidate(3)],
             });
-            expect(parsed.candidateCount).to.equal(3);
+            expect(parsed.candidates).to.have.lengthOf(3);
+            const [first, , third] = parsed.candidates;
+            expect(parsed.fieldsFor(9, [third, first])).to.deep.equal({
+                webRtcSessionId: 9,
+                iceCandidates: [third, first],
+            });
+            expect(parsed.fieldsFor(9)).to.have.property("iceCandidates").with.lengthOf(3);
         });
     });
 });
