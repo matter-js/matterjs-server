@@ -146,9 +146,22 @@ export function chooseSnapshotStreamToFree(
 }
 
 /**
- * `best` is the capability that would otherwise be allocated. The size requested from it (all of it
- * without a `target`) must fit under the candidate's `minResolution` per dimension: the camera may answer
- * with any size in the range (§11.2.8.13.3). With a `target`, the candidate closest above it comes first.
+ * The smallest frame a capture with `requestedResolution(stream.maxResolution, target)` can return: the camera
+ * downscales to the requested size, but may answer with any native size in the stream's range (§11.2.8.13.3).
+ */
+function guaranteedFrame(stream: AllocatedSnapshotStream, target: ResolutionTarget | undefined): Resolution {
+    const requested = requestedResolution(stream.maxResolution, target);
+    return {
+        width: Math.min(requested.width, stream.minResolution.width),
+        height: Math.min(requested.height, stream.minResolution.height),
+    };
+}
+
+/**
+ * `best` is the capability that would otherwise be allocated. A candidate is adopted when the frame it is
+ * sure to return for its own fitted request ({@link guaranteedFrame}) reaches the size `best` would give,
+ * in every stated dimension of the `target` (in both without one). Such a frame is never
+ * {@link isDegradedFrom} `best`. With a `target`, the candidate closest above it comes first.
  * `bounds.overlays` must be the resolved overlays, not the caller's statement.
  */
 export function findAdoptableSnapshotStream(
@@ -156,15 +169,18 @@ export function findAdoptableSnapshotStream(
     best: SnapshotCapability,
     bounds: { maxResolution?: Resolution; codec?: number; overlays: OverlayBounds; target?: ResolutionTarget },
 ): AllocatedSnapshotStream | undefined {
-    const ceiling = bounds.maxResolution;
-    const needed = requestedResolution(best.resolution, bounds.target);
+    const { maxResolution: ceiling, target } = bounds;
+    const needed = requestedResolution(best.resolution, target);
+    const checksWidth = target === undefined || target.width !== undefined;
+    const checksHeight = target === undefined || target.height !== undefined;
     const candidates = streams.filter(stream => {
         if (bounds.codec !== undefined && stream.imageCodec !== bounds.codec) return false;
         if (!overlaysMatch(stream.overlays, bounds.overlays)) return false;
         if (ceiling !== undefined && !fitsUnder(stream.maxResolution, ceiling)) return false;
-        return fitsUnder(needed, stream.minResolution);
+        const frame = guaranteedFrame(stream, target);
+        return (!checksWidth || frame.width >= needed.width) && (!checksHeight || frame.height >= needed.height);
     });
-    return orderForTarget(candidates, stream => stream.maxResolution, bounds.target)[0];
+    return orderForTarget(candidates, stream => stream.maxResolution, target)[0];
 }
 
 /**

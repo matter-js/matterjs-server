@@ -26,6 +26,9 @@ function recorder() {
     };
 }
 
+/** The tracked-session lookup for a session that stays open under its key with this id. */
+const trackedAs = (webRtcSessionId: number) => () => webRtcSessionId;
+
 /** Resolves after the work the promise depends on had a chance to run, so a promise that never settles still fails on an assertion. */
 async function outcomeOf(promise: Promise<void>): Promise<"resolved" | { rejected: unknown } | "pending"> {
     const pending = new Promise<"pending">(resolve => setImmediate(() => resolve("pending")));
@@ -62,7 +65,7 @@ describe("StartingSessionSignalling", () => {
 
             start.release(async () => {
                 order.push("candidates");
-            });
+            }, trackedAs(7));
             expect(await outcomeOf(queued!)).to.equal("resolved");
 
             expect(order).to.deep.equal(["event-1", "event-2", "candidates"]);
@@ -86,7 +89,7 @@ describe("StartingSessionSignalling", () => {
             const { provided, provide } = recorder();
 
             start.established(7);
-            start.release(provide);
+            start.release(provide, trackedAs(7));
             expect(await outcomeOf(Promise.all([first!, second!, third!]).then(() => undefined))).to.equal("resolved");
 
             expect(provided).to.deep.equal([
@@ -105,8 +108,8 @@ describe("StartingSessionSignalling", () => {
             const queued = signalling.queueCandidates(NODE, ENDPOINT, "key-a", 1, fieldsFor);
             const { provided, provide } = recorder();
 
-            second.release(provide);
-            first.release(provide);
+            second.release(provide, trackedAs(8));
+            first.release(provide, trackedAs(7));
             expect(await outcomeOf(queued!)).to.equal("resolved");
 
             expect(provided).to.deep.equal([{ webRtcSessionId: 7 }]);
@@ -121,8 +124,8 @@ describe("StartingSessionSignalling", () => {
             const queued = signalling.queueCandidates(OTHER_NODE, ENDPOINT, "key-a", 1, fieldsFor);
             const { provided, provide } = recorder();
 
-            newer.release(provide);
-            own.release(provide);
+            newer.release(provide, trackedAs(8));
+            own.release(provide, trackedAs(7));
             expect(await outcomeOf(queued!)).to.equal("resolved");
 
             expect(provided).to.deep.equal([{ webRtcSessionId: 7 }]);
@@ -137,8 +140,8 @@ describe("StartingSessionSignalling", () => {
             const queued = signalling.queueCandidates(NODE, OTHER_ENDPOINT, "key-a", 1, fieldsFor);
             const { provided, provide } = recorder();
 
-            newer.release(provide);
-            own.release(provide);
+            newer.release(provide, trackedAs(8));
+            own.release(provide, trackedAs(7));
             expect(await outcomeOf(queued!)).to.equal("resolved");
 
             expect(provided).to.deep.equal([{ webRtcSessionId: 7 }]);
@@ -158,7 +161,7 @@ describe("StartingSessionSignalling", () => {
             );
 
             start.established(7);
-            start.release(recorder().provide);
+            start.release(recorder().provide, trackedAs(7));
             expect(await outcomeOf(filling!)).to.equal("resolved");
         });
 
@@ -176,7 +179,7 @@ describe("StartingSessionSignalling", () => {
             start.release(async fields => {
                 provided.push(fields);
                 await sending;
-            });
+            }, trackedAs(7));
             expect(provided).to.have.lengthOf(1);
 
             const second = signalling.queueCandidates(NODE, ENDPOINT, "key-a", MAX_QUEUED_ICE_CANDIDATES, fieldsFor);
@@ -186,6 +189,36 @@ describe("StartingSessionSignalling", () => {
             expect(await outcomeOf(second!)).to.equal("resolved");
             expect(provided).to.have.lengthOf(2);
         });
+
+        for (const [what, current] of [
+            ["ended or its id went to another session", undefined],
+            ["was replaced by a newer one under the same key", 3],
+        ] as const) {
+            it(`refuses the rest of the queue with error 8 once the session ${what}, during a send`, async () => {
+                const signalling = new StartingSessionSignalling();
+                const start = signalling.begin(NODE, ENDPOINT, "key-a");
+                const first = signalling.queueCandidates(NODE, ENDPOINT, "key-a", 1, fieldsFor);
+                const second = signalling.queueCandidates(NODE, ENDPOINT, "key-a", 1, fieldsFor);
+                let tracked: number | undefined = 7;
+                const provided = new Array<Record<string, unknown>>();
+
+                start.established(7);
+                start.release(
+                    async fields => {
+                        provided.push(fields);
+                        tracked = current;
+                    },
+                    () => tracked,
+                );
+
+                expect(await outcomeOf(first!)).to.equal("resolved");
+                expect(await outcomeOf(second!)).to.have.nested.property(
+                    "rejected.code",
+                    ServerErrorCode.InvalidArguments,
+                );
+                expect(provided).to.deep.equal([{ webRtcSessionId: 7 }]);
+            });
+        }
 
         it("rejects the queued candidates with error 8 when the response was an error", async () => {
             const signalling = new StartingSessionSignalling();

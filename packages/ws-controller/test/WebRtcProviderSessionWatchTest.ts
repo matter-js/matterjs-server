@@ -6,7 +6,12 @@
 
 import { EndpointNumber, Logger, LogLevel, Millis, NodeId } from "@matter/main";
 import { Status, StatusResponseError } from "@matter/main/types";
-import { RESTART_MARK_TIMEOUT, WebRtcProviderSessionWatch } from "../src/controller/WebRtcProviderSessionWatch.js";
+import {
+    LEFTOVER_SWEEP_RETRY_DELAY,
+    MAX_FAILED_LEFTOVER_SWEEPS,
+    RESTART_MARK_TIMEOUT,
+    WebRtcProviderSessionWatch,
+} from "../src/controller/WebRtcProviderSessionWatch.js";
 
 const CAMERA = NodeId(5);
 const ENDPOINT = EndpointNumber(1);
@@ -23,7 +28,10 @@ interface Fixture {
     requestor: Set<number>;
     reports: string[];
     ended: number[];
+    endAttempts: number;
     endFailure?: Error;
+    /** When set, each `EndSession` waits for this instead of answering at once. */
+    endGate?: Promise<void>;
 }
 
 function fixture(): Fixture {
@@ -38,6 +46,8 @@ function fixture(): Fixture {
             currentSessions: (_nodeId, endpointId) => sessions.get(endpointId),
             requestorSessionIds: () => requestor,
             endSession: async (_nodeId, _endpointId, webRtcSessionId) => {
+                result.endAttempts++;
+                if (result.endGate !== undefined) await result.endGate;
                 if (result.endFailure !== undefined) throw result.endFailure;
                 ended.push(webRtcSessionId);
             },
@@ -49,6 +59,7 @@ function fixture(): Fixture {
         requestor,
         reports,
         ended,
+        endAttempts: 0,
     };
     return result;
 }
@@ -433,6 +444,106 @@ describe("WebRtcProviderSessionWatch", () => {
         expect(failed).to.have.length(1);
         expect(failed[0]).to.match(/^WARN Ending leftover WebRTC session 1/);
     });
+
+    /** Lets the sweep's `EndSession` calls and their result handling settle. */
+    const settled = () => new Promise(resolve => setTimeout(resolve, 0));
+
+    it("sweeps again after a failed EndSession, once the retry delay passed, against the current list", async () => {
+        const f = fixture();
+        f.sessions.set(ENDPOINT, ours(1));
+        f.endFailure = new StatusResponseError("busy", Status.Busy);
+        MockTime.enable();
+        try {
+            f.watch.reportCompleted(CAMERA);
+            await settled();
+            expect(f.endAttempts).to.equal(1);
+
+            f.endFailure = undefined;
+            f.sessions.set(ENDPOINT, ours(1, 2));
+            await MockTime.advance(Millis(LEFTOVER_SWEEP_RETRY_DELAY - 1));
+            f.watch.reportCompleted(CAMERA);
+            await settled();
+            expect(f.endAttempts).to.equal(1);
+
+            await MockTime.advance(Millis(1));
+            f.watch.reportCompleted(CAMERA);
+            await settled();
+            expect(f.ended).to.deep.equal([1, 2]);
+
+            await MockTime.advance(LEFTOVER_SWEEP_RETRY_DELAY);
+            f.watch.reportCompleted(CAMERA);
+            await settled();
+            expect(f.endAttempts).to.equal(3);
+        } finally {
+            MockTime.disable();
+        }
+    });
+
+    it(`stops sweeping an endpoint after ${MAX_FAILED_LEFTOVER_SWEEPS} failed sweeps`, async () => {
+        const f = fixture();
+        f.sessions.set(ENDPOINT, ours(1));
+        f.endFailure = new StatusResponseError("busy", Status.Busy);
+        MockTime.enable();
+        try {
+            const messages = await logged(async () => {
+                for (let round = 0; round < MAX_FAILED_LEFTOVER_SWEEPS + 2; round++) {
+                    f.watch.reportCompleted(CAMERA);
+                    await settled();
+                    await MockTime.advance(LEFTOVER_SWEEP_RETRY_DELAY);
+                }
+            });
+            expect(f.endAttempts).to.equal(MAX_FAILED_LEFTOVER_SWEEPS);
+            expect(messages.at(-1)).to.match(/^WARN Leaving the leftover WebRTC sessions on node 5 endpoint 1 after 3/);
+
+            f.watch.sweepAgain(CAMERA, ENDPOINT);
+            f.watch.reportCompleted(CAMERA);
+            await settled();
+            expect(f.endAttempts).to.equal(MAX_FAILED_LEFTOVER_SWEEPS + 1);
+        } finally {
+            MockTime.disable();
+        }
+    });
+
+    it("lets sweepAgain during a failing EndSession sweep at the next batch end, without the retry delay", async () => {
+        const f = fixture();
+        f.sessions.set(ENDPOINT, ours(1));
+        f.endFailure = new StatusResponseError("busy", Status.Busy);
+        let open = () => {};
+        f.endGate = new Promise<void>(resolve => {
+            open = resolve;
+        });
+
+        f.watch.reportCompleted(CAMERA);
+        f.watch.sweepAgain(CAMERA, ENDPOINT);
+        open();
+        await settled();
+        f.endGate = undefined;
+        f.endFailure = undefined;
+        f.watch.reportCompleted(CAMERA);
+        await settled();
+
+        expect(f.ended).to.deep.equal([1]);
+    });
+
+    for (const [what, reset] of [
+        ["sweepAgain", (f: Fixture) => f.watch.sweepAgain(CAMERA, ENDPOINT)],
+        ["a node removal", (f: Fixture) => f.watch.nodeRemoved(CAMERA)],
+    ] as const) {
+        it(`drops the retry delay of a failed sweep on ${what}`, async () => {
+            const f = fixture();
+            f.sessions.set(ENDPOINT, ours(1));
+            f.endFailure = new StatusResponseError("busy", Status.Busy);
+            f.watch.reportCompleted(CAMERA);
+            await settled();
+
+            f.endFailure = undefined;
+            reset(f);
+            f.watch.reportCompleted(CAMERA);
+            await settled();
+
+            expect(f.ended).to.deep.equal([1]);
+        });
+    }
 
     it("sweeps a node again after it was removed and commissioned anew", async () => {
         const f = fixture();

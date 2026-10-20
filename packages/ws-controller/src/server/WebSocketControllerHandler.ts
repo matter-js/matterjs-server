@@ -1981,15 +1981,15 @@ export class WebSocketControllerHandler implements WebServerHandler {
             await queued;
             return null;
         }
-        const webRtcSessionId = this.#controller.cameraStreamsIfCreated?.clientSessionId(
-            nodeId,
-            endpointId,
-            ownerId,
-            clientSessionKey,
-        );
+        const webRtcSessionId = this.#trackedSessionId(nodeId, endpointId, ownerId)(clientSessionKey);
         if (webRtcSessionId === undefined) throw unknownClientSessionKey(clientSessionKey, nodeId, endpointId);
         await provide(fieldsFor(webRtcSessionId));
         return null;
+    }
+
+    #trackedSessionId(nodeId: NodeId, endpointId: EndpointNumber, ownerId: string) {
+        return (clientSessionKey: string) =>
+            this.#controller.cameraStreamsIfCreated?.clientSessionId(nodeId, endpointId, ownerId, clientSessionKey);
     }
 
     #iceCandidatesProvider(nodeId: NodeId, endpointId: EndpointNumber) {
@@ -2034,7 +2034,11 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 ...(parsed.clientSessionKey === undefined ? {} : { clientSessionKey: parsed.clientSessionKey }),
             });
             const provide = this.#iceCandidatesProvider(parsed.nodeId, parsed.endpointId);
-            return { result: toWireStartStreamResult(result), afterResponse: () => starting.release(provide) };
+            const trackedSessionId = this.#trackedSessionId(parsed.nodeId, parsed.endpointId, ownerId);
+            return {
+                result: toWireStartStreamResult(result),
+                afterResponse: () => starting.release(provide, trackedSessionId),
+            };
         } catch (error) {
             starting.drop();
             throw error;

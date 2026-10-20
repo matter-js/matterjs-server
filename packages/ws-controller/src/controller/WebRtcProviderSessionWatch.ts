@@ -17,6 +17,15 @@ const logger = Logger.get("WebRtcProviderSessionWatch");
  */
 export const RESTART_MARK_TIMEOUT = Seconds(30);
 
+/** A sweep with a failed `EndSession` runs again at the first batch end this long after the failure. */
+export const LEFTOVER_SWEEP_RETRY_DELAY = Seconds(30);
+
+/**
+ * Failed sweeps of one endpoint before it is left alone until {@link WebRtcProviderSessionWatch.sweepAgain},
+ * node removal or a new process run. Bounds the `EndSession` traffic toward a camera that keeps refusing it.
+ */
+export const MAX_FAILED_LEFTOVER_SWEEPS = 3;
+
 export interface WebRtcProviderSessionWatchIo {
     /** The `PeerNodeID` a camera stores for this server's sessions. */
     localNodeId(): NodeId;
@@ -32,6 +41,12 @@ export interface WebRtcProviderSessionWatchIo {
     endSession(nodeId: NodeId, endpointId: EndpointNumber, webRtcSessionId: number): Promise<void>;
     /** One report of an endpoint: `present` holds the ids it lists for this server. */
     reported(nodeId: NodeId, endpointId: EndpointNumber, present: ReadonlySet<number>, restarted: boolean): void;
+}
+
+interface FailedSweeps {
+    count: number;
+    /** `Time.nowUs` before which the endpoint is not swept again. */
+    retryAt: number;
 }
 
 interface RestartMark {
@@ -56,7 +71,9 @@ interface RestartMark {
  * without `EndSession` leaves them pinning streams and encoders. {@link sweepAgain} and
  * {@link endpointAdded} make a later batch end sweep again. The sweep waits while a `ProvideOffer` or
  * `SolicitOffer` to that endpoint is in flight ({@link establishing}), because the camera can report the new
- * session before this server records it; the next batch end tries again.
+ * session before this server records it; the next batch end tries again. A sweep whose `EndSession` failed
+ * (other than `NOT_FOUND`) runs again against the then current list, after {@link LEFTOVER_SWEEP_RETRY_DELAY},
+ * at most {@link MAX_FAILED_LEFTOVER_SWEEPS} times.
  */
 export class WebRtcProviderSessionWatch {
     readonly #io: WebRtcProviderSessionWatchIo;
@@ -65,6 +82,7 @@ export class WebRtcProviderSessionWatch {
     readonly #swept = new Set<string>();
     readonly #nodesSwept = new Set<NodeId>();
     readonly #establishing = new Map<string, number>();
+    readonly #failedSweeps = new Map<string, FailedSweeps>();
 
     constructor(io: WebRtcProviderSessionWatchIo) {
         this.#io = io;
@@ -156,7 +174,9 @@ export class WebRtcProviderSessionWatch {
 
     /** The next batch end sweeps this endpoint again, for a session this server gave up and could not end. */
     sweepAgain(nodeId: NodeId, endpointId: EndpointNumber): void {
-        this.#swept.delete(this.#key(nodeId, endpointId));
+        const key = this.#key(nodeId, endpointId);
+        this.#swept.delete(key);
+        this.#failedSweeps.delete(key);
         this.#nodesSwept.delete(nodeId);
     }
 
@@ -168,19 +188,54 @@ export class WebRtcProviderSessionWatch {
         for (const key of [...this.#swept]) {
             if (key.startsWith(prefix)) this.#swept.delete(key);
         }
+        for (const key of [...this.#failedSweeps.keys()]) {
+            if (key.startsWith(prefix)) this.#failedSweeps.delete(key);
+        }
     }
 
     #sweep(nodeId: NodeId, endpointId: EndpointNumber, ours: ReadonlySet<number>): void {
         const key = this.#key(nodeId, endpointId);
         if (this.#swept.has(key) || this.#establishing.has(key)) return;
+        const failed = this.#failedSweeps.get(key);
+        if (failed !== undefined && Time.nowUs < failed.retryAt) return;
         this.#swept.add(key);
         const tracked = this.#io.requestorSessionIds(nodeId, endpointId);
-        for (const webRtcSessionId of ours) {
-            if (tracked.has(webRtcSessionId)) continue;
-            this.#endLeftover(nodeId, endpointId, webRtcSessionId).catch(error =>
-                logger.warn(`Ending leftover WebRTC session ${webRtcSessionId} on node ${nodeId} failed:`, error),
+        const ends = [...ours]
+            .filter(webRtcSessionId => !tracked.has(webRtcSessionId))
+            .map(webRtcSessionId =>
+                this.#endLeftover(nodeId, endpointId, webRtcSessionId).then(
+                    () => true,
+                    error => {
+                        logger.warn(
+                            `Ending leftover WebRTC session ${webRtcSessionId} on node ${nodeId} failed:`,
+                            error,
+                        );
+                        return false;
+                    },
+                ),
             );
+        Promise.all(ends)
+            .then(results => {
+                if (!results.every(Boolean)) this.#sweepFailed(nodeId, endpointId);
+            })
+            .catch(error => logger.warn(`Sweeping node ${nodeId} endpoint ${endpointId} failed:`, error));
+    }
+
+    #sweepFailed(nodeId: NodeId, endpointId: EndpointNumber): void {
+        const key = this.#key(nodeId, endpointId);
+        // Node removal or sweepAgain reset the endpoint while the EndSession ran.
+        if (!this.#swept.has(key)) return;
+        const count = (this.#failedSweeps.get(key)?.count ?? 0) + 1;
+        if (count >= MAX_FAILED_LEFTOVER_SWEEPS) {
+            this.#failedSweeps.delete(key);
+            logger.warn(
+                `Leaving the leftover WebRTC sessions on node ${nodeId} endpoint ${endpointId} after ${count} failed sweeps; they stay until the camera ends them or this server restarts`,
+            );
+            return;
         }
+        this.#failedSweeps.set(key, { count, retryAt: Time.nowUs + LEFTOVER_SWEEP_RETRY_DELAY });
+        this.#swept.delete(key);
+        this.#nodesSwept.delete(nodeId);
     }
 
     async #endLeftover(nodeId: NodeId, endpointId: EndpointNumber, webRtcSessionId: number): Promise<void> {

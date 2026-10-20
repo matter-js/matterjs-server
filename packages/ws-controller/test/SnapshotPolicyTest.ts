@@ -665,6 +665,32 @@ describe("snapshotPolicy", () => {
             ).to.equal(undefined);
         });
 
+        it("fits the target to the candidate's own aspect ratio, not to the capability's", () => {
+            // Capture asks the 16:9 stream for 640x360; that meets a width-only target the 4:3 capability would give as 640x480.
+            const capability = SNAPSHOT_CAPABILITIES[0];
+            const wide = stream(8, 640, 360);
+            const adopted = findAdoptableSnapshotStream([wide], capability, { overlays: {}, target: { width: 640 } });
+            expect(adopted?.snapshotStreamId).to.equal(8);
+            expect(isDegradedFrom(wide.minResolution, capability, { width: 640 })).to.equal(false);
+        });
+
+        it("refuses a candidate short of the capability's fitted size in a stated dimension", () => {
+            const capability = SNAPSHOT_CAPABILITIES[0];
+            expect(
+                findAdoptableSnapshotStream([stream(8, 640, 360)], capability, {
+                    overlays: {},
+                    target: { width: 640, height: 480 },
+                }),
+            ).to.equal(undefined);
+        });
+
+        it("refuses a ranged candidate whose floor is below its own fitted request", () => {
+            const ranged = { ...stream(8, 1920, 1080), minResolution: { width: 640, height: 360 } };
+            expect(findAdoptableSnapshotStream([ranged], best, { overlays: {}, target: { width: 1000 } })).to.equal(
+                undefined,
+            );
+        });
+
         it("takes the smallest candidate that reaches the target", () => {
             const candidates = [stream(8, 1920, 1080), stream(9, 1280, 720), stream(10, 640, 360)];
             expect(

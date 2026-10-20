@@ -39,9 +39,14 @@ export interface StartingSession {
     established(webRtcSessionId: number): void;
     /**
      * Call right after the response is sent: sends the held events in order and stops holding, then sends
-     * the queued candidates in order with `provide`. Candidates queued meanwhile follow them.
+     * the queued candidates in order with `provide`. Candidates queued meanwhile follow them. Before each
+     * send, `trackedSessionId` must still name this start's session for its key; once it does not (the
+     * session ended, or its id went to another session), the rest of the queue is refused.
      */
-    release(provide: (fields: Record<string, unknown>) => Promise<void>): void;
+    release(
+        provide: (fields: Record<string, unknown>) => Promise<void>,
+        trackedSessionId: (clientSessionKey: string) => number | undefined,
+    ): void;
     /** For an error response: the client never learned the session id, so its held events are discarded. */
     drop(): void;
 }
@@ -84,10 +89,10 @@ export class StartingSessionSignalling {
             established: webRtcSessionId => {
                 start.webRtcSessionId = webRtcSessionId;
             },
-            release: provide => {
+            release: (provide, trackedSessionId) => {
                 start.holding = false;
                 for (const send of start.held.splice(0)) send();
-                this.#provideQueued(start, provide).catch(error =>
+                this.#provideQueued(start, provide, trackedSessionId).catch(error =>
                     logger.error("Failed to send the ICE candidates queued for a starting session", error),
                 );
             },
@@ -154,11 +159,15 @@ export class StartingSessionSignalling {
     }
 
     /** One at a time, so the camera receives them in the order the client sent them. */
-    async #provideQueued(start: HeldStart, provide: (fields: Record<string, unknown>) => Promise<void>): Promise<void> {
+    async #provideQueued(
+        start: HeldStart,
+        provide: (fields: Record<string, unknown>) => Promise<void>,
+        trackedSessionId: (clientSessionKey: string) => number | undefined,
+    ): Promise<void> {
         const { webRtcSessionId } = start;
         for (let queued = start.candidates.shift(); queued !== undefined; queued = start.candidates.shift()) {
             start.queuedCandidates -= queued.count;
-            if (webRtcSessionId === undefined) {
+            if (webRtcSessionId === undefined || trackedSessionId(queued.clientSessionKey) !== webRtcSessionId) {
                 queued.reject(unknownClientSessionKey(queued.clientSessionKey, start.nodeId, start.endpointId));
                 continue;
             }
