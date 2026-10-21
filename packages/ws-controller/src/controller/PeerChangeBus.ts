@@ -16,11 +16,11 @@ import {
     Observable,
     ObserverGroup,
     ServerNode,
-    Timestamp,
 } from "@matter/main";
 import { AttributeId, ClusterId, EndpointNumber, EventId, EventNumber } from "@matter/main/types";
 import { ChangeNotificationService } from "@matter/node";
 import { nodeIdOf } from "../util/nodeIdOf.js";
+import { EventTimestampResolver, ResolvedEventTimestamp } from "./EventTimestampResolver.js";
 
 const logger = Logger.get("PeerChangeBus");
 
@@ -41,22 +41,6 @@ export type EventChange = {
     path: { endpointId: EndpointNumber; clusterId: ClusterId; eventId: EventId };
     events: EventOccurrence[];
 };
-
-/** The timestamp fields to forward, empty for the delta variants a consumer cannot resolve. */
-export function absoluteTimestampOf(
-    timestamp: Timestamp,
-    kind: ChangeNotificationService.TimestampKind,
-): { epochTimestamp?: Timestamp; systemTimestamp?: Timestamp } {
-    switch (kind) {
-        case "epoch":
-            return { epochTimestamp: timestamp };
-        case "system":
-            return { systemTimestamp: timestamp };
-        default:
-            logger.debug(`Dropping ${kind} event timestamp: a delta cannot be reported as an absolute time`);
-            return {};
-    }
-}
 
 /**
  * Fans the controller's single node-wide {@link ChangeNotificationService} stream out into per-peer
@@ -83,6 +67,7 @@ export class PeerChangeBus {
      * endpoint, which must not reach consumers as individual endpoint removals.
      */
     #tearingDown = new WeakSet<ClientNode>();
+    #eventTimestamps = new WeakMap<ClientNode, EventTimestampResolver>();
 
     readonly events = {
         attributeChanged: new Observable<[nodeId: NodeId, change: AttributeChange]>(),
@@ -188,11 +173,18 @@ export class PeerChangeBus {
                     this.#emitAttributeChanges(nodeId, change);
                 }
                 break;
-            case "event":
+            case "event": {
+                // Resolve even when not forwarding: a later delta may build on this event's timestamp.
+                const timestamps = this.#eventTimestampsOf(peer).resolve(
+                    change.number,
+                    change.timestamp,
+                    change.timestampKind,
+                );
                 if (this.#reporting.has(peer)) {
-                    this.#emitEvent(nodeId, change);
+                    this.#emitEvent(nodeId, change, timestamps);
                 }
                 break;
+            }
             case "delete":
                 // The peer's own root endpoint being destroyed is node removal, reported elsewhere.
                 if (change.endpoint !== peer && !this.#tearingDown.has(peer)) {
@@ -264,8 +256,17 @@ export class PeerChangeBus {
         return attributes[property]?.id;
     }
 
-    #emitEvent(nodeId: NodeId, change: ChangeNotificationService.EventOccurrence) {
-        const { endpoint, behavior, event, number, timestamp, timestampKind, priority, payload } = change;
+    #eventTimestampsOf(peer: ClientNode) {
+        let resolver = this.#eventTimestamps.get(peer);
+        if (resolver === undefined) {
+            resolver = new EventTimestampResolver();
+            this.#eventTimestamps.set(peer, resolver);
+        }
+        return resolver;
+    }
+
+    #emitEvent(nodeId: NodeId, change: ChangeNotificationService.EventOccurrence, timestamps: ResolvedEventTimestamp) {
+        const { endpoint, behavior, event, number, priority, payload } = change;
         if (!ClusterBehavior.is(behavior)) {
             return;
         }
@@ -280,11 +281,8 @@ export class PeerChangeBus {
                 {
                     eventNumber: number,
                     priority,
-                    // Matter Core 10.7 has four timestamp variants and neither the clock nor
-                    // absolute-vs-delta is recoverable from the value. A delta is left out rather than
-                    // published as an absolute time, which would read as a bogus uptime or a 1970 date;
-                    // the WebSocket layer then times the event at reception.
-                    ...absoluteTimestampOf(timestamp, timestampKind),
+                    // An unresolved delta is left out: the WebSocket layer then times the event at reception.
+                    ...timestamps,
                     data: payload,
                 },
             ],

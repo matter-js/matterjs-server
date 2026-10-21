@@ -7,6 +7,10 @@ This page shows a detailed overview of the changes between versions without the 
 	## **WORK IN PROGRESS**
 -->
 
+## **WORK IN PROGRESS**
+
+- Fix: Events that a device reports together in one message get the device timestamp. Before, only the first event of a message had it and the others got the time the server received them
+
 ## 1.5.1 (2026-10-21)
 
 - Enhancement: (@lanthaler) Adds the vendor clusters for the Aqara Led Strip T2 to configure the music sync feature to the custom cluster definitions

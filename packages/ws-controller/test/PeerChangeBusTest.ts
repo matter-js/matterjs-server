@@ -5,9 +5,11 @@
  */
 
 import { Seconds } from "@matter/general";
-import { ClientNode, NetworkClient, NodeId, ObserverGroup, ServerNode } from "@matter/main";
+import { ClientNode, ClusterBehavior, NetworkClient, NodeId, ObserverGroup, ServerNode, Timestamp } from "@matter/main";
 import { BooleanState, OnOff } from "@matter/main/clusters";
-import { EndpointNumber } from "@matter/main/types";
+import { Matter } from "@matter/main/model";
+import { EndpointNumber, EventNumber } from "@matter/main/types";
+import { ChangeNotificationService } from "@matter/node";
 import { OnOffServer } from "@matter/node/behaviors/on-off";
 import { SustainedSubscription } from "@matter/protocol";
 import { AttributeChange, EventChange, PeerChangeBus } from "../src/controller/PeerChangeBus.js";
@@ -148,6 +150,35 @@ describe("PeerChangeBus", () => {
         expect(change.events[0].eventNumber).not.undefined;
         expect(change.events[0].epochTimestamp).not.undefined;
         expect(change.events[0].data).deep.equals({ stateValue: true });
+    });
+
+    it("resolves a delta event timestamp against an event from before reporting started", async () => {
+        await site.commission(controller, device);
+        expect(bus.isReporting(peer())).equals(false);
+        const endpoint = peer().endpoints.for(EndpointNumber(light.number));
+        const behavior = endpoint.behaviors.supported.booleanState;
+        expect(ClusterBehavior.is(behavior)).equals(true);
+        const event = Matter.clusters(BooleanState.Cluster.id)?.events(BooleanState.Cluster.events.stateChange.id);
+        expect(event).not.undefined;
+        if (behavior === undefined || event === undefined) {
+            return;
+        }
+        const notifications = controller.env.get(ChangeNotificationService);
+        const broadcast = (number: number, timestamp: number, timestampKind: "system" | "system-delta") =>
+            notifications.broadcastEvent(endpoint, behavior, event, {
+                number: EventNumber(number),
+                timestamp: Timestamp(timestamp),
+                timestampKind,
+                priority: 1,
+                payload: { stateValue: true },
+            });
+
+        broadcast(100, 5_000, "system");
+        await awaitSubscribed();
+        events.length = 0;
+        broadcast(101, 4, "system-delta");
+
+        expect(events.map(([, change]) => change.events[0].systemTimestamp)).deep.equals([5_004]);
     });
 
     it("reports one endpoint going away without latching the whole peer as torn down", async () => {
