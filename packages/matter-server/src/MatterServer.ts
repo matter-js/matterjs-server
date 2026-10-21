@@ -219,7 +219,7 @@ async function start() {
     }
 
     // Subscribe to node events for legacy data file updates
-    if (legacyData.serverFile && legacyData.fabricConfig) {
+    if (legacyData.serverFile && legacyData.fabricConfig && controller.legacyDataMigrated) {
         legacyDataWriter = new LegacyDataWriter(env, cliOptions.storagePath, legacyData.fabricConfig);
 
         controller.commandHandler.events.nodeAdded.on(nodeId => {
