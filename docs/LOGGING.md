@@ -133,7 +133,7 @@ transport open/close and chunk transfer. The default home for high-volume expect
 | ---------------------------------------------------------- | -------- |
 | Server listening / ready; shutdown complete                | `notice` |
 | Node commissioned / decommissioned                         | `notice` |
-| Node added / removed / became available again              | `notice` |
+| Node added / removed / became available                    | `notice` |
 | OTA update available / applied for a node                  | `notice` |
 | Attribute/event subscription created / cancelled           | `notice` |
 | Commissioning rejected by device (wrong passcode etc.)     | `notice` |

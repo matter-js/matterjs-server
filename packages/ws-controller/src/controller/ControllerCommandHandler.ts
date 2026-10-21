@@ -939,6 +939,11 @@ export class ControllerCommandHandler {
         this.#nodes.set(nodeId, node);
 
         this.#nodes.seedState(nodeId, node.lifecycle.connectionState);
+        if (this.#nodes.isAvailable(nodeId)) {
+            logger.notice(
+                `Node ${this.formatNode(nodeId)} available at registration (state: ${NodeConnectionState[node.lifecycle.connectionState]})`,
+            );
+        }
 
         await this.#snapshotNode(nodeId, node);
 

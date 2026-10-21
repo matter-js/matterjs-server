@@ -7,6 +7,8 @@
 import {
     ClientNode,
     FabricId,
+    Logger,
+    LogLevel,
     MatterError,
     NetworkClient,
     NodeConnectionState,
@@ -102,6 +104,27 @@ function onlyPeer(controller: ServerNode) {
     return peer;
 }
 
+/** Collects every availability log line of the handler until the returned stop function runs. */
+function captureAvailabilityLogs() {
+    const lines = new Array<string>();
+    const destination = Logger.destinations.default;
+    const { write, level } = destination;
+    destination.write = (text, message) => {
+        if (message.facility === "ControllerCommandHandler" && /Node .*? availab(le |ility changed)/.test(text)) {
+            lines.push(text);
+        }
+        write.call(destination, text, message);
+    };
+    destination.level = LogLevel.DEBUG;
+    return {
+        lines,
+        stop: () => {
+            destination.write = write;
+            destination.level = level;
+        },
+    };
+}
+
 /**
  * Replaces the cache's full rebuild for the rest of the test. The prototype is the only seam: the cache is
  * private to the handler.
@@ -122,16 +145,19 @@ describe("restored node cache", () => {
     let site: TestSite;
     let handler: ControllerCommandHandler | undefined;
     let restore: (() => void) | undefined;
+    let logs: ReturnType<typeof captureAvailabilityLogs> | undefined;
 
     beforeEach(() => {
         MockTime.reset();
         site = new TestSite();
         handler = undefined;
         restore = undefined;
+        logs = undefined;
     });
 
     afterEach(async () => {
         restore?.();
+        logs?.stop();
         if (handler !== undefined) {
             await MockTime.resolve(handler.close(), { macrotasks: true });
         }
@@ -167,6 +193,7 @@ describe("restored node cache", () => {
         });
 
         const { controller, handler, view } = await restartController();
+        logs = captureAvailabilityLogs();
         await MockTime.resolve(handler.initializeNodes(), { macrotasks: true });
         const peer = onlyPeer(controller);
         const nodeId = nodeIdOf(peer);
@@ -175,6 +202,8 @@ describe("restored node cache", () => {
         await awaitConnected(peer);
         await settle();
 
+        expect(logs.lines).length(1);
+        expect(logs.lines[0]).contains("available after its first report");
         expect(viewOf(handler, nodeId)).deep.equals({ available: true, onOff: true });
         expect(view.nodeUpdates).deep.equals([{ available: true, onOff: true }]);
         expect(view.attributeChanges).not.include(ON_OFF_PATH);
@@ -214,10 +243,13 @@ describe("restored node cache", () => {
         await MockTime.resolve(handler.start(), { macrotasks: true });
         const peer = onlyPeer(controller);
         await awaitConnected(peer);
+        logs = captureAvailabilityLogs();
         await MockTime.resolve(handler.initializeNodes(), { macrotasks: true });
 
         expect(viewOf(handler, nodeIdOf(peer))).deep.equals({ available: true, onOff: true });
         await settle();
+        expect(logs.lines).length(1);
+        expect(logs.lines[0]).contains("available at registration (state: Connected)");
         expect(view.nodeUpdates).deep.equals([]);
         expect(view.attributeChanges).not.include(ON_OFF_PATH);
     });
@@ -366,6 +398,7 @@ describe("restored node cache", () => {
         const commandHandler = handler;
         const view = recordClientView(commandHandler);
         await MockTime.resolve(commandHandler.initializeNodes(), { macrotasks: true });
+        logs = captureAvailabilityLogs();
 
         const { passcode, discriminator } = device.state.commissioning;
         const { nodeId } = await site.pairing(controller, device, () =>
@@ -381,6 +414,8 @@ describe("restored node cache", () => {
         const { view, availableWhenAdded } = await commissionThroughHandler();
 
         expect(availableWhenAdded).equals(true);
+        expect(logs?.lines).length(1);
+        expect(logs?.lines[0]).contains("available at registration");
         expect(view.nodeUpdates).deep.equals([{ available: true, onOff: false }]);
         expect(view.attributeChanges).not.include(ON_OFF_PATH);
     });

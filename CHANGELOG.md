@@ -7,6 +7,10 @@ This page shows a detailed overview of the changes between versions without the 
 	## **WORK IN PROGRESS**
 -->
 
+## **WORK IN PROGRESS**
+
+- Fix: The log shows a node that is already available when the server registers it (at start or after commissioning), so every node that becomes available has a log line
+
 ## 1.5.0 (2026-10-20)
 
 - Feature: Introduces Websocket Schema version 14 (backward compatible), detectable with `server_info.schema_version >= 14`. Details are in [docs/websockets_api.md](docs/websockets_api.md#camera-streaming-schema-14) and [docs/websocket-api-schema-changelog.md](docs/websocket-api-schema-changelog.md)
