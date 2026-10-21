@@ -7,6 +7,13 @@ This page shows a detailed overview of the changes between versions without the 
 	## **WORK IN PROGRESS**
 -->
 
+## **WORK IN PROGRESS**
+
+- Breaking: The server no longer writes changes back into the Python Matter Server data files. To go back to the Python Matter Server, restore the backup from before the migration
+- Enhancement: Once all Python Matter Server data is migrated, the server renames the Python Matter Server data files to `*.migrated`, so later starts no longer read them
+- Fix: Nodes from the Python Matter Server data that were not migrated on the first start are migrated on a later start
+- Fix: Controller storage written by matter.js before 0.16 is migrated again
+
 ## 1.5.2 (2026-10-21)
 
 - Fix: Events with a delta timestamp are processed with the calculated device time again instead of the time the server received them

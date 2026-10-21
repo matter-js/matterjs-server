@@ -29,7 +29,7 @@ import { Ble } from "@matter/main/protocol";
 import { importCertificates } from "./certificates.js";
 import { getCliOptions, getOriginalArgv, type LogLevel as CliLogLevel } from "./cli.js";
 import { controllerOptionsFrom } from "./controller-options.js";
-import { LegacyDataWriter, loadLegacyData, type LegacyData } from "./converter/index.js";
+import { loadLegacyData, retireLegacyData, type LegacyData } from "./converter/index.js";
 import { createFileLogger } from "./file-logger.js";
 import { initializeOta } from "./ota.js";
 import { loadRevocationSets } from "./revocation-sets.js";
@@ -106,7 +106,7 @@ let controller: MatterController;
 let server: WebServer;
 let config: ConfigStorage;
 let legacyData: LegacyData;
-let legacyDataWriter: LegacyDataWriter | undefined;
+let legacyRetirement: Promise<void> | undefined;
 let fileLoggerClose: (() => Promise<void>) | undefined;
 let stopping = false;
 const SHUTDOWN_AFTER_START_FAILURE_TIMEOUT = Seconds(30);
@@ -218,20 +218,6 @@ async function start() {
         controller.commandHandler.events.started.once(async () => await initializeOta(controller, cliOptions));
     }
 
-    // Subscribe to node events for legacy data file updates
-    if (legacyData.serverFile && legacyData.fabricConfig && controller.legacyDataMigrated) {
-        legacyDataWriter = new LegacyDataWriter(env, cliOptions.storagePath, legacyData.fabricConfig);
-
-        controller.commandHandler.events.nodeAdded.on(nodeId => {
-            const dateCommissioned = new Date().toISOString();
-            legacyDataWriter!.queueAddition(nodeId, dateCommissioned);
-        });
-
-        controller.commandHandler.events.nodeDecommissioned.on(nodeId => {
-            legacyDataWriter!.queueRemoval(nodeId);
-        });
-    }
-
     const wsHandler = new WebSocketControllerHandler(controller, config, MATTER_SERVER_VERSION);
     const handlers: WebServerHandler[] = [new HealthHandler(wsHandler), wsHandler];
     const reservedPaths = new Array<string>();
@@ -256,6 +242,21 @@ async function start() {
     }
 
     await server.start();
+
+    // Only once the server is up: a start that fails keeps the Python data for the next one.
+    if (controller.legacyDataMigrated) {
+        legacyRetirement = retireLegacyData({
+            env,
+            storagePath: cliOptions.storagePath,
+            legacyData,
+        })
+            .then(retired => {
+                if (retired.length > 0) {
+                    logger.notice(`Renamed Python Matter Server file(s) to *.migrated: ${retired.join(", ")}`);
+                }
+            })
+            .catch(error => logger.warn("Could not retire the Python Matter Server data:", error));
+    }
 }
 
 async function stop() {
@@ -276,6 +277,7 @@ async function stop() {
 
 /** Open handles (controller, mDNS, runtime workers) keep the process alive until this has run. */
 async function shutdown() {
+    await legacyRetirement;
     try {
         await server?.stop();
     } catch (err) {
@@ -285,15 +287,6 @@ async function shutdown() {
         await controller?.stop();
     } catch (err) {
         console.warn("Failed to stop controller:", err);
-    }
-    // Flush any pending legacy data writes before closing
-    try {
-        if (legacyDataWriter?.hasPendingWork()) {
-            logger.info("Flushing pending legacy data writes...");
-            await legacyDataWriter.flush();
-        }
-    } catch (err) {
-        console.warn("Failed to flush legacy data:", err);
     }
     try {
         await config?.close();

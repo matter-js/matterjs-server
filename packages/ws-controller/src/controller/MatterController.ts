@@ -7,13 +7,13 @@
 import { cdSigners, paaRoots, vendors } from "@matter/dcl-data/node";
 import {
     Bytes,
-    CommissioningClient,
     Crypto,
     DclBehavior,
     Duration,
     EndpointNumber,
     Environment,
     FabricId,
+    FabricIndex,
     GlobalFabricId,
     Logger,
     ImplementationError,
@@ -23,7 +23,6 @@ import {
     SharedEnvironmentServices,
     SoftwareUpdateManager,
     Time,
-    Timestamp,
 } from "@matter/main";
 import { DclCertificateService, DclVendorInfoService, OperationalDataset, VendorInfo } from "@matter/main/protocol";
 import { VendorId } from "@matter/main/types";
@@ -213,7 +212,6 @@ export class MatterController {
     #config: ConfigStorage;
     #serverId: string;
     #serverVersion: string;
-    #legacyCommissionedDates?: Map<string, Timestamp>;
     #enableTestNetDcl = false;
     #disableOtaProvider = true;
     #disableDclSeed = false;
@@ -231,6 +229,7 @@ export class MatterController {
     readonly #backgroundInit = new Array<Promise<unknown>>();
     #stopped = false;
     #legacyDataMigrated = false;
+    #pythonDataPresent = false;
     readonly #credentials = new ThreadCredentialsRegistry();
     readonly #threadDiagnostics: ThreadDiagnosticsService;
     #networkTopology?: NetworkTopologyService;
@@ -256,12 +255,13 @@ export class MatterController {
 
         const instance = new MatterController(environment, config, options, serverId);
 
-        const commissionedDates = new Map<string, Timestamp>();
         if (legacyData !== undefined) {
             const crypto = environment.get(Crypto);
             const baseStorage = await config.service.open(serverId);
             try {
                 const { credentials, fabric, nodeData } = legacyData;
+                instance.#pythonDataPresent =
+                    credentials !== undefined || fabric !== undefined || nodeData !== undefined;
                 if (credentials !== undefined && fabric !== undefined) {
                     instance.#legacyDataMigrated = await LegacyDataInjector.injectCredentials(
                         baseStorage,
@@ -269,24 +269,18 @@ export class MatterController {
                         credentials,
                         fabric,
                     );
-                } else if (credentials !== undefined || fabric !== undefined || nodeData !== undefined) {
+                } else if (instance.#pythonDataPresent) {
                     logger.warn(
                         "The Python Matter Server data lacks the controller CA or fabric, so it is not migrated.",
                     );
                 }
-                if (
-                    instance.#legacyDataMigrated &&
-                    (await LegacyDataInjector.injectNodeData(
+                if (instance.#legacyDataMigrated && nodeData !== undefined && fabric !== undefined) {
+                    const { failed } = await LegacyDataInjector.injectNodeData(
                         baseStorage,
-                        legacyData.nodeData,
-                        legacyData.fabric?.fabricIndex,
-                    )) &&
-                    legacyData.nodeData !== undefined
-                ) {
-                    for (const [nodeIdStr, data] of Object.entries(legacyData.nodeData.nodes)) {
-                        const { date_commissioned: commissionedAt } = data;
-                        commissionedDates.set(nodeIdStr, Timestamp(new Date(commissionedAt).getTime()));
-                    }
+                        nodeData,
+                        FabricIndex(fabric.fabricIndex),
+                    );
+                    instance.#legacyDataMigrated = failed.length === 0;
                 }
 
                 // Check if the nextNodeId needs to be updated based on legacy data
@@ -306,7 +300,7 @@ export class MatterController {
             }
         }
 
-        await instance.initialize(legacyData?.vendorId, legacyData?.fabricId, commissionedDates);
+        await instance.initialize(legacyData?.vendorId, legacyData?.fabricId);
         return instance;
     }
 
@@ -352,13 +346,7 @@ export class MatterController {
         });
     }
 
-    protected async initialize(
-        vendorId?: number,
-        fabricId?: number | bigint,
-        legacyCommissionedDates?: Map<string, Timestamp>,
-    ) {
-        this.#legacyCommissionedDates = legacyCommissionedDates?.size ? legacyCommissionedDates : undefined;
-
+    protected async initialize(vendorId?: number, fabricId?: number | bigint) {
         // Mimic Dcl configuration from DCL Behavior override settings
         const dclConfig = this.#env.vars.has("dcl.productionurl")
             ? { url: this.#env.vars.string("dcl.productionurl") }
@@ -418,6 +406,8 @@ export class MatterController {
             serverVersion: this.#serverVersion,
             enableOtaProvider: !this.#disableOtaProvider,
             peerSettingsRepair: this.#config,
+            migrateLegacyStorage: !this.#pythonDataPresent,
+            legacyNodeDataObsolete: this.#legacyDataMigrated,
             disableAutoSubscription: this.#disableAutoSubscription,
             dcl: { acceptTestCertificates: this.#enableTestNetDcl, offline: this.#dclOffline },
         });
@@ -443,10 +433,6 @@ export class MatterController {
                 if (this.#stopped) return;
 
                 const initPromises = new Array<Promise<unknown>>();
-
-                if (this.#legacyCommissionedDates !== undefined) {
-                    initPromises.push(this.injectCommissionedDates());
-                }
 
                 // Fire-and-forget: consumers (getAllVendors) await its construction lazily, so this
                 // only pre-warms to spare the first request the DCL fetch latency — node init needn't wait.
@@ -493,7 +479,11 @@ export class MatterController {
         return this.#borderRouterRegistry;
     }
 
-    /** Whether this start migrated, or kept using, the Python Matter Server data passed to {@link create}. */
+    /**
+     * Whether the storage holds all of the Python Matter Server data passed to {@link create} after this start: its
+     * controller CA, its fabric and a peer for every node that was read. Only then may the Python data files be
+     * renamed; a node file that could not be read is checked separately.
+     */
     get legacyDataMigrated(): boolean {
         return this.#legacyDataMigrated;
     }
@@ -676,25 +666,6 @@ export class MatterController {
      */
     async getAllVendors(): Promise<ReadonlyMap<number, VendorInfo>> {
         return (await this.vendorInfoService()).vendors;
-    }
-
-    async injectCommissionedDates() {
-        const controller = this.#controller;
-        if (controller === undefined || this.#legacyCommissionedDates === undefined) {
-            return;
-        }
-        for (const [nodeIdStr, commissionedAt] of this.#legacyCommissionedDates) {
-            try {
-                const peerAddress = controller.fabric.addressOf(NodeId(BigInt(nodeIdStr)));
-                const node = await controller.node.peers.forAddress(peerAddress);
-                const commissioningState = node.maybeStateOf(CommissioningClient);
-                if (commissioningState !== undefined && commissioningState.commissionedAt === undefined) {
-                    await node.setStateOf(CommissioningClient, { commissionedAt });
-                }
-            } catch (error) {
-                logger.warn(`Error injecting commissioned date for node ${nodeIdStr}`, error);
-            }
-        }
     }
 
     /** Store a background task catch-wrapped, so an in-flight rejection is logged, not unhandled, and it stays awaitable by stop(). */

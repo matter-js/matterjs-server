@@ -108,7 +108,6 @@ async function migrate(env: Environment, legacy: LegacyServerData) {
         { serverId: SERVER_ID, dclOffline: true, disableOtaProvider: true },
         legacy,
     );
-    await controller.injectCommissionedDates();
     await controller.stop();
     await config.close();
     return controller.legacyDataMigrated;
@@ -182,6 +181,21 @@ async function storeLegacyFabricOnly(env: Environment, legacyFabric: Fabric) {
         await storage.createContext("fabrics").set("fabrics", [legacyFabric.config]);
     } finally {
         await storage.close();
+    }
+}
+
+async function removePeer(env: Environment, nodeId: NodeId) {
+    const controller = await createControllerNode({
+        environment: env,
+        id: SERVER_ID,
+        adminFabricLabel: "Home",
+        serverVersion: "1.5.0",
+        enableOtaProvider: false,
+    });
+    try {
+        await controller.node.peers.get(controller.fabric.addressOf(nodeId))?.delete();
+    } finally {
+        await controller.close();
     }
 }
 
@@ -372,5 +386,106 @@ describe("Legacy migration", () => {
         expect(await migrate(nextEnvironment(), { vendorId: 0xfff1, fabricId: 1 })).equals(false);
 
         expect(logs.lines).deep.equals([]);
+    });
+
+    it("migrates a legacy node added after the first migration", async () => {
+        await migrate(nextEnvironment(), legacy);
+        const nodes = legacy.nodeData?.nodes ?? {};
+        const added = {
+            ...legacy,
+            nodeData: { vendor_info: {}, last_node_id: 5, nodes: { ...nodes, "5": { ...nodes["2"], node_id: 5 } } },
+        };
+
+        expect(await migrate(nextEnvironment(), added)).equals(true);
+
+        expect((await readPeers(nextEnvironment())).map(({ address }) => address)).deep.equals([
+            "@1:2",
+            "@1:3",
+            "@1:4",
+            "@1:5",
+        ]);
+    });
+
+    it("does not bring back a peer that the legacy file no longer lists", async () => {
+        await migrate(nextEnvironment(), legacy);
+        await removePeer(nextEnvironment(), NodeId(3));
+        const { "3": _removed, ...remaining } = legacy.nodeData?.nodes ?? {};
+
+        await migrate(nextEnvironment(), {
+            ...legacy,
+            nodeData: { vendor_info: {}, last_node_id: 4, nodes: remaining },
+        });
+
+        expect((await readState(nextEnvironment())).peers).deep.equals(["@1:2", "@1:4"]);
+    });
+
+    it("removes the legacy node data of migrated nodes and keeps the rest", async () => {
+        await migrate(nextEnvironment(), legacy);
+        const seed = await nextEnvironment().get(StorageService).open(SERVER_ID);
+        try {
+            await seed.createContext("node-2").createContext("0").createContext("40").set("__version__", 1);
+            await seed.createContext("node-9").createContext("0").createContext("40").set("__version__", 1);
+            await seed.createContext("nodes").set("commissionedNodes", [
+                [2, {}],
+                [9, {}],
+            ]);
+        } finally {
+            await seed.close();
+        }
+
+        expect((await readPeers(nextEnvironment())).length).equals(3);
+
+        const storage = await nextEnvironment().get(StorageService).open(SERVER_ID);
+        try {
+            expect(await storage.createContext("node-2").createContext("0").createContext("40").keys()).deep.equals([]);
+            expect(await storage.createContext("node-9").createContext("0").createContext("40").keys()).deep.equals([
+                "__version__",
+            ]);
+            expect(await storage.createContext("nodes").get("commissionedNodes")).deep.equals([[9, {}]]);
+        } finally {
+            await storage.close();
+        }
+    });
+
+    it("does not migrate into storage that holds controller data of matter.js before 0.16", async () => {
+        const other = await createLegacyData(Environment.default.get(Crypto));
+        const credentials = other.data.credentials;
+        if (credentials === undefined) {
+            expect.fail("legacy data without CA");
+            return;
+        }
+        const storage = await nextEnvironment().get(StorageService).open(SERVER_ID);
+        try {
+            await storage.createContext("credentials").set(credentials);
+        } finally {
+            await storage.close();
+        }
+
+        expect(await migrate(nextEnvironment(), legacy)).equals(false);
+
+        const state = await readState(nextEnvironment());
+        expect(state.fabricRoots.some(isLegacyRoot)).equals(false);
+        expect(state.peers).deep.equals([]);
+    });
+
+    it("removes all legacy node data on a start that migrates the Python Matter Server data", async () => {
+        await migrate(nextEnvironment(), legacy);
+        const seed = await nextEnvironment().get(StorageService).open(SERVER_ID);
+        try {
+            await seed.createContext("node-9").createContext("0").createContext("40").set("__version__", 1);
+            await seed.createContext("nodes").set("commissionedNodes", [[9, {}]]);
+        } finally {
+            await seed.close();
+        }
+
+        expect(await migrate(nextEnvironment(), legacy)).equals(true);
+
+        const storage = await nextEnvironment().get(StorageService).open(SERVER_ID);
+        try {
+            expect(await storage.createContext("node-9").createContext("0").createContext("40").keys()).deep.equals([]);
+            expect(await storage.createContext("nodes").has("commissionedNodes")).equals(false);
+        } finally {
+            await storage.close();
+        }
     });
 });
