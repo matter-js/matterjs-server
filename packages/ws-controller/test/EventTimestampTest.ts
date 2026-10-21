@@ -47,6 +47,50 @@ describe("EventTimestampResolver", () => {
         ]);
     });
 
+    it("drops the deltas around an event matter.js emitted ahead of the events it held back", () => {
+        // Priming read of one device: ep2 events are held back to the end of the read, the ep0 event 6887237 is not.
+        const received: Array<[number, number, "system" | "system-delta"]> = [
+            [6_887_237, 35_088, "system-delta"],
+            [6_887_232, 340_024_467, "system"],
+            [6_887_233, 60_000, "system-delta"],
+            [6_887_234, 60_000, "system-delta"],
+            [6_887_235, 59_999, "system-delta"],
+            [6_887_236, 60_001, "system-delta"],
+            [6_887_238, 24_912, "system-delta"],
+            [6_887_239, 60_000, "system-delta"],
+            [6_887_240, 60_002, "system-delta"],
+            [6_887_241, 60_002, "system-delta"],
+            [6_887_242, 60_000, "system-delta"],
+            [6_887_243, 60_000, "system-delta"],
+            [6_887_244, 60_000, "system-delta"],
+            [6_887_245, 340_744_472, "system"],
+            [6_887_246, 60_000, "system-delta"],
+        ];
+
+        const resolved = received.map(([eventNumber, timestamp, kind]) => [
+            eventNumber,
+            resolver.resolve(EventNumber(eventNumber), Timestamp(timestamp), kind).systemTimestamp,
+        ]);
+
+        expect(resolved).deep.equals([
+            [6_887_237, undefined],
+            [6_887_232, 340_024_467],
+            [6_887_233, 340_084_467],
+            [6_887_234, 340_144_467],
+            [6_887_235, 340_204_466],
+            [6_887_236, 340_264_467],
+            [6_887_238, undefined],
+            [6_887_239, undefined],
+            [6_887_240, undefined],
+            [6_887_241, undefined],
+            [6_887_242, undefined],
+            [6_887_243, undefined],
+            [6_887_244, undefined],
+            [6_887_245, 340_744_472],
+            [6_887_246, 340_804_472],
+        ]);
+    });
+
     it("adds a chain of epoch deltas to the preceding epoch timestamp", () => {
         resolver.resolve(EventNumber(1), TIMESTAMP, "epoch");
         resolver.resolve(EventNumber(2), Timestamp(1_000), "epoch-delta");
