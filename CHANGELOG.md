@@ -7,7 +7,7 @@ This page shows a detailed overview of the changes between versions without the 
 	## **WORK IN PROGRESS**
 -->
 
-## **WORK IN PROGRESS**
+## 1.5.1 (2026-10-21)
 
 - Enhancement: (@lanthaler) Adds the vendor clusters for the Aqara Led Strip T2 to configure the music sync feature to the custom cluster definitions
 - Fix: (@jankowskir) The Python client's node diagnostics no longer show the Thread Extended PAN ID as a garbled network name. Thread devices report the name from their Thread diagnostics, or no name. Ethernet devices no longer report their interface name (for example `eth0`) as network name
