@@ -24,6 +24,7 @@ import { createControllerNode } from "../src/controller/ControllerNode.js";
 import { LegacyServerData } from "../src/controller/LegacyDataInjector.js";
 import { MatterController } from "../src/controller/MatterController.js";
 import { ConfigStorage } from "../src/server/ConfigStorage.js";
+import { captureLogs, LogCapture } from "./support/LogCapture.js";
 
 const SERVER_ID = "server-1-fff1";
 const LEGACY_NODE_IDS = [2, 3, 4];
@@ -197,6 +198,12 @@ describe("Legacy migration", () => {
     let nextEnvironment: ReturnType<typeof createEnvironments>;
     let legacy: LegacyServerData;
     let legacyFabric: Fabric;
+    let logs: LogCapture | undefined;
+
+    afterEach(() => {
+        logs?.stop();
+        logs = undefined;
+    });
 
     beforeEach(async () => {
         MockTime.reset();
@@ -300,7 +307,11 @@ describe("Legacy migration", () => {
     });
 
     it("does not migrate legacy data without a CA", async () => {
+        logs = captureLogs("MatterController", /not migrated/);
+
         expect(await migrate(nextEnvironment(), { ...legacy, credentials: undefined })).equals(false);
+
+        expect(logs.lines.length).equals(1);
 
         const state = await readState(nextEnvironment());
         expect(state.fabricRoots.some(isLegacyRoot)).equals(false);
@@ -353,5 +364,13 @@ describe("Legacy migration", () => {
             await storage.close();
         }
         expect((await readState(nextEnvironment())).peers).deep.equals([]);
+    });
+
+    it("starts without a warning when there is no Python Matter Server data", async () => {
+        logs = captureLogs("MatterController", /not migrated/);
+
+        expect(await migrate(nextEnvironment(), { vendorId: 0xfff1, fabricId: 1 })).equals(false);
+
+        expect(logs.lines).deep.equals([]);
     });
 });

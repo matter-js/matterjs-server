@@ -261,16 +261,17 @@ export class MatterController {
             const crypto = environment.get(Crypto);
             const baseStorage = await config.service.open(serverId);
             try {
-                if (legacyData.credentials === undefined || legacyData.fabric === undefined) {
-                    logger.warn(
-                        "The Python Matter Server data lacks the controller CA or fabric, so it is not migrated.",
-                    );
-                } else {
+                const { credentials, fabric, nodeData } = legacyData;
+                if (credentials !== undefined && fabric !== undefined) {
                     instance.#legacyDataMigrated = await LegacyDataInjector.injectCredentials(
                         baseStorage,
                         crypto,
-                        legacyData.credentials,
-                        legacyData.fabric,
+                        credentials,
+                        fabric,
+                    );
+                } else if (credentials !== undefined || fabric !== undefined || nodeData !== undefined) {
+                    logger.warn(
+                        "The Python Matter Server data lacks the controller CA or fabric, so it is not migrated.",
                     );
                 }
                 if (
