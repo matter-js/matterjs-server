@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from chip.clusters import Objects as clusters
+from chip.clusters.Types import NullValue
 from matter_server.client.client import MatterClient
 from matter_server.client.connection import MatterClientConnection, parse_message
 from matter_server.common.const import SCHEMA_VERSION
@@ -323,41 +324,50 @@ async def test_late_result_after_disconnect_keeps_the_read_loop_alive(
     assert f"Result arrived for already settled message id {message_id}" in caplog.text
 
 
+_WIFI = clusters.NetworkCommissioning.Bitmaps.Feature.kWiFiNetworkInterface
+_THREAD = clusters.NetworkCommissioning.Bitmaps.Feature.kThreadNetworkInterface
+_ETHERNET = clusters.NetworkCommissioning.Bitmaps.Feature.kEthernetNetworkInterface
+_XPAN_ID = b"\x01\x23\x45\x67\x89\xab\xcd\xef"
+
+
 @pytest.mark.parametrize(
-    ("interface_type", "interface_name", "thread_name", "last_network_id", "networks", "expected"),
+    ("interface_type", "feature_map", "thread_name", "last_network_id", "networks", "expected"),
     [
-        ("thread", "TestThreadNetwork", None, b"\x01\x23\x45\x67\x89\xab\xcd\xef", [], "TestThreadNetwork"),
-        (
-            "thread",
-            "TestThreadNetwork",
-            "FromThreadDiagnostics",
-            b"\x01\x23\x45\x67\x89\xab\xcd\xef",
-            [],
-            "FromThreadDiagnostics",
-        ),
-        ("thread", "", None, b"\x01\x23\x45\x67\x89\xab\xcd\xef", [], None),
-        ("wifi", "wlan0", None, b"HomeWiFi", [], "HomeWiFi"),
-        ("wifi", "wlan0", None, None, [(True, b"BackupWiFi")], "BackupWiFi"),
-        ("ethernet", "eth0", None, b"NotAnSSID", [], None),
+        ("thread", _THREAD, "TestThreadNetwork", _XPAN_ID, [], "TestThreadNetwork"),
+        ("thread", _THREAD, NullValue, _XPAN_ID, [(True, _XPAN_ID)], None),
+        ("thread", _THREAD, None, _XPAN_ID, [(True, _XPAN_ID)], None),
+        ("wifi", _WIFI, None, b"HomeWiFi", [], "HomeWiFi"),
+        ("wifi", _WIFI, None, None, [(False, b"OtherWiFi"), (True, b"BackupWiFi")], "BackupWiFi"),
+        ("wifi", _THREAD, None, _XPAN_ID, [(True, _XPAN_ID)], None),
+        ("wifi", None, None, b"HomeWiFi", [(True, b"HomeWiFi")], None),
+        ("unknown", _WIFI, None, b"HomeWiFi", [], "HomeWiFi"),
+        ("unknown", _THREAD, None, _XPAN_ID, [(True, _XPAN_ID)], None),
+        ("ethernet", _ETHERNET, None, b"eth0", [(True, b"eth0")], None),
+        ("ethernet", _WIFI, None, b"HomeWiFi", [(True, b"HomeWiFi")], None),
     ],
     ids=[
-        "thread-interface-fallback",
-        "thread-diagnostics-preferred",
-        "thread-without-name",
+        "thread-diagnostics-name",
+        "thread-null-network-name",
+        "thread-without-diagnostics-cluster",
         "wifi-last-network-id",
         "wifi-connected-network",
+        "wifi-with-thread-commissioning",
+        "wifi-without-network-commissioning",
+        "unknown-interface-wifi-commissioning",
+        "unknown-interface-thread-commissioning",
         "ethernet-no-ssid",
+        "ethernet-with-wifi-commissioning",
     ],
 )
 async def test_node_diagnostics_network_name(
     interface_type: str,
-    interface_name: str,
-    thread_name: str | None,
+    feature_map: int | None,
+    thread_name: object,
     last_network_id: bytes | None,
     networks: list[tuple[bool, bytes]],
     expected: str | None,
 ) -> None:
-    """Network names are resolved according to the transport type."""
+    """Only Wi-Fi NetworkIDs are decoded as network names; Thread names come from the diagnostics cluster."""
     client = _make_client()
     node = MagicMock()
     node.available = True
@@ -368,18 +378,21 @@ async def test_node_diagnostics_network_name(
         "wifi": interface_enum.kWiFi,
         "ethernet": interface_enum.kEthernet,
     }
-    interface = MagicMock(
-        isOperational=True,
-        type=interface_types[interface_type],
-        name=interface_name,
-        hardwareAddress=b"\x01\x02\x03\x04\x05\x06",
-    )
-    interface.name = interface_name
+    interfaces = []
+    if interface_type in interface_types:
+        interface = MagicMock(
+            isOperational=True,
+            type=interface_types[interface_type],
+            hardwareAddress=b"\x01\x02\x03\x04\x05\x06",
+        )
+        interfaces.append(interface)
     network_attrs = clusters.NetworkCommissioning.Attributes
 
     def attribute_value(endpoint: int, cluster: object, attribute: object) -> object:
         if attribute == clusters.GeneralDiagnostics.Attributes.NetworkInterfaces:
-            return [interface]
+            return interfaces
+        if attribute == network_attrs.FeatureMap:
+            return feature_map
         if attribute == network_attrs.LastNetworkID:
             return last_network_id
         if attribute == network_attrs.Networks:
@@ -394,7 +407,7 @@ async def test_node_diagnostics_network_name(
             networkName=thread_name,
             routingRole=clusters.ThreadNetworkDiagnostics.Enums.RoutingRoleEnum.kEndDevice,
         )
-        if interface_type == "thread" and thread_name is not None
+        if thread_name is not None
         else None
     )
     client.get_node = MagicMock(return_value=node)

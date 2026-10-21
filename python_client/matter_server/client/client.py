@@ -559,7 +559,6 @@ class MatterClient:
         ip_addresses = await self.get_node_ip_addresses(node_id)
         # grab some details from the first (operational) network interface
         network_type = NetworkType.UNKNOWN
-        thread_interface_name: str | None = None
         mac_address = None
         attribute = Clusters.GeneralDiagnostics.Attributes.NetworkInterfaces
         network_interface: Clusters.GeneralDiagnostics.Structs.NetworkInterface
@@ -569,7 +568,6 @@ class MatterClient:
                 continue
             if network_interface.type == Clusters.GeneralDiagnostics.Enums.InterfaceTypeEnum.kThread:
                 network_type = NetworkType.THREAD
-                thread_interface_name = network_interface.name
             elif network_interface.type == Clusters.GeneralDiagnostics.Enums.InterfaceTypeEnum.kWiFi:
                 network_type = NetworkType.WIFI
             elif network_interface.type == Clusters.GeneralDiagnostics.Enums.InterfaceTypeEnum.kEthernet:
@@ -610,15 +608,22 @@ class MatterClient:
                     RoutingRole.kReed,
                 ):
                     node_type = NodeType.END_DEVICE
-            # Some devices expose their Thread network name only here.
-            if not network_name and thread_interface_name:
-                network_name = thread_interface_name
         elif network_type == NetworkType.WIFI:
             node_type = NodeType.END_DEVICE
-        # Wi-Fi NetworkID is an SSID, but Thread NetworkID is a binary Extended PAN ID.
-        # Only decode NetworkCommissioning IDs as names for Wi-Fi devices.
+        # NetworkID is an SSID only on a Wi-Fi instance; Thread uses the binary Extended PAN ID
+        network_commissioning_features = node.get_attribute_value(
+            0,
+            cluster=None,
+            attribute=Clusters.NetworkCommissioning.Attributes.FeatureMap,
+        )
+        network_id_is_ssid = network_type in (NetworkType.WIFI, NetworkType.UNKNOWN) and bool(
+            (network_commissioning_features or 0)
+            & Clusters.NetworkCommissioning.Bitmaps.Feature.kWiFiNetworkInterface
+        )
+        # use lastNetworkID from NetworkCommissioning cluster as fallback to get the network name
+        # this allows getting the SSID as the wifi diagnostics cluster only has the BSSID
         last_network_id: bytes | str | None
-        if network_type == NetworkType.WIFI and not network_name and (
+        if network_id_is_ssid and not network_name and (
             last_network_id := node.get_attribute_value(
                 0,
                 cluster=None,
@@ -632,7 +637,7 @@ class MatterClient:
         # last resort to get the (wifi) networkname;
         # enumerate networks on the NetworkCommissioning cluster
         networks: list[Clusters.NetworkCommissioning.Structs.NetworkInfoStruct]
-        if network_type == NetworkType.WIFI and not network_name and (
+        if network_id_is_ssid and not network_name and (
             networks := node.get_attribute_value(
                 0,
                 cluster=None,
