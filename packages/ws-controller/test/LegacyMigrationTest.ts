@@ -306,4 +306,19 @@ describe("Legacy migration", () => {
         expect(state.fabricRoots.some(isLegacyRoot)).equals(false);
         expect(state.peers).deep.equals([]);
     });
+
+    it("migrates a legacy fabric stored at fabric index 2", async () => {
+        const fabric = legacy.fabric;
+        expect(fabric).not.equals(undefined);
+
+        expect(await migrate(nextEnvironment(), { ...legacy, fabric: fabric && { ...fabric, fabricIndex: 2 } })).equals(
+            true,
+        );
+
+        const state = await readState(nextEnvironment());
+        expect(isLegacyRoot(state.caRootCert)).equals(true);
+        expect(state.fabricRoots.length).equals(1);
+        expect(isLegacyRoot(state.fabricRoots[0])).equals(true);
+        expect(state.peers).deep.equals(["@2:2", "@2:3", "@2:4"]);
+    });
 });
