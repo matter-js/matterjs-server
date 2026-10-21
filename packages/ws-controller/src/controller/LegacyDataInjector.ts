@@ -172,7 +172,13 @@ export namespace LegacyDataInjector {
         const fabricsStorage = storage.createContext(FABRICS_CONTEXT);
         const fabrics = await fabricsStorage.get<Fabric.Config[]>("fabrics", []);
         const storedFabric = fabrics.find(({ fabricIndex }) => fabricIndex === fabricData.fabricIndex);
-        if (storedFabric !== undefined && !Bytes.areEqual(storedFabric.rootCert, fabricData.rootCert)) {
+        if (
+            storedFabric !== undefined &&
+            !(
+                Bytes.areEqual(storedFabric.rootCert, fabricData.rootCert) &&
+                storedFabric.fabricId === FabricId(fabricData.fabricId)
+            )
+        ) {
             logger.warn(
                 `Storage already holds a different fabric at the legacy fabric index ${fabricData.fabricIndex}. ${SKIPPED_MIGRATION}`,
             );

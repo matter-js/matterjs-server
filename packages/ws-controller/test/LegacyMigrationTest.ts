@@ -321,4 +321,37 @@ describe("Legacy migration", () => {
         expect(isLegacyRoot(state.fabricRoots[0])).equals(true);
         expect(state.peers).deep.equals(["@2:2", "@2:3", "@2:4"]);
     });
+
+    it("keeps another fabric of the legacy CA stored at the legacy fabric index", async () => {
+        const credentials = legacy.credentials;
+        if (credentials === undefined) {
+            expect.fail("legacy data without CA");
+            return;
+        }
+        const crypto = Environment.default.get(Crypto);
+        const ca = new CertificateAuthority(crypto, credentials);
+        const builder = await FabricBuilder.create(crypto);
+        await builder.setRootCert(ca.rootCert);
+        builder
+            .setRootNodeId(NodeId(112233))
+            .setIdentityProtectionKey(crypto.randomBytes(16))
+            .setRootVendorId(VendorId(0xfff1))
+            .setLabel("");
+        await builder.setOperationalCert(
+            await ca.generateNoc(builder.publicKey, FabricId(2), NodeId(112233)),
+            ca.icacCert,
+        );
+        await storeLegacyFabricOnly(nextEnvironment(), await builder.build(FabricIndex(1)));
+
+        expect(await migrate(nextEnvironment(), legacy)).equals(false);
+
+        const storage = await nextEnvironment().get(StorageService).open(SERVER_ID);
+        try {
+            const fabrics = await storage.createContext("fabrics").get<Fabric.Config[]>("fabrics", []);
+            expect(fabrics.find(({ fabricIndex }) => fabricIndex === 1)?.fabricId).equals(FabricId(2));
+        } finally {
+            await storage.close();
+        }
+        expect((await readState(nextEnvironment())).peers).deep.equals([]);
+    });
 });
