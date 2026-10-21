@@ -10,7 +10,6 @@ import {
     FabricId,
     FabricIndex,
     ImplementationError,
-    isDeepEqual,
     isObject,
     Logger,
     MaybePromise,
@@ -31,6 +30,15 @@ const logger = Logger.get("LegacyDataInjector");
 const BASE64_REGEX = /^([0-9a-z+/]{4})*(([0-9a-z+/]{2}==)|([0-9a-z+/]{3}=))?$/i;
 
 const FEATUREMAP_ID = Global.attributes.featureMap.id.toString();
+
+/** Storage context in the server storage that `CertificateAuthority` (`@matter/protocol`) loads the controller CA from. */
+const CERTIFICATES_CONTEXT = "certificates";
+const ROOT_CERT_KEY = "rootCertBytes";
+const FABRICS_CONTEXT = "fabrics";
+const NODES_CONTEXT = "nodes";
+
+const SKIPPED_MIGRATION =
+    "The Python Matter Server data is not migrated. To migrate it, restore the backup from before the first migration attempt, or start with a storage directory that holds only the Python Matter Server data files.";
 
 /**
  * Fabric configuration data extracted from chip.json.
@@ -131,30 +139,73 @@ export namespace LegacyDataInjector {
         );
     }
 
+    /**
+     * Install the legacy CA where the controller node loads it and add the legacy fabric to the fabric table.
+     *
+     * Nothing is written when the legacy CA does not issue the legacy fabric, or when storage already holds a different
+     * CA or a different fabric at the legacy fabric index. Nodes may depend on that data, and the legacy nodes cannot
+     * be reached through it.
+     *
+     * @returns true when storage holds the legacy CA and fabric afterwards, false when it was left unchanged
+     */
     export async function injectCredentials(
-        credentialsStorage: StorageContext,
-        fabricsStorage: StorageContext,
+        storage: StorageManager,
         crypto: Crypto,
         credentialData: CertificateAuthority.Configuration,
-        fabricData?: LegacyFabricConfigData,
+        fabricData: LegacyFabricConfigData,
     ) {
-        const rootCertificateAuthority = new CertificateAuthority(crypto, credentialData);
-
-        for (const [key, value] of Object.entries(credentialData)) {
-            if (await credentialsStorage.has(key)) {
-                if (isDeepEqual(await credentialsStorage.get(key), value)) {
-                    continue;
-                }
-                logger.warn(`Overriding credential ${key} with new value!`);
-            }
-            await credentialsStorage.set(key, value);
+        if (!Bytes.areEqual(credentialData.rootCertBytes, fabricData.rootCert)) {
+            logger.warn(`The legacy CA does not match the root certificate of the legacy fabric. ${SKIPPED_MIGRATION}`);
+            return false;
         }
 
-        if (fabricData === undefined) {
-            logger.warn("Credentials injected, but no fabric data provided. Skipping fabric initialization.");
-            return;
+        const certificates = storage.createContext(CERTIFICATES_CONTEXT);
+        const hasCertificateAuthority = await certificates.has(ROOT_CERT_KEY);
+        if (
+            hasCertificateAuthority &&
+            !Bytes.areEqual(await certificates.get<Bytes>(ROOT_CERT_KEY), credentialData.rootCertBytes)
+        ) {
+            logger.warn(`Storage already holds a controller CA other than the legacy one. ${SKIPPED_MIGRATION}`);
+            return false;
         }
 
+        const fabricsStorage = storage.createContext(FABRICS_CONTEXT);
+        const fabrics = await fabricsStorage.get<Fabric.Config[]>("fabrics", []);
+        const storedFabric = fabrics.find(({ fabricIndex }) => fabricIndex === fabricData.fabricIndex);
+        if (
+            storedFabric !== undefined &&
+            !(
+                Bytes.areEqual(storedFabric.rootCert, fabricData.rootCert) &&
+                storedFabric.fabricId === FabricId(fabricData.fabricId)
+            )
+        ) {
+            logger.warn(
+                `Storage already holds a different fabric at the legacy fabric index ${fabricData.fabricIndex}. ${SKIPPED_MIGRATION}`,
+            );
+            return false;
+        }
+
+        const legacyFabric =
+            storedFabric === undefined ? await buildLegacyFabric(crypto, credentialData, fabricData) : undefined;
+
+        if (!hasCertificateAuthority) {
+            await certificates.set(credentialData);
+            logger.info("Installed the legacy CA");
+        }
+
+        if (legacyFabric !== undefined) {
+            await fabricsStorage.set("fabrics", [...fabrics, legacyFabric.config]);
+            logger.info(`Added legacy fabric ${legacyFabric.fabricIndex} to the fabric table`);
+        }
+        return true;
+    }
+
+    /** The legacy fabric with a NOC for a new operational key, since chip.json does not hold the old one. */
+    async function buildLegacyFabric(
+        crypto: Crypto,
+        credentialData: CertificateAuthority.Configuration,
+        fabricData: LegacyFabricConfigData,
+    ) {
         const {
             fabricIndex,
             fabricId,
@@ -184,19 +235,6 @@ export namespace LegacyDataInjector {
             keyPair: await crypto.createKeyPair(), // Just use a new keypair temporarily because chip data does not have it
         });
 
-        let keyRewritten = false;
-        if (await credentialsStorage.has("fabric")) {
-            const storedFabric = await credentialsStorage.get<Fabric.Config>("fabric");
-            if (!Bytes.areEqual(storedFabric.rootPublicKey!, tempFabric.rootPublicKey)) {
-                logger.warn("Existing fabric root public key changed. Rewriting from legacy data");
-                keyRewritten = true;
-            } else {
-                logger.info("Fabric root public key unchanged. Skipping rewrite.");
-                await syncFabrics(fabricsStorage, storedFabric, false);
-                return;
-            }
-        }
-
         const builder = await FabricBuilder.create(crypto);
         const {
             subject: { nodeId: certNodeId, fabricId: certFabricId },
@@ -206,32 +244,14 @@ export namespace LegacyDataInjector {
         }
         await builder.updateOperationalCert(
             tempFabric,
-            await rootCertificateAuthority.generateNoc(builder.publicKey, certFabricId, certNodeId),
+            await new CertificateAuthority(crypto, credentialData).generateNoc(
+                builder.publicKey,
+                certFabricId,
+                certNodeId,
+            ),
             tempFabric.intermediateCACert,
         );
-        const rootFabric = await builder.build(tempFabric.fabricIndex);
-
-        await credentialsStorage.set("fabric", rootFabric.config);
-
-        await syncFabrics(fabricsStorage, rootFabric.config, keyRewritten);
-    }
-
-    async function syncFabrics(fabricsStorage: StorageContext, fabricConfig: Fabric.Config, overwriteKey: boolean) {
-        if (!(await fabricsStorage.has("fabrics"))) {
-            await fabricsStorage.set("fabrics", [fabricConfig]);
-            logger.info("Initializing FabricManager storage");
-            return;
-        }
-        let fabrics = await fabricsStorage.get<Fabric.Config[]>("fabrics", []);
-        if (overwriteKey) {
-            fabrics = fabrics.filter(f => f.fabricIndex !== fabricConfig.fabricIndex);
-        } else if (fabrics.some(({ fabricIndex }) => fabricIndex === fabricConfig.fabricIndex)) {
-            logger.info("FabricManager storage already has fabric index. Skipping update.");
-            return;
-        }
-        fabrics.push(fabricConfig);
-        await fabricsStorage.set("fabrics", fabrics);
-        logger.info("Added fabric to FabricManager storage");
+        return builder.build(tempFabric.fabricIndex);
     }
 
     export async function injectNodeData(
@@ -239,7 +259,7 @@ export namespace LegacyDataInjector {
         nodeData?: LegacyServerFile,
         fabricIndex?: number,
     ) {
-        const nodesListStorage = baseStorage.createContext("nodes");
+        const nodesListStorage = baseStorage.createContext(NODES_CONTEXT);
 
         const hasCommissionedNodes = await nodesListStorage.has("commissionedNodes");
 

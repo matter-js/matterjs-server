@@ -230,6 +230,7 @@ export class MatterController {
     /** Background init tasks kept off the node-init critical path but given a bounded chance to settle on stop(). */
     readonly #backgroundInit = new Array<Promise<unknown>>();
     #stopped = false;
+    #legacyDataMigrated = false;
     readonly #credentials = new ThreadCredentialsRegistry();
     readonly #threadDiagnostics: ThreadDiagnosticsService;
     #networkTopology?: NetworkTopologyService;
@@ -260,16 +261,21 @@ export class MatterController {
             const crypto = environment.get(Crypto);
             const baseStorage = await config.service.open(serverId);
             try {
-                if (legacyData.credentials && legacyData.fabricId) {
-                    await LegacyDataInjector.injectCredentials(
-                        baseStorage.createContext("credentials"),
-                        baseStorage.createContext("fabrics"),
+                const { credentials, fabric, nodeData } = legacyData;
+                if (credentials !== undefined && fabric !== undefined) {
+                    instance.#legacyDataMigrated = await LegacyDataInjector.injectCredentials(
+                        baseStorage,
                         crypto,
-                        legacyData.credentials,
-                        legacyData.fabric,
+                        credentials,
+                        fabric,
+                    );
+                } else if (credentials !== undefined || fabric !== undefined || nodeData !== undefined) {
+                    logger.warn(
+                        "The Python Matter Server data lacks the controller CA or fabric, so it is not migrated.",
                     );
                 }
                 if (
+                    instance.#legacyDataMigrated &&
                     (await LegacyDataInjector.injectNodeData(
                         baseStorage,
                         legacyData.nodeData,
@@ -485,6 +491,11 @@ export class MatterController {
 
     get borderRouters(): BorderRouterRegistry {
         return this.#borderRouterRegistry;
+    }
+
+    /** Whether this start migrated, or kept using, the Python Matter Server data passed to {@link create}. */
+    get legacyDataMigrated(): boolean {
+        return this.#legacyDataMigrated;
     }
 
     /** False when the OTA provider (and with it firmware upload) is disabled via `disableOtaProvider`. */

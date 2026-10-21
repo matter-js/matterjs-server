@@ -5,11 +5,20 @@
  */
 
 import { computeCompressedNodeId, Crypto, Environment, LegacyServerFile } from "@matter-server/ws-controller";
+import { Bytes } from "@matter/main";
+import { CertificateAuthority } from "@matter/main/protocol";
+import { FabricId, NodeId } from "@matter/main/types";
 import { NodeJsCrypto } from "@matter/nodejs";
 import { copyFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ChipConfigData, hasLegacyData, loadLegacyData, saveLegacyServerFile } from "../../src/converter/index.js";
+import {
+    ChipConfigData,
+    hasLegacyData,
+    loadLegacyData,
+    saveLegacyServerFile,
+    TlvFabricMetadata,
+} from "../../src/converter/index.js";
 
 // Path to test fixtures (relative to package root since tests run from build dir)
 const FIXTURE_DIR = join(process.cwd(), "test/converter/fixtures");
@@ -204,6 +213,123 @@ describe("LegacyDataLoader", () => {
             expect(result.hasData).to.be.false;
             expect(result.error).to.include("No fabric found matching");
         });
+    });
+
+    describe("multiple fabrics", () => {
+        const SECOND_VENDOR_ID = 0xfff1;
+        const SECOND_FABRIC_ID = 1;
+
+        function base64(bytes: Bytes) {
+            return Buffer.from(Bytes.of(bytes)).toString("base64");
+        }
+
+        async function writeServerFile(dir: string, chipConfig: ChipConfigData, fabricIndex: number, nodeId: number) {
+            const fabricConfig = chipConfig.getFabricConfig(fabricIndex);
+            if (fabricConfig === undefined) {
+                expect.fail(`fabric ${fabricIndex} missing in chip.json`);
+                return;
+            }
+            const compressedFabricId = await computeCompressedNodeId(
+                env.get(Crypto),
+                fabricConfig.fabricId,
+                fabricConfig.rootPublicKey,
+            );
+            const serverFile = {
+                vendor_info: {},
+                last_node_id: nodeId,
+                nodes: {
+                    [nodeId]: {
+                        node_id: nodeId,
+                        date_commissioned: "2026-01-01T00:00:00.000000",
+                        last_interview: "2026-01-01T00:00:00.000000",
+                        interview_version: 6,
+                        available: true,
+                        is_bridge: false,
+                        attributes: {},
+                        attribute_subscriptions: [],
+                    },
+                },
+            };
+            await writeFile(join(dir, `${compressedFabricId}.json`), JSON.stringify(serverFile));
+        }
+
+        /**
+         * The fixture fabric plus a second fabric with another vendor and fabric ID, each with its own server file.
+         * python-matter-server issues every fabric from the CA of credential set 1, so both share RCAC and ICAC.
+         */
+        async function createTwoFabricDir(name: string) {
+            const legacyDir = join(testDir, name);
+            await mkdir(legacyDir, { recursive: true });
+
+            const fixtureConfig = new ChipConfigData();
+            await fixtureConfig.load(FIXTURE_CHIP_JSON);
+            const caConfig = await fixtureConfig.getCertificateAuthorityConfig(1);
+            if (caConfig === undefined) {
+                expect.fail("fixture chip.json has no CA in credential set 1");
+            }
+            const crypto = env.get(Crypto);
+            const keyPair = await crypto.createKeyPair();
+            const noc = await new CertificateAuthority(crypto, caConfig).generateNoc(
+                keyPair.publicKey,
+                FabricId(SECOND_FABRIC_ID),
+                NodeId(112233),
+            );
+
+            const chipJson = JSON.parse(await readFile(FIXTURE_CHIP_JSON, "utf-8"));
+            const sdkConfig = chipJson["sdk-config"];
+            sdkConfig["f/2/r"] = sdkConfig["f/1/r"];
+            sdkConfig["f/2/i"] = sdkConfig["f/1/i"];
+            sdkConfig["f/2/k/0"] = sdkConfig["f/1/k/0"];
+            sdkConfig["f/2/n"] = base64(Bytes.of(noc));
+            sdkConfig["f/2/m"] = base64(TlvFabricMetadata.encode({ vendorId: SECOND_VENDOR_ID, label: "" }));
+            await writeFile(join(legacyDir, "chip.json"), JSON.stringify(chipJson));
+
+            const chipConfig = new ChipConfigData();
+            await chipConfig.load(join(legacyDir, "chip.json"));
+            await writeServerFile(legacyDir, chipConfig, 1, 10);
+            await writeServerFile(legacyDir, chipConfig, 2, 20);
+            return legacyDir;
+        }
+
+        for (const { vendorId, fabricId, fabricIndex, nodeId, serverId } of [
+            {
+                vendorId: FIXTURE_VENDOR_ID,
+                fabricId: FIXTURE_FABRIC_ID,
+                fabricIndex: 1,
+                nodeId: "10",
+                serverId: "server",
+            },
+            {
+                vendorId: SECOND_VENDOR_ID,
+                fabricId: SECOND_FABRIC_ID,
+                fabricIndex: 2,
+                nodeId: "20",
+                serverId: "server-1-fff1",
+            },
+        ]) {
+            it(`loads fabric ${fabricIndex} and its server file for vendor 0x${vendorId.toString(16)} and fabric ${fabricId}`, async () => {
+                const legacyDir = await createTwoFabricDir(`two-fabrics-${fabricIndex}`);
+
+                const result = await loadLegacyData(env, legacyDir, { vendorId, fabricId });
+
+                expect(result.hasData).to.be.true;
+                expect(result.serverId).to.equal(serverId);
+                const { fabricConfig, certificateAuthorityConfig, serverFile } = result;
+                if (
+                    fabricConfig === undefined ||
+                    certificateAuthorityConfig === undefined ||
+                    serverFile === undefined
+                ) {
+                    expect.fail("fabric, CA or server file not loaded");
+                    return;
+                }
+                expect(fabricConfig.fabricIndex).to.equal(fabricIndex);
+                expect(Number(fabricConfig.fabricId)).to.equal(fabricId);
+                expect(fabricConfig.rootVendorId).to.equal(vendorId);
+                expect(Object.keys(serverFile.nodes)).to.deep.equal([nodeId]);
+                expect(Bytes.areEqual(certificateAuthorityConfig.rootCertBytes, fabricConfig.rootCert)).to.be.true;
+            });
+        }
     });
 
     describe("saveLegacyServerFile", () => {

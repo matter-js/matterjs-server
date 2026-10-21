@@ -12,6 +12,7 @@ This page shows a detailed overview of the changes between versions without the 
 - Enhancement: (@lanthaler) Adds the vendor clusters for the Aqara Led Strip T2 to configure the music sync feature to the custom cluster definitions
 - Fix: (@jankowskir) The Python client's node diagnostics no longer show the Thread Extended PAN ID as a garbled network name. Thread devices report the name from their Thread diagnostics, or no name. Ethernet devices no longer report their interface name (for example `eth0`) as network name
 - Fix: Fabric label changes are sent to the nodes in the background and a few at a time, instead of to all nodes at once while the client waits
+- Fix: Migration from the Python Matter Server keeps the Python controller fabric, so the migrated nodes are available. If the storage directory already holds a different controller CA or fabric, the server logs a warning and does not migrate the Python data. Restore the backup from before the migration and start again
 
 ## 1.5.0 (2026-10-20)
 

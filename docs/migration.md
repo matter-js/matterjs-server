@@ -83,6 +83,10 @@ Then download the file from the config folder, for example via the Samba or Stud
 
 On the first start, every node is discovered and interviewed completely. With many Thread devices, the limit on parallel requests per Thread network makes them come online one after another. Wait until the first start has finished before you judge the startup time.
 
+### The log says the Python Matter Server data is not migrated
+
+The server does not migrate the Python Matter Server data when the storage directory already holds matter.js controller data that does not match it. This happens after a failed migration attempt, or when the server ran on this directory before the Python data files were copied in. The server keeps the existing data and does not keep `<long-number>.json` up to date. Restore the backup from before the first migration attempt, or start with a storage directory that holds only the Python Matter Server data files.
+
 ### Devices are not found or stay offline
 
 Most of these issues come from the host network. Check the [OS requirements](os_requirements.md) and the [Docker troubleshooting](docker.md#troubleshooting) section.
