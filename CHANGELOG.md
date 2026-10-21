@@ -66,6 +66,10 @@ This page shows a detailed overview of the changes between versions without the 
 - Fix: `node_added`, `node_removed`, `endpoint_added` and `endpoint_removed` are no longer dropped when a client reads too slowly; a client too far behind on them is disconnected and gets the current state when it reconnects
 - Fix: Python client: an event subscriber that raises an error no longer ends the connection; the error is logged and the other subscribers still receive the event
 
+## **WORK IN PROGRESS**
+
+- Fix: After a firmware update fails or is cancelled, checking the node for updates asks the update provider again instead of returning the update found before
+
 ## 1.5.2 (2026-10-21)
 
 - Fix: Events with a delta timestamp are processed with the calculated device time again instead of the time the server received them

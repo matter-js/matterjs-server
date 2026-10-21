@@ -844,6 +844,11 @@ export class ControllerCommandHandler {
                 this.#availableUpdates.delete(peerAddress.nodeId);
             });
 
+            softwareUpdateManagerEvents.updateFailed.on((peerAddress: PeerAddress) => {
+                logger.notice(`Update failed or cancelled for node ${this.formatNode(peerAddress.nodeId)}`);
+                this.#availableUpdates.delete(peerAddress.nodeId);
+            });
+
             logger.info("OTA event handlers registered");
         } catch (error) {
             logger.warn("Failed to setup OTA event handlers:", error);
