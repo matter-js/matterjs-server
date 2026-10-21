@@ -7,6 +7,10 @@ This page shows a detailed overview of the changes between versions without the 
 	## **WORK IN PROGRESS**
 -->
 
+## **WORK IN PROGRESS**
+
+- Fix: Fabric label changes are sent to the nodes in the background and a few at a time, instead of to all nodes at once while the client waits
+
 ## 1.5.0 (2026-10-20)
 
 - Feature: Introduces Websocket Schema version 14 (backward compatible), detectable with `server_info.schema_version >= 14`. Details are in [docs/websockets_api.md](docs/websockets_api.md#camera-streaming-schema-14) and [docs/websocket-api-schema-changelog.md](docs/websocket-api-schema-changelog.md)

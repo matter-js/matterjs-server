@@ -235,7 +235,9 @@ function makeStubController(
             return [];
         },
         async initializeNodes() {},
-        async setFabricLabel() {},
+        async setFabricLabel() {
+            return { pushed: Promise.resolve() };
+        },
         getFabricLabel(): string | undefined {
             return undefined;
         },

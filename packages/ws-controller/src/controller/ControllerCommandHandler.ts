@@ -7,6 +7,7 @@
 import type { WebRtcCallbackData } from "@matter-server/ws-client";
 import {
     Abort,
+    AbortedError,
     AsyncObservable,
     camelize,
     causedBy,
@@ -53,6 +54,7 @@ import {
 import { WebRtcTransportProvider } from "@matter/main/clusters/web-rtc-transport-provider";
 import {
     AttestationFinding,
+    ClientInvoke,
     CommissioningTimeoutError,
     DEFAULT_CASE_CONNECTION_TIMEOUT,
     DeviceAttestationCheck,
@@ -258,10 +260,9 @@ export interface ControllerCommandHandlerOptions {
     disableAutoSubscription?: boolean;
 }
 
-/**
- * Cast: matter.js types the `ClusterType(model)` overload as `object`, but a `ClusterMap` model always
- * carries the id `ClusterLike` requires.
- */
+/** What a single invoke may set besides its command; `network` and `abort` apply to the exchange, not the request. */
+type InvokeOptions = Omit<Invoke.Definition, "commands"> & Pick<ClientInvoke, "network" | "abort">;
+
 /** A field value matter.js refuses while encoding is a bad argument of the caller, not a server failure. */
 function invokeRequestOf(definition: Invoke.Definition) {
     try {
@@ -274,6 +275,10 @@ function invokeRequestOf(definition: Invoke.Definition) {
     }
 }
 
+/**
+ * Cast: matter.js types the `ClusterType(model)` overload as `object`, but a `ClusterMap` model always
+ * carries the id `ClusterLike` requires.
+ */
 function clusterSpecifierOf(entry: ClusterMapEntry): Specifier.ClusterLike {
     return ClusterType(entry.model) as Specifier.ClusterLike;
 }
@@ -400,6 +405,8 @@ export class ControllerCommandHandler {
     #busObservers = new ObserverGroup();
     /** Aborted by {@link ControllerCommandHandler.close}, so no command outlives the handler. */
     #shutdown = new Abort();
+    /** The running fabric label push; a newer label aborts it, so nodes that were not told yet get only the newer one. */
+    #fabricLabelPush?: Abort;
 
     constructor(controller: ControllerResources, options: ControllerCommandHandlerOptions) {
         const {
@@ -1497,13 +1504,22 @@ export class ControllerCommandHandler {
         }
     }
 
-    /** Set the fabric label. matter.js requires a non-empty label of 1-32 chars; callers must normalize first. */
-    async setFabricLabel(label: string) {
+    /**
+     * Set the fabric label. matter.js requires a non-empty label of 1-32 chars; callers must normalize first.
+     *
+     * Resolves once the controller holds the label. The connected nodes are told in the background, see
+     * {@link #pushFabricLabel}. `pushed` resolves when that push has finished, was stopped by a newer label or by
+     * {@link close}. It never rejects.
+     */
+    async setFabricLabel(label: string): Promise<{ pushed: Promise<void> }> {
         // matter.js resets the fabric label to this state when the behavior loads and on every commissioning.
         await this.#node.act(agent => agent.load(ControllerBehavior));
         await this.#node.setStateOf(ControllerBehavior, { adminFabricLabel: label });
         await this.#fabric.setLabel(label);
-        await this.#pushFabricLabel(label);
+        const pushed = this.#pushFabricLabel(label).catch(error =>
+            logger.warn(`Could not tell the nodes about fabric label "${label}":`, error),
+        );
+        return { pushed };
     }
 
     /**
@@ -1513,15 +1529,28 @@ export class ControllerCommandHandler {
      * refuses or cannot be reached keeps its own copy stale, which is cosmetic there and reconciled the
      * next time matter.js brings that peer up in a new runtime. Failing the command instead would mean
      * unwinding the devices that did accept, which no amount of local bookkeeping can do.
+     *
+     * The invokes use the "conservative" network profile: a queue of its own that runs at most 4 invokes at a time,
+     * whatever network the nodes are on.
      */
-    async #pushFabricLabel(label: string) {
+    async #pushFabricLabel(label: string): Promise<void> {
+        this.#fabricLabelPush?.abort(new AbortedError("A newer fabric label replaced this one"));
+        const abort = new Abort({ abort: this.#shutdown });
+        this.#fabricLabelPush = abort;
+
         const connected = this.#nodes.getIds().filter(nodeId => this.#runsUpkeep(nodeId));
         const results = await Promise.allSettled(
             connected.map(async nodeId => {
-                const response = await this.#nodes
-                    .get(nodeId)
-                    .commandsOf(OperationalCredentialsClient)
-                    .updateFabricLabel({ label });
+                const response = (await this.#invokeCommand(
+                    this.#nodes.get(nodeId),
+                    {
+                        endpoint: EndpointNumber(0),
+                        cluster: OperationalCredentials.Cluster,
+                        command: "updateFabricLabel",
+                        fields: { label },
+                    },
+                    { network: "conservative", abort },
+                )) as OperationalCredentials.NocResponse | undefined;
                 if (response?.statusCode !== OperationalCredentials.NodeOperationalCertStatus.Ok) {
                     logger.notice(
                         `Node ${this.formatNode(nodeId)} kept its own fabric label; status ${response?.statusCode}`,
@@ -1530,10 +1559,23 @@ export class ControllerCommandHandler {
             }),
         );
 
-        for (const result of results) {
-            if (result.status === "rejected") {
-                logger.warn("Could not update the fabric label on a node:", result.reason);
+        if (this.#fabricLabelPush === abort) {
+            this.#fabricLabelPush = undefined;
+        }
+        const aborted = abort.aborted;
+        const reason: unknown = abort.reason;
+        abort.close();
+
+        const failures = results.filter(result => result.status === "rejected").map(result => result.reason);
+        // A newer push tells these nodes instead, or the handler is closing; neither is a failure to report.
+        if (aborted) {
+            if (failures.length > 0) {
+                logger.info(`Stopped telling ${failures.length} node(s) about fabric label "${label}": ${reason}`);
             }
+            return;
+        }
+        for (const failure of failures) {
+            logger.warn("Could not update the fabric label on a node:", failure);
         }
     }
 
@@ -1625,7 +1667,7 @@ export class ControllerCommandHandler {
     async #invokeCommand<const C extends Specifier.ClusterLike>(
         node: ClientNode,
         request: Invoke.ConcreteCommandRequest<C>,
-        options: Omit<Invoke.Definition, "commands"> = {},
+        options: InvokeOptions = {},
     ) {
         return this.#invokeOnPath(node, request, options);
     }
@@ -1634,9 +1676,10 @@ export class ControllerCommandHandler {
     async #invokeOnPath<const C extends Specifier.ClusterLike>(
         node: ClientNode,
         request: Invoke.CommandRequest<C>,
-        options: Omit<Invoke.Definition, "commands"> = {},
+        options: InvokeOptions = {},
     ) {
-        const invoke = invokeRequestOf({ commands: [request], ...options });
+        const { network, abort, ...definition } = options;
+        const invoke = { ...invokeRequestOf({ commands: [request], ...definition }), network, abort };
         for await (const data of node.interaction.invoke(invoke)) {
             for (const entry of data) {
                 // We send only one command, so we only get one response back

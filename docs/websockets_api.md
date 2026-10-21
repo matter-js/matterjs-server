@@ -274,6 +274,8 @@ Removes a named entry, or clears the reserved `default` (zeroing its SSID + secr
 
 **set_default_fabric_label** - Set the default fabric label
 
+The answer comes once the server holds the new label. The server then tells the connected nodes in the background, a few at a time. A node that is not reached keeps its old label until the server starts again and connects to it.
+
 Ignored when the server is started with `--default-fabric-label` (env `DEFAULT_FABRIC_LABEL`): the request succeeds but the pinned label is kept. Read the effective value with `get_fabric_label`.
 
 Also ignored per session across connections: the first WebSocket connection to issue `set_default_fabric_label` owns the label for the lifetime of that connection. Other connections' `set_default_fabric_label` requests then succeed but are ignored (and logged) until the owning connection disconnects, at which point the next connection to issue the command claims ownership. This stops two clients (e.g. two Home Assistant instances) from overwriting each other's label.

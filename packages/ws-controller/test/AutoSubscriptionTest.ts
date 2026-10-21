@@ -375,7 +375,10 @@ describe("auto subscription setting", () => {
             const controller = await commissioned(true);
             await setAutoSubscription(controller, true);
 
-            await MockTime.resolve(controller.handler.setFabricLabel("Changed"), { macrotasks: true });
+            const { pushed } = await MockTime.resolve(controller.handler.setFabricLabel("Changed"), {
+                macrotasks: true,
+            });
+            await MockTime.resolve(pushed, { macrotasks: true });
             await settle();
 
             expect(device.stateOf(OperationalCredentialsServer).fabrics[0]?.label).equals("TestFabric");

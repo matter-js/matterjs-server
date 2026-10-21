@@ -7,8 +7,6 @@
 import {
     ClientNode,
     FabricId,
-    Logger,
-    LogLevel,
     MatterError,
     NetworkClient,
     NodeConnectionState,
@@ -25,6 +23,7 @@ import { CameraControllerEndpoint, ControllerCommandHandler } from "../src/contr
 import { CustomClusterPoller } from "../src/controller/CustomClusterPoller.js";
 import { nodeIdOf } from "../src/util/nodeIdOf.js";
 import { TestSite } from "./support/ControllerSite.js";
+import { captureLogs, LogCapture } from "./support/LogCapture.js";
 
 const ON_OFF_PATH = `1/${OnOff.Cluster.id}/${OnOff.Cluster.attributes.onOff.id}`;
 
@@ -104,25 +103,9 @@ function onlyPeer(controller: ServerNode) {
     return peer;
 }
 
-/** Collects every availability log line of the handler until the returned stop function runs. */
+/** Collects every availability log line of the handler. */
 function captureAvailabilityLogs() {
-    const lines = new Array<string>();
-    const destination = Logger.destinations.default;
-    const { write, level } = destination;
-    destination.write = (text, message) => {
-        if (message.facility === "ControllerCommandHandler" && /Node .*? availab(le |ility changed)/.test(text)) {
-            lines.push(text);
-        }
-        write.call(destination, text, message);
-    };
-    destination.level = LogLevel.DEBUG;
-    return {
-        lines,
-        stop: () => {
-            destination.write = write;
-            destination.level = level;
-        },
-    };
+    return captureLogs("ControllerCommandHandler", /Node .*? availab(le |ility changed)/);
 }
 
 /**
@@ -145,7 +128,7 @@ describe("restored node cache", () => {
     let site: TestSite;
     let handler: ControllerCommandHandler | undefined;
     let restore: (() => void) | undefined;
-    let logs: ReturnType<typeof captureAvailabilityLogs> | undefined;
+    let logs: LogCapture | undefined;
 
     beforeEach(() => {
         MockTime.reset();
