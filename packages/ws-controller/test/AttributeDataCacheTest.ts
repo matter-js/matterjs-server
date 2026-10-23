@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { ClientNode, MatterError, NodeId } from "@matter/main";
+import { ClientNode, MatterError, Millis, NodeId, Timestamp } from "@matter/main";
 import { AttributeId, ClusterId, EndpointNumber } from "@matter/main/types";
 import { AttributeDataCache } from "../src/controller/AttributeDataCache.js";
 
@@ -68,6 +68,9 @@ function clientNode(nodeId: NodeId, shape: NodeShape = {}): ClientNode {
 
 const NODE_ID = NodeId(1);
 
+/** A yield after every endpoint, which tests that interleave changes into a running populate rely on. */
+const YIELD_EVERY_ENDPOINT = { yieldBudget: Millis(0) };
+
 /** Blocks the event loop, as heavy synchronous work would. */
 function busy(ms: number) {
     const until = performance.now() + ms;
@@ -104,7 +107,7 @@ describe("AttributeDataCache", () => {
 
     describe("add", () => {
         it("snapshots a restored peer without waiting for it to be read from the device", async () => {
-            const cache = new AttributeDataCache();
+            const cache = new AttributeDataCache(YIELD_EVERY_ENDPOINT);
 
             await cache.add(clientNode(NODE_ID, { seeded: false }));
 
@@ -115,7 +118,7 @@ describe("AttributeDataCache", () => {
         });
 
         it("caches nothing for a node without a structure", async () => {
-            const cache = new AttributeDataCache();
+            const cache = new AttributeDataCache(YIELD_EVERY_ENDPOINT);
 
             await cache.add(clientNode(NODE_ID, { endpointNumbers: [0], basicInformation: false }));
 
@@ -123,7 +126,7 @@ describe("AttributeDataCache", () => {
         });
 
         it("records the owner of each endpoint but the root", async function () {
-            const cache = new AttributeDataCache();
+            const cache = new AttributeDataCache(YIELD_EVERY_ENDPOINT);
             const node = clientNode(NODE_ID, { endpointNumbers: [0, 1, 2, 3], owners: { 0: 0, 1: 0, 2: 1, 3: 2 } });
 
             await cache.add(node);
@@ -132,7 +135,7 @@ describe("AttributeDataCache", () => {
         });
 
         it("records no parent for an endpoint without an owner", async function () {
-            const cache = new AttributeDataCache();
+            const cache = new AttributeDataCache(YIELD_EVERY_ENDPOINT);
             const node = clientNode(NODE_ID, { endpointNumbers: [0, 1, 2], owners: { 1: 0 } });
 
             await cache.add(node);
@@ -141,7 +144,7 @@ describe("AttributeDataCache", () => {
         });
 
         it("records no parent for an endpoint without attributes", async function () {
-            const cache = new AttributeDataCache();
+            const cache = new AttributeDataCache(YIELD_EVERY_ENDPOINT);
             const node = clientNode(NODE_ID, { endpointNumbers: [0, 1, 2], owners: { 1: 0, 2: 1 }, unreadable: [2] });
 
             await cache.add(node);
@@ -150,9 +153,61 @@ describe("AttributeDataCache", () => {
         });
     });
 
+    describe("yield budget", () => {
+        /** Records whether a timer queued while reading endpoint 0 ran before endpoint 1 was read. */
+        async function readOrder(cache: AttributeDataCache, workPerEndpoint: number) {
+            const order = new Array<string>();
+            await cache.add(
+                clientNode(NODE_ID, {
+                    endpointNumbers: [0, 1],
+                    onRead: number => {
+                        busy(workPerEndpoint);
+                        if (number === 0) {
+                            setTimeout(() => order.push("timer"), 0);
+                        }
+                        order.push(`endpoint ${number}`);
+                    },
+                }),
+            );
+            await new Promise(resolve => setTimeout(resolve, 0));
+            return order;
+        }
+
+        it("reads a quick node without yielding to the event loop", async () => {
+            expect(await readOrder(new AttributeDataCache({ yieldBudget: Millis(1000) }), 0)).deep.equals([
+                "endpoint 0",
+                "endpoint 1",
+                "timer",
+            ]);
+        });
+
+        it("carries the budget over to the next populate, so back-to-back small nodes still yield", async () => {
+            // Every read takes exactly 6 ms on this clock: the first populate stays below the budget, the second crosses it.
+            let now = 0;
+            const cache = new AttributeDataCache({ yieldBudget: Millis(10), clock: () => Timestamp(now) });
+            const order = new Array<string>();
+            const quickNode = (nodeId: NodeId, onRead: () => void) =>
+                clientNode(nodeId, { endpointNumbers: [0], onRead: () => ((now += 6), onRead()) });
+
+            await cache.add(quickNode(NodeId(1), () => setTimeout(() => order.push("timer"), 0)));
+            await cache.add(quickNode(NodeId(2), () => order.push("second read")));
+            order.push("second populated");
+
+            expect(order).deep.equals(["second read", "timer", "second populated"]);
+        });
+
+        it("yields between endpoints once the budget is used up", async () => {
+            expect(await readOrder(new AttributeDataCache({ yieldBudget: Millis(5) }), 6)).deep.equals([
+                "endpoint 0",
+                "timer",
+                "endpoint 1",
+            ]);
+        });
+    });
+
     describe("populateTiming", () => {
         it("counts a finished populate and its collecting time, but not the waits at its yields", async () => {
-            const cache = new AttributeDataCache();
+            const cache = new AttributeDataCache(YIELD_EVERY_ENDPOINT);
             const before = cache.populateTiming;
 
             await cache.add(
@@ -176,7 +231,7 @@ describe("AttributeDataCache", () => {
         });
 
         it("counts a populate that had to run again once", async () => {
-            const cache = new AttributeDataCache();
+            const cache = new AttributeDataCache(YIELD_EVERY_ENDPOINT);
             const before = cache.populateTiming;
             let rebuild: Promise<void> | undefined;
             let passes = 0;
@@ -201,7 +256,7 @@ describe("AttributeDataCache", () => {
         });
 
         it("does not count a populate whose node was deleted meanwhile", async () => {
-            const cache = new AttributeDataCache();
+            const cache = new AttributeDataCache(YIELD_EVERY_ENDPOINT);
             const before = cache.populateTiming;
 
             await cache.add(
@@ -230,7 +285,7 @@ describe("AttributeDataCache", () => {
         }
 
         it("reports the paths a rebuild dropped, except those of an endpoint the node no longer has", async () => {
-            const cache = new AttributeDataCache();
+            const cache = new AttributeDataCache(YIELD_EVERY_ENDPOINT);
             const node = clientNode(NODE_ID);
             await cache.add(node);
             const stored = cache.get(NODE_ID)!;
@@ -244,7 +299,7 @@ describe("AttributeDataCache", () => {
         });
 
         it("reports nothing for a first snapshot or a rebuild that dropped nothing", async () => {
-            const cache = new AttributeDataCache();
+            const cache = new AttributeDataCache(YIELD_EVERY_ENDPOINT);
             const removals = record(cache);
             const node = clientNode(NODE_ID);
 
@@ -262,7 +317,7 @@ describe("AttributeDataCache", () => {
         });
 
         it("removes an attribute reported as undefined", async function () {
-            const cache = new AttributeDataCache();
+            const cache = new AttributeDataCache(YIELD_EVERY_ENDPOINT);
             await cache.add(clientNode(NODE_ID));
             expect(cache.get(NODE_ID)?.["1/6/0"]).to.equal(true);
 
@@ -272,14 +327,14 @@ describe("AttributeDataCache", () => {
         });
 
         it("reports no removal for an attribute the snapshot does not hold", async function () {
-            const cache = new AttributeDataCache();
+            const cache = new AttributeDataCache(YIELD_EVERY_ENDPOINT);
             await cache.add(clientNode(NODE_ID));
 
             expect(cache.updateAttribute(NODE_ID, onOff(2, undefined))).to.equal(false);
         });
 
         it("stores a value without reporting a removal", async function () {
-            const cache = new AttributeDataCache();
+            const cache = new AttributeDataCache(YIELD_EVERY_ENDPOINT);
             await cache.add(clientNode(NODE_ID));
 
             expect(cache.updateAttribute(NODE_ID, onOff(1, false))).to.equal(false);
@@ -288,7 +343,7 @@ describe("AttributeDataCache", () => {
         });
 
         it("does not create a cache entry without a snapshot", function () {
-            const cache = new AttributeDataCache();
+            const cache = new AttributeDataCache(YIELD_EVERY_ENDPOINT);
 
             expect(cache.updateAttribute(NODE_ID, onOff(1, false))).to.equal(false);
             expect(cache.updateAttribute(NODE_ID, onOff(1, undefined))).to.equal(false);
@@ -297,7 +352,7 @@ describe("AttributeDataCache", () => {
         });
 
         it("replays a removal that arrives during a populate", async function () {
-            const cache = new AttributeDataCache();
+            const cache = new AttributeDataCache(YIELD_EVERY_ENDPOINT);
             const node = clientNode(NODE_ID, {
                 onRead: number => {
                     if (number === 1) {
@@ -313,7 +368,7 @@ describe("AttributeDataCache", () => {
         });
 
         it("drops a removal from the current snapshot and from a rebuild that is running", async function () {
-            const cache = new AttributeDataCache();
+            const cache = new AttributeDataCache(YIELD_EVERY_ENDPOINT);
             let removed: boolean | undefined;
             let keptInCurrentSnapshot: boolean | undefined;
             let rebuilding = false;
@@ -338,13 +393,13 @@ describe("AttributeDataCache", () => {
 
     describe("endpointParents", () => {
         it("is empty for a node without a snapshot", function () {
-            const cache = new AttributeDataCache();
+            const cache = new AttributeDataCache(YIELD_EVERY_ENDPOINT);
 
             expect(cache.endpointParents(NODE_ID, clientNode(NODE_ID, { owners: { 1: 0 } }))).to.deep.equal({});
         });
 
         it("reads the parent of an endpoint reported since the last populate from the node", async function () {
-            const cache = new AttributeDataCache();
+            const cache = new AttributeDataCache(YIELD_EVERY_ENDPOINT);
             await cache.add(clientNode(NODE_ID, { endpointNumbers: [0, 1], owners: { 1: 0 } }));
             const grown = clientNode(NODE_ID, { endpointNumbers: [0, 1, 2], owners: { 1: 0, 2: 1 } });
 
@@ -358,7 +413,7 @@ describe("AttributeDataCache", () => {
         });
 
         it("keeps the recorded parent of an endpoint the node dropped before its removal is announced", async function () {
-            const cache = new AttributeDataCache();
+            const cache = new AttributeDataCache(YIELD_EVERY_ENDPOINT);
             await cache.add(clientNode(NODE_ID, { endpointNumbers: [0, 1, 2], owners: { 1: 0, 2: 1 } }));
             const shrunk = clientNode(NODE_ID, { endpointNumbers: [0, 1], owners: { 1: 0 } });
 
@@ -368,7 +423,7 @@ describe("AttributeDataCache", () => {
 
     describe("deleteEndpoint", () => {
         it("drops the parent of the endpoint together with its attributes", async function () {
-            const cache = new AttributeDataCache();
+            const cache = new AttributeDataCache(YIELD_EVERY_ENDPOINT);
             const node = clientNode(NODE_ID, { endpointNumbers: [0, 1, 2], owners: { 1: 0, 2: 1 } });
             await cache.add(node);
 
@@ -379,7 +434,7 @@ describe("AttributeDataCache", () => {
         });
 
         it("keeps a running populate from restoring an endpoint it collected or got a report for before the removal", async function () {
-            const cache = new AttributeDataCache();
+            const cache = new AttributeDataCache(YIELD_EVERY_ENDPOINT);
             let removed = false;
             const node = clientNode(NODE_ID, {
                 endpointNumbers: [0, 1, 2, 3],

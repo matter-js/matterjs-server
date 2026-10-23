@@ -28,6 +28,9 @@ import { AttributeChange } from "./PeerChangeBus.js";
 
 const logger = Logger.get("AttributeDataCache");
 
+/** Collecting work after which a populate yields to the event loop; a yield costs a full timer turn. */
+const DEFAULT_YIELD_BUDGET = Millis(10);
+
 /** A node's attributes, and the parent of each endpoint as of the populate that built them. */
 type NodeSnapshot = {
     attributes: AttributesData;
@@ -65,6 +68,20 @@ export class AttributeDataCache {
     #cache = new Map<NodeId, NodeSnapshot>();
     #inFlight = new Map<NodeId, PopulateContext>();
     #timing: PopulateTiming = { populated: 0, collecting: Millis(0) };
+    readonly #yieldBudget: Duration;
+    readonly #clock: () => Timestamp;
+    /** Shared by all populates, so back-to-back populates of many small nodes still yield every budget. */
+    #sliceStartedAt: Timestamp;
+
+    /** `yieldBudget` 0 yields after every endpoint; `clock` measures the work against the budget. */
+    constructor({
+        yieldBudget = DEFAULT_YIELD_BUDGET,
+        clock = () => Time.nowUs,
+    }: { yieldBudget?: Duration; clock?: () => Timestamp } = {}) {
+        this.#yieldBudget = yieldBudget;
+        this.#clock = clock;
+        this.#sliceStartedAt = clock();
+    }
 
     /** Accumulated since this cache was created; take two readings to measure a phase. */
     get populateTiming(): Readonly<PopulateTiming> {
@@ -337,8 +354,8 @@ export class AttributeDataCache {
 
     /**
      * Collect attributes from all endpoints into a flat attribute object, and the parent of each endpoint,
-     * yielding to the event loop between endpoints so a large node does not block other timers, I/O, and
-     * WebSocket traffic.
+     * yielding to the event loop between endpoints once the yield budget of work has passed, so a large node
+     * does not block other timers, I/O, and WebSocket traffic.
      */
     async #collectSnapshot(node: ClientNode, snapshot: NodeSnapshot, context: PopulateContext): Promise<void> {
         const { attributes, endpointParents } = snapshot;
@@ -389,9 +406,13 @@ export class AttributeDataCache {
                 }
             }
 
+            if (Timestamp.delta(this.#sliceStartedAt, this.#clock()) < this.#yieldBudget) {
+                continue;
+            }
             const yieldedAt = Time.nowUs;
             await Time.sleep("AttributeDataCache populate yield", Millis(0));
             context.yieldWait = Millis(context.yieldWait + Timestamp.delta(yieldedAt, Time.nowUs));
+            this.#sliceStartedAt = this.#clock();
             // Bail on deletion or a requested re-run; #runPopulate drops or restarts the partial.
             if (context.cancelled || context.rerun) {
                 return;
