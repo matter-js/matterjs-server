@@ -138,7 +138,7 @@ function decodePreset(raw: unknown): ThermostatPreset | null {
 }
 
 /** PresetScenarioEnum labels (Matter spec §4.3.10.17). */
-const PRESET_SCENARIO_LABELS: Record<number, string> = {
+export const PRESET_SCENARIO_LABELS: Record<number, string> = {
     1: "Occupied",
     2: "Unoccupied",
     3: "Sleep",

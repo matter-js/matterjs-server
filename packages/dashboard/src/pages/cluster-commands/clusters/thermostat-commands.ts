@@ -9,10 +9,13 @@ import "@material/web/iconbutton/outlined-icon-button";
 import type { MatterNode } from "@matter-server/ws-client";
 import {
     mdiCheck,
+    mdiCheckCircleOutline,
     mdiClockOutline,
+    mdiClose,
     mdiFire,
     mdiLightbulbOnOutline,
     mdiPaletteSwatchOutline,
+    mdiPencilOutline,
     mdiPlus,
     mdiSnowflake,
     mdiTrashCanOutline,
@@ -21,8 +24,16 @@ import { css, type CSSResultGroup, html, nothing, type TemplateResult } from "li
 import { customElement, state } from "lit/decorators.js";
 import { live } from "lit/directives/live.js";
 import "../../../components/ha-svg-icon.js";
-import { showAlertDialog } from "../../../components/dialog-box/show-dialog-box.js";
+import { showAlertDialog, showPromptDialog } from "../../../components/dialog-box/show-dialog-box.js";
 import { handleAsync } from "../../../util/async-handler.js";
+import {
+    readPresetTypes,
+    setActivePreset,
+    type ThermostatPresetEdit,
+    type ThermostatPresetType,
+    toPresetEdit,
+    writeThermostatPresets,
+} from "../../../util/thermostat-preset-edit.js";
 import {
     buildDaySegments,
     compareTransitionsForDisplay,
@@ -40,6 +51,7 @@ import {
     readActiveScheduleHandle,
     readPresets,
     pickSetpointForMode,
+    PRESET_SCENARIO_LABELS,
     readSchedules,
     resolveScheduleDefaults,
     resolveTransitionLabel,
@@ -77,12 +89,25 @@ class ThermostatClusterCommands extends BaseClusterCommands {
     @state() private _addExpirationMinutes = DEFAULT_EXPIRATION_MINUTES;
     @state() private _addExpirationInput = String(DEFAULT_EXPIRATION_MINUTES);
 
+    @state() private _editingPresetHandle: string | null = null;
+    @state() private _editName = "";
+    @state() private _editHeating = "";
+    @state() private _editCooling = "";
+
+    @state() private _creatingPreset = false;
+    @state() private _newPresetScenario: number | null = null;
+    @state() private _newPresetName = "";
+    @state() private _newPresetHeating = "";
+    @state() private _newPresetCooling = "";
+
     /**
      * In-flight invokes, identified by operation id rather than a boolean: the panel is reused across
      * navigations, so a settling promise must only clear the flag it set itself.
      */
     @state() private _addOperation: number | null = null;
     @state() private _removeOperations: Record<number, number> = {};
+    @state() private _presetWriteOperation: number | null = null;
+    @state() private _activatingPresetHandle: string | null = null;
     private _operationCounter = 0;
 
     override willUpdate(changedProperties: Map<string, unknown>) {
@@ -97,6 +122,14 @@ class ThermostatClusterCommands extends BaseClusterCommands {
             this._addExpirationInput = String(DEFAULT_EXPIRATION_MINUTES);
             this._addOperation = null;
             this._removeOperations = {};
+            this._editingPresetHandle = null;
+            this._creatingPreset = false;
+            this._newPresetScenario = null;
+            this._newPresetName = "";
+            this._newPresetHeating = "";
+            this._newPresetCooling = "";
+            this._presetWriteOperation = null;
+            this._activatingPresetHandle = null;
         }
         this._scheduleContext = context;
     }
@@ -318,6 +351,10 @@ class ThermostatClusterCommands extends BaseClusterCommands {
     private _renderPresetsPanel(): TemplateResult {
         const presets = readPresets(this.node, this.endpoint);
         const activeHandle = readActivePresetHandle(this.node, this.endpoint);
+        const presetTypes = readPresetTypes(this.node, this.endpoint) ?? [];
+        const heatActive = isFeatureActive(this.node, this.endpoint, "HEAT");
+        const coolActive = isFeatureActive(this.node, this.endpoint, "COOL");
+        const busy = this._presetWriteOperation !== null;
 
         return html`
             <details class="command-panel" open>
@@ -334,16 +371,27 @@ class ThermostatClusterCommands extends BaseClusterCommands {
                               ? html`<p class="empty">No presets configured.</p>`
                               : html`
                                     <ul class="preset-list">
-                                        ${presets.map(p => this._renderPresetRow(p, p.handle === activeHandle))}
+                                        ${presets.map(p =>
+                                            this._editingPresetHandle === p.handle
+                                                ? this._renderPresetEditRow(p, heatActive, coolActive, busy)
+                                                : this._renderPresetRow(p, p.handle === activeHandle, presets, busy),
+                                        )}
                                     </ul>
                                 `
                     }
+                    ${this._renderAddPresetForm(presets ?? [], presetTypes, heatActive, coolActive, busy)}
                 </div>
             </details>
         `;
     }
 
-    private _renderPresetRow(preset: ThermostatPreset, isActive: boolean): TemplateResult {
+    private _renderPresetRow(
+        preset: ThermostatPreset,
+        isActive: boolean,
+        presets: ThermostatPreset[],
+        busy: boolean,
+    ): TemplateResult {
+        const activating = this._activatingPresetHandle !== null;
         return html`
             <li class="preset-row">
                 <span class="preset-label">${formatPresetLabel(preset)}</span>
@@ -358,9 +406,218 @@ class ThermostatClusterCommands extends BaseClusterCommands {
                               <ha-svg-icon .path=${mdiCheck}></ha-svg-icon>
                               Active
                           </span>`
+                        : html`
+                              <md-outlined-icon-button
+                                  title="Set as active preset"
+                                  aria-label="Set as active preset"
+                                  ?disabled=${activating}
+                                  @click=${handleAsync(() => this._handleSetActivePreset(preset.handle))}
+                              >
+                                  <ha-svg-icon .path=${mdiCheckCircleOutline}></ha-svg-icon>
+                              </md-outlined-icon-button>
+                          `
+                }
+                <md-outlined-icon-button
+                    title="Edit preset"
+                    aria-label="Edit preset"
+                    ?disabled=${busy}
+                    @click=${() => this._startEditPreset(preset)}
+                >
+                    <ha-svg-icon .path=${mdiPencilOutline}></ha-svg-icon>
+                </md-outlined-icon-button>
+                <md-outlined-icon-button
+                    title=${preset.builtIn ? "Built-in presets cannot be removed" : "Remove preset"}
+                    aria-label="Remove preset"
+                    ?disabled=${busy || preset.builtIn === true}
+                    @click=${handleAsync(() => this._handleDeletePreset(preset, presets))}
+                >
+                    <ha-svg-icon .path=${mdiTrashCanOutline}></ha-svg-icon>
+                </md-outlined-icon-button>
+            </li>
+        `;
+    }
+
+    private _renderPresetEditRow(
+        preset: ThermostatPreset,
+        heatActive: boolean,
+        coolActive: boolean,
+        busy: boolean,
+    ): TemplateResult {
+        const scenarioLabel = PRESET_SCENARIO_LABELS[preset.scenario ?? -1] ?? formatHandleShort(preset.handle);
+        return html`
+            <li class="preset-row preset-row-editing">
+                <span class="preset-label">${scenarioLabel}</span>
+                <label for="editPresetName">Name:</label>
+                <input
+                    id="editPresetName"
+                    type="text"
+                    maxlength="64"
+                    placeholder="(unnamed)"
+                    .value=${live(this._editName)}
+                    @input=${(e: Event) => {
+                        this._editName = (e.target as HTMLInputElement).value;
+                    }}
+                />
+                ${
+                    heatActive
+                        ? html`
+                              <label for="editPresetHeat">Heat:</label>
+                              <input
+                                  id="editPresetHeat"
+                                  type="number"
+                                  step="0.1"
+                                  .value=${live(this._editHeating)}
+                                  @input=${(e: Event) => {
+                                      this._editHeating = (e.target as HTMLInputElement).value;
+                                  }}
+                              />
+                          `
                         : nothing
                 }
+                ${
+                    coolActive
+                        ? html`
+                              <label for="editPresetCool">Cool:</label>
+                              <input
+                                  id="editPresetCool"
+                                  type="number"
+                                  step="0.1"
+                                  .value=${live(this._editCooling)}
+                                  @input=${(e: Event) => {
+                                      this._editCooling = (e.target as HTMLInputElement).value;
+                                  }}
+                              />
+                          `
+                        : nothing
+                }
+                <md-outlined-icon-button
+                    title="Save"
+                    aria-label="Save"
+                    ?disabled=${busy}
+                    @click=${handleAsync(() => this._handleSavePreset(preset))}
+                >
+                    <ha-svg-icon .path=${mdiCheck}></ha-svg-icon>
+                </md-outlined-icon-button>
+                <md-outlined-icon-button
+                    title="Cancel"
+                    aria-label="Cancel"
+                    ?disabled=${busy}
+                    @click=${() => this._cancelEditPreset()}
+                >
+                    <ha-svg-icon .path=${mdiClose}></ha-svg-icon>
+                </md-outlined-icon-button>
             </li>
+        `;
+    }
+
+    private _renderAddPresetForm(
+        presets: ThermostatPreset[],
+        presetTypes: ThermostatPresetType[],
+        heatActive: boolean,
+        coolActive: boolean,
+        busy: boolean,
+    ): TemplateResult {
+        if (!this._creatingPreset) {
+            return html`
+                <md-outlined-button ?disabled=${busy} @click=${() => this._openAddPresetForm(presetTypes)}>
+                    <ha-svg-icon slot="icon" .path=${mdiPlus}></ha-svg-icon>
+                    Add preset
+                </md-outlined-button>
+            `;
+        }
+
+        const countByScenario = new Map<number, number>();
+        for (const p of presets) {
+            if (p.scenario !== null) countByScenario.set(p.scenario, (countByScenario.get(p.scenario) ?? 0) + 1);
+        }
+        const availableTypes = presetTypes.filter(t => (countByScenario.get(t.scenario) ?? 0) < t.numberOfPresets);
+        const selectedType =
+            availableTypes.find(t => t.scenario === this._newPresetScenario) ?? availableTypes[0] ?? null;
+
+        return html`
+            <div class="transitions-header">ADD PRESET</div>
+            ${
+                availableTypes.length === 0
+                    ? html`<p class="empty">The device has no room left for another preset.</p>`
+                    : html`
+                          <div class="command-row">
+                              <label for="newPresetScenario">Scenario:</label>
+                              <select
+                                  id="newPresetScenario"
+                                  @change=${(e: Event) => {
+                                      this._newPresetScenario = Number((e.target as HTMLSelectElement).value);
+                                  }}
+                              >
+                                  ${availableTypes.map(
+                                      t => html`
+                                          <option
+                                              value=${t.scenario}
+                                              .selected=${t.scenario === selectedType?.scenario}
+                                          >
+                                              ${PRESET_SCENARIO_LABELS[t.scenario] ?? `Scenario ${t.scenario}`}
+                                          </option>
+                                      `,
+                                  )}
+                              </select>
+                              ${
+                                  selectedType?.supportsNames
+                                      ? html`
+                                            <label for="newPresetName">Name:</label>
+                                            <input
+                                                id="newPresetName"
+                                                type="text"
+                                                maxlength="64"
+                                                .value=${live(this._newPresetName)}
+                                                @input=${(e: Event) => {
+                                                    this._newPresetName = (e.target as HTMLInputElement).value;
+                                                }}
+                                            />
+                                        `
+                                      : nothing
+                              }
+                              ${
+                                  heatActive
+                                      ? html`
+                                            <label for="newPresetHeat">Heat:</label>
+                                            <input
+                                                id="newPresetHeat"
+                                                type="number"
+                                                step="0.1"
+                                                .value=${live(this._newPresetHeating)}
+                                                @input=${(e: Event) => {
+                                                    this._newPresetHeating = (e.target as HTMLInputElement).value;
+                                                }}
+                                            />
+                                        `
+                                      : nothing
+                              }
+                              ${
+                                  coolActive
+                                      ? html`
+                                            <label for="newPresetCool">Cool:</label>
+                                            <input
+                                                id="newPresetCool"
+                                                type="number"
+                                                step="0.1"
+                                                .value=${live(this._newPresetCooling)}
+                                                @input=${(e: Event) => {
+                                                    this._newPresetCooling = (e.target as HTMLInputElement).value;
+                                                }}
+                                            />
+                                        `
+                                      : nothing
+                              }
+                              <md-outlined-button
+                                  ?disabled=${busy || selectedType === null}
+                                  @click=${handleAsync(() => this._handleAddPreset(presets, selectedType))}
+                              >
+                                  <ha-svg-icon slot="icon" .path=${mdiPlus}></ha-svg-icon>
+                                  Add
+                              </md-outlined-button>
+                          </div>
+                      `
+            }
+            <md-outlined-button ?disabled=${busy} @click=${() => this._cancelAddPreset()}>Cancel</md-outlined-button>
         `;
     }
 
@@ -567,6 +824,149 @@ class ThermostatClusterCommands extends BaseClusterCommands {
                 const pending = { ...this._removeOperations };
                 delete pending[uniqueId];
                 this._removeOperations = pending;
+            }
+        }
+    }
+
+    private _startEditPreset(preset: ThermostatPreset) {
+        this._creatingPreset = false;
+        this._editingPresetHandle = preset.handle;
+        this._editName = preset.name ?? "";
+        this._editHeating = this._formatSetpointInput(preset.heatingSetpoint);
+        this._editCooling = this._formatSetpointInput(preset.coolingSetpoint);
+    }
+
+    private _cancelEditPreset() {
+        this._editingPresetHandle = null;
+    }
+
+    private _openAddPresetForm(presetTypes: ThermostatPresetType[]) {
+        this._editingPresetHandle = null;
+        this._creatingPreset = true;
+        this._newPresetScenario = presetTypes[0]?.scenario ?? null;
+        this._newPresetName = "";
+        this._newPresetHeating = "";
+        this._newPresetCooling = "";
+    }
+
+    private _cancelAddPreset() {
+        this._creatingPreset = false;
+    }
+
+    /** `°C` text to the cluster's int16 centidegrees; blank or unparsable falls back (the field isn't nullable). */
+    private _parseSetpointInput(text: string, fallbackCentidegrees: number): number {
+        const parsed = Number.parseFloat(text);
+        return Number.isFinite(parsed) ? Math.round(parsed * 100) : fallbackCentidegrees;
+    }
+
+    private _formatSetpointInput(centidegrees: number | null): string {
+        return centidegrees === null ? "" : (centidegrees / 100).toFixed(1);
+    }
+
+    private async _handleSavePreset(preset: ThermostatPreset) {
+        const node = this.node;
+        const endpoint = this.endpoint;
+        const presets = readPresets(node, endpoint);
+        if (!node || !presets || this._presetWriteOperation !== null) return;
+
+        const edited: ThermostatPresetEdit = {
+            presetHandle: preset.handle,
+            presetScenario: preset.scenario ?? 0,
+            name: this._editName.trim().length > 0 ? this._editName.trim() : null,
+            heatingSetpoint:
+                preset.heatingSetpoint === null
+                    ? null
+                    : this._parseSetpointInput(this._editHeating, preset.heatingSetpoint),
+            coolingSetpoint:
+                preset.coolingSetpoint === null
+                    ? null
+                    : this._parseSetpointInput(this._editCooling, preset.coolingSetpoint),
+            builtIn: preset.builtIn === true,
+        };
+        const nextPresets = presets.map(p => (p.handle === preset.handle ? edited : toPresetEdit(p)));
+
+        const operation = ++this._operationCounter;
+        this._presetWriteOperation = operation;
+        try {
+            await writeThermostatPresets(this.client, node.node_id, endpoint, nextPresets);
+            if (this.isSameContext(node, endpoint) && this._editingPresetHandle === preset.handle) {
+                this._editingPresetHandle = null;
+            }
+        } catch (err) {
+            this._reportInvokeFailure("Saving preset failed", err, node, endpoint);
+        } finally {
+            if (this._presetWriteOperation === operation) this._presetWriteOperation = null;
+        }
+    }
+
+    private async _handleAddPreset(presets: ThermostatPreset[], selectedType: ThermostatPresetType | null) {
+        const node = this.node;
+        const endpoint = this.endpoint;
+        if (!node || selectedType === null || this._presetWriteOperation !== null) return;
+
+        const added: ThermostatPresetEdit = {
+            presetHandle: null,
+            presetScenario: selectedType.scenario,
+            name:
+                selectedType.supportsNames && this._newPresetName.trim().length > 0 ? this._newPresetName.trim() : null,
+            heatingSetpoint: isFeatureActive(node, endpoint, "HEAT")
+                ? this._parseSetpointInput(this._newPresetHeating, 2000)
+                : null,
+            coolingSetpoint: isFeatureActive(node, endpoint, "COOL")
+                ? this._parseSetpointInput(this._newPresetCooling, 2600)
+                : null,
+            builtIn: false,
+        };
+        const nextPresets = [...presets.map(toPresetEdit), added];
+
+        const operation = ++this._operationCounter;
+        this._presetWriteOperation = operation;
+        try {
+            await writeThermostatPresets(this.client, node.node_id, endpoint, nextPresets);
+            if (this.isSameContext(node, endpoint)) this._creatingPreset = false;
+        } catch (err) {
+            this._reportInvokeFailure("Adding preset failed", err, node, endpoint);
+        } finally {
+            if (this._presetWriteOperation === operation) this._presetWriteOperation = null;
+        }
+    }
+
+    private async _handleDeletePreset(preset: ThermostatPreset, presets: ThermostatPreset[]) {
+        const node = this.node;
+        const endpoint = this.endpoint;
+        if (!node || preset.builtIn === true || this._presetWriteOperation !== null) return;
+
+        const confirmed = await showPromptDialog({
+            title: "Remove preset",
+            text: `Remove "${formatPresetLabel(preset)}"? This cannot be undone.`,
+            confirmText: "Remove",
+        });
+        if (!confirmed || !this.isSameContext(node, endpoint)) return;
+
+        const nextPresets = presets.filter(p => p.handle !== preset.handle).map(toPresetEdit);
+        const operation = ++this._operationCounter;
+        this._presetWriteOperation = operation;
+        try {
+            await writeThermostatPresets(this.client, node.node_id, endpoint, nextPresets);
+        } catch (err) {
+            this._reportInvokeFailure("Removing preset failed", err, node, endpoint);
+        } finally {
+            if (this._presetWriteOperation === operation) this._presetWriteOperation = null;
+        }
+    }
+
+    private async _handleSetActivePreset(presetHandle: string) {
+        const node = this.node;
+        const endpoint = this.endpoint;
+        if (!node || this._activatingPresetHandle !== null) return;
+        this._activatingPresetHandle = presetHandle;
+        try {
+            await setActivePreset(this.client, node.node_id, endpoint, presetHandle);
+        } catch (err) {
+            this._reportInvokeFailure("Setting active preset failed", err, node, endpoint);
+        } finally {
+            if (this.isSameContext(node, endpoint) && this._activatingPresetHandle === presetHandle) {
+                this._activatingPresetHandle = null;
             }
         }
     }
@@ -888,6 +1288,29 @@ class ThermostatClusterCommands extends BaseClusterCommands {
                 --md-outlined-icon-button-container-width: 32px;
                 --md-outlined-icon-button-icon-size: 16px;
                 flex-shrink: 0;
+            }
+
+            .preset-row-editing {
+                flex-wrap: wrap;
+            }
+
+            .preset-row-editing label {
+                font-size: 0.8rem;
+                color: var(--md-sys-color-on-surface-variant);
+            }
+
+            .preset-row-editing input[type="text"],
+            .preset-row-editing input[type="number"] {
+                padding: 6px 8px;
+                border: 1px solid var(--md-sys-color-outline);
+                border-radius: 4px;
+                background: var(--md-sys-color-surface);
+                color: var(--md-sys-color-on-surface);
+                font: inherit;
+            }
+
+            .preset-row-editing input[type="number"] {
+                width: 70px;
             }
 
             .command-row select {
