@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { ClientNode, MatterError, Millis, NodeId } from "@matter/main";
+import { ClientNode, MatterError, Millis, NodeId, Timestamp } from "@matter/main";
 import { AttributeId, ClusterId, EndpointNumber } from "@matter/main/types";
 import { AttributeDataCache } from "../src/controller/AttributeDataCache.js";
 
@@ -182,10 +182,12 @@ describe("AttributeDataCache", () => {
         });
 
         it("carries the budget over to the next populate, so back-to-back small nodes still yield", async () => {
-            const cache = new AttributeDataCache({ yieldBudget: Millis(10) });
+            // Every read takes exactly 6 ms on this clock: the first populate stays below the budget, the second crosses it.
+            let now = 0;
+            const cache = new AttributeDataCache({ yieldBudget: Millis(10), clock: () => Timestamp(now) });
             const order = new Array<string>();
             const quickNode = (nodeId: NodeId, onRead: () => void) =>
-                clientNode(nodeId, { endpointNumbers: [0], onRead: () => (busy(6), onRead()) });
+                clientNode(nodeId, { endpointNumbers: [0], onRead: () => ((now += 6), onRead()) });
 
             await cache.add(quickNode(NodeId(1), () => setTimeout(() => order.push("timer"), 0)));
             await cache.add(quickNode(NodeId(2), () => order.push("second read")));

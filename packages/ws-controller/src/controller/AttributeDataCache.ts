@@ -69,12 +69,18 @@ export class AttributeDataCache {
     #inFlight = new Map<NodeId, PopulateContext>();
     #timing: PopulateTiming = { populated: 0, collecting: Millis(0) };
     readonly #yieldBudget: Duration;
+    readonly #clock: () => Timestamp;
     /** Shared by all populates, so back-to-back populates of many small nodes still yield every budget. */
-    #sliceStartedAt = Time.nowUs;
+    #sliceStartedAt: Timestamp;
 
-    /** `yieldBudget` 0 yields after every endpoint. */
-    constructor({ yieldBudget = DEFAULT_YIELD_BUDGET }: { yieldBudget?: Duration } = {}) {
+    /** `yieldBudget` 0 yields after every endpoint; `clock` measures the work against the budget. */
+    constructor({
+        yieldBudget = DEFAULT_YIELD_BUDGET,
+        clock = () => Time.nowUs,
+    }: { yieldBudget?: Duration; clock?: () => Timestamp } = {}) {
         this.#yieldBudget = yieldBudget;
+        this.#clock = clock;
+        this.#sliceStartedAt = clock();
     }
 
     /** Accumulated since this cache was created; take two readings to measure a phase. */
@@ -400,13 +406,13 @@ export class AttributeDataCache {
                 }
             }
 
-            const yieldedAt = Time.nowUs;
-            if (Timestamp.delta(this.#sliceStartedAt, yieldedAt) < this.#yieldBudget) {
+            if (Timestamp.delta(this.#sliceStartedAt, this.#clock()) < this.#yieldBudget) {
                 continue;
             }
+            const yieldedAt = Time.nowUs;
             await Time.sleep("AttributeDataCache populate yield", Millis(0));
-            this.#sliceStartedAt = Time.nowUs;
-            context.yieldWait = Millis(context.yieldWait + Timestamp.delta(yieldedAt, this.#sliceStartedAt));
+            context.yieldWait = Millis(context.yieldWait + Timestamp.delta(yieldedAt, Time.nowUs));
+            this.#sliceStartedAt = this.#clock();
             // Bail on deletion or a requested re-run; #runPopulate drops or restarts the partial.
             if (context.cancelled || context.rerun) {
                 return;
