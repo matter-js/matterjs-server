@@ -8,12 +8,14 @@ import {
     ClientNode,
     ClusterBehavior,
     Diagnostic,
+    Duration,
     Logger,
     MatterError,
     Millis,
     NodeId,
     Observable,
     Time,
+    Timestamp,
 } from "@matter/main";
 import { BasicInformationClient } from "@matter/main/behaviors";
 import { EndpointNumber } from "@matter/main/types";
@@ -39,10 +41,18 @@ type NodeSnapshot = {
 type PopulateContext = {
     rerun: boolean;
     cancelled: boolean;
+    /** Time spent waiting at the event-loop yields of this populate. */
+    yieldWait: Duration;
     /** An `undefined` value records a removed attribute. */
     pending: Array<[path: string, value: unknown]>;
     promise: Promise<void>;
 };
+
+/** Snapshots a cache wrote, and the time spent collecting them, not counting the waits at event-loop yields. */
+export interface PopulateTiming {
+    populated: number;
+    collecting: Duration;
+}
 
 /**
  * Cache for node attributes in WebSocket format.
@@ -54,6 +64,12 @@ type PopulateContext = {
 export class AttributeDataCache {
     #cache = new Map<NodeId, NodeSnapshot>();
     #inFlight = new Map<NodeId, PopulateContext>();
+    #timing: PopulateTiming = { populated: 0, collecting: Millis(0) };
+
+    /** Accumulated since this cache was created; take two readings to measure a phase. */
+    get populateTiming(): Readonly<PopulateTiming> {
+        return { ...this.#timing };
+    }
 
     /**
      * Paths a rebuild dropped from a node's previous snapshot, emitted once per swap before the rebuild
@@ -255,16 +271,22 @@ export class AttributeDataCache {
             return inFlight.promise;
         }
 
-        const context: PopulateContext = { rerun: false, cancelled: false, pending: [], promise: Promise.resolve() };
+        const context: PopulateContext = {
+            rerun: false,
+            cancelled: false,
+            yieldWait: Millis(0),
+            pending: [],
+            promise: Promise.resolve(),
+        };
         context.promise = this.#runPopulate(nodeId, node, context);
         this.#inFlight.set(nodeId, context);
         return context.promise;
     }
 
     async #runPopulate(nodeId: NodeId, node: ClientNode, context: PopulateContext): Promise<void> {
+        const startedAt = Time.nowUs;
         try {
             let attributeCount = 0;
-            const startedAt = Time.nowMs;
             do {
                 context.rerun = false;
                 context.pending = [];
@@ -296,8 +318,13 @@ export class AttributeDataCache {
                 }
             } while (context.rerun);
 
+            const total = Timestamp.delta(startedAt, Time.nowUs);
+            const collecting = Millis(total - context.yieldWait);
+            this.#timing.populated++;
+            this.#timing.collecting = Millis(this.#timing.collecting + collecting);
             logger.debug(
-                `Populated attribute cache for node ${formatNodeId(nodeId)}: ${attributeCount} attributes in ${Time.nowMs - startedAt}ms`,
+                `Populated attribute cache for node ${formatNodeId(nodeId)}: ${attributeCount} attributes in ${Duration.format(total)}`,
+                `(collecting ${Duration.format(collecting)}, waiting at yields ${Duration.format(context.yieldWait)})`,
             );
         } catch (error) {
             logger.warn(`Failed to populate attribute cache for node ${formatNodeId(nodeId)}:`, error);
@@ -362,7 +389,9 @@ export class AttributeDataCache {
                 }
             }
 
+            const yieldedAt = Time.nowUs;
             await Time.sleep("AttributeDataCache populate yield", Millis(0));
+            context.yieldWait = Millis(context.yieldWait + Timestamp.delta(yieldedAt, Time.nowUs));
             // Bail on deletion or a requested re-run; #runPopulate drops or restarts the partial.
             if (context.cancelled || context.rerun) {
                 return;

@@ -41,7 +41,7 @@
     },
     "dependencies": {
         "@matter-server/ws-client": "*",
-        "@matter/dcl-data": ">=2026.10.18",
+        "@matter/dcl-data": ">=2026.10.23",
         "@matter/main": "0.18.0",
         "@matter/thread-br-client": "0.18.0",
         "sdp-transform": "^3.0.0",

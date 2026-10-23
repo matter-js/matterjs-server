@@ -193,6 +193,19 @@ describe("restored node cache", () => {
         expect(rebuilds).equals(1);
     });
 
+    it("logs once what the node registration spent its time on", async () => {
+        await changeWhileControllerIsDown();
+
+        const { handler } = await restartController();
+        logs = captureLogs("ControllerCommandHandler", /Registered \d+ of \d+ nodes/);
+        await MockTime.resolve(handler.initializeNodes(), { macrotasks: true });
+
+        expect(logs.lines).length(1);
+        expect(logs.lines[0]).match(
+            / INFO .*Registered 1 of 1 nodes in .+; 1 attribute snapshots took .+ of collecting; event-loop delay p50 .+, p99 .+, max .+/,
+        );
+    });
+
     it("keeps a restored node unavailable while its device is unreachable, then sends it once", async () => {
         const device = await changeWhileControllerIsDown();
         await MockTime.resolve(device.cancel(), { macrotasks: true });

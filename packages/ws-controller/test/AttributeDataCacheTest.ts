@@ -68,6 +68,14 @@ function clientNode(nodeId: NodeId, shape: NodeShape = {}): ClientNode {
 
 const NODE_ID = NodeId(1);
 
+/** Blocks the event loop, as heavy synchronous work would. */
+function busy(ms: number) {
+    const until = performance.now() + ms;
+    while (performance.now() < until) {
+        // spin
+    }
+}
+
 describe("AttributeDataCache", () => {
     describe("hasStructure", () => {
         it("accepts a peer whose structure is loaded but which has not been read this runtime", () => {
@@ -139,6 +147,68 @@ describe("AttributeDataCache", () => {
             await cache.add(node);
 
             expect(cache.endpointParents(NODE_ID, node)).to.deep.equal({ 1: 0 });
+        });
+    });
+
+    describe("populateTiming", () => {
+        it("counts a finished populate and its collecting time, but not the waits at its yields", async () => {
+            const cache = new AttributeDataCache();
+            const before = cache.populateTiming;
+
+            await cache.add(
+                clientNode(NODE_ID, {
+                    endpointNumbers: [0, 1],
+                    onRead: number => {
+                        busy(5);
+                        if (number === 0) {
+                            // Queued ahead of the yield after endpoint 0, so that yield waits for it.
+                            setTimeout(() => busy(100), 0);
+                        }
+                    },
+                }),
+            );
+
+            const after = cache.populateTiming;
+            expect(after.populated - before.populated).equals(1);
+            const collecting = after.collecting - before.collecting;
+            expect(collecting).at.least(8);
+            expect(collecting).below(100);
+        });
+
+        it("counts a populate that had to run again once", async () => {
+            const cache = new AttributeDataCache();
+            const before = cache.populateTiming;
+            let rebuild: Promise<void> | undefined;
+            const node = clientNode(NODE_ID, {
+                endpointNumbers: [0, 1],
+                onRead: () => {
+                    rebuild ??= cache.update(node);
+                },
+            });
+
+            await cache.add(node);
+            await rebuild;
+
+            expect(cache.populateTiming.populated - before.populated).equals(1);
+        });
+
+        it("does not count a populate whose node was deleted meanwhile", async () => {
+            const cache = new AttributeDataCache();
+            const before = cache.populateTiming;
+
+            await cache.add(
+                clientNode(NODE_ID, {
+                    endpointNumbers: [0, 1],
+                    onRead: number => {
+                        // After the first yield, so the populate is already registered as in flight.
+                        if (number === 1) {
+                            cache.delete(NODE_ID);
+                        }
+                    },
+                }),
+            );
+
+            expect(cache.populateTiming.populated).equals(before.populated);
         });
     });
 

@@ -37,6 +37,7 @@ import {
     Time,
     TimeoutError,
     Timer,
+    Timestamp,
     DnsRecordType,
     EndpointLifecycle,
     NetworkClient,
@@ -93,6 +94,7 @@ import { WebRtcTransportProviderClient } from "@matter/node/behaviors/web-rtc-tr
 import { WebRtcTransportRequestorServer } from "@matter/node/behaviors/web-rtc-transport-requestor";
 import { CameraControllerDevice } from "@matter/node/devices/camera-controller";
 import { OtaProviderEndpoint } from "@matter/node/endpoints/ota-provider";
+import { monitorEventLoopDelay } from "node:perf_hooks";
 import type { SessionEstablishingCommandName, SignallingCommandName } from "../camera/webRtcProviderArguments.js";
 import { ClusterMap, ClusterMapEntry, GlobalAttributes } from "../model/ModelMapper.js";
 import {
@@ -148,6 +150,7 @@ import { formatNodeId } from "../util/formatNodeId.js";
 import { pingIp } from "../util/network.js";
 import { nodeIdOf } from "../util/nodeIdOf.js";
 import { applyAttributeChange } from "./applyAttributeChange.js";
+import type { PopulateTiming } from "./AttributeDataCache.js";
 import type { ControllerResources } from "./ControllerNode.js";
 import { CustomClusterPoller } from "./CustomClusterPoller.js";
 import { NodeAttributeReader } from "./NodeProcessor.js";
@@ -160,6 +163,9 @@ import { SyncTrigger, TIME_FAILURE_EVENT_ID, TIME_SYNC_CLUSTER_ID, TimeSyncManag
 import { WebRtcProviderSessions, type WebRtcProviderNodes } from "./WebRtcProviderSessions.js";
 
 const logger = Logger.get("ControllerCommandHandler");
+
+/** Sampling interval in ms of the event-loop delay measured during node registration; every sample includes it. */
+const LOOP_DELAY_RESOLUTION = 10;
 
 /** The controller's own camera endpoint, which receives the WebRTC callbacks a peer sends back. */
 export const CameraControllerEndpoint = CameraControllerDevice.with(WebRtcTransportRequestorServer);
@@ -1109,14 +1115,49 @@ export class ControllerCommandHandler {
         const nodes = this.#node.peers.commissioned.map(peer => nodeIdOf(peer));
         logger.info(`Found ${nodes.length} nodes: ${nodes.map(nodeId => this.formatNode(nodeId)).join(", ")}`);
 
-        for (const nodeId of nodes) {
-            try {
-                logger.info(`Initializing node "${this.formatNode(nodeId)}" ...`);
-                await this.#registerNode(nodeId, true);
-            } catch (error) {
-                logger.warn(`Failed to initialize node "${this.formatNode(nodeId)}":`, error);
+        const startedAt = Time.nowUs;
+        const timingBefore = this.#nodes.attributeCache.populateTiming;
+        const loopDelay = monitorEventLoopDelay({ resolution: LOOP_DELAY_RESOLUTION });
+        let registered = 0;
+        loopDelay.enable();
+        try {
+            for (const nodeId of nodes) {
+                try {
+                    logger.info(`Initializing node "${this.formatNode(nodeId)}" ...`);
+                    await this.#registerNode(nodeId, true);
+                    registered++;
+                } catch (error) {
+                    logger.warn(`Failed to initialize node "${this.formatNode(nodeId)}":`, error);
+                }
             }
+        } finally {
+            loopDelay.disable();
         }
+        this.#logInitializationTiming(registered, nodes.length, startedAt, timingBefore, loopDelay);
+    }
+
+    /**
+     * One line per start with what the node registration spent its time on, so a slow start on a user's
+     * installation can be told apart: collecting attribute snapshots (CPU) versus an event loop kept busy by other
+     * startup work. The snapshot figures cover every snapshot that finished during the loop, rebuilds included.
+     * The event-loop delay is the time beyond the sampling interval, so an idle loop shows 0.
+     */
+    #logInitializationTiming(
+        registered: number,
+        nodeCount: number,
+        startedAt: Timestamp,
+        timingBefore: PopulateTiming,
+        loopDelay: ReturnType<typeof monitorEventLoopDelay>,
+    ) {
+        const timing = this.#nodes.attributeCache.populateTiming;
+        const collecting = Millis(timing.collecting - timingBefore.collecting);
+        const delay = (nanoseconds: number) =>
+            Duration.format(Millis(Math.max(0, nanoseconds / 1e6 - LOOP_DELAY_RESOLUTION)));
+        logger.info(
+            `Registered ${registered} of ${nodeCount} nodes in ${Duration.format(Timestamp.delta(startedAt, Time.nowUs))};`,
+            `${timing.populated - timingBefore.populated} attribute snapshots took ${Duration.format(collecting)} of collecting;`,
+            `event-loop delay p50 ${delay(loopDelay.percentile(50))}, p99 ${delay(loopDelay.percentile(99))}, max ${delay(loopDelay.max)}`,
+        );
     }
 
     getNodeIds() {
