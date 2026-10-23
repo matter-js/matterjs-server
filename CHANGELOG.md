@@ -9,7 +9,10 @@ This page shows a detailed overview of the changes between versions without the 
 
 ## **WORK IN PROGRESS**
 
-- Fix: `node_added`, `node_removed`, `endpoint_added` and `endpoint_removed` are no longer dropped when a client reads too slowly
+- Enhancement: (@Max-src) Adds the vendor clusters of the Yeelight Cube Lite (LAN control, microphone music modes, display direction, effects, drawings, the button playlist and GIF upload) to the custom cluster definitions
+- Enhancement: (@lboue) Dashboard Thermostat Presets panel allows creating, editing, and removing presets, and setting the active preset
+- Fix: `node_added`, `node_removed`, `endpoint_added` and `endpoint_removed` are no longer dropped when a client reads too slowly; a client too far behind on them is disconnected and gets the current state when it reconnects
+- Fix: Python client: an event subscriber that raises an error no longer ends the connection; the error is logged and the other subscribers still receive the event
 
 ## 1.5.2 (2026-10-21)
 
@@ -121,7 +124,7 @@ This page shows a detailed overview of the changes between versions without the 
 - Fix: An attribute the device no longer has when the server rebuilds the node data (after a restart, a reconnect or a structure change) is also sent as `attribute_updated` with a `null` value, so clients that merge `node_updated` into their data no longer keep the old value
 - Fix: A node that gains or loses custom cluster attributes or Thread diagnostics without reconnecting, for example when a bridge adds a device, is polled for the new set after the structure change, not only after the next reconnect
 - Fix: A node is reported as a bridge when any endpoint carries the Aggregator device type, not only endpoint 1
-- Fix: (reported by @lboue) Python client resolves each endpoint to its closest parent endpoint, available as `MatterNode.get_closest_compose_parent()`; `get_compose_parent()` keeps returning the composed device an endpoint belongs to, now at any depth and independent of the endpoint order. A Bridged Node below a nested Aggregator is reachable through the new `MatterNode.get_bridge_parent()` and `get_bridge_child_ids()`. Children of an Aggregator that do not carry the Bridged Node device type are not treated as bridged devices
+- Fix: Python client resolves each endpoint to its closest parent endpoint, available as `MatterNode.get_closest_compose_parent()`; `get_compose_parent()` keeps returning the composed device an endpoint belongs to, now at any depth and independent of the endpoint order. A Bridged Node below a nested Aggregator is reachable through the new `MatterNode.get_bridge_parent()` and `get_bridge_child_ids()`. Children of an Aggregator that do not carry the Bridged Node device type are not treated as bridged devices
 - Fix: Python client keeps an endpoint, its device types and its parent until `endpoint_removed` arrives, also when a node snapshot no longer reports them, so a subscriber handling the removal still resolves the endpoint to its device. Removing a device also removes its parts. Before, Home Assistant could fail with `KeyError` or remove the bridge's own device when the parts of a bridged device were removed
 - Fix: Python client does not signal `endpoint_added` for an endpoint its node model does not contain yet, so a subscriber that looks the endpoint up does not fail
 - Fix: Dashboard resolves the endpoint tree by the same closest-parent rule as the Python client

@@ -19287,6 +19287,386 @@ export const clusters: Record<number, ClusterDescription> = {
         "commands": {},
         "features": {}
     },
+    "320011264": {
+        "id": 320011264,
+        "label": "YeelightBasicCluster",
+        "attributes": {
+            "65528": {
+                "id": 65528,
+                "cluster_id": 320011264,
+                "label": "GeneratedCommandList",
+                "type": "List[command-id]",
+                "writable": false
+            },
+            "65529": {
+                "id": 65529,
+                "cluster_id": 320011264,
+                "label": "AcceptedCommandList",
+                "type": "List[command-id]",
+                "writable": false
+            },
+            "65531": {
+                "id": 65531,
+                "cluster_id": 320011264,
+                "label": "AttributeList",
+                "type": "List[attrib-id]",
+                "writable": false
+            },
+            "65532": {
+                "id": 65532,
+                "cluster_id": 320011264,
+                "label": "FeatureMap",
+                "type": "map32",
+                "writable": false
+            },
+            "65533": {
+                "id": 65533,
+                "cluster_id": 320011264,
+                "label": "ClusterRevision",
+                "type": "uint16",
+                "writable": false
+            },
+            "319946752": {
+                "id": 319946752,
+                "cluster_id": 320011264,
+                "label": "YeelightId",
+                "type": "Optional[uint32]",
+                "writable": false
+            },
+            "319946753": {
+                "id": 319946753,
+                "cluster_id": 320011264,
+                "label": "SoftwareVersion",
+                "type": "Optional[uint32]",
+                "writable": false
+            },
+            "319946754": {
+                "id": 319946754,
+                "cluster_id": 320011264,
+                "label": "SoftwareVersionString",
+                "type": "Optional[string]",
+                "writable": false
+            }
+        },
+        "commands": {},
+        "features": {}
+    },
+    "320011265": {
+        "id": 320011265,
+        "label": "YeelightBasicConfigCluster",
+        "attributes": {
+            "65528": {
+                "id": 65528,
+                "cluster_id": 320011265,
+                "label": "GeneratedCommandList",
+                "type": "List[command-id]",
+                "writable": false
+            },
+            "65529": {
+                "id": 65529,
+                "cluster_id": 320011265,
+                "label": "AcceptedCommandList",
+                "type": "List[command-id]",
+                "writable": false
+            },
+            "65531": {
+                "id": 65531,
+                "cluster_id": 320011265,
+                "label": "AttributeList",
+                "type": "List[attrib-id]",
+                "writable": false
+            },
+            "65532": {
+                "id": 65532,
+                "cluster_id": 320011265,
+                "label": "FeatureMap",
+                "type": "map32",
+                "writable": false
+            },
+            "65533": {
+                "id": 65533,
+                "cluster_id": 320011265,
+                "label": "ClusterRevision",
+                "type": "uint16",
+                "writable": false
+            },
+            "319946753": {
+                "id": 319946753,
+                "cluster_id": 320011265,
+                "label": "LanControl",
+                "type": "Optional[bool]",
+                "writable": true
+            },
+            "319946754": {
+                "id": 319946754,
+                "cluster_id": 320011265,
+                "label": "MicMusicOnOff",
+                "type": "Optional[bool]",
+                "writable": false
+            },
+            "319946755": {
+                "id": 319946755,
+                "cluster_id": 320011265,
+                "label": "MicMusicEffectId",
+                "type": "Optional[uint64]",
+                "writable": false
+            }
+        },
+        "commands": {
+            "319946752": {
+                "id": 319946752,
+                "cluster_id": 320011265,
+                "name": "setMicMusicMode",
+                "label": "Set Mic Music Mode"
+            }
+        },
+        "features": {}
+    },
+    "320011266": {
+        "id": 320011266,
+        "label": "YeelightCubeControlCluster",
+        "attributes": {
+            "65528": {
+                "id": 65528,
+                "cluster_id": 320011266,
+                "label": "GeneratedCommandList",
+                "type": "List[command-id]",
+                "writable": false
+            },
+            "65529": {
+                "id": 65529,
+                "cluster_id": 320011266,
+                "label": "AcceptedCommandList",
+                "type": "List[command-id]",
+                "writable": false
+            },
+            "65531": {
+                "id": 65531,
+                "cluster_id": 320011266,
+                "label": "AttributeList",
+                "type": "List[attrib-id]",
+                "writable": false
+            },
+            "65532": {
+                "id": 65532,
+                "cluster_id": 320011266,
+                "label": "FeatureMap",
+                "type": "map32",
+                "writable": false
+            },
+            "65533": {
+                "id": 65533,
+                "cluster_id": 320011266,
+                "label": "ClusterRevision",
+                "type": "uint16",
+                "writable": false
+            },
+            "319946752": {
+                "id": 319946752,
+                "cluster_id": 320011266,
+                "label": "CubeTopology",
+                "type": "List[uint8]",
+                "writable": false
+            },
+            "319946753": {
+                "id": 319946753,
+                "cluster_id": 320011266,
+                "label": "RotationAngle",
+                "type": "Optional[uint8]",
+                "writable": true
+            }
+        },
+        "commands": {
+            "319946754": {
+                "id": 319946754,
+                "cluster_id": 320011266,
+                "name": "updateTopology",
+                "label": "Update Topology"
+            }
+        },
+        "features": {}
+    },
+    "320011269": {
+        "id": 320011269,
+        "label": "YeelightEnhancedColorEffectConfigV2Cluster",
+        "attributes": {
+            "65528": {
+                "id": 65528,
+                "cluster_id": 320011269,
+                "label": "GeneratedCommandList",
+                "type": "List[command-id]",
+                "writable": false
+            },
+            "65529": {
+                "id": 65529,
+                "cluster_id": 320011269,
+                "label": "AcceptedCommandList",
+                "type": "List[command-id]",
+                "writable": false
+            },
+            "65531": {
+                "id": 65531,
+                "cluster_id": 320011269,
+                "label": "AttributeList",
+                "type": "List[attrib-id]",
+                "writable": false
+            },
+            "65532": {
+                "id": 65532,
+                "cluster_id": 320011269,
+                "label": "FeatureMap",
+                "type": "map32",
+                "writable": false
+            },
+            "65533": {
+                "id": 65533,
+                "cluster_id": 320011269,
+                "label": "ClusterRevision",
+                "type": "uint16",
+                "writable": false
+            },
+            "319946752": {
+                "id": 319946752,
+                "cluster_id": 320011269,
+                "label": "EffectId",
+                "type": "Optional[uint64]",
+                "writable": false
+            },
+            "319946753": {
+                "id": 319946753,
+                "cluster_id": 320011269,
+                "label": "CustomId",
+                "type": "Optional[uint64]",
+                "writable": false
+            }
+        },
+        "commands": {
+            "319946752": {
+                "id": 319946752,
+                "cluster_id": 320011269,
+                "name": "setEffect",
+                "label": "Set Effect"
+            },
+            "319946754": {
+                "id": 319946754,
+                "cluster_id": 320011269,
+                "name": "setRate",
+                "label": "Set Rate"
+            },
+            "319946758": {
+                "id": 319946758,
+                "cluster_id": 320011269,
+                "name": "setMixer",
+                "label": "Set Mixer"
+            },
+            "319946759": {
+                "id": 319946759,
+                "cluster_id": 320011269,
+                "name": "setData",
+                "label": "Set Data"
+            },
+            "319946760": {
+                "id": 319946760,
+                "cluster_id": 320011269,
+                "name": "setDirection",
+                "label": "Set Direction"
+            },
+            "319946761": {
+                "id": 319946761,
+                "cluster_id": 320011269,
+                "name": "resetEffect",
+                "label": "Reset Effect"
+            },
+            "319946762": {
+                "id": 319946762,
+                "cluster_id": 320011269,
+                "name": "updatePersistEffectList",
+                "label": "Update Persist Effect List"
+            },
+            "319946763": {
+                "id": 319946763,
+                "cluster_id": 320011269,
+                "name": "getPersistEffectList",
+                "label": "Get Persist Effect List"
+            },
+            "319946765": {
+                "id": 319946765,
+                "cluster_id": 320011269,
+                "name": "getCurrentEffect",
+                "label": "Get Current Effect"
+            },
+            "319946766": {
+                "id": 319946766,
+                "cluster_id": 320011269,
+                "name": "setPresetsEffect",
+                "label": "Set Presets Effect"
+            },
+            "319946767": {
+                "id": 319946767,
+                "cluster_id": 320011269,
+                "name": "sendGifDataFragment",
+                "label": "Send Gif Data Fragment"
+            }
+        },
+        "features": {}
+    },
+    "320011281": {
+        "id": 320011281,
+        "label": "YeelightOverTheAirCluster",
+        "attributes": {
+            "65528": {
+                "id": 65528,
+                "cluster_id": 320011281,
+                "label": "GeneratedCommandList",
+                "type": "List[command-id]",
+                "writable": false
+            },
+            "65529": {
+                "id": 65529,
+                "cluster_id": 320011281,
+                "label": "AcceptedCommandList",
+                "type": "List[command-id]",
+                "writable": false
+            },
+            "65531": {
+                "id": 65531,
+                "cluster_id": 320011281,
+                "label": "AttributeList",
+                "type": "List[attrib-id]",
+                "writable": false
+            },
+            "65532": {
+                "id": 65532,
+                "cluster_id": 320011281,
+                "label": "FeatureMap",
+                "type": "map32",
+                "writable": false
+            },
+            "65533": {
+                "id": 65533,
+                "cluster_id": 320011281,
+                "label": "ClusterRevision",
+                "type": "uint16",
+                "writable": false
+            },
+            "319946752": {
+                "id": 319946752,
+                "cluster_id": 320011281,
+                "label": "YeeUpdateState",
+                "type": "Optional[uint8]",
+                "writable": false
+            },
+            "319946753": {
+                "id": 319946753,
+                "cluster_id": 320011281,
+                "label": "Progress",
+                "type": "Optional[Nullable[uint8]]",
+                "writable": false
+            }
+        },
+        "commands": {},
+        "features": {}
+    },
     "322239491": {
         "id": 322239491,
         "label": "TclDehumidifierCluster",

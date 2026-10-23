@@ -138,7 +138,7 @@ function decodePreset(raw: unknown): ThermostatPreset | null {
 }
 
 /** PresetScenarioEnum labels (Matter spec §4.3.10.17). */
-const PRESET_SCENARIO_LABELS: Record<number, string> = {
+export const PRESET_SCENARIO_LABELS: Record<number, string> = {
     1: "Occupied",
     2: "Unoccupied",
     3: "Sleep",
@@ -182,7 +182,11 @@ export function readSchedules(node: MatterNode, endpoint: number): ThermostatSch
 
 /** Decoded Presets, or undefined when the attribute is not in the node's attribute cache. */
 export function readPresets(node: MatterNode, endpoint: number): ThermostatPreset[] | undefined {
-    const raw = readThermostatAttribute(node, endpoint, ATTR_PRESETS);
+    return decodePresets(readThermostatAttribute(node, endpoint, ATTR_PRESETS));
+}
+
+/** Decodes a tag-keyed Presets attribute value; undefined when it is not a list. */
+export function decodePresets(raw: unknown): ThermostatPreset[] | undefined {
     if (!Array.isArray(raw)) return undefined;
     return raw.map(decodePreset).filter((p): p is ThermostatPreset => p !== null);
 }

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from unittest.mock import MagicMock
 
 import pytest
@@ -18,6 +18,9 @@ from matter_server.common.models import (
     SubscriptionEndedData,
     SubscriptionReportData,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 
 def _make_client() -> MatterClient:
@@ -219,6 +222,57 @@ def test_endpoint_removed_after_a_snapshot_without_it_still_finds_it() -> None:
 
     assert seen == [light]
     assert 2 not in client.get_node(1).endpoints
+
+
+@pytest.mark.parametrize(
+    ("event_type", "data"),
+    [
+        (EventType.ENDPOINT_REMOVED, {"node_id": 1, "endpoint_id": 2}),
+        (EventType.NODE_REMOVED, 1),
+    ],
+)
+def test_a_raising_subscriber_neither_starves_the_others_nor_skips_the_cleanup(
+    event_type: EventType, data: object, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A subscriber error is logged; later subscribers still run and the model cleanup still happens."""
+    client = _make_client()
+    client._handle_event_message(
+        EventMessage(event=EventType.NODE_ADDED, data=_node_payload(_BRIDGE_WITH_LIGHT))
+    )
+
+    def failing(_event: EventType, _data: object) -> None:
+        raise ValueError("device registry collision")
+
+    received: list[object] = []
+    client.subscribe_events(failing, event_filter=event_type)
+    client.subscribe_events(lambda _event, payload: received.append(payload), event_filter=event_type)
+
+    client._handle_event_message(EventMessage(event=event_type, data=data))
+
+    assert received == [data]
+    if event_type == EventType.NODE_REMOVED:
+        assert 1 not in client._nodes
+    else:
+        assert 2 not in client.get_node(1).endpoints
+    assert f"Event subscriber failed on {event_type.value} (node_id=1)" in caplog.text
+    assert "ValueError: device registry collision" in caplog.text
+
+
+def test_a_subscriber_that_unsubscribes_does_not_skip_the_next_one() -> None:
+    client = _make_client()
+    received: list[str] = []
+    unsubscribers: list[Callable[[], None]] = []
+
+    def once(_event: EventType, _data: object) -> None:
+        received.append("once")
+        unsubscribers.pop()()
+
+    unsubscribers.append(client.subscribe_events(once))
+    client.subscribe_events(lambda _event, _data: received.append("next"))
+
+    client._handle_event_message(EventMessage(event=EventType.SERVER_SHUTDOWN, data=None))
+
+    assert received == ["once", "next"]
 
 
 def test_endpoint_added_is_signalled_only_for_an_endpoint_the_node_model_contains() -> None:

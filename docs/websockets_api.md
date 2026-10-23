@@ -2015,8 +2015,9 @@ Events are sent to clients that have called `start_listening`. Events have this 
 When a connection does not read fast enough, the server queues the events for it. When the queue is full, the oldest
 queued `node_event` and `subscription_report` frames are dropped. `node_added`, `node_removed`, `endpoint_added` and
 `endpoint_removed` are never dropped and keep their order; a `node_updated` that carries an added endpoint is sent
-before its `endpoint_added`. If more of these four are waiting than the queue holds, the server closes the connection,
-and the client gets the current state again when it reconnects and calls `start_listening`.
+before its `endpoint_added`. A queued `node_updated` holds the state at send time, so it can lack an endpoint that
+was added and removed again meanwhile. If more of these four are waiting than the queue holds, the server closes the
+connection, and the client gets the current state again when it reconnects and calls `start_listening`.
 
 ### Node Events
 
