@@ -23,6 +23,9 @@ export * from "./icd.js";
 // Export JSON utilities
 export * from "./json-utils.js";
 
+// Export the pluggable client logger
+export * from "./logger.js";
+
 // Export debug-log redaction (shared by the client's own logging and the server's request logging)
 export * from "./logging-redaction.js";
 

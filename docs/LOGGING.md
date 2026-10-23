@@ -151,6 +151,8 @@ transport open/close and chunk transfer. The default home for high-volume expect
 
 ## ws-client note
 
-`packages/ws-client` is intentionally zero-dependency and uses native `console.*`, which has
-no `notice`/`fatal`. Map: `console.debug` → debug, `console.log` → info, `console.warn` →
-warn, `console.error` → error. Do not introduce a Logger dependency there.
+`packages/ws-client` is intentionally zero-dependency. It logs through its own `ClientLogger`
+interface (`debug`, `info`, `warn`, `error`; no `notice`/`fatal`), which defaults to native
+`console.*`. Do not introduce a Logger dependency there. Pass the logged value as a `detail`
+function, so a logger that checks the level never builds it for a dropped line (`consoleLogger`
+always builds it).

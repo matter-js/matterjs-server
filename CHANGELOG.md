@@ -7,6 +7,10 @@ This page shows a detailed overview of the changes between versions without the 
 	## **WORK IN PROGRESS**
 -->
 
+## **WORK IN PROGRESS**
+
+- Enhancement: The TypeScript client accepts an options object with a `logger` (for example a matter.js `Logger`) in place of the WebSocket factory; passing the factory alone still works and the default still writes to `console`. With a logger that hides debug output, logging no longer slows down message handling. Each incoming event is logged once instead of twice
+
 ## 1.5.3 (2026-10-23)
 
 - Enhancement: (@Max-src) Adds the vendor clusters of the Yeelight Cube Lite (LAN control, microphone music modes, display direction, effects, drawings, the button playlist and GIF upload) to the custom cluster definitions

@@ -14,6 +14,9 @@ import {
     type NodesChangedDetail,
     otaUploadUrl,
     ServerCommandError,
+    type ClientLogger,
+    consoleLogger,
+    type LogDetail,
     WebSocketLike,
 } from "../src/index.js";
 import { parseBigIntAwareJson, toBigIntAwareJson } from "../src/json-utils.js";
@@ -1235,7 +1238,7 @@ describe("ws-client", () => {
                 }
 
                 const offerLines = logged.filter(line => line.includes("m=video"));
-                expect(offerLines.length).to.equal(2);
+                expect(offerLines.length).to.equal(1);
                 for (const line of logged) {
                     expect(line).to.not.contain("uNgu3ss4ble-ufrag");
                     expect(line).to.not.contain("uNgu3ss4ble-ice-password");
@@ -1276,6 +1279,64 @@ describe("ws-client", () => {
                 expect(frameLine).to.contain('"width":640');
                 expect(frameLine).to.contain('"height":480');
                 expect(frameLine).to.contain('"stream_id":3');
+            });
+
+            it("writes its lines to the logger it is given", async () => {
+                const lines = new Array<{ level: string; message: string; detail: unknown }>();
+                const record =
+                    (level: string) =>
+                    (message: string, detail?: LogDetail): void => {
+                        lines.push({ level, message, detail: detail?.() });
+                    };
+                const logger: ClientLogger = {
+                    debug: record("debug"),
+                    info: record("info"),
+                    warn: record("warn"),
+                    error: record("error"),
+                };
+                server.onCommand("read_attribute", () => ({ "1/6/0": true }));
+                const logged = new MatterClient(server.url, { wsFactory: createNodeWebSocket, logger });
+                try {
+                    await logged.connect();
+                    await logged.sendCommand("read_attribute", 0, { node_id: 5, attribute_path: "1/6/0" });
+                    server.sendRaw('{"message_id":"unknown"}');
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                } finally {
+                    logged.disconnect();
+                }
+
+                expect(lines.some(line => line.level === "info" && line.message === "WebSocket Connected")).to.be.true;
+                const sent = lines.find(line => line.message === "WebSocket send message");
+                expect(sent?.level).to.equal("debug");
+                expect(sent?.detail).to.deep.include({ command: "read_attribute" });
+                const unknown = lines.find(line => line.message === "Received message with unknown format");
+                expect(unknown?.level).to.equal("warn");
+                expect(unknown?.detail).to.deep.equal({ message_id: "unknown" });
+                expect(
+                    lines.some(
+                        line =>
+                            line.message === "WebSocket OnMessage" &&
+                            JSON.stringify(line.detail, (_key, value: unknown) =>
+                                typeof value === "bigint" ? value.toString() : value,
+                            ).includes('"1/6/0":true'),
+                    ),
+                ).to.be.true;
+            });
+
+            it("writes to console by default, with the detail built", () => {
+                const written = new Array<unknown[]>();
+                const debug = console.debug;
+                console.debug = (...args: unknown[]) => {
+                    written.push(args);
+                };
+                try {
+                    consoleLogger.debug("plain");
+                    consoleLogger.debug("with detail", () => ({ a: 1 }));
+                } finally {
+                    console.debug = debug;
+                }
+
+                expect(written).to.deep.equal([["plain"], ["with detail", { a: 1 }]]);
             });
 
             // A guard against over-redaction; green on the unmodified baseline too.

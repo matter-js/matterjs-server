@@ -69,11 +69,13 @@ The main client class for interacting with the Matter server.
 #### Constructor
 
 ```typescript
-new MatterClient(url: string, wsFactory?: WebSocketFactory)
+new MatterClient(url: string, options?: WebSocketFactory | ConnectionOptions)
 ```
 
 - `url`: WebSocket URL to connect to (e.g., `ws://localhost:5580/ws`)
-- `wsFactory`: Optional factory function to create WebSocket instances (required for Node.js)
+- `options`: Either a `WebSocketFactory` alone, or a `ConnectionOptions` object with:
+    - `wsFactory`: Optional factory function to create WebSocket instances (required for Node.js)
+    - `logger`: Optional destination for the client's log lines, see [Logging](#logging). Defaults to `consoleLogger`
 
 #### Properties
 
@@ -206,13 +208,33 @@ client.addEventListener("connection_lost", () => {
 });
 ```
 
-### Debug Logging
+### Logging
 
-The client writes every message to `console.debug`:
+The client writes its log lines to the `ClientLogger` given in the constructor options:
 
-- `Connection.sendMessage` logs each outgoing command.
-- `Connection.onmessage` logs each incoming frame.
-- `MatterClient` logs each event a second time, and logs a frame of no known shape to `console.warn`.
+- **debug:** each outgoing command (`Connection.sendMessage`), each incoming frame including events (`Connection.onmessage`), and each connection attempt.
+- **info:** the WebSocket opened and closed.
+- **warn:** a frame of no known shape, and a subscription that could not be ended after its `subscribe` timed out.
+- **error:** a WebSocket error, and a subscription listener that failed when the subscription ended.
+
+Each method takes a message and an optional `detail` function that returns the logged value. A logger calls `detail` only when it writes the line, so a logger that drops debug lines never prepares them. Preparing an incoming node dump walks all its attributes. A logger with several outputs may call `detail` once per output.
+
+```typescript
+interface ClientLogger {
+    debug(message: string, detail?: () => unknown): void;
+    info(message: string, detail?: () => unknown): void;
+    warn(message: string, detail?: () => unknown): void;
+    error(message: string, detail?: () => unknown): void;
+}
+```
+
+The default `consoleLogger` writes to the `console` method of each level and always prepares the detail, because `console` cannot tell whether a level is shown. A matter.js `Logger` can be passed as is: it calls a function value only when the level is enabled.
+
+```typescript
+import { Logger } from "@matter/main";
+
+const client = new MatterClient("ws://localhost:5580/ws", { logger: Logger.get("MatterClient") });
+```
 
 What a logged line may contain is decided by the shape of the value wherever possible, not by the command. A response carries only its `message_id`, not the name of the command it answers.
 

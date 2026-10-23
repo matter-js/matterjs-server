@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Connection, WebSocketFactory } from "./connection.js";
+import { Connection, ConnectionOptions, WebSocketFactory } from "./connection.js";
 import { CommandTimeoutError, ConnectionClosedError, InvalidServerVersion, ServerCommandError } from "./exceptions.js";
 import { redactIncomingMessage } from "./logging-redaction.js";
 import {
@@ -221,16 +221,16 @@ export class MatterClient {
     /**
      * Create a new MatterClient.
      * @param url WebSocket URL to connect to
-     * @param wsFactory Optional factory function to create WebSocket instances.
-     *                  For Node.js, pass: (url) => new WebSocket(url) from the 'ws' package.
-     *                  For browser, leave undefined to use native WebSocket.
+     * @param options The {@link ConnectionOptions}, or only a {@link WebSocketFactory}.
+     *                For Node.js, pass a factory: (url) => new WebSocket(url) from the 'ws' package.
+     *                For browser, leave the factory undefined to use native WebSocket.
      */
     constructor(
         public url: string,
-        wsFactory?: WebSocketFactory,
+        options?: WebSocketFactory | ConnectionOptions,
     ) {
         this.url = url;
-        this.connection = new Connection(this.url, wsFactory);
+        this.connection = new Connection(this.url, options);
         this.serverBaseAddress = this.url.split("://")[1].split(":")[0] ?? "";
     }
 
@@ -562,7 +562,10 @@ export class MatterClient {
             if (timedOut) {
                 // The caller never learned this id, so nobody else can end the subscription.
                 this.unsubscribe(args.node_id, subscription_id).catch(error =>
-                    console.warn(`Could not end subscription ${subscription_id} after its subscribe timed out`, error),
+                    this.connection.logger.warn(
+                        `Could not end subscription ${subscription_id} after its subscribe timed out`,
+                        () => error,
+                    ),
                 );
                 return;
             }
@@ -947,7 +950,7 @@ export class MatterClient {
             try {
                 listener.ended?.();
             } catch (error) {
-                console.error("Subscription listener failed on end", error);
+                this.connection.logger.error("Subscription listener failed on end", () => error);
             }
         }
     }
@@ -1032,12 +1035,10 @@ export class MatterClient {
             return;
         }
 
-        console.warn("Received message with unknown format", redactIncomingMessage(msg));
+        this.connection.logger.warn("Received message with unknown format", () => redactIncomingMessage(msg));
     }
 
     private _handleEventMessage(event: EventMessage) {
-        console.debug("Incoming event", redactIncomingMessage(event));
-
         // Allow subclasses to hook into raw events (for testing)
         this.onRawEvent(event);
 

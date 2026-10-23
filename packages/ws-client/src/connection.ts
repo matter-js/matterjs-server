@@ -5,6 +5,7 @@
  */
 
 import { parseBigIntAwareJson, toBigIntAwareJson } from "./json-utils.js";
+import { ClientLogger, consoleLogger } from "./logger.js";
 import { redactIncomingMessage, redactSensitiveCommandFields } from "./logging-redaction.js";
 import { CommandMessage, ServerInfoMessage } from "./models/model.js";
 
@@ -23,8 +24,17 @@ export interface WebSocketLike {
 
 export type WebSocketFactory = (url: string) => WebSocketLike;
 
+export interface ConnectionOptions {
+    /** Creates the WebSocket; defaults to the global `WebSocket` constructor. Required for Node.js. */
+    wsFactory?: WebSocketFactory;
+    /** Where log lines go; defaults to {@link consoleLogger}. */
+    logger?: ClientLogger;
+}
+
 export class Connection {
     public serverInfo?: ServerInfoMessage = undefined;
+
+    readonly logger: ClientLogger;
 
     private socket?: WebSocketLike;
     private wsFactory: WebSocketFactory;
@@ -32,15 +42,17 @@ export class Connection {
     /**
      * Create a new connection.
      * @param ws_server_url WebSocket server URL
-     * @param wsFactory Optional factory function to create WebSocket instances.
-     *                  If not provided, uses the global WebSocket constructor.
+     * @param options The {@link ConnectionOptions}, or only a {@link WebSocketFactory}.
      */
     constructor(
         public ws_server_url: string,
-        wsFactory?: WebSocketFactory,
+        options?: WebSocketFactory | ConnectionOptions,
     ) {
+        const { wsFactory, logger = consoleLogger } =
+            typeof options === "function" ? { wsFactory: options } : (options ?? {});
         this.ws_server_url = ws_server_url;
         this.wsFactory = wsFactory ?? (url => new WebSocket(url) as unknown as WebSocketLike);
+        this.logger = logger;
     }
 
     get connected() {
@@ -52,17 +64,17 @@ export class Connection {
             throw new Error("Already connected");
         }
 
-        console.debug("Trying to connect");
+        this.logger.debug("Trying to connect");
 
         return new Promise<void>((resolve, reject) => {
             this.socket = this.wsFactory(this.ws_server_url);
 
             this.socket.onopen = () => {
-                console.log("WebSocket Connected");
+                this.logger.info("WebSocket Connected");
             };
 
             this.socket.onclose = () => {
-                console.log("WebSocket Closed");
+                this.logger.info("WebSocket Closed");
                 // Clean up so reconnect can work
                 this.socket = undefined;
                 this.serverInfo = undefined;
@@ -70,14 +82,14 @@ export class Connection {
             };
 
             this.socket.onerror = error => {
-                console.error("WebSocket Error: ", error);
+                this.logger.error("WebSocket Error:", () => error);
                 reject(new Error("WebSocket Error"));
             };
 
             this.socket.onmessage = (event: { data: unknown }) => {
                 const dataStr = typeof event.data === "string" ? event.data : String(event.data);
                 const data = parseBigIntAwareJson(dataStr);
-                console.debug("WebSocket OnMessage", redactIncomingMessage(data));
+                this.logger.debug("WebSocket OnMessage", () => redactIncomingMessage(data));
                 if (!this.serverInfo) {
                     this.serverInfo = data as ServerInfoMessage;
                     resolve();
@@ -101,7 +113,7 @@ export class Connection {
         if (!this.socket) {
             throw new Error("Not connected");
         }
-        console.debug("WebSocket send message", redactSensitiveCommandFields(message));
+        this.logger.debug("WebSocket send message", () => redactSensitiveCommandFields(message));
         this.socket.send(toBigIntAwareJson(message));
     }
 }
