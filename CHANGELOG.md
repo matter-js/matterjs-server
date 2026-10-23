@@ -6,6 +6,9 @@ This page shows a detailed overview of the changes between versions without the 
 	Placeholder for the next version (at the beginning of the line):
 	## **WORK IN PROGRESS**
 -->
+## **WORK IN PROGRESS**
+
+- Fix: Renamed `AqaraLedStripT2Cluster` to `AqaraLedStripCluster` as other Aqara LED devices expose the same cluster as well.
 
 ## 1.5.4 (2026-10-23)
 

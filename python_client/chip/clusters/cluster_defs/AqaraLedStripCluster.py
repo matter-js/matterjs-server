@@ -1,4 +1,4 @@
-"""AqaraLedStripT2Cluster cluster definition (auto-generated, DO NOT edit)."""
+"""AqaraLedStripCluster cluster definition (auto-generated, DO NOT edit)."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ from ..Types import Nullable, NullValue
 
 
 @dataclass
-class AqaraLedStripT2Cluster(Cluster):
+class AqaraLedStripCluster(Cluster):
     id: typing.ClassVar[int] = 0x115FFC0F
 
     @ChipUtility.classproperty

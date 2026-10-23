@@ -1,7 +1,7 @@
 """Custom (vendor-specific) cluster re-exports (auto-generated, DO NOT edit)."""
 
 from chip.clusters.cluster_defs.AqaraAmbientSensingConfigurationCluster import AqaraAmbientSensingConfigurationCluster
-from chip.clusters.cluster_defs.AqaraLedStripT2Cluster import AqaraLedStripT2Cluster
+from chip.clusters.cluster_defs.AqaraLedStripCluster import AqaraLedStripCluster
 from chip.clusters.cluster_defs.AqaraOccupantLocationCluster import AqaraOccupantLocationCluster
 from chip.clusters.cluster_defs.AqaraRadarSensingUnionCluster import AqaraRadarSensingUnionCluster
 from chip.clusters.cluster_defs.DraftElectricalMeasurementCluster import DraftElectricalMeasurementCluster
@@ -24,7 +24,7 @@ from chip.clusters.cluster_defs.YeelightOverTheAirCluster import YeelightOverThe
 
 ALL_CUSTOM_CLUSTERS: dict = {
     AqaraAmbientSensingConfigurationCluster.id: AqaraAmbientSensingConfigurationCluster,
-    AqaraLedStripT2Cluster.id: AqaraLedStripT2Cluster,
+    AqaraLedStripCluster.id: AqaraLedStripCluster,
     AqaraOccupantLocationCluster.id: AqaraOccupantLocationCluster,
     AqaraRadarSensingUnionCluster.id: AqaraRadarSensingUnionCluster,
     DraftElectricalMeasurementCluster.id: DraftElectricalMeasurementCluster,
@@ -47,7 +47,7 @@ ALL_CUSTOM_CLUSTERS: dict = {
 __all__ = [
     "ALL_CUSTOM_CLUSTERS",
     "AqaraAmbientSensingConfigurationCluster",
-    "AqaraLedStripT2Cluster",
+    "AqaraLedStripCluster",
     "AqaraOccupantLocationCluster",
     "AqaraRadarSensingUnionCluster",
     "DraftElectricalMeasurementCluster",
