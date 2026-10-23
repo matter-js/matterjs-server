@@ -11,6 +11,7 @@ This page shows a detailed overview of the changes between versions without the 
 
 - Enhancement: (@Max-src) Adds the vendor clusters of the Yeelight Cube Lite (LAN control, microphone music modes, display direction, effects, drawings, the button playlist and GIF upload) to the custom cluster definitions
 - Enhancement: (@lboue) Dashboard Thermostat Presets panel allows creating, editing, and removing presets, and setting the active preset
+- Fix: `node_added`, `node_removed`, `endpoint_added` and `endpoint_removed` are no longer dropped when a client reads too slowly; a client too far behind on them is disconnected and gets the current state when it reconnects
 - Fix: Python client: an event subscriber that raises an error no longer ends the connection; the error is logged and the other subscribers still receive the event
 
 ## 1.5.2 (2026-10-21)

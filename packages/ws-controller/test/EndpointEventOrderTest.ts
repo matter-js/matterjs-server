@@ -12,28 +12,30 @@
  */
 
 import { Environment, MockStorageService, NodeId, Observable } from "@matter/main";
-import { AttributeId, ClusterId, EndpointNumber } from "@matter/main/types";
+import { AttributeId, ClusterId, EndpointNumber, EventId, EventNumber, Priority } from "@matter/main/types";
 import { createServer, type Server } from "node:http";
 import { WebSocket } from "ws";
 import { MatterController } from "../src/controller/MatterController.js";
+import type { AttributeChange, EventChange } from "../src/controller/PeerChangeBus.js";
 import { ConfigStorage } from "../src/server/ConfigStorage.js";
 import { WebSocketControllerHandler } from "../src/server/WebSocketControllerHandler.js";
 
 const NODE_ID = NodeId(1);
+const OTHER_NODE_ID = NodeId(2);
 const NEW_ENDPOINT = EndpointNumber(7);
 const VENDOR_CLUSTER = 0xfff1fc00;
 
 function createFakeCommandHandler() {
     const events = {
-        attributeChanged: new Observable(),
-        eventChanged: new Observable(),
-        nodeAdded: new Observable(),
+        attributeChanged: new Observable<[nodeId: NodeId, data: AttributeChange]>(),
+        eventChanged: new Observable<[nodeId: NodeId, data: EventChange]>(),
+        nodeAdded: new Observable<[nodeId: NodeId]>(),
         nodeStateChanged: new Observable(),
         nodeAvailabilityChanged: new Observable(),
         nodeStructureChanged: new Observable<[nodeId: NodeId]>(),
-        nodeDecommissioned: new Observable(),
+        nodeDecommissioned: new Observable<[nodeId: NodeId]>(),
         nodeEndpointAdded: new Observable<[nodeId: NodeId, endpointId: EndpointNumber]>(),
-        nodeEndpointRemoved: new Observable(),
+        nodeEndpointRemoved: new Observable<[nodeId: NodeId, endpointId: EndpointNumber]>(),
         webRtcCallback: new Observable(),
     };
     const endpoints = new Set<number>([0]);
@@ -189,5 +191,103 @@ describe("node events on the wire", () => {
         const updates = frames.filter(frame => frame.event === "attribute_updated").map(frame => frame.data.slice(1));
         expect(updates.filter(([path]) => path === "1/6/0")).to.deep.equal([["1/6/0", null]]);
         expect(updates.map(([path]) => path)).to.include(`1/${VENDOR_CLUSTER}/39`);
+    });
+
+    describe("on a congested connection", () => {
+        const FILLER_COUNT = 40;
+        const LAST_FILLER = `${OTHER_NODE_ID}:1/${VENDOR_CLUSTER}/${FILLER_COUNT - 1}`;
+
+        /** Writes far beyond the high-water mark for another node, which puts the connection into queued mode. */
+        function congest() {
+            const filler = "x".repeat(256 * 1024);
+            for (let attributeId = 0; attributeId < FILLER_COUNT; attributeId++) {
+                fakeCommandHandler.events.attributeChanged.emit(OTHER_NODE_ID, {
+                    path: {
+                        endpointId: EndpointNumber(1),
+                        clusterId: ClusterId(VENDOR_CLUSTER),
+                        attributeId: AttributeId(attributeId),
+                    },
+                    value: filler,
+                });
+            }
+        }
+
+        function event(nodeId: NodeId, eventNumber: number) {
+            fakeCommandHandler.events.eventChanged.emit(nodeId, {
+                path: { endpointId: EndpointNumber(1), clusterId: ClusterId(6), eventId: EventId(0) },
+                events: [
+                    {
+                        eventNumber: EventNumber(BigInt(eventNumber)),
+                        priority: Priority.Info,
+                        systemTimestamp: Date.now(),
+                        data: {},
+                    },
+                ],
+            });
+        }
+
+        function namesOf(frames: Record<string, any>[]) {
+            return frames.map(frame =>
+                frame.event === "attribute_updated"
+                    ? `attribute_updated ${frame.data[0]}:${frame.data[1]}`
+                    : frame.event,
+            );
+        }
+
+        it("sends node and endpoint events in order behind the data queued before them", async () => {
+            const frames = await listen();
+            congest();
+            // Two values for one attribute merge into one frame only while the connection queues.
+            for (const value of [false, true]) {
+                fakeCommandHandler.events.attributeChanged.emit(NODE_ID, {
+                    path: { endpointId: EndpointNumber(1), clusterId: ClusterId(6), attributeId: AttributeId(0) },
+                    value,
+                });
+            }
+            fakeCommandHandler.events.nodeEndpointRemoved.emit(NODE_ID, EndpointNumber(5));
+            fakeCommandHandler.endpoints.add(NEW_ENDPOINT);
+            fakeCommandHandler.events.nodeStructureChanged.emit(NODE_ID);
+            fakeCommandHandler.events.nodeEndpointAdded.emit(NODE_ID, NEW_ENDPOINT);
+
+            await waitFor(() => frames.some(frame => frame.event === "endpoint_added"));
+            const names = namesOf(frames);
+            expect(frames.filter(frame => frame.data?.[1] === "1/6/0").map(frame => frame.data[2])).to.deep.equal([
+                true,
+            ]);
+            const lastFillerAt = names.indexOf(`attribute_updated ${LAST_FILLER}`);
+            expect(lastFillerAt, names.join(", ")).to.be.greaterThan(-1);
+            expect(names.slice(lastFillerAt + 1)).to.deep.equal([
+                `attribute_updated ${NODE_ID}:1/6/0`,
+                "endpoint_removed",
+                "node_updated",
+                "endpoint_added",
+            ]);
+        });
+
+        it("never drops node and endpoint events when the queue overflows", async () => {
+            const frames = await listen();
+            congest();
+            fakeCommandHandler.events.nodeAdded.emit(NODE_ID);
+            fakeCommandHandler.events.nodeEndpointRemoved.emit(NODE_ID, EndpointNumber(5));
+            fakeCommandHandler.endpoints.add(NEW_ENDPOINT);
+            fakeCommandHandler.events.nodeStructureChanged.emit(NODE_ID);
+            fakeCommandHandler.events.nodeEndpointAdded.emit(NODE_ID, NEW_ENDPOINT);
+            fakeCommandHandler.events.nodeDecommissioned.emit(NodeId(3));
+            // More events than the queue cap of 1000, so the oldest droppable frames are dropped.
+            for (let eventNumber = 0; eventNumber < 1100; eventNumber++) {
+                event(OTHER_NODE_ID, eventNumber);
+            }
+
+            await waitFor(() => frames.some(frame => frame.event === "node_event" && frame.data.event_number === 1099));
+            const names = namesOf(frames);
+            expect(names.filter(name => name === "node_event").length).to.be.lessThan(1100);
+            expect(names.filter(name => !name.startsWith("attribute_updated") && name !== "node_event")).to.deep.equal([
+                "node_added",
+                "endpoint_removed",
+                "node_updated",
+                "endpoint_added",
+                "node_removed",
+            ]);
+        });
     });
 });

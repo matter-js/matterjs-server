@@ -2010,6 +2010,15 @@ Events are sent to clients that have called `start_listening`. Events have this 
 }
 ```
 
+### Delivery to slow clients
+
+When a connection does not read fast enough, the server queues the events for it. When the queue is full, the oldest
+queued `node_event` and `subscription_report` frames are dropped. `node_added`, `node_removed`, `endpoint_added` and
+`endpoint_removed` are never dropped and keep their order; a `node_updated` that carries an added endpoint is sent
+before its `endpoint_added`. A queued `node_updated` holds the state at send time, so it can lack an endpoint that
+was added and removed again meanwhile. If more of these four are waiting than the queue holds, the server closes the
+connection, and the client gets the current state again when it reconnects and calls `start_listening`.
+
 ### Node Events
 
 **node_added** - A new node was commissioned or imported
@@ -2132,7 +2141,7 @@ Sent only to the connection that opened the subscription, also when it has not c
 `attributes`, `events`, `attribute_status`, `event_status` and `data_versions` have the shapes of the `read` result.
 
 Like `node_event`, `subscription_report` is queued under backpressure: when a connection does not read fast enough
-and its outgoing queue passes the limit, the oldest queued events are dropped, reports included.
+and its outgoing queue passes the limit, the oldest queued node events and reports are dropped.
 `subscription_ended` is never dropped; it is sent ahead of reports still queued. A report for a subscription can
 therefore arrive after its `unsubscribe` response or after its `subscription_ended`. Ignore reports for
 subscriptions you no longer track.

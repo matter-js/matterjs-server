@@ -476,7 +476,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
                     connection.sendCoalescable(`node:${nodeId}`, () => buildNodeDetailsFrame(eventName, nodeId));
                 } else {
                     const frame = buildNodeDetailsFrame(eventName, nodeId);
-                    if (frame !== undefined) connection.sendOrdered(frame);
+                    if (frame !== undefined) connection.sendOrdered(frame, { droppable: false });
                 }
             };
 
@@ -530,7 +530,9 @@ export class WebSocketControllerHandler implements WebServerHandler {
                         logger.debug(
                             `[${connId}] Sending node_removed event for Node ${this.#commandHandler.formatNode(nodeId)}`,
                         );
-                        connection.sendOrdered(toBigIntAwareJson({ event: eventName, data: nodeId }));
+                        connection.sendOrdered(toBigIntAwareJson({ event: eventName, data: nodeId }), {
+                            droppable: false,
+                        });
                         break;
                 }
             };
@@ -631,6 +633,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 );
                 connection.sendOrdered(
                     toBigIntAwareJson({ event: "endpoint_added", data: { node_id: nodeId, endpoint_id: endpointId } }),
+                    { droppable: false },
                 );
             });
 
@@ -644,6 +647,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
                         event: "endpoint_removed",
                         data: { node_id: nodeId, endpoint_id: endpointId },
                     }),
+                    { droppable: false },
                 );
             });
 
@@ -651,13 +655,17 @@ export class WebSocketControllerHandler implements WebServerHandler {
             observers.on(this.#testNodeHandler.nodeAdded, (_nodeId, testNode) => {
                 if (this.#closed || this.#shuttingDown || !listening) return;
                 logger.info(`[${connId}] Sending node_added event for test node ${testNode.node_id}`);
-                connection.sendOrdered(toBigIntAwareJson({ event: "node_added", data: testNode }));
+                connection.sendOrdered(toBigIntAwareJson({ event: "node_added", data: testNode }), {
+                    droppable: false,
+                });
             });
 
             observers.on(this.#testNodeHandler.nodeRemoved, nodeId => {
                 if (this.#closed || this.#shuttingDown || !listening) return;
                 logger.info(`[${connId}] Sending node_removed event for test node ${formatNodeId(nodeId)}`);
-                connection.sendOrdered(toBigIntAwareJson({ event: "node_removed", data: nodeId }));
+                connection.sendOrdered(toBigIntAwareJson({ event: "node_removed", data: nodeId }), {
+                    droppable: false,
+                });
             });
 
             observers.on(this.#controller.threadDiagnostics.events.batchUpdated, batch => {

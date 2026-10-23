@@ -45,8 +45,11 @@ export interface WebSocketConnectionOptions {
 interface OutboxEntry {
     /** Produces the wire frame lazily at send time; returns undefined to skip (e.g. the node is gone). */
     build: () => string | undefined;
-    /** Ordered entries (events/structural) are droppable oldest-first under the cap; coalescables are not. */
-    ordered: boolean;
+    /**
+     * `droppable`: an ordered entry dropped oldest-first under the cap. `pinned`: an ordered entry that
+     * is never dropped. `coalescable`: one entry per key, never dropped.
+     */
+    policy: "droppable" | "pinned" | "coalescable";
 }
 
 const DEFAULT_HIGH_WATER = 1_048_576;
@@ -64,8 +67,10 @@ const DEFAULT_WATCHDOG = Minutes(5);
  * bytes (a window, not one frame at a time) so the pipe stays full and delivery is not serialized to
  * one round-trip per frame — which over a high-latency relay would stall a burst. Each flush callback
  * frees window space and pulls more. Attribute/node-snapshot sends coalesce latest-wins per key;
- * events are FIFO and, past the cap, dropped oldest-first. An in-flight send stalled beyond the
- * watchdog closes the dead connection. The outbox empties → back to direct mode.
+ * events are FIFO and, past the cap, dropped oldest-first, except node and endpoint additions and
+ * removals, which are never dropped. An in-flight send stalled beyond the watchdog closes the dead
+ * connection, and so do more of those undroppable events than the cap. The outbox empties → back to
+ * direct mode.
  */
 export class WebSocketConnection {
     readonly #ws: OutboundSocket;
@@ -80,6 +85,7 @@ export class WebSocketConnection {
 
     #mode: SendMode = "direct";
     readonly #outbox = new Map<string, OutboxEntry>();
+    #pinnedCount = 0;
     /** Frames sent but not yet flushed. The window is bounded by bytes (`ws.bufferedAmount`), not count. */
     #inFlightCount = 0;
     /** Guards the drain loop against re-entry, in case a flush callback ever fires inline. */
@@ -126,14 +132,19 @@ export class WebSocketConnection {
         this.#directSend(frame);
     }
 
-    /** Non-coalescable ordered push (node events, structural changes): FIFO, droppable oldest-first under cap. */
-    sendOrdered(frame: string): void {
+    /**
+     * Non-coalescable ordered push (node events, structural changes): FIFO, droppable oldest-first under
+     * the cap unless `droppable` is false, as for a structural change the client cannot learn otherwise.
+     * More undroppable frames waiting than the cap close the connection.
+     */
+    sendOrdered(frame: string, options: { droppable?: boolean } = {}): void {
         if (this.#disposed) return;
         if (this.#mode === "direct") {
             this.#directSend(frame);
             return;
         }
-        this.#enqueue(`seq:${this.#seq++}`, { build: () => frame, ordered: true });
+        const policy = (options.droppable ?? true) ? "droppable" : "pinned";
+        this.#enqueue(`seq:${this.#seq++}`, { build: () => frame, policy });
     }
 
     /**
@@ -149,14 +160,19 @@ export class WebSocketConnection {
             if (frame !== undefined) this.#directSend(frame);
             return;
         }
-        this.#enqueue(key, { build, ordered: false });
+        this.#enqueue(key, { build, policy: "coalescable" });
     }
 
     /** Release timers and drop any queued frames; call when the connection closes. */
     dispose(): void {
         this.#disposed = true;
         this.#watchdogTimer.stop();
+        this.#clearOutbox();
+    }
+
+    #clearOutbox(): void {
         this.#outbox.clear();
+        this.#pinnedCount = 0;
     }
 
     #directSend(frame: string): void {
@@ -179,21 +195,27 @@ export class WebSocketConnection {
 
     #enqueue(key: string, entry: OutboxEntry): void {
         this.#outbox.set(key, entry);
+        if (entry.policy === "pinned") this.#pinnedCount++;
         this.#enforceCap();
         this.#drain();
     }
 
-    // Only ordered (event) entries are droppable. Coalescable entries are self-bounding: one per
-    // distinct key, and keys map to the finite Matter data model (attribute paths / node ids / Thread
-    // networks), so their count cannot grow without bound. A connection stuck long enough for even
-    // that finite set to matter is caught by the watchdog.
+    // Only droppable entries are dropped. Coalescable entries are self-bounding: one per distinct key,
+    // and keys map to the finite Matter data model (attribute paths / node ids / Thread networks), so
+    // their count cannot grow without bound. Pinned entries can, for a client that keeps reading but
+    // slower than nodes and endpoints change; the watchdog never fires for it.
     #enforceCap(): void {
         const cap = Math.max(this.#capBase, this.#getNodeCount() * this.#capPerNode);
         if (this.#outbox.size <= cap) return;
+        if (this.#pinnedCount > cap) {
+            // The client could only learn the missed changes by syncing again, which a reconnect does.
+            this.#terminate(`more than ${cap} node and endpoint changes waiting`);
+            return;
+        }
         let dropped = 0;
         for (const [key, value] of this.#outbox) {
             if (this.#outbox.size <= cap) break;
-            if (value.ordered) {
+            if (value.policy === "droppable") {
                 this.#outbox.delete(key);
                 dropped++;
             }
@@ -207,7 +229,7 @@ export class WebSocketConnection {
     #drain(): void {
         if (this.#mode !== "queued" || this.#draining) return;
         if (this.#ws.readyState !== OPEN) {
-            this.#outbox.clear();
+            this.#clearOutbox();
             return;
         }
         // Keep the pipe full: send while there is a queued frame and the in-flight bytes are still
@@ -219,6 +241,7 @@ export class WebSocketConnection {
             while (this.#outbox.size > 0 && (this.#inFlightCount === 0 || this.#ws.bufferedAmount < this.#highWater)) {
                 const [key, entry] = this.#outbox.entries().next().value as [string, OutboxEntry];
                 this.#outbox.delete(key);
+                if (entry.policy === "pinned") this.#pinnedCount--;
                 // A throwing builder would escape into the ws flush callback as an uncaught exception.
                 // Treat a throw like an undefined frame: log it and skip on.
                 let frame: string | undefined;
@@ -273,7 +296,11 @@ export class WebSocketConnection {
 
     #onWatchdog(): void {
         if (this.#disposed || this.#inFlightCount === 0) return;
-        logger.warn(`[${this.#connId}] outbound send stalled beyond watchdog — terminating dead connection`);
+        this.#terminate("outbound send stalled beyond watchdog");
+    }
+
+    #terminate(reason: string): void {
+        logger.warn(`[${this.#connId}] ${reason} — terminating connection`);
         // Dispose first so no further sends happen, then terminate (not a graceful close): a
         // half-open socket may never complete a graceful close, but terminate forces the "close"
         // event the handler needs to drop this connection from its registry.

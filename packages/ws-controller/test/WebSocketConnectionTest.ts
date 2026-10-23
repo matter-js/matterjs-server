@@ -306,6 +306,56 @@ describe("WebSocketConnection", () => {
             expect(socket.sent).to.deep.equal([f(50, "w1"), f(50, "w2"), f(50, "keep"), f(50, "e3"), f(50, "e4")]);
         });
 
+        it("never drops an ordered entry sent as not droppable", () => {
+            const socket = new FakeSocket();
+            const conn = makeConn(socket, { capBase: 2, capPerNode: 0 });
+            enterQueued(socket, conn);
+
+            conn.sendOrdered(f(50, "w1")); // fill the window
+            conn.sendOrdered(f(50, "w2"));
+            conn.sendOrdered(f(50, "s1"), { droppable: false });
+            conn.sendOrdered(f(50, "e1"));
+            conn.sendOrdered(f(50, "e2"));
+            conn.sendOrdered(f(50, "e3")); // {s1,e1,e2,e3} over cap 2 → drop e1,e2, keep s1
+
+            for (let i = 0; i < 6 && socket.pendingCount > 0; i++) socket.flushOne();
+            expect(socket.sent).to.deep.equal([f(50, "w1"), f(50, "w2"), f(50, "s1"), f(50, "e3")]);
+        });
+
+        it("terminates a connection with more undroppable frames waiting than the cap", () => {
+            const socket = new FakeSocket();
+            const conn = makeConn(socket, { capBase: 2, capPerNode: 0 });
+            enterQueued(socket, conn);
+
+            conn.sendOrdered(f(50, "w1")); // fill the window
+            conn.sendOrdered(f(50, "w2"));
+            conn.sendOrdered(f(50, "s1"), { droppable: false });
+            conn.sendOrdered(f(50, "s2"), { droppable: false });
+            conn.sendOrdered(f(50, "e1")); // over the cap, dropped; the two pinned frames fill it exactly
+            expect(socket.terminated).to.equal(false);
+
+            conn.sendOrdered(f(50, "s3"), { droppable: false });
+            expect(socket.terminated).to.equal(true);
+            expect(conn.outboxSize).to.equal(0);
+        });
+
+        it("does not count undroppable frames already sent against the cap", () => {
+            const socket = new FakeSocket();
+            const conn = makeConn(socket, { capBase: 2, capPerNode: 0 });
+            enterQueued(socket, conn);
+
+            conn.sendOrdered(f(50, "w1")); // fill the window
+            conn.sendOrdered(f(50, "w2"));
+            conn.sendOrdered(f(50, "s1"), { droppable: false });
+            conn.sendOrdered(f(50, "s2"), { droppable: false });
+            socket.flushOne(); // frees room for s1
+            expect(socket.sent).to.include(f(50, "s1"));
+
+            conn.sendOrdered(f(50, "s3"), { droppable: false });
+            conn.sendOrdered(f(50, "e1")); // over the cap with s2 and s3 waiting, which fill it exactly
+            expect(socket.terminated).to.equal(false);
+        });
+
         it("scales the cap with node count (nodeCount * capPerNode)", () => {
             const socket = new FakeSocket();
             const conn = makeConn(socket, { capBase: 3, capPerNode: 20, getNodeCount: () => 10 });
