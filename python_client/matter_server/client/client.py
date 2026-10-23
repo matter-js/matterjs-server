@@ -163,7 +163,10 @@ class MatterClient:
         """
         Subscribe to node and server events.
 
-        Optionally filter by specific events or node attributes.
+        Optionally filter by specific events or node attributes. An exception raised by the callback
+        is logged and does not stop the delivery of the event to other subscribers. A callback that
+        is subscribed or unsubscribed while an event is delivered may or may not get that event; the
+        change applies to every later event.
         Returns:
             function to unsubscribe.
         """
@@ -1569,8 +1572,13 @@ class MatterClient:
                     if attribute_path_key is None:
                         continue
                     key = f"{evt_key}/{node_key}/{attribute_path_key}"
-                    for callback in self._subscribers.get(key, []):
-                        callback(event, data)
+                    # A snapshot, so a callback that unsubscribes does not make the loop skip the next one.
+                    for callback in list(self._subscribers.get(key, ())):
+                        # A raising subscriber must not skip the model cleanup, starve the others or end the loop.
+                        try:
+                            callback(event, data)
+                        except Exception:
+                            self.logger.exception("Event subscriber failed on %s (node_id=%s)", event.value, node_id)
 
     async def __aenter__(self) -> Self:
         """Initialize and connect the Matter Websocket client."""
