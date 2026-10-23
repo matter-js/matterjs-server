@@ -9,6 +9,7 @@ This page shows a detailed overview of the changes between versions without the 
 
 ## **WORK IN PROGRESS**
 
+- Enhancement: The node initialization at startup no longer pauses after every endpoint of a node
 - Enhancement: (@Max-src) Adds the vendor clusters of the Yeelight Cube Lite (LAN control, microphone music modes, display direction, effects, drawings, the button playlist and GIF upload) to the custom cluster definitions
 - Enhancement: (@lboue) Dashboard Thermostat Presets panel allows creating, editing, and removing presets, and setting the active preset
 - Fix: `node_added`, `node_removed`, `endpoint_added` and `endpoint_removed` are no longer dropped when a client reads too slowly; a client too far behind on them is disconnected and gets the current state when it reconnects
