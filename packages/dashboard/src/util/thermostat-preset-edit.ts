@@ -28,6 +28,9 @@ const PRESET_SCENARIO_USER_DEFINED = 254;
 /** How long the device holds our pending Presets write before discarding it (AtomicRequest Timeout, ms). */
 const ATOMIC_WRITE_TIMEOUT_MS = 5_000;
 
+/** Shortest window the device may grant that still fits the read, the timed write and the commit (ms). */
+const MIN_ATOMIC_WRITE_TIMEOUT_MS = 2_000;
+
 /** Timed-interaction window for the Presets write itself (TimedRequest to WriteRequest, ms). */
 const TIMED_WRITE_TIMEOUT_MS = 3_000;
 
@@ -169,6 +172,8 @@ interface AtomicAttributeStatus {
 interface AtomicResponse {
     statusCode: number;
     attributeStatus: AtomicAttributeStatus[];
+    /** Effective timeout in ms; present only on a BeginWrite response (§7.15.7.3). */
+    timeout: number | null;
 }
 
 /** Command responses are name-keyed (convertMatterToWebSocketNameBased), unlike tag-keyed attribute values. */
@@ -184,7 +189,7 @@ function decodeAtomicResponse(raw: unknown): AtomicResponse {
             return attributeId === null || code === null ? null : { attributeId, statusCode: code };
         })
         .filter((s): s is AtomicAttributeStatus => s !== null);
-    return { statusCode, attributeStatus };
+    return { statusCode, attributeStatus, timeout: pickNumber(obj, "timeout") };
 }
 
 async function atomicRequest(
@@ -214,12 +219,15 @@ function describeAtomicFailure(response: AtomicResponse): string {
  * the full intended list, not a diff: per §4.3.11.50 a handle missing from it is a removal (rejected if that preset is
  * built-in, active or used by a schedule transition) and `presetHandle: null` is an addition.
  *
- * The current list is read from the device, not taken from the dashboard cache, so a change the cache has not seen
- * yet is kept. A bare `write_attribute` on Presets is only valid inside the cluster's atomic-write handshake (§7.15.3;
- * the device holds the pending list until AtomicRequest CommitWrite and discards it on Timeout or RollbackWrite). The
- * write is sent timed so the controller does not put the pending list into its cache: the committed list arrives
- * with the next report. A failed CommitWrite response already discards the pending write on the device
- * (§7.15.6.4.2), so only a write or commit that throws is followed by a RollbackWrite.
+ * Presets may only be written inside the cluster's atomic-write handshake (§7.15.3). The current list is read from the
+ * device inside that window, as the §7.15.1 flow describes: another client's BeginWrite gets BUSY while we hold the
+ * window (§7.15.6.4.1), and a change by command after our read may fail our commit (§7.15.3) instead of being
+ * overwritten. The write is sent timed so the controller does not put the pending list into its cache; the committed
+ * list arrives with the next report.
+ *
+ * A window shorter than {@link MIN_ATOMIC_WRITE_TIMEOUT_MS} is rolled back without writing (§7.15.1 step 1.2). A
+ * failed CommitWrite response already discards the pending write on the device (§7.15.6.4.2); any other failure after
+ * BeginWrite, including one thrown by `buildNext`, is followed by a RollbackWrite.
  */
 export async function writeThermostatPresets(
     client: MatterClient,
@@ -227,11 +235,6 @@ export async function writeThermostatPresets(
     endpoint: number,
     buildNext: (current: ThermostatPreset[]) => ThermostatPresetEdit[],
 ): Promise<void> {
-    const path = presetsPath(endpoint);
-    const current = decodePresets((await client.readAttribute(nodeId, path, undefined, true))[path]);
-    if (current === undefined) throw new Error("The device did not report its presets");
-    const nextPresets = buildNext(current).map(toPresetStruct);
-
     const begin = await atomicRequest(
         client,
         nodeId,
@@ -247,9 +250,15 @@ export async function writeThermostatPresets(
     const atomicAttributes =
         begin.attributeStatus.length > 0 ? begin.attributeStatus.map(s => s.attributeId) : [ATTR_PRESETS];
 
+    const path = presetsPath(endpoint);
     let commit: AtomicResponse;
     try {
-        const writeResults = await client.writeAttribute(nodeId, path, nextPresets, {
+        if (begin.timeout !== null && begin.timeout < MIN_ATOMIC_WRITE_TIMEOUT_MS) {
+            throw new Error(`The device allows only ${begin.timeout} ms to edit presets, too short to write them`);
+        }
+        const current = decodePresets((await client.readAttribute(nodeId, path, undefined, true))[path]);
+        if (current === undefined) throw new Error("The device did not report its presets");
+        const writeResults = await client.writeAttribute(nodeId, path, buildNext(current).map(toPresetStruct), {
             timedRequestTimeoutMs: TIMED_WRITE_TIMEOUT_MS,
         });
         requireAttributeWriteSuccess(writeResults, "Writing presets failed");

@@ -78,7 +78,13 @@ function fakeAtomicClient(
             atomicRequests.push(payload);
             steps.push(ATOMIC_STEP[Number(payload["requestType"])]);
             if (payload["requestType"] === 1 && responses.commitError) return Promise.reject(responses.commitError);
-            return Promise.resolve(atomicResponses.shift() ?? { statusCode: 0, attributeStatus: [] });
+            return Promise.resolve(
+                atomicResponses.shift() ?? {
+                    statusCode: 0,
+                    attributeStatus: [],
+                    timeout: payload["requestType"] === 0 ? payload["timeout"] : undefined,
+                },
+            );
         },
         readAttribute: (_nodeId: unknown, path: unknown, _timeout: unknown, fabricFiltered: unknown) => {
             steps.push("read");
@@ -270,10 +276,10 @@ describe("thermostat-preset-edit util", () => {
     describe("writeThermostatPresets", () => {
         const keepAll = (current: ThermostatPreset[]) => current.map(toPresetEdit);
 
-        it("reads the device's presets, then begins, writes, and commits the atomic write", async () => {
+        it("begins the atomic write, then reads the device's presets, writes, and commits", async () => {
             const { client, steps, reads } = fakeAtomicClient();
             await writeThermostatPresets(client, 1, 6, keepAll);
-            expect(steps).to.deep.equal(["read", "begin", "write", "commit"]);
+            expect(steps).to.deep.equal(["begin", "read", "write", "commit"]);
             expect(reads).to.deep.equal([{ path: "6/513/80", fabricFiltered: true }]);
         });
 
@@ -337,7 +343,7 @@ describe("thermostat-preset-edit util", () => {
                 write: [{ Path: { EndpointId: 6, ClusterId: 513, AttributeId: 80 }, Status: 135 }],
             });
             await expect(writeThermostatPresets(client, 1, 6, keepAll)).to.be.rejectedWith("ConstraintError");
-            expect(steps).to.deep.equal(["read", "begin", "write", "rollback"]);
+            expect(steps).to.deep.equal(["begin", "read", "write", "rollback"]);
             expect(atomicRequests.map(r => r["attributeRequests"])).to.deep.equal([[80], [80, 81]]);
         });
 
@@ -347,24 +353,67 @@ describe("thermostat-preset-edit util", () => {
             });
             await expect(writeThermostatPresets(client, 1, 6, keepAll)).to.be.rejectedWith("(156)");
             // A failed begin leaves no atomic write state on the device, so there is nothing to roll back.
-            expect(steps).to.deep.equal(["read", "begin"]);
+            expect(steps).to.deep.equal(["begin"]);
             expect(writtenValue()).to.equal(undefined);
         });
 
-        it("starts no atomic write when building the list throws", async () => {
+        it("rolls back without writing when building the list throws", async () => {
             const { client, steps } = fakeAtomicClient();
             await expect(
                 writeThermostatPresets(client, 1, 6, () => {
                     throw new Error("name taken");
                 }),
             ).to.be.rejectedWith("name taken");
-            expect(steps).to.deep.equal(["read"]);
+            expect(steps).to.deep.equal(["begin", "read", "rollback"]);
         });
 
-        it("starts no atomic write when the read carries no Presets value", async () => {
+        it("rolls back without writing when the read carries no Presets value", async () => {
             const { client, steps } = fakeAtomicClient({ devicePresets: undefined });
             await expect(writeThermostatPresets(client, 1, 6, keepAll)).to.be.rejectedWith("did not report");
-            expect(steps).to.deep.equal(["read"]);
+            expect(steps).to.deep.equal(["begin", "read", "rollback"]);
+        });
+
+        it("rolls back without reading or writing when the device grants too short a window", async () => {
+            const { client, steps, atomicRequests } = fakeAtomicClient({
+                atomic: [{ statusCode: 0, attributeStatus: [{ attributeId: 80, statusCode: 0 }], timeout: 1999 }],
+            });
+            await expect(writeThermostatPresets(client, 1, 6, keepAll)).to.be.rejectedWith("only 1999 ms");
+            expect(steps).to.deep.equal(["begin", "rollback"]);
+            expect(atomicRequests.map(r => r["attributeRequests"])).to.deep.equal([[80], [80]]);
+        });
+
+        it("proceeds when the BeginWrite response carries no Timeout", async () => {
+            const { client, steps } = fakeAtomicClient({
+                atomic: [{ statusCode: 0, attributeStatus: [{ attributeId: 80, statusCode: 0 }] }],
+            });
+            await writeThermostatPresets(client, 1, 6, keepAll);
+            expect(steps).to.deep.equal(["begin", "read", "write", "commit"]);
+        });
+
+        it("accepts a window at the minimum", async () => {
+            const { client, steps } = fakeAtomicClient({
+                atomic: [{ statusCode: 0, attributeStatus: [{ attributeId: 80, statusCode: 0 }], timeout: 2000 }],
+            });
+            await writeThermostatPresets(client, 1, 6, keepAll);
+            expect(steps).to.deep.equal(["begin", "read", "write", "commit"]);
+        });
+
+        it("keeps a preset only the device reports when adding one", async () => {
+            const { client, writtenValue } = fakeAtomicClient({
+                devicePresets: [
+                    { "0": HANDLE_1, "1": 1, "5": true },
+                    { "0": HANDLE_2, "1": 3, "2": "Theirs", "5": false },
+                ],
+            });
+            await writeThermostatPresets(client, 1, 6, current => [
+                ...current.map(toPresetEdit),
+                { ...toPresetEdit(preset(HANDLE_1, { scenario: 3, name: "Mine" })), presetHandle: null },
+            ]);
+            expect(writtenValue()).to.deep.equal([
+                { "0": HANDLE_1, "1": 1, "5": true },
+                { "0": HANDLE_2, "1": 3, "2": "Theirs", "5": false },
+                { "0": null, "1": 3, "2": "Mine", "5": false },
+            ]);
         });
 
         it("throws without a rollback when CommitWrite reports a failure", async () => {
@@ -376,13 +425,13 @@ describe("thermostat-preset-edit util", () => {
             });
             await expect(writeThermostatPresets(client, 1, 6, keepAll)).to.be.rejectedWith("(146)");
             // The device discards the pending write itself when a commit fails.
-            expect(steps).to.deep.equal(["read", "begin", "write", "commit"]);
+            expect(steps).to.deep.equal(["begin", "read", "write", "commit"]);
         });
 
         it("rolls back and rethrows when the CommitWrite invoke itself fails", async () => {
             const { client, steps } = fakeAtomicClient({ commitError: new Error("connection lost") });
             await expect(writeThermostatPresets(client, 1, 6, keepAll)).to.be.rejectedWith("connection lost");
-            expect(steps).to.deep.equal(["read", "begin", "write", "commit", "rollback"]);
+            expect(steps).to.deep.equal(["begin", "read", "write", "commit", "rollback"]);
         });
     });
 
