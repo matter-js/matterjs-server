@@ -143,7 +143,7 @@ export function convertWebSocketTagBasedToMatter(
 
     // Handle lists
     if (Array.isArray(value) && isList(model)) {
-        const memberModel = model.members.at(0);
+        const memberModel = listEntryModelOf(model);
         return value.map(v => convertWebSocketTagBasedToMatter(v, memberModel, clusterModel));
     }
 
@@ -191,7 +191,7 @@ export function convertCommandDataToMatter(
 
     // Handle lists
     if (Array.isArray(value) && isList(model)) {
-        const memberModel = model.members.at(0);
+        const memberModel = listEntryModelOf(model);
         return value.map(v => convertCommandDataToMatter(v, memberModel, clusterModel));
     }
 
@@ -250,6 +250,18 @@ type StructMemberEntry = {
     readonly model: ValueModel;
 };
 const structMemberCache = new WeakMap<ValueModel, StructMemberEntry[]>();
+
+/** The element model of a list, cached: `members` is a getter that redoes the cluster's scope analysis on every read. */
+const listEntryCache = new WeakMap<ValueModel, ValueModel | undefined>();
+
+function listEntryModelOf(model: ValueModel): ValueModel | undefined {
+    if (listEntryCache.has(model)) {
+        return listEntryCache.get(model);
+    }
+    const entry = model.members.at(0);
+    listEntryCache.set(model, entry);
+    return entry;
+}
 
 /**
  * Cached bitmap member resolution. Unlike struct members (intrinsic to the model), bitmap bit
@@ -464,9 +476,7 @@ function convertMatterToWebSocket(
 
         case ConvKind.List: {
             if (!Array.isArray(value)) return value;
-            // Hoist the element model: `model.members` is a getter that rebuilds its array on every
-            // access, so reading it inside the map would rebuild it once per element.
-            const memberModel = model.members.at(0);
+            const memberModel = listEntryModelOf(model);
             return value.map(v => convertMatterToWebSocket(v, memberModel, clusterModel, tagBased));
         }
 
@@ -549,7 +559,7 @@ export function convertWebsocketDataToMatter(value: unknown, model: ValueModel):
             data = parseChipJSON(data);
         }
         if (Array.isArray(data)) {
-            const memberModel = model.members.at(0)!;
+            const memberModel = listEntryModelOf(model)!;
             return data.map(v => convertWebsocketDataToMatter(v, memberModel));
         }
     }
