@@ -179,16 +179,24 @@ describe("AttributeDataCache", () => {
             const cache = new AttributeDataCache();
             const before = cache.populateTiming;
             let rebuild: Promise<void> | undefined;
+            let passes = 0;
             const node = clientNode(NODE_ID, {
                 endpointNumbers: [0, 1],
-                onRead: () => {
-                    rebuild ??= cache.update(node);
+                onRead: number => {
+                    if (number === 0) {
+                        passes++;
+                    }
+                    // After the first yield, so the update finds the populate in flight and asks it to run again.
+                    if (number === 1) {
+                        rebuild ??= cache.update(node);
+                    }
                 },
             });
 
             await cache.add(node);
             await rebuild;
 
+            expect(passes).equals(2);
             expect(cache.populateTiming.populated - before.populated).equals(1);
         });
 
