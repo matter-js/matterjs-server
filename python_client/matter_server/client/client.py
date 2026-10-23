@@ -164,7 +164,9 @@ class MatterClient:
         Subscribe to node and server events.
 
         Optionally filter by specific events or node attributes. An exception raised by the callback
-        is logged and does not stop the delivery of the event to other subscribers.
+        is logged and does not stop the delivery of the event to other subscribers. A callback that
+        is subscribed or unsubscribed while an event is delivered may or may not get that event; the
+        change applies to every later event.
         Returns:
             function to unsubscribe.
         """
@@ -1572,8 +1574,7 @@ class MatterClient:
                     key = f"{evt_key}/{node_key}/{attribute_path_key}"
                     # A snapshot, so a callback that unsubscribes does not make the loop skip the next one.
                     for callback in list(self._subscribers.get(key, ())):
-                        # A raising subscriber must not skip the model cleanup after signalling, starve the others
-                        # or end the message loop.
+                        # A raising subscriber must not skip the model cleanup, starve the others or end the loop.
                         try:
                             callback(event, data)
                         except Exception:

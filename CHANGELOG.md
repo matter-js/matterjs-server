@@ -9,7 +9,7 @@ This page shows a detailed overview of the changes between versions without the 
 
 ## **WORK IN PROGRESS**
 
-- Fix: Python client: an event subscriber that raises an error no longer ends the connection; the error is logged and the other subscribers still receive the event
+- Fix: (reported by @lboue) Python client: an event subscriber that raises an error no longer ends the connection; the error is logged and the other subscribers still receive the event
 
 ## 1.5.2 (2026-10-21)
 
