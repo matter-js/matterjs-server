@@ -8,6 +8,7 @@ import { Bytes, NodeId } from "@matter/main";
 import {
     GeneralDiagnostics,
     OccupancySensing,
+    OperationalCredentials,
     Thermostat,
     TimeSynchronization,
     WindowCovering,
@@ -357,6 +358,59 @@ describe("convertMatterToWebSocketTagBased - bitmap packing", () => {
         const decoded = convertWebSocketTagBasedToMatter(22, operationalStatus, clusterEntry.model);
 
         expect(convertMatterToWebSocketTagBased(decoded, operationalStatus, clusterEntry.model)).to.equal(22);
+    });
+});
+
+describe("convertMatterToWebSocketTagBased - list element model", () => {
+    const clusterEntry = ClusterMap[OperationalCredentials.Cluster.id];
+    if (clusterEntry === undefined) {
+        throw new Error("OperationalCredentials cluster missing from ClusterMap");
+    }
+    const fabrics = clusterEntry.attributes.fabrics;
+    if (fabrics === undefined) {
+        throw new Error("OperationalCredentials Fabrics attribute missing from ClusterMap");
+    }
+
+    /** Counts reads of `members` on one model; the getter rebuilds the cluster scope on every read. */
+    function countMembersReads(model: object) {
+        let owner: object | null = Object.getPrototypeOf(model);
+        let descriptor: PropertyDescriptor | undefined;
+        while (owner !== null) {
+            descriptor = Object.getOwnPropertyDescriptor(owner, "members");
+            if (descriptor !== undefined) break;
+            owner = Object.getPrototypeOf(owner);
+        }
+        const getter = descriptor?.get;
+        if (owner === null || descriptor === undefined || getter === undefined) {
+            throw new Error("members getter not found");
+        }
+        const prototype = owner;
+        const counter = { reads: 0 };
+        Object.defineProperty(prototype, "members", {
+            ...descriptor,
+            get() {
+                if (this === model) {
+                    counter.reads++;
+                }
+                return getter.call(this);
+            },
+        });
+        return { counter, restore: () => Object.defineProperty(prototype, "members", descriptor) };
+    }
+
+    it("resolves the element model once, however often the list is converted", () => {
+        const { counter, restore } = countMembersReads(fabrics);
+        try {
+            // Struct entries are keyed by field tag only through the element model: fabricIndex is tag 254.
+            for (let i = 0; i < 3; i++) {
+                const converted = convertMatterToWebSocketTagBased([{ fabricIndex: 1 }], fabrics, clusterEntry.model);
+                expect(converted).deep.equals([{ "254": 1 }]);
+            }
+        } finally {
+            restore();
+        }
+
+        expect(counter.reads).at.most(1);
     });
 });
 
