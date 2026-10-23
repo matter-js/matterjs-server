@@ -366,9 +366,9 @@ describe("convertMatterToWebSocketTagBased - list element model", () => {
     if (clusterEntry === undefined) {
         throw new Error("OperationalCredentials cluster missing from ClusterMap");
     }
-    const trustedRootCertificates = clusterEntry.attributes.trustedrootcertificates;
-    if (trustedRootCertificates === undefined) {
-        throw new Error("OperationalCredentials TrustedRootCertificates attribute missing from ClusterMap");
+    const fabrics = clusterEntry.attributes.fabrics;
+    if (fabrics === undefined) {
+        throw new Error("OperationalCredentials Fabrics attribute missing from ClusterMap");
     }
 
     /** Counts reads of `members` on one model; the getter rebuilds the cluster scope on every read. */
@@ -399,17 +399,12 @@ describe("convertMatterToWebSocketTagBased - list element model", () => {
     }
 
     it("resolves the element model once, however often the list is converted", () => {
-        const { counter, restore } = countMembersReads(trustedRootCertificates);
+        const { counter, restore } = countMembersReads(fabrics);
         try {
-            // Byte entries are converted, so a list case that skipped its element model would fail here.
+            // Struct entries are keyed by field tag only through the element model: fabricIndex is tag 254.
             for (let i = 0; i < 3; i++) {
-                expect(
-                    convertMatterToWebSocketTagBased(
-                        [Bytes.fromHex("0102")],
-                        trustedRootCertificates,
-                        clusterEntry.model,
-                    ),
-                ).deep.equals(["AQI="]);
+                const converted = convertMatterToWebSocketTagBased([{ fabricIndex: 1 }], fabrics, clusterEntry.model);
+                expect(converted).deep.equals([{ "254": 1 }]);
             }
         } finally {
             restore();
