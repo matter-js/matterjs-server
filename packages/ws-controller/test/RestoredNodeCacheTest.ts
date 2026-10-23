@@ -202,7 +202,7 @@ describe("restored node cache", () => {
 
         expect(logs.lines).length(1);
         expect(logs.lines[0]).match(
-            / INFO .*Registered 1 of 1 nodes in .+; 1 attribute snapshots took .+ of collecting; event-loop delay p50 .+, p99 .+, max .+/,
+            / INFO .*Registered 1 of 1 nodes in .+; 1 attribute snapshots took .+ of collecting; event-loop delay (p50 .+, p99 .+, max .+|not sampled)/,
         );
     });
 

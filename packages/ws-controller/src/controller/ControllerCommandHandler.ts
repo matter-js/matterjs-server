@@ -1153,10 +1153,14 @@ export class ControllerCommandHandler {
         const collecting = Millis(timing.collecting - timingBefore.collecting);
         const delay = (nanoseconds: number) =>
             Duration.format(Millis(Math.max(0, nanoseconds / 1e6 - LOOP_DELAY_RESOLUTION)));
+        const loopDelaySummary =
+            loopDelay.count === 0
+                ? "event-loop delay not sampled"
+                : `event-loop delay p50 ${delay(loopDelay.percentile(50))}, p99 ${delay(loopDelay.percentile(99))}, max ${delay(loopDelay.max)}`;
         logger.info(
             `Registered ${registered} of ${nodeCount} nodes in ${Duration.format(Timestamp.delta(startedAt, Time.nowUs))};`,
             `${timing.populated - timingBefore.populated} attribute snapshots took ${Duration.format(collecting)} of collecting;`,
-            `event-loop delay p50 ${delay(loopDelay.percentile(50))}, p99 ${delay(loopDelay.percentile(99))}, max ${delay(loopDelay.max)}`,
+            loopDelaySummary,
         );
     }
 
