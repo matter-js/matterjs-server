@@ -55,6 +55,8 @@ for (const cluster of Matter.clusters) {
 }
 const pythonClientDir = join(__dirname, "..");
 const objectsDir = join(pythonClientDir, "chip", "clusters", "cluster_defs");
+/** `line-length` of ruff in python_client/pyproject.toml. */
+const PYTHON_LINE_LENGTH = 120;
 
 // ============================================================================
 // Name conversion utilities
@@ -1986,7 +1988,12 @@ function main(): void {
         "",
     ];
     for (const r of customResults) {
-        customLines.push(`from chip.clusters.cluster_defs.${r.className} import ${r.className}`);
+        const importLine = `from chip.clusters.cluster_defs.${r.className} import ${r.className}`;
+        customLines.push(
+            importLine.length <= PYTHON_LINE_LENGTH
+                ? importLine
+                : `from chip.clusters.cluster_defs.${r.className} import (\n    ${r.className},\n)`,
+        );
     }
     customLines.push("");
     customLines.push("ALL_CUSTOM_CLUSTERS: dict = {");

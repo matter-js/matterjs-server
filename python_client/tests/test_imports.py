@@ -127,6 +127,23 @@ def test_heiman_short_attribute_ids():
     assert HeimanCluster.Attributes.IndicatorEnable.attribute_id == 0x1004
 
 
+def test_yeelight_vendor_ids():
+    """Yeelight clusters use vendor-prefixed attribute and command ids, as the device reports them."""
+    from matter_server.common.custom_clusters import (
+        YeelightBasicConfigCluster,
+        YeelightCubeControlCluster,
+        YeelightEnhancedColorEffectConfigV2Cluster,
+    )
+
+    assert YeelightBasicConfigCluster.id == 0x1312FC01
+    assert YeelightBasicConfigCluster.Attributes.LanControl.attribute_id == 0x13120001
+    assert YeelightCubeControlCluster.Attributes.RotationAngle.attribute_id == 0x13120001
+    effects = YeelightEnhancedColorEffectConfigV2Cluster
+    assert effects.Commands.SetPresetsEffect.command_id == 0x1312000E
+    assert effects.Commands.GetPersistEffectList.response_type == "GetPersistEffectListResponse"
+    assert effects.Commands.SendGifDataFragmentResponse.command_id == 0x13120004
+
+
 def test_polling_removed():
     """Polling infrastructure must not exist."""
     import matter_server.common.custom_clusters as cc

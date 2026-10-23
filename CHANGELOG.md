@@ -9,6 +9,7 @@ This page shows a detailed overview of the changes between versions without the 
 
 ## **WORK IN PROGRESS**
 
+- Enhancement: (@Max-src) Adds the vendor clusters of the Yeelight Cube Lite (LAN control, microphone music modes, display direction, effects, drawings, the button playlist and GIF upload) to the custom cluster definitions
 - Enhancement: (@lboue) Dashboard Thermostat Presets panel allows creating, editing, and removing presets, and setting the active preset
 - Fix: Python client: an event subscriber that raises an error no longer ends the connection; the error is logged and the other subscribers still receive the event
 

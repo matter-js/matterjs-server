@@ -150,6 +150,11 @@ from .WebRtcTransportRequestor import WebRtcTransportRequestor
 from .WiFiNetworkDiagnostics import WiFiNetworkDiagnostics
 from .WiFiNetworkManagement import WiFiNetworkManagement
 from .WindowCovering import WindowCovering
+from .YeelightBasicCluster import YeelightBasicCluster
+from .YeelightBasicConfigCluster import YeelightBasicConfigCluster
+from .YeelightCubeControlCluster import YeelightCubeControlCluster
+from .YeelightEnhancedColorEffectConfigV2Cluster import YeelightEnhancedColorEffectConfigV2Cluster
+from .YeelightOverTheAirCluster import YeelightOverTheAirCluster
 from .ZoneManagement import ZoneManagement
 
 __all__ = [
@@ -303,6 +308,11 @@ __all__ = [
     "WiFiNetworkDiagnostics",
     "WiFiNetworkManagement",
     "WindowCovering",
+    "YeelightBasicCluster",
+    "YeelightBasicConfigCluster",
+    "YeelightCubeControlCluster",
+    "YeelightEnhancedColorEffectConfigV2Cluster",
+    "YeelightOverTheAirCluster",
     "ZoneManagement",
 ]
 

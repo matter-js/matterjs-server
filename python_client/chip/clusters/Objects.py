@@ -182,5 +182,10 @@ __all__ = [
     "WiFiNetworkDiagnostics",
     "WiFiNetworkManagement",
     "WindowCovering",
+    "YeelightBasicCluster",
+    "YeelightBasicConfigCluster",
+    "YeelightCubeControlCluster",
+    "YeelightEnhancedColorEffectConfigV2Cluster",
+    "YeelightOverTheAirCluster",
     "ZoneManagement",
 ]

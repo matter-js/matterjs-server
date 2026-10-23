@@ -15,3 +15,4 @@ export * from "./tcl.js";
 export * from "./thirdreality.js";
 export * from "./unit-testing.js";
 export * from "./wago.js";
+export * from "./yeelight.js";
