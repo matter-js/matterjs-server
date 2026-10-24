@@ -9,7 +9,7 @@ This page shows a detailed overview of the changes between versions without the 
 ## **WORK IN PROGRESS**
 
 - Fix: (@lanthaler) Renamed custom cluster `AqaraLedStripT2Cluster` to `AqaraLedStripCluster` as other Aqara LED devices expose the same cluster as well.
-- Fix: Nodes whose stored discovery TTL was damaged by an older server version load again, and no longer make the nodes stored after them unavailable at startup (#1211)
+- Fix: Nodes whose stored discovery TTL was damaged by an older server version load again, and no longer make the nodes stored after them unavailable at startup
 
 ## 1.5.4 (2026-10-23)
 
