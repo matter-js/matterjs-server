@@ -388,7 +388,7 @@ export class AqaraOccupantLocationCluster {
 
 // Enum names and values follow the Aqara app's device model (trait definitions), confirmed against firmware 1.0.1.0.
 
-/** {@link AqaraLedStripT2Cluster.musicSyncEffect} values. */
+/** {@link AqaraLedStripCluster.musicSyncEffect} values. */
 const enum AqaraMusicSyncEffect {
     Stretch = 1,
     Pulse = 2,
@@ -397,7 +397,7 @@ const enum AqaraMusicSyncEffect {
 }
 
 @cluster(0x115ffc0f)
-export class AqaraLedStripT2Cluster {
+export class AqaraLedStripCluster {
     @attribute(0x0013, bool, writable)
     musicSyncEnabled?: boolean;
 

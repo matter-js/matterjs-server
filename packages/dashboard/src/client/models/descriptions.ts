@@ -18653,7 +18653,7 @@ export const clusters: Record<number, ClusterDescription> = {
     },
     "291503119": {
         "id": 291503119,
-        "label": "AqaraLedStripT2Cluster",
+        "label": "AqaraLedStripCluster",
         "attributes": {
             "19": {
                 "id": 19,
