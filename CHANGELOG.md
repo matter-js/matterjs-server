@@ -6,7 +6,7 @@ This page shows a detailed overview of the changes between versions without the 
 	Placeholder for the next version (at the beginning of the line):
 	## **WORK IN PROGRESS**
 -->
-## **WORK IN PROGRESS**
+## 1.5.5 (2026-10-24)
 
 - Fix: (@lanthaler) Renamed custom cluster `AqaraLedStripT2Cluster` to `AqaraLedStripCluster` as other Aqara LED devices expose the same cluster as well.
 - Fix: Nodes whose stored discovery TTL was damaged by an older server version load again, and no longer make the nodes stored after them unavailable at startup
