@@ -8,7 +8,7 @@ This page shows a detailed overview of the changes between versions without the 
 -->
 ## **WORK IN PROGRESS**
 
-- Fix: Renamed `AqaraLedStripT2Cluster` to `AqaraLedStripCluster` as other Aqara LED devices expose the same cluster as well.
+- Fix: (@lanthaler) Renamed custom cluster `AqaraLedStripT2Cluster` to `AqaraLedStripCluster` as other Aqara LED devices expose the same cluster as well.
 
 ## 1.5.4 (2026-10-23)
 
