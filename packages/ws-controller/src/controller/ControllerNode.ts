@@ -11,9 +11,11 @@ import {
     Environment,
     FabricId,
     FabricIndex,
+    Logger,
     MatterAggregateError,
     NodeId,
     ServerNode,
+    StorageService,
     VendorId,
 } from "@matter/main";
 import { Ble, Fabric, FabricAuthority, FabricManager } from "@matter/main/protocol";
@@ -22,6 +24,9 @@ import { applyCertContext, loadCertContext } from "./certContext.js";
 import { CameraControllerEndpoint } from "./ControllerCommandHandler.js";
 import { applyAutoSubscribe, PeerSettingsRepairMarker, repairRestoredPeers } from "./restoredPeers.js";
 import { ServerSoftwareUpdateManager } from "./ServerSoftwareUpdateManager.js";
+import { removeStoredDiscoveryTtl } from "./storedDiscoveryTtl.js";
+
+const logger = Logger.get("ControllerNode");
 
 // A controller joins fabrics, it does not serve groupcast, and the Groupcast listener would pull in the
 // Auxiliary ACL feature with it.
@@ -93,6 +98,12 @@ export async function createControllerNode(options: ControllerNodeOptions): Prom
     const { environment, id, adminVendorId, adminFabricId, adminFabricLabel, serverVersion } = options;
     const adminNodeId = NodeId(112233); // TODO Remove when we switch to random IDs
     const certContext = await loadCertContext(environment, options.disableAutoSubscription ?? false);
+
+    try {
+        await removeStoredDiscoveryTtl(environment.get(StorageService), id);
+    } catch (error) {
+        logger.warn("Could not remove the stored discovery TTL of the peers:", error);
+    }
 
     const node = await ServerNode.create(ControllerRootEndpoint, {
         environment,

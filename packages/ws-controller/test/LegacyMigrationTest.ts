@@ -13,6 +13,7 @@ import {
     MockStorageService,
     Network,
     NetworkSimulator,
+    StorageContext,
     StorageService,
     SupportedStorageTypes,
 } from "@matter/general";
@@ -149,6 +150,10 @@ async function readPeers(env: Environment) {
     }
 }
 
+function commissioningContextOf(nodes: StorageContext, peerId: string) {
+    return nodes.createContext(peerId).createContext("endpoints").createContext("0").createContext("commissioning");
+}
+
 async function readState(env: Environment) {
     const storage = await env.get(StorageService).open(SERVER_ID);
     try {
@@ -160,11 +165,7 @@ async function readState(env: Environment) {
         const nodes = storage.createContext("nodes");
         const peers = new Array<string>();
         for (const peerId of await nodes.contexts()) {
-            const commissioning = nodes
-                .createContext(peerId)
-                .createContext("endpoints")
-                .createContext("0")
-                .createContext("commissioning");
+            const commissioning = commissioningContextOf(nodes, peerId);
             if (await commissioning.has("peerAddress")) {
                 peers.push(PeerAddress(await commissioning.get<PeerAddress>("peerAddress")).toString());
             }
@@ -364,6 +365,54 @@ describe("Legacy migration", () => {
             await storage.close();
         }
         expect((await readState(nextEnvironment())).peers).deep.equals([]);
+    });
+
+    it("loads peers whose stored discovery TTLs an earlier matter.js inflated or wrote as null", async () => {
+        await migrate(nextEnvironment(), legacy);
+
+        const cases = [
+            { state: null, addresses: [120_000], kept: [120_000] },
+            {
+                state: 120_000,
+                addresses: [null, 1.2e200, 0x1_0000_0000, -1, 0xffff_ffff, 120_000],
+                kept: [undefined, undefined, undefined, undefined, 0xffff_ffff, 120_000],
+            },
+            { state: 4.5e200, addresses: [120_000], kept: [120_000] },
+        ];
+        const expected = new Map<string, (number | undefined)[]>();
+
+        const storage = await nextEnvironment().get(StorageService).open(SERVER_ID);
+        try {
+            const nodes = storage.createContext("nodes");
+            const peerIds = await nodes.contexts();
+            expect(peerIds.length).equals(cases.length);
+            for (const [index, peerId] of peerIds.entries()) {
+                const { state, addresses, kept } = cases[index];
+                await commissioningContextOf(nodes, peerId).set({
+                    ttl: state,
+                    addresses: addresses.map(ttl => ({ type: "udp", ip: "fd00::1", port: 5540, ttl })),
+                });
+                expected.set(peerId, kept);
+            }
+        } finally {
+            await storage.close();
+        }
+
+        const peers = await readPeers(nextEnvironment());
+        expect(peers.map(({ vendorName }) => vendorName)).deep.equals(LEGACY_NODE_IDS.map(() => "Test Vendor"));
+
+        const reopened = await nextEnvironment().get(StorageService).open(SERVER_ID);
+        try {
+            const nodes = reopened.createContext("nodes");
+            for (const [peerId, kept] of expected) {
+                const commissioning = commissioningContextOf(nodes, peerId);
+                expect(await commissioning.has("ttl")).equals(false);
+                const addresses = await commissioning.get<{ ttl?: number }[]>("addresses");
+                expect(addresses.map(({ ttl }) => ttl)).deep.equals(kept);
+            }
+        } finally {
+            await reopened.close();
+        }
     });
 
     it("starts without a warning when there is no Python Matter Server data", async () => {
