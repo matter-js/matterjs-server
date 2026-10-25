@@ -44,8 +44,8 @@ export interface WebSocketConnectionOptions {
     /**
      * Interval between WebSocket pings. Proxies on the path (for example remote access relays) close
      * connections that carry no traffic, and browsers never send pings on their own. A peer that leaves
-     * {@link MAX_UNANSWERED_PINGS} pings in a row without a pong or a message is terminated. No
-     * ping is sent in queued mode; the watchdog judges a stalled peer there.
+     * {@link MAX_UNANSWERED_PINGS} pings in a row without a pong or a message is terminated. A ping
+     * sent in queued mode resets the count, because pongs wait behind the backlog.
      */
     keepalive?: Duration;
     getNodeCount?: () => number;
@@ -329,13 +329,12 @@ export class WebSocketConnection {
         if (this.#ws.readyState !== OPEN) return;
         if (this.#mode === "queued") {
             this.#unansweredPings = 0;
-            return;
-        }
-        if (this.#unansweredPings >= MAX_UNANSWERED_PINGS) {
+        } else if (this.#unansweredPings >= MAX_UNANSWERED_PINGS) {
             this.#terminate(`no pong or message for ${MAX_UNANSWERED_PINGS} keepalive pings`);
             return;
+        } else {
+            this.#unansweredPings++;
         }
-        this.#unansweredPings++;
         this.#ws.ping();
     }
 

@@ -474,7 +474,7 @@ describe("WebSocketConnection", () => {
             expect(socket.pings).to.equal(4);
         });
 
-        it("leaves a queued connection to the watchdog and pings again once drained", async () => {
+        it("keeps pinging a queued connection and resets the unanswered count", async () => {
             const socket = new FakeSocket();
             const conn = makeConn(socket, { keepalive });
 
@@ -484,14 +484,26 @@ describe("WebSocketConnection", () => {
             conn.sendOrdered(f(50, "slow"));
             await MockTime.advance(keepalive);
             expect(socket.terminated).to.equal(false);
-            expect(socket.pings).to.equal(3);
+            expect(socket.pings).to.equal(4);
 
             socket.flushOne();
             expect(conn.mode).to.equal("direct");
             await MockTime.advance(keepalive);
 
             expect(socket.terminated).to.equal(false);
-            expect(socket.pings).to.equal(4);
+            expect(socket.pings).to.equal(5);
+        });
+
+        it("keeps pinging a connection left in queued mode with nothing pending", async () => {
+            const socket = new FakeSocket();
+            const conn = makeConn(socket, { keepalive });
+
+            enterQueued(socket, conn);
+            for (let i = 0; i < 5; i++) await MockTime.advance(keepalive);
+
+            expect(conn.mode).to.equal("queued");
+            expect(socket.pings).to.equal(5);
+            expect(socket.terminated).to.equal(false);
         });
 
         it("stops pinging after dispose", async () => {
