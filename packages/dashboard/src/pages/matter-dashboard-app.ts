@@ -57,7 +57,8 @@ class MatterDashboardApp extends LitElement {
 
     protected override firstUpdated(_changedProperties: PropertyValueMap<any> | Map<PropertyKey, unknown>): void {
         super.firstUpdated(_changedProperties);
-        this._connect();
+        this._setupEventListeners();
+        this._connect("error");
 
         // Handle history changes
         this._updateRoute = () => {
@@ -109,17 +110,16 @@ class MatterDashboardApp extends LitElement {
         this._updateRoute();
     }
 
-    private _connect() {
+    private _connect(failureState: "error" | "disconnected") {
         this.client.startListening().then(
             () => {
                 // Publish context before flipping state so the connected render sees a defined client.
                 this.clientProvider.setValue(this.client);
                 this.tickProvider.setValue(++this._tick);
                 this._state = "connected";
-                this._setupEventListeners();
             },
             (_err: MatterError) => {
-                this._state = "error";
+                this._state = failureState;
             },
         );
     }
@@ -139,14 +139,17 @@ class MatterDashboardApp extends LitElement {
         this.client.addEventListener("server_info_updated", () => {
             this.tickProvider.setValue(++this._tick);
         });
+        // One automatic attempt per lost connection; a failed attempt also fires connection_lost, which the state check ignores.
         this.client.addEventListener("connection_lost", () => {
-            this._state = "disconnected";
+            if (this._state !== "connected") return;
+            this._state = "connecting";
+            this._connect("disconnected");
         });
     }
 
     private _reconnect = () => {
         this._state = "connecting";
-        this._connect();
+        this._connect("error");
     };
 
     /**

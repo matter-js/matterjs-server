@@ -25,9 +25,11 @@ class FakeSocket implements OutboundSocket {
     bufferedAmount = 0;
     readyState = OPEN;
     terminated = false;
+    pings = 0;
     readonly sent = new Array<string>();
     readonly closes = new Array<{ code?: number; reason?: string }>();
     #pending = new Array<{ bytes: number; cb?: (err?: Error | null) => void }>();
+    #listeners = new Map<"pong" | "message", () => void>();
 
     send(data: string, cb?: (err?: Error | null) => void): void {
         this.sent.push(data);
@@ -44,6 +46,19 @@ class FakeSocket implements OutboundSocket {
     terminate(): void {
         this.terminated = true;
         this.readyState = 3;
+    }
+
+    ping(): void {
+        this.pings++;
+    }
+
+    on(event: "pong" | "message", listener: () => void): void {
+        this.#listeners.set(event, listener);
+    }
+
+    /** Deliver a pong or message from the peer. */
+    receive(event: "pong" | "message"): void {
+        this.#listeners.get(event)?.();
     }
 
     /** Release the oldest in-flight frame, as if the peer drained it: shrink the buffer, fire its callback. */
@@ -68,6 +83,7 @@ function makeConn(socket: FakeSocket, overrides: Partial<ConstructorParameters<t
         capBase: 1000,
         capPerNode: 20,
         watchdog: Millis(300_000),
+        keepalive: Millis(3_600_000),
         getNodeCount: () => 0,
         ...overrides,
     });
@@ -414,6 +430,91 @@ describe("WebSocketConnection", () => {
                 socket.flushOne();
             }
 
+            expect(socket.terminated).to.equal(false);
+        });
+    });
+
+    describe("keepalive", () => {
+        const keepalive = Millis(30_000);
+
+        it("pings every interval and stays open while the peer answers", async () => {
+            const socket = new FakeSocket();
+            makeConn(socket, { keepalive });
+
+            for (let i = 1; i <= 5; i++) {
+                await MockTime.advance(keepalive);
+                expect(socket.pings).to.equal(i);
+                socket.receive("pong");
+            }
+
+            expect(socket.terminated).to.equal(false);
+        });
+
+        it("terminates a peer only after three pings in a row stay unanswered", async () => {
+            const socket = new FakeSocket();
+            makeConn(socket, { keepalive });
+
+            for (let i = 0; i < 3; i++) await MockTime.advance(keepalive);
+            expect(socket.pings).to.equal(3);
+            expect(socket.terminated).to.equal(false);
+            await MockTime.advance(keepalive);
+
+            expect(socket.terminated).to.equal(true);
+        });
+
+        it("counts an inbound message as an answer", async () => {
+            const socket = new FakeSocket();
+            makeConn(socket, { keepalive });
+
+            for (let i = 0; i < 3; i++) await MockTime.advance(keepalive);
+            socket.receive("message");
+            await MockTime.advance(keepalive);
+
+            expect(socket.terminated).to.equal(false);
+            expect(socket.pings).to.equal(4);
+        });
+
+        it("keeps pinging a queued connection and resets the unanswered count", async () => {
+            const socket = new FakeSocket();
+            const conn = makeConn(socket, { keepalive });
+
+            for (let i = 0; i < 3; i++) await MockTime.advance(keepalive);
+            expect(socket.pings).to.equal(3);
+            enterQueued(socket, conn);
+            conn.sendOrdered(f(50, "slow"));
+            await MockTime.advance(keepalive);
+            expect(socket.terminated).to.equal(false);
+            expect(socket.pings).to.equal(4);
+
+            socket.flushOne();
+            expect(conn.mode).to.equal("direct");
+            await MockTime.advance(keepalive);
+
+            expect(socket.terminated).to.equal(false);
+            expect(socket.pings).to.equal(5);
+        });
+
+        it("keeps pinging a connection left in queued mode with nothing pending", async () => {
+            const socket = new FakeSocket();
+            const conn = makeConn(socket, { keepalive });
+
+            enterQueued(socket, conn);
+            for (let i = 0; i < 5; i++) await MockTime.advance(keepalive);
+
+            expect(conn.mode).to.equal("queued");
+            expect(socket.pings).to.equal(5);
+            expect(socket.terminated).to.equal(false);
+        });
+
+        it("stops pinging after dispose", async () => {
+            const socket = new FakeSocket();
+            const conn = makeConn(socket, { keepalive });
+
+            conn.dispose();
+            await MockTime.advance(keepalive);
+            await MockTime.advance(keepalive);
+
+            expect(socket.pings).to.equal(0);
             expect(socket.terminated).to.equal(false);
         });
     });

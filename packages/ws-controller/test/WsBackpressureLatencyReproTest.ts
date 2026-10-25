@@ -58,6 +58,10 @@ class LatentSocket implements OutboundSocket {
     terminate(): void {
         this.readyState = 3;
     }
+
+    ping(): void {}
+
+    on(): void {}
 }
 
 describe("WS backpressure latency repro (ingress-style link)", () => {

@@ -78,6 +78,7 @@ export class Connection {
                 // Clean up so reconnect can work
                 this.socket = undefined;
                 this.serverInfo = undefined;
+                reject(new Error("WebSocket closed before the server info arrived"));
                 onConnectionLost();
             };
 
