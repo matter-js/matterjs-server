@@ -4,7 +4,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import WebSocket from "ws";
+import { once } from "node:events";
+import WebSocket, { WebSocketServer } from "ws";
 import {
     CommandTimeoutError,
     ConnectionClosedError,
@@ -218,6 +219,30 @@ describe("ws-client", () => {
         });
 
         describe("connection", () => {
+            it("rejects connect when the server closes before sending server info", async () => {
+                const closingServer = new WebSocketServer({ host: "127.0.0.1", port: 0 });
+                closingServer.on("connection", ws => ws.close(1001, "server shutting down"));
+                await once(closingServer, "listening");
+                try {
+                    const address = closingServer.address();
+                    if (typeof address !== "object" || address === null) throw new Error("server has no TCP address");
+                    const closingClient = new MatterClient(`ws://127.0.0.1:${address.port}/ws`, createNodeWebSocket);
+                    let lost = false;
+                    closingClient.addEventListener("connection_lost", () => (lost = true));
+
+                    let refusal: unknown;
+                    try {
+                        await closingClient.connect();
+                    } catch (error) {
+                        refusal = error;
+                    }
+                    expect(refusal).to.be.instanceOf(Error);
+                    expect(lost).to.be.true;
+                } finally {
+                    await new Promise(resolve => closingServer.close(resolve));
+                }
+            });
+
             it("should connect and receive server info", async () => {
                 await client.connect();
                 expect(client.connection.connected).to.be.true;

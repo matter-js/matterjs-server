@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Duration, Logger, Minutes, Time, Timer } from "@matter/main";
+import { Duration, Logger, Minutes, Seconds, Time, Timer } from "@matter/main";
 
 const logger = Logger.get("WebSocketConnection");
 
@@ -16,6 +16,8 @@ export interface OutboundSocket {
     send(data: string, cb?: (err?: Error | null) => void): void;
     close(code?: number, reason?: string): void;
     terminate(): void;
+    ping(): void;
+    on(event: "pong" | "message", listener: () => void): unknown;
 }
 
 export type SendMode = "direct" | "queued";
@@ -39,6 +41,13 @@ export interface WebSocketConnectionOptions {
     capPerNode?: number;
     /** How long an in-flight send may stall before the connection is treated as dead and closed. */
     watchdog?: Duration;
+    /**
+     * Interval between WebSocket pings. Proxies on the path (for example remote access relays) close
+     * connections that carry no traffic, and browsers never send pings on their own. A peer that leaves
+     * {@link MAX_UNANSWERED_PINGS} pings in a row without a pong or a message is terminated. No
+     * ping is sent in queued mode; the watchdog judges a stalled peer there.
+     */
+    keepalive?: Duration;
     getNodeCount?: () => number;
 }
 
@@ -57,6 +66,9 @@ const DEFAULT_HIGH_WATER_CEILING = 50 * 1_048_576;
 const DEFAULT_CAP_BASE = 1000;
 const DEFAULT_CAP_PER_NODE = 20;
 const DEFAULT_WATCHDOG = Minutes(5);
+const DEFAULT_KEEPALIVE = Seconds(30);
+/** A ping queues behind everything sent before it, so a slow link needs several intervals to answer. */
+const MAX_UNANSWERED_PINGS = 3;
 
 /**
  * Per-connection adaptive send path with backpressure (docs/plans/ws-backpressure.md).
@@ -70,7 +82,8 @@ const DEFAULT_WATCHDOG = Minutes(5);
  * events are FIFO and, past the cap, dropped oldest-first, except node and endpoint additions and
  * removals, which are never dropped. An in-flight send stalled beyond the watchdog closes the dead
  * connection, and so do more of those undroppable events than the cap. The outbox empties → back to
- * direct mode.
+ * direct mode. A periodic ping keeps idle connections open through proxies and terminates a peer that
+ * stopped answering.
  */
 export class WebSocketConnection {
     readonly #ws: OutboundSocket;
@@ -82,6 +95,8 @@ export class WebSocketConnection {
     readonly #capPerNode: number;
     readonly #getNodeCount: () => number;
     readonly #watchdogTimer: Timer;
+    readonly #keepaliveTimer: Timer;
+    #unansweredPings = 0;
 
     #mode: SendMode = "direct";
     readonly #outbox = new Map<string, OutboxEntry>();
@@ -109,6 +124,16 @@ export class WebSocketConnection {
             options.watchdog ?? DEFAULT_WATCHDOG,
             () => this.#onWatchdog(),
         );
+        this.#keepaliveTimer = Time.getPeriodicTimer(
+            `ws-keepalive-${this.#connId}`,
+            options.keepalive ?? DEFAULT_KEEPALIVE,
+            () => this.#onKeepalive(),
+        );
+        this.#keepaliveTimer.utility = true;
+        this.#keepaliveTimer.start();
+        const markResponded = () => (this.#unansweredPings = 0);
+        ws.on("pong", markResponded);
+        ws.on("message", markResponded);
     }
 
     get connId(): string {
@@ -167,6 +192,7 @@ export class WebSocketConnection {
     dispose(): void {
         this.#disposed = true;
         this.#watchdogTimer.stop();
+        this.#keepaliveTimer.stop();
         this.#clearOutbox();
     }
 
@@ -297,6 +323,20 @@ export class WebSocketConnection {
     #onWatchdog(): void {
         if (this.#disposed || this.#inFlightCount === 0) return;
         this.#terminate("outbound send stalled beyond watchdog");
+    }
+
+    #onKeepalive(): void {
+        if (this.#ws.readyState !== OPEN) return;
+        if (this.#mode === "queued") {
+            this.#unansweredPings = 0;
+            return;
+        }
+        if (this.#unansweredPings >= MAX_UNANSWERED_PINGS) {
+            this.#terminate(`no pong or message for ${MAX_UNANSWERED_PINGS} keepalive pings`);
+            return;
+        }
+        this.#unansweredPings++;
+        this.#ws.ping();
     }
 
     #terminate(reason: string): void {
