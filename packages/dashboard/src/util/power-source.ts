@@ -31,6 +31,11 @@ const ATTR_BAT_QUANTITY = 25;
 const ATTR_BAT_CHARGE_STATE = 26;
 const ATTR_BAT_TIME_TO_FULL_CHARGE = 27;
 const ATTR_BAT_CHARGING_CURRENT = 29;
+const ATTR_FEATURE_MAP = 0xfffc;
+
+/** PowerSource FeatureMap bits per Matter 1.6.1 §11.7.4. */
+const FEATURE_BIT_WIRED = 0b1;
+const FEATURE_BIT_BATTERY = 0b10;
 
 const STATUS_NAMES: Record<number, string> = {
     0: "Unspecified",
@@ -70,6 +75,8 @@ export interface PowerSourceInfo {
     order?: number;
     description?: string;
 
+    /** Whether the device declares Wired support in FeatureMap; WiredPresent is an optional runtime flag on top of this. */
+    wiredSupported: boolean;
     wiredPresent?: boolean;
     wiredCurrentType?: string;
     wiredAssessedInputVoltageV?: number | null;
@@ -78,6 +85,8 @@ export interface PowerSourceInfo {
     wiredNominalVoltageV?: number;
     wiredMaximumCurrentA?: number;
 
+    /** Whether the device declares Battery support in FeatureMap; BatPresent is an optional runtime flag on top of this. */
+    batterySupported: boolean;
     batPresent?: boolean;
     batVoltageV?: number | null;
     /** BatPercentRemaining is reported in half-percent units (0-200); this is already divided by 2. */
@@ -126,6 +135,7 @@ function scaleOptional(value: number | undefined, factor: number): number | unde
 
 export function powerSourceInfo(attributes: Record<string, unknown>, endpoint: number): PowerSourceInfo {
     const statusRaw = attr(attributes, endpoint, ATTR_STATUS);
+    const featureMap = toNumber(attr(attributes, endpoint, ATTR_FEATURE_MAP)) ?? 0;
 
     return {
         supported: statusRaw !== undefined,
@@ -133,6 +143,7 @@ export function powerSourceInfo(attributes: Record<string, unknown>, endpoint: n
         order: toNumber(attr(attributes, endpoint, ATTR_ORDER)),
         description: toText(attr(attributes, endpoint, ATTR_DESCRIPTION)),
 
+        wiredSupported: (featureMap & FEATURE_BIT_WIRED) !== 0,
         wiredPresent: toBoolean(attr(attributes, endpoint, ATTR_WIRED_PRESENT)),
         wiredCurrentType: enumName(attr(attributes, endpoint, ATTR_WIRED_CURRENT_TYPE), WIRED_CURRENT_TYPE_NAMES),
         wiredAssessedInputVoltageV: scaleNullable(
@@ -147,6 +158,7 @@ export function powerSourceInfo(attributes: Record<string, unknown>, endpoint: n
         wiredNominalVoltageV: scaleOptional(toNumber(attr(attributes, endpoint, ATTR_WIRED_NOMINAL_VOLTAGE)), 1000),
         wiredMaximumCurrentA: scaleOptional(toNumber(attr(attributes, endpoint, ATTR_WIRED_MAXIMUM_CURRENT)), 1000),
 
+        batterySupported: (featureMap & FEATURE_BIT_BATTERY) !== 0,
         batPresent: toBoolean(attr(attributes, endpoint, ATTR_BAT_PRESENT)),
         batVoltageV: scaleNullable(nullableNumber(attr(attributes, endpoint, ATTR_BAT_VOLTAGE)), 1000),
         batPercentRemaining: scaleNullable(nullableNumber(attr(attributes, endpoint, ATTR_BAT_PERCENT_REMAINING)), 2),

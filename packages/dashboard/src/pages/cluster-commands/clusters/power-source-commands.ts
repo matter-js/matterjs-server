@@ -52,10 +52,16 @@ export class PowerSourceClusterCommands extends BaseClusterCommands {
     }
 
     private _renderWired(info: ReturnType<typeof powerSourceInfo>) {
-        if (info.wiredPresent !== true) return nothing;
+        if (!info.wiredSupported) return nothing;
         return html`
             <dt>Wired source</dt>
-            <dd>${info.wiredCurrentType ?? "Present"}</dd>
+            <dd>${info.wiredCurrentType ?? "Supported"}</dd>
+            ${
+                info.wiredPresent !== undefined
+                    ? html`<dt>Present</dt>
+                          <dd>${info.wiredPresent ? "Yes" : "No"}</dd>`
+                    : nothing
+            }
             ${
                 info.wiredAssessedInputVoltageV != null
                     ? html`<dt>Input voltage</dt>
@@ -90,10 +96,16 @@ export class PowerSourceClusterCommands extends BaseClusterCommands {
     }
 
     private _renderBattery(info: ReturnType<typeof powerSourceInfo>) {
-        if (info.batPresent !== true) return nothing;
+        if (!info.batterySupported) return nothing;
         return html`
             <dt>Battery</dt>
-            <dd>${info.batPercentRemaining != null ? `${info.batPercentRemaining}%` : "Present"}</dd>
+            <dd>${info.batPercentRemaining != null ? `${info.batPercentRemaining}%` : "Supported"}</dd>
+            ${
+                info.batPresent !== undefined
+                    ? html`<dt>Present</dt>
+                          <dd>${info.batPresent ? "Yes" : "No"}</dd>`
+                    : nothing
+            }
             ${
                 info.batChargeLevel
                     ? html`<dt>Charge level</dt>

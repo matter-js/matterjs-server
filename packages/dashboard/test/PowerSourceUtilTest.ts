@@ -10,6 +10,7 @@ const POWER_SOURCE_ATTRS: Record<string, unknown> = {
     "1/47/0": 1, // Status: Active
     "1/47/1": 0, // Order
     "1/47/2": "Battery pack A",
+    "1/47/65532": 0b11, // FeatureMap: Wired + Battery
     "1/47/9": true, // WiredPresent
     "1/47/5": 0, // WiredCurrentType: AC
     "1/47/3": 230_000, // WiredAssessedInputVoltage (mV)
@@ -49,6 +50,7 @@ describe("power source util", () => {
 
     it("decodes wired-source readings and scales mV/mA to V/A", () => {
         const info = powerSourceInfo(POWER_SOURCE_ATTRS, 1);
+        expect(info.wiredSupported).to.equal(true);
         expect(info.wiredPresent).to.equal(true);
         expect(info.wiredCurrentType).to.equal("AC");
         expect(info.wiredAssessedInputVoltageV).to.equal(230);
@@ -60,6 +62,7 @@ describe("power source util", () => {
 
     it("decodes battery readings, halving BatPercentRemaining to a percent", () => {
         const info = powerSourceInfo(POWER_SOURCE_ATTRS, 1);
+        expect(info.batterySupported).to.equal(true);
         expect(info.batPresent).to.equal(true);
         expect(info.batPercentRemaining).to.equal(87.5);
         expect(info.batVoltageV).to.equal(3.7);
@@ -101,10 +104,33 @@ describe("power source util", () => {
         expect(explicitNull.batTimeRemainingS).to.equal(null);
     });
 
-    it("reports wired and battery sources as absent when their Present flags are not set", () => {
+    it("reports wired and battery as unsupported when FeatureMap doesn't declare them", () => {
         const info = powerSourceInfo({ "1/47/0": 1 }, 1);
+        expect(info.wiredSupported).to.equal(false);
+        expect(info.batterySupported).to.equal(false);
         expect(info.wiredPresent).to.equal(undefined);
         expect(info.batPresent).to.equal(undefined);
+    });
+
+    /**
+     * Real devices commonly declare Battery/Wired support in FeatureMap but never report the optional
+     * Present flag (observed on commissioned battery and AC-wired nodes in the field). Support must come
+     * from FeatureMap, not from a Present flag that may simply never be reported.
+     */
+    it("reports a feature as supported from FeatureMap alone, independent of its optional Present flag", () => {
+        const info = powerSourceInfo(
+            {
+                "1/47/0": 1,
+                "1/47/65532": 0b10, // FeatureMap: Battery only, no Wired
+                "1/47/14": 2, // BatChargeLevel: Critical
+                "1/47/16": 1, // BatReplaceability: Not replaceable
+            },
+            1,
+        );
+        expect(info.batterySupported).to.equal(true);
+        expect(info.batPresent).to.equal(undefined);
+        expect(info.batChargeLevel).to.equal("Critical");
+        expect(info.wiredSupported).to.equal(false);
     });
 
     it("reads attributes scoped to the given endpoint only", () => {
