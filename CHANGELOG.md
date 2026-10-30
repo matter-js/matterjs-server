@@ -11,6 +11,7 @@ This page shows a detailed overview of the changes between versions without the 
 - Fix: The server pings the clients of its WebSocket API every 30 seconds, so proxies and remote access relays no longer close idle connections; a client that stops answering is disconnected (#1213)
 - Fix: The dashboard reconnects once on its own when the connection drops, and shows the "Connection lost" page only when that attempt fails (#1213)
 - Fix: ws-client: `connect()` and `startListening()` fail when the server closes the connection before it is ready, instead of never returning
+- Fix: Setting the fabric label to the value it already has, as Home Assistant does on every restart, no longer sends the label to every node again (#1226)
 
 ## 1.5.5 (2026-10-24)
 
