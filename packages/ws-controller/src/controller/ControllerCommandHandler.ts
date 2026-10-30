@@ -1555,10 +1555,16 @@ export class ControllerCommandHandler {
      * Resolves once the controller holds the label. The connected nodes are told in the background, see
      * {@link #pushFabricLabel}. `pushed` resolves when that push has finished, was stopped by a newer label or by
      * {@link close}. It never rejects.
+     *
+     * A label the controller already holds tells no node and `pushed` resolves at once, even while an earlier push
+     * of that label still runs. Clients such as Home Assistant send their label on every connect.
      */
     async setFabricLabel(label: string): Promise<{ pushed: Promise<void> }> {
         // matter.js resets the fabric label to this state when the behavior loads and on every commissioning.
         await this.#node.act(agent => agent.load(ControllerBehavior));
+        if (this.#fabric.label === label && this.#node.stateOf(ControllerBehavior).adminFabricLabel === label) {
+            return { pushed: Promise.resolve() };
+        }
         await this.#node.setStateOf(ControllerBehavior, { adminFabricLabel: label });
         await this.#fabric.setLabel(label);
         const pushed = this.#pushFabricLabel(label).catch(error =>

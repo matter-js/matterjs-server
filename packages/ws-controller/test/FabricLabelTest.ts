@@ -105,6 +105,40 @@ describe("setFabricLabel", () => {
         expect(deviceLabel()).equals("Second");
     });
 
+    /** Counts invokes, because an unchanged label raises no `fabrics$Changed` on the device. */
+    async function countLabelInvokes(action: () => Promise<void>) {
+        const original = OperationalCredentialsServer.prototype.updateFabricLabel;
+        let invokes = 0;
+        OperationalCredentialsServer.prototype.updateFabricLabel = function (
+            this: OperationalCredentialsServer,
+            request,
+        ) {
+            invokes++;
+            return original.call(this, request);
+        };
+        try {
+            await action();
+        } finally {
+            OperationalCredentialsServer.prototype.updateFabricLabel = original;
+        }
+        return invokes;
+    }
+
+    it("does not tell the nodes a label the controller already holds", async () => {
+        await setLabel(handler, "Living Room");
+
+        expect(await countLabelInvokes(() => setLabel(handler, "Living Room"))).equals(0);
+        expect(deviceLabel()).equals("Living Room");
+    });
+
+    it("still applies a label the fabric holds but the controller behavior does not", async () => {
+        await MockTime.resolve(controller.env.get(FabricManager).fabrics[0].setLabel("Kitchen"));
+
+        expect(await countLabelInvokes(() => setLabel(handler, "Kitchen"))).equals(1);
+        expect(controller.stateOf(ControllerBehavior).adminFabricLabel).equals("Kitchen");
+        expect(deviceLabel()).equals("Kitchen");
+    });
+
     it("answers before the connected nodes were told", async () => {
         const labelBefore = deviceLabel();
         const { pushed } = await MockTime.resolve(handler.setFabricLabel("Living Room"), { macrotasks: true });
