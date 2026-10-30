@@ -41,6 +41,7 @@ import "./clusters/media-playback-commands.js";
 import "./clusters/meter-identification-commands.js";
 import "./clusters/on-off-commands.js";
 import "./clusters/operational-state-commands.js";
+import "./clusters/power-source-commands.js";
 import "./clusters/service-area-commands.js";
 import "./clusters/thermostat-commands.js";
 import "./clusters/water-heater-management-commands.js";
