@@ -22,6 +22,11 @@ import { Ble, Fabric, FabricAuthority, FabricManager } from "@matter/main/protoc
 import { OtaProviderEndpoint } from "@matter/node/endpoints/ota-provider";
 import { applyCertContext, loadCertContext } from "./certContext.js";
 import { CameraControllerEndpoint } from "./ControllerCommandHandler.js";
+import {
+    cleanupLegacyStorage,
+    migrateLegacyCommissionedNodes,
+    migrateLegacyControllerCredentials,
+} from "./legacyStorageMigration.js";
 import { applyAutoSubscribe, PeerSettingsRepairMarker, repairRestoredPeers } from "./restoredPeers.js";
 import { ServerSoftwareUpdateManager } from "./ServerSoftwareUpdateManager.js";
 import { removeStoredDiscoveryTtl } from "./storedDiscoveryTtl.js";
@@ -47,6 +52,8 @@ function parseVersionToNumber(version: string): number {
     const patch = parseInt(parts[2] ?? "0", 10);
     return major * 10000 + minor * 100 + patch;
 }
+const logger = Logger.get("ControllerNode");
+
 export interface ControllerNodeOptions {
     environment: Environment;
     id: string;
@@ -61,6 +68,15 @@ export interface ControllerNodeOptions {
      * Omit to skip the repair.
      */
     peerSettingsRepair?: PeerSettingsRepairMarker;
+
+    /**
+     * Migrate a controller storage that a matter.js controller before 0.16 wrote. Leave it off when Python Matter
+     * Server data is present, because its migration writes the current layout itself.
+     */
+    migrateLegacyStorage?: boolean;
+
+    /** Set when this start migrated the Python Matter Server data, so the legacy node data is removed entirely. */
+    legacyNodeDataObsolete?: boolean;
 
     /** Applied to every stored peer on each build, in both directions. Defaults to false. */
     disableAutoSubscription?: boolean;
@@ -98,6 +114,9 @@ export async function createControllerNode(options: ControllerNodeOptions): Prom
     const { environment, id, adminVendorId, adminFabricId, adminFabricLabel, serverVersion } = options;
     const adminNodeId = NodeId(112233); // TODO Remove when we switch to random IDs
     const certContext = await loadCertContext(environment, options.disableAutoSubscription ?? false);
+    if (options.migrateLegacyStorage) {
+        await migrateLegacyControllerCredentials(environment, id);
+    }
 
     try {
         await removeStoredDiscoveryTtl(environment.get(StorageService), id);
@@ -161,6 +180,17 @@ export async function createControllerNode(options: ControllerNodeOptions): Prom
         if (certContext !== undefined) {
             await applyCertContext(node, fabricIndex, certContext);
         }
+
+        if (options.migrateLegacyStorage) {
+            const { nodes, endpoints, failed } = await migrateLegacyCommissionedNodes(node);
+            if (nodes > 0) {
+                logger.info(`Legacy storage migration: ${nodes} node(s), ${endpoints} endpoint(s) migrated`);
+            }
+            if (failed > 0) {
+                logger.warn(`${failed} legacy node(s) failed to migrate; their data stays in the storage`);
+            }
+        }
+        await cleanupLegacyStorage(node, options.legacyNodeDataObsolete);
 
         if (options.peerSettingsRepair !== undefined) {
             await repairRestoredPeers(node, id, options.peerSettingsRepair);
