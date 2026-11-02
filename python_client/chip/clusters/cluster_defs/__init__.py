@@ -76,6 +76,7 @@ from .LaundryDryerControls import LaundryDryerControls
 from .LaundryWasherControls import LaundryWasherControls
 from .LaundryWasherMode import LaundryWasherMode
 from .LevelControl import LevelControl
+from .LinkyCluster import LinkyCluster
 from .LocalizationConfiguration import LocalizationConfiguration
 from .LowPower import LowPower
 from .MediaInput import MediaInput
@@ -234,6 +235,7 @@ __all__ = [
     "LaundryWasherControls",
     "LaundryWasherMode",
     "LevelControl",
+    "LinkyCluster",
     "LocalizationConfiguration",
     "LowPower",
     "MediaInput",

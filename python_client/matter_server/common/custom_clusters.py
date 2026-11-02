@@ -9,6 +9,7 @@ from chip.clusters.cluster_defs.EveCluster import EveCluster
 from chip.clusters.cluster_defs.HeimanCluster import HeimanCluster
 from chip.clusters.cluster_defs.IkeaValveCalibrationCluster import IkeaValveCalibrationCluster
 from chip.clusters.cluster_defs.InovelliCluster import InovelliCluster
+from chip.clusters.cluster_defs.LinkyCluster import LinkyCluster
 from chip.clusters.cluster_defs.NeoCluster import NeoCluster
 from chip.clusters.cluster_defs.TclDehumidifierCluster import TclDehumidifierCluster
 from chip.clusters.cluster_defs.ThirdRealityMeteringCluster import ThirdRealityMeteringCluster
@@ -32,6 +33,7 @@ ALL_CUSTOM_CLUSTERS: dict = {
     HeimanCluster.id: HeimanCluster,
     IkeaValveCalibrationCluster.id: IkeaValveCalibrationCluster,
     InovelliCluster.id: InovelliCluster,
+    LinkyCluster.id: LinkyCluster,
     NeoCluster.id: NeoCluster,
     TclDehumidifierCluster.id: TclDehumidifierCluster,
     ThirdRealityMeteringCluster.id: ThirdRealityMeteringCluster,
@@ -55,6 +57,7 @@ __all__ = [
     "HeimanCluster",
     "IkeaValveCalibrationCluster",
     "InovelliCluster",
+    "LinkyCluster",
     "NeoCluster",
     "TclDehumidifierCluster",
     "ThirdRealityMeteringCluster",

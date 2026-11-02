@@ -16,6 +16,7 @@ Custom clusters are used by device manufacturers to expose proprietary functiona
 | `AqaraOccupantLocationCluster`      | 0x115ffc0c | Aqara (0x115f/4447)        | FP400 activity state, target positions     |
 | `EveCluster`                        | 0x130afc01 | Eve (0x130a/4874)          | Energy monitoring, weather, motion sensors |
 | `InovelliCluster`                   | 0x122ffc31 | Inovelli (0x122f/4961)     | LED indicator controls                     |
+| `LinkyCluster`                      | 0xfff1fc01 | LiXee (0xfff1/65521)       | ZLinky raw TIC data (historic and standard mode) |
 | `NeoCluster`                        | 0x125dfc11 | Neo (0x125d/4991)          | Power metering                             |
 | `HeimanCluster`                     | 0x120bfc01 | Heiman (0x120b/4619)       | Sensor states, alarms                      |
 | `IkeaValveCalibrationCluster`       | 0x117cfc01 | IKEA (0x117c/4476)         | Thermostat valve calibration               |

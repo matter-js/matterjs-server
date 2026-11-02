@@ -19816,6 +19816,350 @@ export const clusters: Record<number, ClusterDescription> = {
         "commands": {},
         "features": {}
     },
+    "4294048769": {
+        "id": 4294048769,
+        "label": "LinkyCluster",
+        "attributes": {
+            "65528": {
+                "id": 65528,
+                "cluster_id": 4294048769,
+                "label": "GeneratedCommandList",
+                "type": "List[command-id]",
+                "writable": false
+            },
+            "65529": {
+                "id": 65529,
+                "cluster_id": 4294048769,
+                "label": "AcceptedCommandList",
+                "type": "List[command-id]",
+                "writable": false
+            },
+            "65531": {
+                "id": 65531,
+                "cluster_id": 4294048769,
+                "label": "AttributeList",
+                "type": "List[attrib-id]",
+                "writable": false
+            },
+            "65532": {
+                "id": 65532,
+                "cluster_id": 4294048769,
+                "label": "FeatureMap",
+                "type": "map32",
+                "writable": false
+            },
+            "65533": {
+                "id": 65533,
+                "cluster_id": 4294048769,
+                "label": "ClusterRevision",
+                "type": "uint16",
+                "writable": false
+            },
+            "4293984256": {
+                "id": 4293984256,
+                "cluster_id": 4294048769,
+                "label": "Optarif",
+                "type": "Optional[string]",
+                "writable": false
+            },
+            "4293984257": {
+                "id": 4293984257,
+                "cluster_id": 4294048769,
+                "label": "Demain",
+                "type": "Optional[string]",
+                "writable": false
+            },
+            "4293984258": {
+                "id": 4293984258,
+                "cluster_id": 4294048769,
+                "label": "Hhphc",
+                "type": "Optional[uint8]",
+                "writable": false
+            },
+            "4293984259": {
+                "id": 4293984259,
+                "cluster_id": 4294048769,
+                "label": "Ppot",
+                "type": "Optional[uint8]",
+                "writable": false
+            },
+            "4293984260": {
+                "id": 4293984260,
+                "cluster_id": 4294048769,
+                "label": "Pejp",
+                "type": "Optional[uint8]",
+                "writable": false
+            },
+            "4293984261": {
+                "id": 4293984261,
+                "cluster_id": 4294048769,
+                "label": "Adps",
+                "type": "Optional[uint16]",
+                "writable": false
+            },
+            "4293984262": {
+                "id": 4293984262,
+                "cluster_id": 4294048769,
+                "label": "Adir1",
+                "type": "Optional[uint16]",
+                "writable": false
+            },
+            "4293984263": {
+                "id": 4293984263,
+                "cluster_id": 4294048769,
+                "label": "Adir2",
+                "type": "Optional[uint16]",
+                "writable": false
+            },
+            "4293984264": {
+                "id": 4293984264,
+                "cluster_id": 4294048769,
+                "label": "Adir3",
+                "type": "Optional[uint16]",
+                "writable": false
+            },
+            "4293984265": {
+                "id": 4293984265,
+                "cluster_id": 4294048769,
+                "label": "Motdetat",
+                "type": "Optional[string]",
+                "writable": false
+            },
+            "4293984272": {
+                "id": 4293984272,
+                "cluster_id": 4294048769,
+                "label": "TarifPeriod",
+                "type": "Optional[string]",
+                "writable": false
+            },
+            "4293984512": {
+                "id": 4293984512,
+                "cluster_id": 4294048769,
+                "label": "PeriodicSend",
+                "type": "Optional[uint8]",
+                "writable": true
+            },
+            "4293984768": {
+                "id": 4293984768,
+                "cluster_id": 4294048769,
+                "label": "Ltarf",
+                "type": "Optional[string]",
+                "writable": false
+            },
+            "4293984769": {
+                "id": 4293984769,
+                "cluster_id": 4294048769,
+                "label": "Ntarf",
+                "type": "Optional[uint8]",
+                "writable": false
+            },
+            "4293984770": {
+                "id": 4293984770,
+                "cluster_id": 4294048769,
+                "label": "Date",
+                "type": "Optional[string]",
+                "writable": false
+            },
+            "4293984771": {
+                "id": 4293984771,
+                "cluster_id": 4294048769,
+                "label": "Easd01",
+                "type": "Optional[uint32]",
+                "writable": false
+            },
+            "4293984772": {
+                "id": 4293984772,
+                "cluster_id": 4294048769,
+                "label": "Easd02",
+                "type": "Optional[uint32]",
+                "writable": false
+            },
+            "4293984773": {
+                "id": 4293984773,
+                "cluster_id": 4294048769,
+                "label": "Easd03",
+                "type": "Optional[uint32]",
+                "writable": false
+            },
+            "4293984774": {
+                "id": 4293984774,
+                "cluster_id": 4294048769,
+                "label": "Easd04",
+                "type": "Optional[uint32]",
+                "writable": false
+            },
+            "4293984775": {
+                "id": 4293984775,
+                "cluster_id": 4294048769,
+                "label": "Sinsti",
+                "type": "Optional[uint16]",
+                "writable": false
+            },
+            "4293984776": {
+                "id": 4293984776,
+                "cluster_id": 4294048769,
+                "label": "Smaxin",
+                "type": "Optional[uint16]",
+                "writable": false
+            },
+            "4293984777": {
+                "id": 4293984777,
+                "cluster_id": 4294048769,
+                "label": "Smaxin1",
+                "type": "Optional[uint16]",
+                "writable": false
+            },
+            "4293984784": {
+                "id": 4293984784,
+                "cluster_id": 4294048769,
+                "label": "Ccain",
+                "type": "Optional[uint16]",
+                "writable": false
+            },
+            "4293984785": {
+                "id": 4293984785,
+                "cluster_id": 4294048769,
+                "label": "Ccain1",
+                "type": "Optional[uint16]",
+                "writable": false
+            },
+            "4293984786": {
+                "id": 4293984786,
+                "cluster_id": 4294048769,
+                "label": "Smaxsn11",
+                "type": "Optional[uint16]",
+                "writable": false
+            },
+            "4293984787": {
+                "id": 4293984787,
+                "cluster_id": 4294048769,
+                "label": "Smaxsn21",
+                "type": "Optional[uint16]",
+                "writable": false
+            },
+            "4293984788": {
+                "id": 4293984788,
+                "cluster_id": 4294048769,
+                "label": "Smaxsn31",
+                "type": "Optional[uint16]",
+                "writable": false
+            },
+            "4293984789": {
+                "id": 4293984789,
+                "cluster_id": 4294048769,
+                "label": "Msg1",
+                "type": "Optional[string]",
+                "writable": false
+            },
+            "4293984790": {
+                "id": 4293984790,
+                "cluster_id": 4294048769,
+                "label": "Msg2",
+                "type": "Optional[string]",
+                "writable": false
+            },
+            "4293984791": {
+                "id": 4293984791,
+                "cluster_id": 4294048769,
+                "label": "Stge",
+                "type": "Optional[bytes]",
+                "writable": false
+            },
+            "4293984792": {
+                "id": 4293984792,
+                "cluster_id": 4294048769,
+                "label": "Dpm1",
+                "type": "Optional[uint8]",
+                "writable": false
+            },
+            "4293984793": {
+                "id": 4293984793,
+                "cluster_id": 4294048769,
+                "label": "Fpm1",
+                "type": "Optional[uint8]",
+                "writable": false
+            },
+            "4293984800": {
+                "id": 4293984800,
+                "cluster_id": 4294048769,
+                "label": "Dpm2",
+                "type": "Optional[uint8]",
+                "writable": false
+            },
+            "4293984801": {
+                "id": 4293984801,
+                "cluster_id": 4294048769,
+                "label": "Fpm2",
+                "type": "Optional[uint8]",
+                "writable": false
+            },
+            "4293984802": {
+                "id": 4293984802,
+                "cluster_id": 4294048769,
+                "label": "Dpm3",
+                "type": "Optional[uint8]",
+                "writable": false
+            },
+            "4293984803": {
+                "id": 4293984803,
+                "cluster_id": 4294048769,
+                "label": "Fpm3",
+                "type": "Optional[uint8]",
+                "writable": false
+            },
+            "4293984804": {
+                "id": 4293984804,
+                "cluster_id": 4294048769,
+                "label": "Relais",
+                "type": "Optional[uint16]",
+                "writable": false
+            },
+            "4293984805": {
+                "id": 4293984805,
+                "cluster_id": 4294048769,
+                "label": "Njourf",
+                "type": "Optional[uint8]",
+                "writable": false
+            },
+            "4293984806": {
+                "id": 4293984806,
+                "cluster_id": 4294048769,
+                "label": "Njourf1",
+                "type": "Optional[uint8]",
+                "writable": false
+            },
+            "4293984807": {
+                "id": 4293984807,
+                "cluster_id": 4294048769,
+                "label": "Pjourf1",
+                "type": "Optional[string]",
+                "writable": false
+            },
+            "4293984808": {
+                "id": 4293984808,
+                "cluster_id": 4294048769,
+                "label": "Ppointe",
+                "type": "Optional[string]",
+                "writable": false
+            },
+            "4293985024": {
+                "id": 4293985024,
+                "cluster_id": 4294048769,
+                "label": "Mode",
+                "type": "Optional[uint8]",
+                "writable": false
+            },
+            "4293985280": {
+                "id": 4293985280,
+                "cluster_id": 4294048769,
+                "label": "Smaxsn1",
+                "type": "Optional[uint16]",
+                "writable": false
+            }
+        },
+        "commands": {},
+        "features": {}
+    },
     "4294048773": {
         "id": 4294048773,
         "label": "UnitTestingCluster",

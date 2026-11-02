@@ -108,6 +108,7 @@ __all__ = [
     "LaundryWasherControls",
     "LaundryWasherMode",
     "LevelControl",
+    "LinkyCluster",
     "LocalizationConfiguration",
     "LowPower",
     "MediaInput",
