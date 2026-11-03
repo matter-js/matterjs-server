@@ -12,6 +12,7 @@ import {
     ambientContextSensingInfo,
     type AmbientContextSensingInfo,
 } from "../../../util/ambient-context-sensing.js";
+import { chipListStyles } from "../../../util/shared-styles.js";
 import { formatEpochTime } from "../../../util/time.js";
 import { BaseClusterCommands } from "../base-cluster-commands.js";
 import { registerClusterCommands } from "../registry.js";
@@ -191,6 +192,7 @@ export class AmbientContextSensingClusterCommands extends BaseClusterCommands {
 
     static override styles: CSSResultGroup = [
         BaseClusterCommands.styles,
+        chipListStyles,
         css`
             .badge-row {
                 display: flex;
