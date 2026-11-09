@@ -179,6 +179,7 @@ class CameraAvStreamManagementClusterCommands extends BaseClusterCommands {
                                       <ha-svg-icon .path=${mdiWeatherNight}></ha-svg-icon>
                                       <span>Night vision</span>
                                       <md-outlined-select
+                                          aria-label="Night vision"
                                           .value=${nightVision !== null ? String(nightVision) : ""}
                                           @change=${handleAsyncEvent(
                                               (e: Event) =>
