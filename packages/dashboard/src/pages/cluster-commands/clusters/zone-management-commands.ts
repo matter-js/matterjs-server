@@ -522,12 +522,12 @@ class ZoneManagementClusterCommands extends BaseClusterCommands {
                     ${info.zones
                         .filter(zone => zone.twoDCartesianZone === undefined || zone.twoDCartesianZone.use === 0)
                         .map(
-                        zone => html`
-                            <md-select-option value=${String(zone.zoneId)}>
-                                <div slot="headline">${zoneLabel(zone)} (${zone.zoneId})</div>
-                            </md-select-option>
-                        `,
-                    )}
+                            zone => html`
+                                <md-select-option value=${String(zone.zoneId)}>
+                                    <div slot="headline">${zoneLabel(zone)} (${zone.zoneId})</div>
+                                </md-select-option>
+                            `,
+                        )}
                 </md-outlined-select>
                 <md-outlined-text-field
                     type="number"
