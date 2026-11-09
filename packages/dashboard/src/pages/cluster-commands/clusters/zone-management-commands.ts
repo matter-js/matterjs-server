@@ -519,7 +519,9 @@ class ZoneManagementClusterCommands extends BaseClusterCommands {
                         this._triggerZoneId = (e.target as HTMLSelectElement).value;
                     }}
                 >
-                    ${info.zones.map(
+                    ${info.zones
+                        .filter(zone => zone.twoDCartesianZone === undefined || zone.twoDCartesianZone.use === 0)
+                        .map(
                         zone => html`
                             <md-select-option value=${String(zone.zoneId)}>
                                 <div slot="headline">${zoneLabel(zone)} (${zone.zoneId})</div>
