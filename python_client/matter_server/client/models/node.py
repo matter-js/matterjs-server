@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 import logging
-from typing import TYPE_CHECKING, Any, TypeVar, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from chip.clusters import Objects as Clusters
 from chip.clusters.ClusterObjects import ALL_ATTRIBUTES, ALL_CLUSTERS
@@ -32,11 +32,6 @@ LOGGER = logging.getLogger(__name__)
 
 # the Matter specification places the Root Node on endpoint 0 of every node
 ROOT_ENDPOINT_ID = 0
-
-# pylint: disable=invalid-name
-_CLUSTER_T = TypeVar("_CLUSTER_T", bound=Clusters.Cluster)
-_ATTRIBUTE_T = TypeVar("_ATTRIBUTE_T", bound=Clusters.ClusterAttributeDescriptor)
-# pylint: enable=invalid-name
 
 
 def get_object_params(
@@ -122,7 +117,7 @@ class MatterEndpoint:
             endpoint = parent
         return self.node.device_info
 
-    def has_cluster(self, cluster: type[_CLUSTER_T] | int) -> bool:
+    def has_cluster(self, cluster: type[Clusters.Cluster] | int) -> bool:
         """
         Check if endpoint has a specific cluster.
 
@@ -132,7 +127,7 @@ class MatterEndpoint:
             return cluster.id in self.clusters
         return cluster in self.clusters
 
-    def get_cluster(self, cluster: type[_CLUSTER_T] | int) -> _CLUSTER_T | None:
+    def get_cluster[T: Clusters.Cluster](self, cluster: type[T] | int) -> T | None:
         """
         Get a full Cluster object containing all attributes.
 
@@ -145,8 +140,8 @@ class MatterEndpoint:
 
     def get_attribute_value(
         self,
-        cluster: type[_CLUSTER_T] | int | None,
-        attribute: int | type[_ATTRIBUTE_T],
+        cluster: type[Clusters.Cluster] | int | None,
+        attribute: int | type[Clusters.ClusterAttributeDescriptor],
     ) -> Any:
         """
         Return Matter Cluster Attribute object for given parameters.
@@ -178,8 +173,8 @@ class MatterEndpoint:
 
     def has_attribute(
         self,
-        cluster: type[_CLUSTER_T] | int | None,
-        attribute: int | type[_ATTRIBUTE_T],
+        cluster: type[Clusters.Cluster] | int | None,
+        attribute: int | type[Clusters.ClusterAttributeDescriptor],
     ) -> bool:
         """
         Perform a quick check if the endpoint has a specific attribute.
@@ -308,14 +303,14 @@ class MatterNode:
     def get_attribute_value(
         self,
         endpoint: int,
-        cluster: type[_CLUSTER_T] | int | None,
-        attribute: int | type[_ATTRIBUTE_T],
+        cluster: type[Clusters.Cluster] | int | None,
+        attribute: int | type[Clusters.ClusterAttributeDescriptor],
     ) -> Any:
         """Return Matter Cluster Attribute value for given parameters."""
         return self.endpoints[endpoint].get_attribute_value(cluster, attribute)
 
     def has_cluster(
-        self, cluster: type[_CLUSTER_T] | int, endpoint: int | None = None
+        self, cluster: type[Clusters.Cluster] | int, endpoint: int | None = None
     ) -> bool:
         """Check if node has a specific cluster on any of the endpoints."""
         return any(
@@ -325,9 +320,9 @@ class MatterNode:
             and (endpoint is None or x.endpoint_id == endpoint)
         )
 
-    def get_cluster(
-        self, endpoint: int, cluster: type[_CLUSTER_T] | int
-    ) -> _CLUSTER_T | None:
+    def get_cluster[T: Clusters.Cluster](
+        self, endpoint: int, cluster: type[T] | int
+    ) -> T | None:
         """
         Get a Cluster object containing all attributes.
 
