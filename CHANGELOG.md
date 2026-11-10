@@ -8,6 +8,7 @@ This page shows a detailed overview of the changes between versions without the 
 -->
 ## **WORK IN PROGRESS**
 
+- Enhancement: Dashboard: Pressing Enter in the share/pairing code, Thread dataset, node label, fabric label and ACL node id fields submits them, the same as clicking the button next to them
 - Fix: The server pings the clients of its WebSocket API every 30 seconds, so proxies and remote access relays no longer close idle connections; a client that stops answering is disconnected
 - Fix: The dashboard reconnects once on its own when the connection drops, and shows the "Connection lost" page only when that attempt fails
 - Fix: ws-client: `connect()` and `startListening()` fail when the server closes the connection before it is ready, instead of never returning
