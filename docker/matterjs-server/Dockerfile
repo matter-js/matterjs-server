@@ -67,6 +67,8 @@ RUN --mount=type=bind,from=npm-packages,target=/npm-packages \
         -path "*/@matter/*" -prune -exec rm -rf {} + \
     && find ./node_modules -type d -name "cjs" \
         -path "*/@project-chip/*" -prune -exec rm -rf {} + \
+    # Remove TypeScript sources and declarations (.js.map stays for --enable-source-maps)
+    && find ./node_modules -type f \( -name "*.ts" -o -name "*.mts" -o -name "*.cts" -o -name "*.d.ts.map" \) -delete \
     # Remove development/documentation files
     && find ./node_modules -type d -name ".github" -prune -exec rm -rf {} + \
     && find ./node_modules -type d -name ".vscode" -prune -exec rm -rf {} + \

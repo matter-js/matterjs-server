@@ -31,28 +31,26 @@
         "bundle": "rollup -c",
         "test": "matter-test --force-exit"
     },
-    "dependencies": {
+    "devDependencies": {
+        "@babel/preset-env": "^8.0.7",
         "@lit/context": "^1.1.6",
         "@material/web": "^2.5.0",
         "@matter-server/custom-clusters": "*",
         "@matter-server/ws-client": "*",
-        "@mdi/js": "^7.4.47",
-        "lit": "^3.3.3",
-        "qrcode-generator": "^2.0.4",
-        "tslib": "^2.9.1",
-        "vis-network": "^10.1.4"
-    },
-    "devDependencies": {
-        "@babel/preset-env": "^8.0.7",
         "@matter/main": "0.18.0",
+        "@mdi/js": "^7.4.47",
         "@rollup/plugin-babel": "^7.1.0",
         "@rollup/plugin-commonjs": "^29.0.3",
         "@rollup/plugin-json": "^6.1.0",
         "@rollup/plugin-node-resolve": "^16.0.3",
         "@rollup/plugin-terser": "^1.0.0",
         "@rollup/plugin-typescript": "^12.3.0",
+        "lit": "^3.3.3",
+        "qrcode-generator": "^2.0.4",
         "rollup": "^4.67.3",
         "rollup-plugin-copy": "^3.5.0",
-        "serve": "^14.2.6"
+        "serve": "^14.2.6",
+        "tslib": "^2.9.1",
+        "vis-network": "^10.1.4"
     }
 }
