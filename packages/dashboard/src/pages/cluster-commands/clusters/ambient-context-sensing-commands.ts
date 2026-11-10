@@ -40,7 +40,7 @@ export class AmbientContextSensingClusterCommands extends BaseClusterCommands {
     }
 
     private _renderDetectionBadges(info: AmbientContextSensingInfo): TemplateResult | typeof nothing {
-        const badges: TemplateResult[] = [];
+        const badges = new Array<TemplateResult>();
         if (info.features.humanActivity && info.humanActivityDetected !== undefined) {
             badges.push(this._badge("Human activity", info.humanActivityDetected));
         }
@@ -82,34 +82,34 @@ export class AmbientContextSensingClusterCommands extends BaseClusterCommands {
         `;
     }
 
-    private _renderObjectCounting(info: AmbientContextSensingInfo): TemplateResult | typeof nothing {
-        if (!info.features.objectCounting) return nothing;
+    private _renderObjectCounting({ objectCounting }: AmbientContextSensingInfo): TemplateResult | typeof nothing {
+        if (objectCounting === undefined) return nothing;
         return html`
             <div class="info-section">
                 <div class="info-section-header">Object counting</div>
                 <dl class="info-grid">
                     ${
-                        info.objectCountThresholdReached !== undefined
+                        objectCounting.thresholdReached !== undefined
                             ? html`<dt>Threshold reached</dt>
-                                  <dd>${info.objectCountThresholdReached ? "Yes" : "No"}</dd>`
+                                  <dd>${objectCounting.thresholdReached ? "Yes" : "No"}</dd>`
                             : nothing
                     }
                     ${
-                        info.objectCount !== undefined
+                        objectCounting.count !== undefined
                             ? html`<dt>Object count</dt>
-                                  <dd>${info.objectCount}</dd>`
+                                  <dd>${objectCounting.count}</dd>`
                             : nothing
                     }
                     ${
-                        info.objectCountConfig?.countingObject
+                        objectCounting.config?.countingObject
                             ? html`<dt>Counting object</dt>
-                                  <dd>${renderSemanticTagChips([info.objectCountConfig.countingObject])}</dd>`
+                                  <dd>${renderSemanticTagChips([objectCounting.config.countingObject])}</dd>`
                             : nothing
                     }
                     ${
-                        info.objectCountConfig?.objectCountThreshold !== undefined
+                        objectCounting.config?.objectCountThreshold !== undefined
                             ? html`<dt>Count threshold</dt>
-                                  <dd>${info.objectCountConfig.objectCountThreshold}</dd>`
+                                  <dd>${objectCounting.config.objectCountThreshold}</dd>`
                             : nothing
                     }
                 </dl>
@@ -162,6 +162,7 @@ export class AmbientContextSensingClusterCommands extends BaseClusterCommands {
         if (!hasInfo) return nothing;
         return html`
             <div class="info-section">
+                <div class="info-section-header">Detection settings</div>
                 <dl class="info-grid">
                     ${
                         info.simultaneousDetectionLimit !== undefined
