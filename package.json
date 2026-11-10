@@ -58,7 +58,7 @@
         "@matter/testing": "0.18.0",
         "@nacho-iot/js-tools": "^0.2.0",
         "@types/mocha": "^10.0.10",
-        "glob": "^13.0.6",
+        "glob": "^14.0.3",
         "globals": "^17.13.0",
         "oxfmt": "^0.75.0",
         "oxlint": "^1.88.0",
