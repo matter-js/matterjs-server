@@ -15,6 +15,7 @@ This page shows a detailed overview of the changes between versions without the 
 - Fix: ws-client: `connect()` and `startListening()` fail when the server closes the connection before it is ready, instead of never returning
 - Fix: Setting the fabric label to the value it already has, as Home Assistant does on every restart, no longer sends the label to every node again
 - Fix: Yeelight: an `updateTopology` request with a module type above 3 is refused before it is sent, so the lamp no longer fails every later read of `cubeTopology`
+- Fix: Dashboard: the Thread and WiFi network graphs no longer keep rotating after they settle or after a node is clicked (#1235)
 
 ## 1.5.5 (2026-10-24)
 
