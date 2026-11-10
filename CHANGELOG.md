@@ -8,6 +8,7 @@ This page shows a detailed overview of the changes between versions without the 
 -->
 ## **WORK IN PROGRESS**
 
+- Fix: (@RAR) Aqara FP400: fields 5 and 6 of the `OccupantLocation` target struct are `signalToNoiseRatio` (uint16) and `targetType` (0 person, 1 not a person, 2 fan, 3 pet, reported while "AI Enhanced Person Detection" is on) instead of `fallState`/`postureState`; Aqara confirmed the device has no fall or posture detection. Only the field names change, the wire format is the same
 - Enhancement: Dashboard: The "Share device" dialog has a button to copy the setup code, also when the dashboard is opened over plain HTTP
 - Enhancement: Dashboard: Pressing Enter in the share/pairing code, Thread dataset, node label, fabric label and ACL node id fields submits them, the same as clicking the button next to them
 - Enhancement: The Docker image is about 250 MB smaller. Installing `matter-server` from npm no longer installs the packages the dashboard only needs to build its web bundle

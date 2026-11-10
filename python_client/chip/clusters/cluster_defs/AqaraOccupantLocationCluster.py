@@ -51,8 +51,8 @@ class AqaraOccupantLocationCluster(Cluster):
                         ClusterObjectFieldDescriptor(Label="y", Tag=2, Type=int),
                         ClusterObjectFieldDescriptor(Label="cell", Tag=3, Type=uint),
                         ClusterObjectFieldDescriptor(Label="activityState", Tag=4, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="fallState", Tag=5, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="postureState", Tag=6, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="signalToNoiseRatio", Tag=5, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="targetType", Tag=6, Type=uint),
                         ClusterObjectFieldDescriptor(Label="zoneID", Tag=7, Type=uint),
                         ClusterObjectFieldDescriptor(Label="inZoneID", Tag=8, Type=typing.Optional[uint]),
                     ])
@@ -62,8 +62,8 @@ class AqaraOccupantLocationCluster(Cluster):
             y: int = 0
             cell: uint = 0
             activityState: uint = 0
-            fallState: uint = 0
-            postureState: uint = 0
+            signalToNoiseRatio: uint = 0
+            targetType: uint = 0
             zoneID: uint = 0
             inZoneID: typing.Optional[uint] = None
 

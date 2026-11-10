@@ -24,6 +24,9 @@ import {
 } from "@matter/main/model";
 
 // Enum names and values follow the Aqara app's device model (trait definitions), confirmed against firmware 1.1.9.6.
+// Fields 5 and 6 of the target struct were first named after the app's FallState/PostureState traits; Aqara support
+// has since clarified that they are the signal-to-noise ratio and the target type (the FP400 has no fall or posture
+// detection). Attribute and command lists are unchanged on firmware 1.2.0.0.
 
 /** {@link AqaraAmbientSensingConfigurationCluster.installMode} values (InstallMode trait). */
 const enum AqaraInstallMode {
@@ -80,11 +83,16 @@ const enum AqaraActivityState {
     Still = 2,
 }
 
-/** Fall state of a tracked target (FallState trait). */
-const enum AqaraFallState {
-    Cleared = 0,
-    Fall = 1,
-    SuspectedFall = 2,
+/**
+ * What the radar thinks a tracked target is. The device classifies targets only while "AI Enhanced Person Detection"
+ * ({@link AqaraAmbientSensingConfigurationCluster.enableAiHighPrecisionRecognition}, attribute 0x29) is on; otherwise
+ * every target is reported as Person.
+ */
+const enum AqaraTargetType {
+    Person = 0,
+    NotPerson = 1,
+    Fan = 2,
+    Pet = 3,
 }
 
 /** {@link AqaraMotionDetectedEvent.motion} values (MotionDetected trait). */
@@ -337,12 +345,13 @@ class AqaraTargetStruct {
     @field(0x4, enum8, mandatory)
     activityState!: AqaraActivityState;
 
-    /** See {@link AqaraFallState}. */
-    @field(0x5, enum8, mandatory)
-    fallState!: AqaraFallState;
+    /** Radar signal-to-noise figure of the target (observed values like 1010 and 4010). */
+    @field(0x5, uint16, mandatory)
+    signalToNoiseRatio!: number;
 
-    @field(0x6, uint8, mandatory)
-    postureState!: number;
+    /** See {@link AqaraTargetType}. */
+    @field(0x6, enum8, mandatory)
+    targetType!: AqaraTargetType;
 
     /** Always observed as 255. */
     @field(0x7, uint8, mandatory)
