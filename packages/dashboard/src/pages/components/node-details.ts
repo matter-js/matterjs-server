@@ -31,6 +31,7 @@ import { DeviceType } from "../../client/models/descriptions.js";
 import { showAlertDialog, showPromptDialog } from "../../components/dialog-box/show-dialog-box.js";
 import { showNodeLabelDialog } from "../../components/dialogs/node-label-dialog/show-node-label-dialog.js";
 import { handleAsync, handleAsyncEvent } from "../../util/async-handler.js";
+import "../../components/copy-button.js";
 import "../../components/ha-svg-icon";
 import "../camera-overlay.js";
 import { supportsAudioOnlyLiveView, supportsCameraOverlay, supportsLiveView } from "../../util/camera.js";
@@ -441,8 +442,14 @@ export class NodeDetails extends LitElement {
                         <img src=${qrDataUri} alt="Commissioning QR code" style="width:200px;height:200px;" />
                         <div style="text-align:center;">
                             <div style="font-size:0.8rem;color:var(--md-sys-color-on-surface-variant);">Setup code</div>
-                            <div style="font-size:1.4rem;font-family:monospace;letter-spacing:0.05em;">
-                                ${manualCode}
+                            <div style="display:flex;align-items:center;gap:4px;">
+                                <span style="font-size:1.4rem;font-family:monospace;letter-spacing:0.05em;"
+                                    >${manualCode}</span
+                                >
+                                <copy-button
+                                    label="Copy setup code"
+                                    .value=${shareCode.setup_manual_code}
+                                ></copy-button>
                             </div>
                         </div>
                     </div>
