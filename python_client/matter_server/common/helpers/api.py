@@ -5,11 +5,9 @@ from __future__ import annotations
 from collections.abc import Callable, Coroutine
 from dataclasses import MISSING, dataclass
 import inspect
-from typing import Any, TypeVar, get_type_hints
+from typing import Any, get_type_hints
 
 from matter_server.common.helpers.util import parse_value
-
-_F = TypeVar("_F", bound=Callable[..., Any])
 
 
 @dataclass
@@ -34,10 +32,10 @@ class APICommandHandler:
         )
 
 
-def api_command(command: str) -> Callable[[_F], _F]:
+def api_command[F: Callable[..., Any]](command: str) -> Callable[[F], F]:
     """Decorate a function as API route/command."""
 
-    def decorate(func: _F) -> _F:
+    def decorate(func: F) -> F:
         func.api_cmd = command  # type: ignore[attr-defined]
         return func
 
