@@ -10,6 +10,7 @@ This page shows a detailed overview of the changes between versions without the 
 
 - Enhancement: Dashboard: The "Share device" dialog has a button to copy the setup code, also when the dashboard is opened over plain HTTP
 - Enhancement: Dashboard: Pressing Enter in the share/pairing code, Thread dataset, node label, fabric label and ACL node id fields submits them, the same as clicking the button next to them
+- Enhancement: The Docker image is about 250 MB smaller. Installing `matter-server` from npm no longer installs the packages the dashboard only needs to build its web bundle
 - Fix: The server pings the clients of its WebSocket API every 30 seconds, so proxies and remote access relays no longer close idle connections; a client that stops answering is disconnected
 - Fix: The dashboard reconnects once on its own when the connection drops, and shows the "Connection lost" page only when that attempt fails
 - Fix: Dashboard: The "Copy URL with dev enabled" button in the Settings dialog works when the dashboard is opened over plain HTTP, and shows whether the copy worked
