@@ -24,6 +24,7 @@ import { handleAsync } from "../../../util/async-handler.js";
 import { DevModeService } from "../../../util/dev-mode-service.js";
 import { onEnter } from "../../../util/on-enter.js";
 import { preventDefault } from "../../../util/prevent_default.js";
+import "../../../components/copy-button.js";
 import "../../../components/ha-svg-icon.js";
 import { showAlertDialog } from "../../dialog-box/show-dialog-box.js";
 import "./log-level-section.js";
@@ -113,14 +114,6 @@ export class SettingsDialog extends LitElement {
     private _onDevToggle(event: Event) {
         const target = event.target as MdSwitch;
         DevModeService.setActive(target.selected);
-    }
-
-    private _copyDevLink() {
-        const url = new URL(window.location.href);
-        url.searchParams.set("dev", "on");
-        navigator.clipboard?.writeText(url.toString()).catch(() => {
-            // best-effort; clipboard may be unavailable
-        });
     }
 
     private _toggleExpand(row: "wifi" | "thread") {
@@ -679,7 +672,11 @@ export class SettingsDialog extends LitElement {
                             ></md-switch>
                         </div>
                         <div class="aux-row">
-                            <md-text-button @click=${this._copyDevLink}>Copy URL with dev enabled</md-text-button>
+                            <span class="hint" aria-hidden="true">URL with developer mode enabled</span>
+                            <copy-button
+                                label="Copy URL with dev enabled"
+                                .value=${DevModeService.activeUrl}
+                            ></copy-button>
                         </div>
                     </section>
 
@@ -758,7 +755,14 @@ export class SettingsDialog extends LitElement {
         .aux-row {
             margin-top: 8px;
             display: flex;
+            align-items: center;
             justify-content: flex-end;
+            gap: 4px;
+        }
+
+        .aux-row .hint {
+            flex: 1;
+            text-align: right;
         }
 
         md-divider {
