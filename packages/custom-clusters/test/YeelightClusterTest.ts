@@ -138,6 +138,13 @@ describe("Yeelight Cube Lite clusters", () => {
         expect(() => encoded(0x1312fc01, "setMicMusicMode", music(17))).to.throw(/too long/);
     });
 
+    it("refuses a topology with a module type the device cannot read back, before sending it", () => {
+        const topology = (types: number[]) => encoded(0x1312fc02, "updateTopology", { topology: types });
+        expect(() => topology([2, 2, 2, 3])).not.to.throw();
+        expect(() => topology([2, 2, 2, 4])).to.throw(/above the maximum, 3/);
+        expect(() => topology([2, 2, 2, 5])).to.throw(/above the maximum, 3/);
+    });
+
     it("decodes a reply with any number of colors, as the controller does", () => {
         const reply = cluster(0x1312fc05).commands.find(model => model.name === "getCurrentEffectResponse");
         // {0: {0: 42, 2: [{3: 42, 6: [1, 2]}]}}: a reply with 2 colors
