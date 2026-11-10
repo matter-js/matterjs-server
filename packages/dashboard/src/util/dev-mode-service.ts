@@ -21,6 +21,13 @@ class DevModeServiceImpl {
         return value !== null && value !== "";
     }
 
+    /** The current page URL with developer mode enabled. */
+    get activeUrl(): string {
+        const url = new URL(window.location.href);
+        url.searchParams.set(URL_PARAM, "on");
+        return url.toString();
+    }
+
     setActive(on: boolean): void {
         const url = new URL(window.location.href);
         if (on) {
