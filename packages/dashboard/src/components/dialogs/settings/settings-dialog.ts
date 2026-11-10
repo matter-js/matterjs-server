@@ -22,6 +22,7 @@ import { customElement, property, query, state } from "lit/decorators.js";
 import { clientContext, tickContext } from "../../../client/client-context.js";
 import { handleAsync } from "../../../util/async-handler.js";
 import { DevModeService } from "../../../util/dev-mode-service.js";
+import { onEnter } from "../../../util/on-enter.js";
 import { preventDefault } from "../../../util/prevent_default.js";
 import "../../../components/ha-svg-icon.js";
 import { showAlertDialog } from "../../dialog-box/show-dialog-box.js";
@@ -250,6 +251,9 @@ export class SettingsDialog extends LitElement {
     }
 
     private async _saveThread(id?: string) {
+        if (this._credLoading) {
+            return;
+        }
         const dataset = this._threadDatasetField.value.trim();
         if (!dataset) {
             this._credError = "Thread dataset is required";
@@ -524,6 +528,7 @@ export class SettingsDialog extends LitElement {
                     label="Thread dataset"
                     supporting-text="Hex string (e.g. 0E080000...)"
                     .disabled=${this._credLoading}
+                    @keydown=${onEnter(handleAsync(() => this._saveThread(id)))}
                 ></md-outlined-text-field>
                 ${this._renderCredError()}
                 <div class="form-actions">
@@ -624,6 +629,7 @@ export class SettingsDialog extends LitElement {
                               label="Thread dataset"
                               supporting-text="Hex string (e.g. 0E080000...)"
                               .disabled=${this._credLoading}
+                              @keydown=${onEnter(handleAsync(() => this._saveThread()))}
                           ></md-outlined-text-field>
                           ${this._renderCredError()}
                           <div class="form-actions">
