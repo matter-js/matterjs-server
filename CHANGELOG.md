@@ -8,12 +8,13 @@ This page shows a detailed overview of the changes between versions without the 
 -->
 ## **WORK IN PROGRESS**
 
-- Enhancement: Dashboard: The "Share device" dialog has a button to copy the setup code, also when the dashboard is opened over plain HTTP (#1237)
-- Enhancement: Dashboard: Pressing Enter in the share/pairing code, Thread dataset, node label, fabric label and ACL node id fields submits them, the same as clicking the button next to them (#1250)
-- Fix: The server pings the clients of its WebSocket API every 30 seconds, so proxies and remote access relays no longer close idle connections; a client that stops answering is disconnected (#1213)
-- Fix: The dashboard reconnects once on its own when the connection drops, and shows the "Connection lost" page only when that attempt fails (#1213)
+- Enhancement: Dashboard: The "Share device" dialog has a button to copy the setup code, also when the dashboard is opened over plain HTTP
+- Enhancement: Dashboard: Pressing Enter in the share/pairing code, Thread dataset, node label, fabric label and ACL node id fields submits them, the same as clicking the button next to them
+- Fix: The server pings the clients of its WebSocket API every 30 seconds, so proxies and remote access relays no longer close idle connections; a client that stops answering is disconnected
+- Fix: The dashboard reconnects once on its own when the connection drops, and shows the "Connection lost" page only when that attempt fails
 - Fix: ws-client: `connect()` and `startListening()` fail when the server closes the connection before it is ready, instead of never returning
-- Fix: Setting the fabric label to the value it already has, as Home Assistant does on every restart, no longer sends the label to every node again (#1226)
+- Fix: Setting the fabric label to the value it already has, as Home Assistant does on every restart, no longer sends the label to every node again
+- Fix: Yeelight: an `updateTopology` request with a module type above 3 is refused before it is sent, so the lamp no longer fails every later read of `cubeTopology`
 
 ## 1.5.5 (2026-10-24)
 
