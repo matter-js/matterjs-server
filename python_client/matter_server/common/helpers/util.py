@@ -17,7 +17,6 @@ from types import NoneType, UnionType
 from typing import (
     TYPE_CHECKING,
     Any,
-    TypeVar,
     Union,
     cast,
     get_args,
@@ -35,8 +34,6 @@ if TYPE_CHECKING:
         ClusterAttributeDescriptor,
         ClusterObjectDescriptor,
     )
-
-    _T = TypeVar("_T", bound=DataclassInstance)
 
 CHIP_CLUSTERS_PKG_NAME = "home-assistant-chip-clusters"
 CHIP_CORE_PKG_NAME = "home-assistant-chip-core"
@@ -303,12 +300,12 @@ def parse_value(
     return value
 
 
-def dataclass_from_dict[T: DataclassInstance](  # type: ignore[valid-type]
-    cls: type[_T],
+def dataclass_from_dict[T: DataclassInstance](
+    cls: type[T],
     dict_obj: dict,
     strict: bool = False,
     allow_sdk_types: bool = False,
-) -> _T:
+) -> T:
     """
     Create (instance of) a dataclass by providing a dict with values.
 

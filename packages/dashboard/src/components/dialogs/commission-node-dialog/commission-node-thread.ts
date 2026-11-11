@@ -17,6 +17,7 @@ import { customElement, property, query, state } from "lit/decorators.js";
 import { clientContext } from "../../../client/client-context.js";
 import { handleAsync } from "../../../util/async-handler.js";
 import { fireEvent } from "../../../util/fire_event.js";
+import { onEnter } from "../../../util/on-enter.js";
 import { showAlertDialog } from "../../dialog-box/show-dialog-box.js";
 import "../../ha-svg-icon.js";
 
@@ -123,6 +124,7 @@ export class CommissionNodeThread extends LitElement {
                     label="Thread dataset"
                     .disabled="${this._loading}"
                     supporting-text="Hex string (e.g. 0E080000...)"
+                    @keydown=${onEnter(handleAsync(() => this._setThreadDataset()))}
                 >
                 </md-outlined-text-field>
                 <br />
@@ -162,7 +164,12 @@ export class CommissionNodeThread extends LitElement {
                           <br />`
                     : nothing
             }
-            <md-outlined-text-field label="Pairing code" .disabled="${this._loading}"> </md-outlined-text-field>
+            <md-outlined-text-field
+                label="Pairing code"
+                .disabled="${this._loading}"
+                @keydown=${onEnter(handleAsync(() => this._commissionNode()))}
+            >
+            </md-outlined-text-field>
             <br />
             <br />
             <md-outlined-button @click=${handleAsync(() => this._commissionNode())} .disabled="${this._loading}"
@@ -171,6 +178,9 @@ export class CommissionNodeThread extends LitElement {
     }
 
     private async _setThreadDataset() {
+        if (this._loading) {
+            return;
+        }
         const dataset = this._datasetField.value.trim();
         if (!dataset) {
             showAlertDialog({ title: "Validation error", text: "Dataset is required" });
@@ -194,6 +204,9 @@ export class CommissionNodeThread extends LitElement {
     }
 
     private async _commissionNode() {
+        if (this._loading) {
+            return;
+        }
         if (!this._pairingCodeField.value) {
             showAlertDialog({ title: "Validation error", text: "Pairing code is required" });
             return;

@@ -17,6 +17,7 @@ import { customElement, property, query, state } from "lit/decorators.js";
 import { clientContext } from "../../../client/client-context.js";
 import { handleAsync } from "../../../util/async-handler.js";
 import { fireEvent } from "../../../util/fire_event.js";
+import { onEnter } from "../../../util/on-enter.js";
 import { showAlertDialog } from "../../dialog-box/show-dialog-box.js";
 import "../../ha-svg-icon.js";
 
@@ -167,7 +168,12 @@ export class CommissionNodeWifi extends LitElement {
                           <br />`
                     : nothing
             }
-            <md-outlined-text-field label="Pairing code" .disabled="${this._loading}"> </md-outlined-text-field>
+            <md-outlined-text-field
+                label="Pairing code"
+                .disabled="${this._loading}"
+                @keydown=${onEnter(handleAsync(() => this._commissionNode()))}
+            >
+            </md-outlined-text-field>
             <br />
             <br />
             <md-outlined-button @click=${handleAsync(() => this._commissionNode())} .disabled="${this._loading}"
@@ -197,6 +203,9 @@ export class CommissionNodeWifi extends LitElement {
     }
 
     private async _commissionNode() {
+        if (this._loading) {
+            return;
+        }
         try {
             if (!this._pairingCodeField.value) {
                 showAlertDialog({ title: "Validation error", text: "Pairing code is required" });
