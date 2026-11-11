@@ -4,9 +4,9 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import "@material/web/select/outlined-select";
+import { MdOutlinedSelect } from "@material/web/select/outlined-select.js";
 import "@material/web/select/select-option";
-import "@material/web/switch/switch";
+import { MdSwitch } from "@material/web/switch/switch.js";
 import type { MatterNode } from "@matter-server/ws-client";
 import {
     mdiCctv,
@@ -23,114 +23,127 @@ import {
 } from "@mdi/js";
 import { css, html, nothing, type CSSResultGroup } from "lit";
 import { customElement } from "lit/decorators.js";
+import { live } from "lit/directives/live.js";
 import { showAlertDialog } from "../../../components/dialog-box/show-dialog-box.js";
 import "../../../components/ha-svg-icon.js";
 import {
     CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID,
-    hasHighDynamicRangeFeature,
-    hasNightVisionFeature,
-    hasPrivacyFeature,
-    hasSnapshotFeature,
-    hasSpeakerFeature,
-    hasAudioFeature,
-    hasVideoFeature,
-    NIGHT_VISION_LABELS,
-    readAllocatedAudioStreamCount,
-    readAllocatedSnapshotStreamCount,
-    readAllocatedVideoStreamCount,
-    readHardPrivacyModeOn,
-    readHdrModeEnabled,
-    readMicrophoneMuted,
-    readNightVision,
-    readSoftLivestreamPrivacyModeEnabled,
-    readSoftRecordingPrivacyModeEnabled,
-    readSpeakerMuted,
-    readStatusLightEnabled,
-    setHdrModeEnabled,
-    setMicrophoneMuted,
-    setNightVision,
-    setSoftLivestreamPrivacyModeEnabled,
-    setSoftRecordingPrivacyModeEnabled,
-    setSpeakerMuted,
-    setStatusLightEnabled,
+    cameraAvStreamManagementInfo,
+    cameraSwitches,
+    NIGHT_VISION_NAMES,
+    switchWriteValue,
+    writeCameraSetting,
+    type CameraSetting,
+    type CameraSettingValues,
+    type CameraSwitch,
+    type CameraSwitchSetting,
 } from "../../../util/camera-av-stream-management.js";
 import { BaseClusterCommands } from "../base-cluster-commands.js";
 import { registerClusterCommands } from "../registry.js";
 
+const SWITCH_ICONS: Record<CameraSwitchSetting, { on: string; off: string }> = {
+    microphoneMuted: { on: mdiMicrophone, off: mdiMicrophoneOff },
+    speakerMuted: { on: mdiVolumeHigh, off: mdiVolumeOff },
+    hdrModeEnabled: { on: mdiHdr, off: mdiHdr },
+    statusLightEnabled: { on: mdiLightbulbOn, off: mdiLightbulbOff },
+    softRecordingPrivacyModeEnabled: { on: mdiEyeOff, off: mdiEyeOff },
+    softLivestreamPrivacyModeEnabled: { on: mdiEyeOff, off: mdiEyeOff },
+};
+
 /**
- * Status panel for the CameraAvStreamManagement cluster (ID: 0x0551 / 1361).
- * Surfaces the mute/privacy/image settings that are plain attribute writes; stream allocation and
- * live view/snapshot capture are handled by the dedicated camera overlay (see util/camera.ts).
+ * Settings panel for the CameraAvStreamManagement cluster (ID: 0x0551 / 1361) covering the settings that are plain
+ * attribute writes. Stream allocation, live view and snapshots belong to the camera overlay (util/camera.ts).
  */
 @customElement("camera-av-stream-management-cluster-commands")
-class CameraAvStreamManagementClusterCommands extends BaseClusterCommands {
-    /** `node`/`endpoint` must be the values captured before the write that failed, not the live
-     *  `this.node`/`this.endpoint` — `matter-cluster-view.ts` reuses this panel across same-cluster
-     *  navigation, so a delayed rejection from one camera must not touch another camera's panel. */
+export class CameraAvStreamManagementClusterCommands extends BaseClusterCommands {
+    /**
+     * Re-renders so every control shows the reported value again, then shows the error. `node` and `endpoint` are the
+     * values captured when the write started: the cluster view reuses this panel across same-cluster navigation, so a
+     * late rejection must not show its dialog on another camera's panel.
+     */
     private _reportWriteFailure(err: Error, node: MatterNode, endpoint: number) {
+        this.requestUpdate();
         if (!this.isSameContext(node, endpoint)) {
             console.error("Camera write failed (panel moved on)", err);
             return;
         }
-        this.requestUpdate();
         showAlertDialog({ title: "Camera write failed", text: err.message }).catch(dialogErr =>
             console.error("Failed to show the camera write error", dialogErr),
         );
     }
 
-    private _renderSwitch(args: {
-        label: string;
-        iconOn: string;
-        iconOff: string;
-        on: boolean | null;
-        onToggle: (next: boolean) => Promise<void>;
-    }) {
-        const { label, iconOn, iconOff, on, onToggle } = args;
-        const node = this.node;
-        const endpoint = this.endpoint;
+    private _write<K extends CameraSetting>(setting: K, value: CameraSettingValues[K]) {
+        const { node, endpoint, client } = this;
+        if (!node) return;
+        writeCameraSetting(client, node.node_id, endpoint, setting, value).catch((err: Error) =>
+            this._reportWriteFailure(err, node, endpoint),
+        );
+    }
+
+    private _renderSwitch(cameraSwitch: CameraSwitch) {
+        const icons = SWITCH_ICONS[cameraSwitch.setting];
         return html`
             <label class="toggle-row">
-                <ha-svg-icon .path=${on === true ? iconOn : iconOff}></ha-svg-icon>
-                <span>${label}</span>
+                <ha-svg-icon .path=${cameraSwitch.on === true ? icons.on : icons.off}></ha-svg-icon>
+                <span>${cameraSwitch.label}</span>
                 <md-switch
-                    ?selected=${on === true}
+                    .selected=${live(cameraSwitch.on === true)}
+                    ?disabled=${cameraSwitch.on === undefined}
                     @change=${(e: Event) => {
-                        const target = e.target as HTMLElement & { selected: boolean };
-                        onToggle(target.selected).catch((err: Error) => {
-                            // The device rejected the write: the switch must show the unchanged
-                            // value again, not the locally toggled one.
-                            target.selected = on === true;
-                            this._reportWriteFailure(err, node, endpoint);
-                        });
+                        if (e.target instanceof MdSwitch) {
+                            this._write(cameraSwitch.setting, switchWriteValue(cameraSwitch, e.target.selected));
+                        }
                     }}
                 ></md-switch>
             </label>
         `;
     }
 
+    private _renderNightVision(nightVision: number | undefined) {
+        return html`
+            <div class="night-vision-row">
+                <ha-svg-icon .path=${mdiWeatherNight}></ha-svg-icon>
+                <span>Night vision</span>
+                ${
+                    nightVision === undefined
+                        ? html`<span class="meta-inline">Unknown</span>`
+                        : html`
+                              <md-outlined-select
+                                  aria-label="Night vision"
+                                  .value=${live(String(nightVision))}
+                                  @change=${(e: Event) => {
+                                      if (e.target instanceof MdOutlinedSelect) {
+                                          this._write("nightVision", Number(e.target.value));
+                                      }
+                                  }}
+                              >
+                                  ${Object.entries(NIGHT_VISION_NAMES).map(
+                                      ([value, label]) => html`
+                                          <md-select-option value=${value}>
+                                              <div slot="headline">${label}</div>
+                                          </md-select-option>
+                                      `,
+                                  )}
+                              </md-outlined-select>
+                          `
+                }
+            </div>
+        `;
+    }
+
     override render() {
         if (!this.node || this.cluster !== CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID) return nothing;
-        const { node, endpoint, client } = this;
+        const info = cameraAvStreamManagementInfo(this.node.attributes, this.endpoint);
+        if (!info.supported) return nothing;
+        const switches = cameraSwitches(info);
+        const generalSwitches = switches.filter(entry => entry.section === "general");
+        const privacySwitches = switches.filter(entry => entry.section === "privacy");
 
-        const micMuted = readMicrophoneMuted(node, endpoint);
-        const speakerMuted = readSpeakerMuted(node, endpoint);
-        const hdrEnabled = readHdrModeEnabled(node, endpoint);
-        const statusLightEnabled = readStatusLightEnabled(node, endpoint);
-        const hardPrivacy = readHardPrivacyModeOn(node, endpoint);
-        const recordingPrivacy = readSoftRecordingPrivacyModeEnabled(node, endpoint);
-        const livestreamPrivacy = readSoftLivestreamPrivacyModeEnabled(node, endpoint);
-        const nightVision = readNightVision(node, endpoint);
-
-        const videoStreams = hasVideoFeature(node, endpoint) ? readAllocatedVideoStreamCount(node, endpoint) : null;
-        const audioStreams = hasAudioFeature(node, endpoint) ? readAllocatedAudioStreamCount(node, endpoint) : null;
-        const snapshotStreams = hasSnapshotFeature(node, endpoint)
-            ? readAllocatedSnapshotStreamCount(node, endpoint)
-            : null;
         const streamCounts = [
-            videoStreams !== null ? `${videoStreams} video` : null,
-            audioStreams !== null ? `${audioStreams} audio` : null,
-            snapshotStreams !== null ? `${snapshotStreams} snapshot` : null,
-        ].filter((entry): entry is string => entry !== null);
+            info.allocatedStreams.video !== undefined ? `${info.allocatedStreams.video} video` : undefined,
+            info.allocatedStreams.audio !== undefined ? `${info.allocatedStreams.audio} audio` : undefined,
+            info.allocatedStreams.snapshot !== undefined ? `${info.allocatedStreams.snapshot} snapshot` : undefined,
+        ].filter(entry => entry !== undefined);
 
         return html`
             <details class="command-panel" open>
@@ -139,137 +152,38 @@ class CameraAvStreamManagementClusterCommands extends BaseClusterCommands {
                     Camera AV Stream Management
                 </summary>
                 <div class="command-content">
-                    <div class="toggle-grid">
-                        ${
-                            hasAudioFeature(node, endpoint)
-                                ? this._renderSwitch({
-                                      label: "Microphone",
-                                      iconOn: mdiMicrophone,
-                                      iconOff: mdiMicrophoneOff,
-                                      on: micMuted === null ? null : !micMuted,
-                                      onToggle: next => setMicrophoneMuted(client, node.node_id, endpoint, !next),
-                                  })
-                                : nothing
-                        }
-                        ${
-                            hasSpeakerFeature(node, endpoint)
-                                ? this._renderSwitch({
-                                      label: "Speaker",
-                                      iconOn: mdiVolumeHigh,
-                                      iconOff: mdiVolumeOff,
-                                      on: speakerMuted === null ? null : !speakerMuted,
-                                      onToggle: next => setSpeakerMuted(client, node.node_id, endpoint, !next),
-                                  })
-                                : nothing
-                        }
-                        ${
-                            hasHighDynamicRangeFeature(node, endpoint)
-                                ? this._renderSwitch({
-                                      label: "HDR",
-                                      iconOn: mdiHdr,
-                                      iconOff: mdiHdr,
-                                      on: hdrEnabled,
-                                      onToggle: next => setHdrModeEnabled(client, node.node_id, endpoint, next),
-                                  })
-                                : nothing
-                        }
-                        ${
-                            statusLightEnabled !== null
-                                ? this._renderSwitch({
-                                      label: "Status light",
-                                      iconOn: mdiLightbulbOn,
-                                      iconOff: mdiLightbulbOff,
-                                      on: statusLightEnabled,
-                                      onToggle: next => setStatusLightEnabled(client, node.node_id, endpoint, next),
-                                  })
-                                : nothing
-                        }
-                    </div>
-
                     ${
-                        hasNightVisionFeature(node, endpoint)
-                            ? html`
-                                  <div class="night-vision-row">
-                                      <ha-svg-icon .path=${mdiWeatherNight}></ha-svg-icon>
-                                      <span>Night vision</span>
-                                      <md-outlined-select
-                                          aria-label="Night vision"
-                                          .value=${nightVision !== null ? String(nightVision) : ""}
-                                          @change=${(e: Event) => {
-                                              const target = e.target as HTMLSelectElement;
-                                              const previousValue = nightVision !== null ? String(nightVision) : "";
-                                              setNightVision(
-                                                  client,
-                                                  node.node_id,
-                                                  endpoint,
-                                                  Number(target.value),
-                                              ).catch((err: Error) => {
-                                                  target.value = previousValue;
-                                                  this._reportWriteFailure(err, node, endpoint);
-                                              });
-                                          }}
-                                      >
-                                          ${Object.entries(NIGHT_VISION_LABELS).map(
-                                              ([value, label]) => html`
-                                                  <md-select-option value=${value}>
-                                                      <div slot="headline">${label}</div>
-                                                  </md-select-option>
-                                              `,
-                                          )}
-                                      </md-outlined-select>
-                                  </div>
-                              `
+                        generalSwitches.length > 0
+                            ? html`<div class="toggle-grid">
+                                  ${generalSwitches.map(entry => this._renderSwitch(entry))}
+                              </div>`
                             : nothing
                     }
+                    ${info.features.nightVision ? this._renderNightVision(info.nightVision) : nothing}
                     ${
-                        hardPrivacy !== null || hasPrivacyFeature(node, endpoint)
+                        info.hardPrivacyModeOn !== undefined || privacySwitches.length > 0
                             ? html`
                                   <div class="privacy-section">
                                       ${
-                                          hardPrivacy !== null
+                                          info.hardPrivacyModeOn !== undefined
                                               ? html`
                                                     <div class="hard-privacy-row">
                                                         <ha-svg-icon .path=${mdiShieldLock}></ha-svg-icon>
                                                         <span>Hard privacy (physical switch)</span>
-                                                        <span class="state-chip ${hardPrivacy ? "active" : ""}">
-                                                            ${hardPrivacy ? "On" : "Off"}
+                                                        <span
+                                                            class="state-chip ${info.hardPrivacyModeOn ? "active" : ""}"
+                                                        >
+                                                            ${info.hardPrivacyModeOn ? "On" : "Off"}
                                                         </span>
                                                     </div>
                                                 `
                                               : nothing
                                       }
                                       ${
-                                          hasPrivacyFeature(node, endpoint)
-                                              ? html`
-                                                    <div class="toggle-grid">
-                                                        ${this._renderSwitch({
-                                                            label: "Recording privacy",
-                                                            iconOn: mdiEyeOff,
-                                                            iconOff: mdiEyeOff,
-                                                            on: recordingPrivacy,
-                                                            onToggle: next =>
-                                                                setSoftRecordingPrivacyModeEnabled(
-                                                                    client,
-                                                                    node.node_id,
-                                                                    endpoint,
-                                                                    next,
-                                                                ),
-                                                        })}
-                                                        ${this._renderSwitch({
-                                                            label: "Live view privacy",
-                                                            iconOn: mdiEyeOff,
-                                                            iconOff: mdiEyeOff,
-                                                            on: livestreamPrivacy,
-                                                            onToggle: next =>
-                                                                setSoftLivestreamPrivacyModeEnabled(
-                                                                    client,
-                                                                    node.node_id,
-                                                                    endpoint,
-                                                                    next,
-                                                                ),
-                                                        })}
-                                                    </div>
-                                                `
+                                          privacySwitches.length > 0
+                                              ? html`<div class="toggle-grid">
+                                                    ${privacySwitches.map(entry => this._renderSwitch(entry))}
+                                                </div>`
                                               : nothing
                                       }
                                   </div>
@@ -331,6 +245,10 @@ class CameraAvStreamManagementClusterCommands extends BaseClusterCommands {
             .state-chip.active {
                 background: var(--md-sys-color-error-container);
                 color: var(--md-sys-color-on-error-container);
+            }
+
+            .meta-inline {
+                color: var(--md-sys-color-on-surface-variant);
             }
 
             .meta {
