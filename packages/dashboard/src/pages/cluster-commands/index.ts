@@ -27,6 +27,7 @@ import "./clusters/ambient-context-sensing-commands.js";
 import "./clusters/avsum-commands.js";
 import "./clusters/basic-information-commands.js";
 import "./clusters/binding-commands.js";
+import "./clusters/camera-av-stream-management-commands.js";
 import "./clusters/chime-commands.js";
 import "./clusters/closure-control-commands.js";
 import "./clusters/closure-dimension-commands.js";
