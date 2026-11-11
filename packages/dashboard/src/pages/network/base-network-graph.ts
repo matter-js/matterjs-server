@@ -56,13 +56,16 @@ export abstract class BaseNetworkGraph extends LitElement {
     protected _getPhysicsOptions(): any {
         return {
             enabled: true,
-            solver: "forceAtlas2Based",
-            forceAtlas2Based: {
-                gravitationalConstant: -70,
-                centralGravity: 0.005,
+            // barnesHut's avoidOverlap uses only the receiving node's radius, so all nodes must keep the same size or
+            // the layout drifts. forceAtlas2Based scales repulsion by the receiving node's degree and rotates forever
+            // (visjs/vis-network#2193).
+            solver: "barnesHut",
+            barnesHut: {
+                gravitationalConstant: -3000,
+                centralGravity: 0.3,
                 springLength: 130,
-                springConstant: 0.08,
-                damping: 0.4,
+                springConstant: 0.04,
+                damping: 0.15,
                 avoidOverlap: 0.6,
             },
             stabilization: {
@@ -491,7 +494,6 @@ export abstract class BaseNetworkGraph extends LitElement {
             const isSelected = node.id === nodeId;
             return {
                 id: node.id,
-                size: isSelected ? 40 : isNeighbor ? 35 : 25,
                 font: {
                     size: isSelected ? 14 : isNeighbor ? 13 : 11,
                     color: this._getFontColor(),
@@ -524,11 +526,9 @@ export abstract class BaseNetworkGraph extends LitElement {
         });
         this._edgesDataSet.update(edgeUpdates);
 
-        // Restore node sizes
         const allNodes = this._nodesDataSet.get();
         const nodeUpdates = allNodes.map((node: NetworkGraphNode) => ({
             id: node.id,
-            size: 30,
             font: {
                 size: 12,
                 color: this._getFontColor(),
