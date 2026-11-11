@@ -106,6 +106,11 @@ describe("device energy management util", () => {
         expect(info.features.powerForecastReporting).to.equal(false);
     });
 
+    it("reports unsupported when the FeatureMap was removed (null)", () => {
+        const info = deviceEnergyManagementInfo({ "1/152/65532": null }, 1);
+        expect(info.supported).to.equal(false);
+    });
+
     it("decodes the ESA context attributes", () => {
         const info = deviceEnergyManagementInfo(DISHWASHER_ATTRS, 1);
         expect(info.supported).to.equal(true);

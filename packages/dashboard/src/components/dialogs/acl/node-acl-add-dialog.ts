@@ -22,6 +22,7 @@ import { AuthMode, Privilege, PRIVILEGE_NAMES, aclCapacity, nodeIdKey } from "..
 import { handleAsync } from "../../../util/async-handler.js";
 import { targetServerClusters } from "../../../util/binding.js";
 import { getDeviceName } from "../../../util/node-name.js";
+import { onEnter } from "../../../util/on-enter.js";
 import { preventDefault } from "../../../util/prevent_default.js";
 import { showAlertDialog } from "../../dialog-box/show-dialog-box.js";
 import { addAclEntry } from "./acl-actions.js";
@@ -218,6 +219,7 @@ export class NodeAclAddDialog extends LitElement {
                                 .value=${this._subjectInput}
                                 ?disabled=${this._busy}
                                 @input=${(e: Event) => (this._subjectInput = (e.target as HTMLInputElement).value)}
+                                @keydown=${onEnter(() => this._addSubject(this._subjectInput))}
                             ></md-outlined-text-field>
                             <md-text-button ?disabled=${this._busy} @click=${() => this._addSubject(this._subjectInput)}
                                 >Add</md-text-button
