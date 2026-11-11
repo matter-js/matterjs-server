@@ -7,6 +7,7 @@
 import "@material/web/select/outlined-select";
 import "@material/web/select/select-option";
 import "@material/web/switch/switch";
+import type { MatterNode } from "@matter-server/ws-client";
 import {
     mdiCctv,
     mdiEyeOff,
@@ -24,7 +25,6 @@ import { css, html, nothing, type CSSResultGroup } from "lit";
 import { customElement } from "lit/decorators.js";
 import { showAlertDialog } from "../../../components/dialog-box/show-dialog-box.js";
 import "../../../components/ha-svg-icon.js";
-import { handleAsyncEvent } from "../../../util/async-handler.js";
 import {
     CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID,
     hasHighDynamicRangeFeature,
@@ -64,7 +64,14 @@ import { registerClusterCommands } from "../registry.js";
  */
 @customElement("camera-av-stream-management-cluster-commands")
 class CameraAvStreamManagementClusterCommands extends BaseClusterCommands {
-    private _reportWriteFailure(err: Error) {
+    /** `node`/`endpoint` must be the values captured before the write that failed, not the live
+     *  `this.node`/`this.endpoint` — `matter-cluster-view.ts` reuses this panel across same-cluster
+     *  navigation, so a delayed rejection from one camera must not touch another camera's panel. */
+    private _reportWriteFailure(err: Error, node: MatterNode, endpoint: number) {
+        if (!this.isSameContext(node, endpoint)) {
+            console.error("Camera write failed (panel moved on)", err);
+            return;
+        }
         this.requestUpdate();
         showAlertDialog({ title: "Camera write failed", text: err.message }).catch(dialogErr =>
             console.error("Failed to show the camera write error", dialogErr),
@@ -79,16 +86,23 @@ class CameraAvStreamManagementClusterCommands extends BaseClusterCommands {
         onToggle: (next: boolean) => Promise<void>;
     }) {
         const { label, iconOn, iconOff, on, onToggle } = args;
+        const node = this.node;
+        const endpoint = this.endpoint;
         return html`
             <label class="toggle-row">
                 <ha-svg-icon .path=${on === true ? iconOn : iconOff}></ha-svg-icon>
                 <span>${label}</span>
                 <md-switch
                     ?selected=${on === true}
-                    @change=${handleAsyncEvent(
-                        (e: Event) => onToggle((e.target as HTMLElement & { selected: boolean }).selected),
-                        err => this._reportWriteFailure(err),
-                    )}
+                    @change=${(e: Event) => {
+                        const target = e.target as HTMLElement & { selected: boolean };
+                        onToggle(target.selected).catch((err: Error) => {
+                            // The device rejected the write: the switch must show the unchanged
+                            // value again, not the locally toggled one.
+                            target.selected = on === true;
+                            this._reportWriteFailure(err, node, endpoint);
+                        });
+                    }}
                 ></md-switch>
             </label>
         `;
@@ -181,16 +195,19 @@ class CameraAvStreamManagementClusterCommands extends BaseClusterCommands {
                                       <md-outlined-select
                                           aria-label="Night vision"
                                           .value=${nightVision !== null ? String(nightVision) : ""}
-                                          @change=${handleAsyncEvent(
-                                              (e: Event) =>
-                                                  setNightVision(
-                                                      client,
-                                                      node.node_id,
-                                                      endpoint,
-                                                      Number((e.target as HTMLSelectElement).value),
-                                                  ),
-                                              err => this._reportWriteFailure(err),
-                                          )}
+                                          @change=${(e: Event) => {
+                                              const target = e.target as HTMLSelectElement;
+                                              const previousValue = nightVision !== null ? String(nightVision) : "";
+                                              setNightVision(
+                                                  client,
+                                                  node.node_id,
+                                                  endpoint,
+                                                  Number(target.value),
+                                              ).catch((err: Error) => {
+                                                  target.value = previousValue;
+                                                  this._reportWriteFailure(err, node, endpoint);
+                                              });
+                                          }}
                                       >
                                           ${Object.entries(NIGHT_VISION_LABELS).map(
                                               ([value, label]) => html`
