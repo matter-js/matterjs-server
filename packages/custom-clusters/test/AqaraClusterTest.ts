@@ -25,7 +25,7 @@ describe("Aqara FP400 clusters", () => {
             [0, "ZONE"],
             [1, "INSTALL"],
             [2, "Fall"],
-            [3, "PIR"],
+            [3, "SMODE"],
         ]);
 
         expect([...config.attributes].map(attribute => [attribute.id, attribute.name])).to.deep.include.members([

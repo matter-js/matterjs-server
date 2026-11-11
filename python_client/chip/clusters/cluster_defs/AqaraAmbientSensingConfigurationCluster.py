@@ -285,7 +285,7 @@ class AqaraAmbientSensingConfigurationCluster(Cluster):
             kZoneManagement = 0x1
             kInstallationModeSelection = 0x2
             kFallDetection = 0x4
-            kPIRSensing = 0x8
+            kSensingModeSelection = 0x8
 
     class Structs:
         @dataclass

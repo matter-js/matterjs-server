@@ -18721,8 +18721,8 @@ export const clusters: Record<number, ClusterDescription> = {
             },
             "3": {
                 "bit": 3,
-                "code": "PIR",
-                "label": "Pir Sensing"
+                "code": "SMODE",
+                "label": "Sensing Mode Selection"
             }
         }
     },

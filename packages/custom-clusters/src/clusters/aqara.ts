@@ -423,7 +423,7 @@ class AqaraTargetIdRequest {
     { code: "ZONE", bit: 0, title: "ZoneManagement" },
     { code: "INSTALL", bit: 1, title: "InstallationModeSelection" },
     { code: "Fall", bit: 2, title: "FallDetection" },
-    { code: "PIR", bit: 3, title: "PirSensing" },
+    { code: "SMODE", bit: 3, title: "SensingModeSelection" },
 ])
 @cluster(0x115ffc0a)
 export class AqaraAmbientSensingConfigurationCluster {
