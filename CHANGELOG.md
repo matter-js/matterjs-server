@@ -19,6 +19,8 @@ This page shows a detailed overview of the changes between versions without the 
     - Devices that describe their own structure incompletely show all their parts again
     - Logs no longer show Thread and Wi-Fi network credentials, setup passcodes or keys
     - mDNS statistics are logged as debug loglevel or info if MATTER_MDNS_STATISTICS=1 is set
+- Enhancement: (@lboue) Dashboard: The Commodity Price cluster has its own panel showing the current price per unit, the price level and the price forecast
+- Enhancement: (@lboue) Dashboard: The Zone Management cluster has its own panel listing zones and triggers, with forms to create, edit and remove user-defined zones and to set and remove triggers on Motion zones.
 - Enhancement: (@lboue) Dashboard: The Camera AV Stream Management cluster has its own panel to mute the microphone and speaker and to change HDR, night vision, the status light and the soft privacy modes. It also shows the hard privacy switch and the number of allocated streams, and lists only what the camera supports
 - Enhancement: (@lboue) Dashboard: The Occupancy Sensing cluster has its own panel showing whether the area is occupied, the sensor types, and the hold time with its limits
 - Enhancement: (@lboue) Dashboard: The Power Source cluster has its own panel showing status, the wired or battery readings, charge state, replacement description and active faults
@@ -38,6 +40,9 @@ This page shows a detailed overview of the changes between versions without the 
 - Fix: ws-client: `connect()` and `startListening()` fail when the server closes the connection before it is ready, instead of never returning
 - Fix: Setting the fabric label to the value it already has, as Home Assistant does on every restart, no longer sends the label to every node again
 - Fix: Yeelight: an `updateTopology` request with a module type above 3 is refused before it is sent, so the lamp no longer fails every later read of `cubeTopology`
+- Fix: Dashboard: In the WiFi network graph, a selected device or access point shows its selected icon right away and loses it on deselect; its connections stay highlighted when device data updates, and keep their signal colors after deselect
+- Fix: Dashboard: When the selected node is removed from the Thread or WiFi network graph, the selection and the details panel are cleared, instead of the graph staying dimmed with the panel open
+- Fix: Dashboard: the Thread and WiFi network graphs no longer keep rotating after they settle or after a node is clicked
 
 ## 1.5.5 (2026-10-24)
 

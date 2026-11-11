@@ -47,13 +47,13 @@ export class WiFiGraph extends BaseNetworkGraph {
     protected override _getPhysicsOptions(): any {
         return {
             enabled: true,
-            solver: "forceAtlas2Based",
-            forceAtlas2Based: {
-                gravitationalConstant: -120, // Stronger repulsion for star topology
-                centralGravity: 0.003, // Weaker central pull
+            solver: "barnesHut",
+            barnesHut: {
+                gravitationalConstant: -4000, // Stronger repulsion for star topology
+                centralGravity: 0.2, // Weaker central pull
                 springLength: 100, // Shorter springs keep devices close to their AP
-                springConstant: 0.12, // Stronger springs
-                damping: 0.4,
+                springConstant: 0.06, // Stronger springs
+                damping: 0.15,
                 avoidOverlap: 0.8,
             },
             stabilization: {
@@ -78,6 +78,7 @@ export class WiFiGraph extends BaseNetworkGraph {
             this._nodesDataSet.clear();
             this._edgesDataSet.clear();
             this._accessPoints.clear();
+            this._reapplySelection();
             return;
         }
 
@@ -108,13 +109,10 @@ export class WiFiGraph extends BaseNetworkGraph {
 
         // Add access point nodes
         for (const [apId, ap] of this._accessPoints) {
-            const bssid = ap.bssid;
-            const isSelected = String(apId) === String(this._selectedNodeId);
-
             graphNodes.push({
                 id: apId,
-                label: `AP ${bssid}`,
-                image: createWiFiRouterIconDataUrl(isSelected),
+                label: `AP ${ap.bssid}`,
+                image: createWiFiRouterIconDataUrl(),
                 shape: "image",
                 networkType: "wifi",
                 isUnknown: true, // Mark as infrastructure
@@ -128,7 +126,6 @@ export class WiFiGraph extends BaseNetworkGraph {
             const node = this.nodes[nodeId];
             if (!node) continue;
 
-            const isSelected = nodeId === String(this._selectedNodeId);
             const isOffline = node.available === false;
             const networkType = getNetworkType(node);
             const wifiDiag = getWiFiDiagnostics(node);
@@ -136,7 +133,7 @@ export class WiFiGraph extends BaseNetworkGraph {
             graphNodes.push({
                 id: nodeId,
                 label: getDeviceName(node),
-                image: createNodeIconDataUrl(node, undefined, isSelected, isOffline),
+                image: createNodeIconDataUrl(node, undefined, false, isOffline),
                 shape: "image",
                 networkType: networkType,
                 offline: isOffline,
@@ -178,6 +175,16 @@ export class WiFiGraph extends BaseNetworkGraph {
         this._nodesDataSet.update(graphNodes);
         this._edgesDataSet.clear();
         this._edgesDataSet.add(graphEdges);
+
+        this._reapplySelection();
+    }
+
+    protected override _nodeIconUrl(nodeId: string, isHighlighted: boolean): string | undefined {
+        if (this._accessPoints.has(nodeId)) {
+            return createWiFiRouterIconDataUrl(isHighlighted);
+        }
+        const node = this.nodes[nodeId];
+        return node ? createNodeIconDataUrl(node, undefined, isHighlighted, node.available === false) : undefined;
     }
 
     override render() {
