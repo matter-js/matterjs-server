@@ -11,9 +11,9 @@ from .AmbientContextSensing import AmbientContextSensing
 from .ApplicationBasic import ApplicationBasic
 from .ApplicationLauncher import ApplicationLauncher
 from .AqaraAmbientSensingConfigurationCluster import AqaraAmbientSensingConfigurationCluster
+from .AqaraAmbientSensingUnionCluster import AqaraAmbientSensingUnionCluster
 from .AqaraLedStripCluster import AqaraLedStripCluster
 from .AqaraOccupantLocationCluster import AqaraOccupantLocationCluster
-from .AqaraRadarSensingUnionCluster import AqaraRadarSensingUnionCluster
 from .AudioOutput import AudioOutput
 from .BasicInformation import BasicInformation
 from .Binding import Binding
@@ -169,9 +169,9 @@ __all__ = [
     "ApplicationBasic",
     "ApplicationLauncher",
     "AqaraAmbientSensingConfigurationCluster",
+    "AqaraAmbientSensingUnionCluster",
     "AqaraLedStripCluster",
     "AqaraOccupantLocationCluster",
-    "AqaraRadarSensingUnionCluster",
     "AudioOutput",
     "BasicInformation",
     "Binding",

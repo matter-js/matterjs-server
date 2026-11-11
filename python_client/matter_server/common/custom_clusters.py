@@ -1,9 +1,9 @@
 """Custom (vendor-specific) cluster re-exports (auto-generated, DO NOT edit)."""
 
 from chip.clusters.cluster_defs.AqaraAmbientSensingConfigurationCluster import AqaraAmbientSensingConfigurationCluster
+from chip.clusters.cluster_defs.AqaraAmbientSensingUnionCluster import AqaraAmbientSensingUnionCluster
 from chip.clusters.cluster_defs.AqaraLedStripCluster import AqaraLedStripCluster
 from chip.clusters.cluster_defs.AqaraOccupantLocationCluster import AqaraOccupantLocationCluster
-from chip.clusters.cluster_defs.AqaraRadarSensingUnionCluster import AqaraRadarSensingUnionCluster
 from chip.clusters.cluster_defs.DraftElectricalMeasurementCluster import DraftElectricalMeasurementCluster
 from chip.clusters.cluster_defs.EveCluster import EveCluster
 from chip.clusters.cluster_defs.HeimanCluster import HeimanCluster
@@ -24,9 +24,9 @@ from chip.clusters.cluster_defs.YeelightOverTheAirCluster import YeelightOverThe
 
 ALL_CUSTOM_CLUSTERS: dict = {
     AqaraAmbientSensingConfigurationCluster.id: AqaraAmbientSensingConfigurationCluster,
+    AqaraAmbientSensingUnionCluster.id: AqaraAmbientSensingUnionCluster,
     AqaraLedStripCluster.id: AqaraLedStripCluster,
     AqaraOccupantLocationCluster.id: AqaraOccupantLocationCluster,
-    AqaraRadarSensingUnionCluster.id: AqaraRadarSensingUnionCluster,
     DraftElectricalMeasurementCluster.id: DraftElectricalMeasurementCluster,
     EveCluster.id: EveCluster,
     HeimanCluster.id: HeimanCluster,
@@ -47,9 +47,9 @@ ALL_CUSTOM_CLUSTERS: dict = {
 __all__ = [
     "ALL_CUSTOM_CLUSTERS",
     "AqaraAmbientSensingConfigurationCluster",
+    "AqaraAmbientSensingUnionCluster",
     "AqaraLedStripCluster",
     "AqaraOccupantLocationCluster",
-    "AqaraRadarSensingUnionCluster",
     "DraftElectricalMeasurementCluster",
     "EveCluster",
     "HeimanCluster",

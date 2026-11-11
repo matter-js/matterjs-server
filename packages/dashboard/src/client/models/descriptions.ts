@@ -18271,49 +18271,49 @@ export const clusters: Record<number, ClusterDescription> = {
             "0": {
                 "id": 0,
                 "cluster_id": 291503114,
-                "label": "InstallMode",
-                "type": "Optional[uint8]",
+                "label": "InstallModeSelection",
+                "type": "Optional[enum8]",
                 "writable": true
             },
             "1": {
                 "id": 1,
                 "cluster_id": 291503114,
                 "label": "SupportedInstallModes",
-                "type": "List[uint8]",
+                "type": "List[enum8]",
                 "writable": false
             },
             "2": {
                 "id": 2,
                 "cluster_id": 291503114,
-                "label": "SideInstall",
-                "type": "Optional[uint8]",
+                "label": "SideInstallSelection",
+                "type": "Optional[enum8]",
                 "writable": true
             },
             "3": {
                 "id": 3,
                 "cluster_id": 291503114,
-                "label": "SupportedSideInstalls",
-                "type": "List[uint8]",
+                "label": "SupportedSideInstallModes",
+                "type": "List[enum8]",
                 "writable": false
             },
             "4": {
                 "id": 4,
                 "cluster_id": 291503114,
-                "label": "InstallHeight",
+                "label": "InstallHeightSetting",
                 "type": "Optional[uint16]",
                 "writable": true
             },
             "5": {
                 "id": 5,
                 "cluster_id": 291503114,
-                "label": "InstallHeightMin",
+                "label": "MinInstallHeight",
                 "type": "Optional[uint16]",
                 "writable": false
             },
             "6": {
                 "id": 6,
                 "cluster_id": 291503114,
-                "label": "InstallHeightMax",
+                "label": "MaxInstallHeight",
                 "type": "Optional[uint16]",
                 "writable": false
             },
@@ -18321,7 +18321,7 @@ export const clusters: Record<number, ClusterDescription> = {
                 "id": 7,
                 "cluster_id": 291503114,
                 "label": "InstallStatus",
-                "type": "Optional[uint8]",
+                "type": "Optional[enum8]",
                 "writable": false
             },
             "8": {
@@ -18335,13 +18335,13 @@ export const clusters: Record<number, ClusterDescription> = {
                 "id": 16,
                 "cluster_id": 291503114,
                 "label": "Zones",
-                "type": "List[AqaraZoneStruct]",
+                "type": "List[AqaraZoneInfoStruct]",
                 "writable": false
             },
             "17": {
                 "id": 17,
                 "cluster_id": 291503114,
-                "label": "MaxZones",
+                "label": "MaxDetectionZones",
                 "type": "Optional[uint8]",
                 "writable": false
             },
@@ -18349,34 +18349,90 @@ export const clusters: Record<number, ClusterDescription> = {
                 "id": 18,
                 "cluster_id": 291503114,
                 "label": "EntryExitRegionBitmask",
-                "type": "Optional[bytes]",
+                "type": "Optional[Nullable[bytes]]",
                 "writable": true
             },
             "19": {
                 "id": 19,
                 "cluster_id": 291503114,
                 "label": "InterferenceRegionBitmask",
-                "type": "Optional[bytes]",
+                "type": "Optional[Nullable[bytes]]",
                 "writable": true
             },
             "20": {
                 "id": 20,
                 "cluster_id": 291503114,
                 "label": "EdgeRegionBitmask",
-                "type": "Optional[bytes]",
+                "type": "Optional[Nullable[bytes]]",
                 "writable": true
+            },
+            "21": {
+                "id": 21,
+                "cluster_id": 291503114,
+                "label": "InterferenceSourceRecognitionReportingTimeout",
+                "type": "Optional[uint16]",
+                "writable": false
             },
             "22": {
                 "id": 22,
                 "cluster_id": 291503114,
-                "label": "LearningReportingTimeout",
-                "type": "Optional[uint8]",
+                "label": "AiSpaceBackgroundLearningReportingTimeout",
+                "type": "Optional[uint16]",
                 "writable": false
+            },
+            "33": {
+                "id": 33,
+                "cluster_id": 291503114,
+                "label": "EnablePostureRecognition",
+                "type": "Optional[bool]",
+                "writable": true
+            },
+            "34": {
+                "id": 34,
+                "cluster_id": 291503114,
+                "label": "EnableLargeMotionRecognition",
+                "type": "Optional[bool]",
+                "writable": true
             },
             "35": {
                 "id": 35,
                 "cluster_id": 291503114,
                 "label": "EnableHumanCountDetection",
+                "type": "Optional[bool]",
+                "writable": true
+            },
+            "36": {
+                "id": 36,
+                "cluster_id": 291503114,
+                "label": "EnableVisitorCountDetection",
+                "type": "Optional[bool]",
+                "writable": true
+            },
+            "37": {
+                "id": 37,
+                "cluster_id": 291503114,
+                "label": "EnableWalkingDistanceDetection",
+                "type": "Optional[bool]",
+                "writable": true
+            },
+            "38": {
+                "id": 38,
+                "cluster_id": 291503114,
+                "label": "EnableTrafficFlowDetection",
+                "type": "Optional[bool]",
+                "writable": true
+            },
+            "39": {
+                "id": 39,
+                "cluster_id": 291503114,
+                "label": "EnableActivityDetection",
+                "type": "Optional[bool]",
+                "writable": true
+            },
+            "40": {
+                "id": 40,
+                "cluster_id": 291503114,
+                "label": "EnableAverageOccupancyDurationDetection",
                 "type": "Optional[bool]",
                 "writable": true
             },
@@ -18411,23 +18467,149 @@ export const clusters: Record<number, ClusterDescription> = {
             "45": {
                 "id": 45,
                 "cluster_id": 291503114,
-                "label": "CoordinateReverse",
-                "type": "Optional[uint8]",
+                "label": "CoordinateReverseSetting",
+                "type": "Optional[enum8]",
                 "writable": true
             },
             "46": {
                 "id": 46,
                 "cluster_id": 291503114,
-                "label": "DetectionDirection",
-                "type": "Optional[uint8]",
+                "label": "DetectionDirectionSetting",
+                "type": "Optional[enum8]",
                 "writable": true
             },
             "47": {
                 "id": 47,
                 "cluster_id": 291503114,
-                "label": "ProximityDistanceLevel",
+                "label": "ProximityDistanceLevelSetting",
+                "type": "Optional[enum8]",
+                "writable": true
+            },
+            "48": {
+                "id": 48,
+                "cluster_id": 291503114,
+                "label": "EnableFallDetection",
+                "type": "Optional[bool]",
+                "writable": true
+            },
+            "49": {
+                "id": 49,
+                "cluster_id": 291503114,
+                "label": "FallMaskBitmask",
+                "type": "Optional[Nullable[bytes]]",
+                "writable": true
+            },
+            "50": {
+                "id": 50,
+                "cluster_id": 291503114,
+                "label": "FallDetectionSensitivity",
+                "type": "Optional[enum8]",
+                "writable": true
+            },
+            "51": {
+                "id": 51,
+                "cluster_id": 291503114,
+                "label": "BedHeightSetting",
+                "type": "Optional[uint16]",
+                "writable": true
+            },
+            "52": {
+                "id": 52,
+                "cluster_id": 291503114,
+                "label": "MinBedHeight",
+                "type": "Optional[uint16]",
+                "writable": false
+            },
+            "53": {
+                "id": 53,
+                "cluster_id": 291503114,
+                "label": "MaxBedHeight",
+                "type": "Optional[uint16]",
+                "writable": false
+            },
+            "54": {
+                "id": 54,
+                "cluster_id": 291503114,
+                "label": "FallDelayTimeSetting",
+                "type": "Optional[uint16]",
+                "writable": true
+            },
+            "55": {
+                "id": 55,
+                "cluster_id": 291503114,
+                "label": "MinFallDelayTime",
+                "type": "Optional[uint16]",
+                "writable": false
+            },
+            "56": {
+                "id": 56,
+                "cluster_id": 291503114,
+                "label": "MaxFallDelayTime",
+                "type": "Optional[uint16]",
+                "writable": false
+            },
+            "64": {
+                "id": 64,
+                "cluster_id": 291503114,
+                "label": "DetectionRangeBitmask",
+                "type": "Optional[Nullable[bytes]]",
+                "writable": true
+            },
+            "65": {
+                "id": 65,
+                "cluster_id": 291503114,
+                "label": "MinDetectionRange",
+                "type": "Optional[uint16]",
+                "writable": false
+            },
+            "66": {
+                "id": 66,
+                "cluster_id": 291503114,
+                "label": "MaxDetectionRange",
+                "type": "Optional[uint16]",
+                "writable": false
+            },
+            "67": {
+                "id": 67,
+                "cluster_id": 291503114,
+                "label": "DetectionRangeStep",
+                "type": "Optional[uint16]",
+                "writable": false
+            },
+            "80": {
+                "id": 80,
+                "cluster_id": 291503114,
+                "label": "SensingMode",
+                "type": "Optional[enum8]",
+                "writable": true
+            },
+            "81": {
+                "id": 81,
+                "cluster_id": 291503114,
+                "label": "SupportedSensingModes",
+                "type": "List[enum8]",
+                "writable": false
+            },
+            "82": {
+                "id": 82,
+                "cluster_id": 291503114,
+                "label": "PirDetectionTimeSetting",
                 "type": "Optional[uint8]",
                 "writable": true
+            },
+            "83": {
+                "id": 83,
+                "cluster_id": 291503114,
+                "label": "MinPirDetectionTime",
+                "type": "Optional[uint8]",
+                "writable": false
+            },
+            "84": {
+                "id": 84,
+                "cluster_id": 291503114,
+                "label": "MaxPirDetectionTime",
+                "type": "Optional[uint8]",
+                "writable": false
             },
             "65528": {
                 "id": 65528,
@@ -18481,8 +18663,8 @@ export const clusters: Record<number, ClusterDescription> = {
             "2": {
                 "id": 2,
                 "cluster_id": 291503114,
-                "name": "subscribeAiEntryExitRegionRecognitionData",
-                "label": "Subscribe Ai Entry Exit Region Recognition Data"
+                "name": "subscribeAiEntryExitRegionData",
+                "label": "Subscribe Ai Entry Exit Region Data"
             },
             "3": {
                 "id": 3,
@@ -18513,13 +18695,40 @@ export const clusters: Record<number, ClusterDescription> = {
                 "cluster_id": 291503114,
                 "name": "setZones",
                 "label": "Set Zones"
+            },
+            "12": {
+                "id": 12,
+                "cluster_id": 291503114,
+                "name": "subscribeDetectionRangeTargetPosition",
+                "label": "Subscribe Detection Range Target Position"
             }
         },
-        "features": {}
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "ZONE",
+                "label": "Zone Management"
+            },
+            "1": {
+                "bit": 1,
+                "code": "INSTALL",
+                "label": "Installation Mode Selection"
+            },
+            "2": {
+                "bit": 2,
+                "code": "Fall",
+                "label": "Fall Detection"
+            },
+            "3": {
+                "bit": 3,
+                "code": "PIR",
+                "label": "Pir Sensing"
+            }
+        }
     },
     "291503115": {
         "id": 291503115,
-        "label": "AqaraRadarSensingUnionCluster",
+        "label": "AqaraAmbientSensingUnionCluster",
         "attributes": {
             "0": {
                 "id": 0,
@@ -18539,7 +18748,7 @@ export const clusters: Record<number, ClusterDescription> = {
                 "id": 2,
                 "cluster_id": 291503115,
                 "label": "CurrentHumanCount",
-                "type": "Optional[uint8]",
+                "type": "Optional[Nullable[uint16]]",
                 "writable": false
             },
             "65528": {
@@ -18579,7 +18788,18 @@ export const clusters: Record<number, ClusterDescription> = {
             }
         },
         "commands": {},
-        "features": {}
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "LEADER",
+                "label": "Leader"
+            },
+            "1": {
+                "bit": 1,
+                "code": "CHILD",
+                "label": "Child"
+            }
+        }
     },
     "291503116": {
         "id": 291503116,
@@ -18592,11 +18812,53 @@ export const clusters: Record<number, ClusterDescription> = {
                 "type": "Optional[uint8]",
                 "writable": false
             },
+            "1": {
+                "id": 1,
+                "cluster_id": 291503116,
+                "label": "WalkingState",
+                "type": "Optional[enum8]",
+                "writable": false
+            },
+            "2": {
+                "id": 2,
+                "cluster_id": 291503116,
+                "label": "SittingState",
+                "type": "Optional[enum8]",
+                "writable": false
+            },
+            "3": {
+                "id": 3,
+                "cluster_id": 291503116,
+                "label": "StandingState",
+                "type": "Optional[enum8]",
+                "writable": false
+            },
+            "4": {
+                "id": 4,
+                "cluster_id": 291503116,
+                "label": "LyingState",
+                "type": "Optional[enum8]",
+                "writable": false
+            },
+            "5": {
+                "id": 5,
+                "cluster_id": 291503116,
+                "label": "LargeMotionState",
+                "type": "Optional[enum8]",
+                "writable": false
+            },
+            "6": {
+                "id": 6,
+                "cluster_id": 291503116,
+                "label": "FallState",
+                "type": "Optional[enum8]",
+                "writable": false
+            },
             "7": {
                 "id": 7,
                 "cluster_id": 291503116,
                 "label": "ActivityState",
-                "type": "Optional[uint8]",
+                "type": "Optional[enum8]",
                 "writable": false
             },
             "65528": {
@@ -18649,7 +18911,18 @@ export const clusters: Record<number, ClusterDescription> = {
                 "label": "Remove Detection Target"
             }
         },
-        "features": {}
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "LEADER",
+                "label": "Leader"
+            },
+            "1": {
+                "bit": 1,
+                "code": "CHILD",
+                "label": "Child"
+            }
+        }
     },
     "291503119": {
         "id": 291503119,

@@ -228,8 +228,8 @@ def test_aqara_fp400_clusters():
     from chip.tlv import uint
     from matter_server.common.custom_clusters import (
         AqaraAmbientSensingConfigurationCluster,
+        AqaraAmbientSensingUnionCluster,
         AqaraOccupantLocationCluster,
-        AqaraRadarSensingUnionCluster,
     )
 
     config = AqaraAmbientSensingConfigurationCluster
@@ -240,29 +240,49 @@ def test_aqara_fp400_clusters():
     assert config.Commands.SetZones.response_type == "SetZonesResponse"
     assert config.Commands.RemoveZone.response_type == "RemoveZoneResponse"
 
-    zone = config.Structs.AqaraZoneStruct(
-        zoneID=uint(1), zoneType=uint(0), cells=b"\x00" * 40, enabled=True
+    zone_type = config.Enums.ZoneTypeEnum.kLivingRoom
+    zone = config.Structs.AqaraZoneInfoStruct(
+        zoneID=uint(1),
+        zoneType=zone_type,
+        zoneBitmask=b"\x00" * 40,
+        zoneProximityDetectionEnable=True,
     )
     decoded = config.Attributes.Zones.FromTagDictOrRawValue(
-        [{0: uint(1), 1: uint(0), 2: b"\x00" * 40, 3: True}]
+        [{0: uint(1), 1: uint(zone_type), 2: b"\x00" * 40, 3: True}]
     )
     assert decoded == [zone]
+    assert zone.descriptor.GetFieldByLabel("zoneBitmask").Type is bytes
 
-    assert AqaraRadarSensingUnionCluster.id == 0x115FFC0B
-    assert AqaraRadarSensingUnionCluster.Events.MotionDetected.event_id == 0
+    union = AqaraAmbientSensingUnionCluster
+    assert union.id == 0x115FFC0B
+    assert union.Attributes.CurrentHumanCount.attribute_id == 0x0002
+    assert union.Events.MotionState.event_id == 0
+    assert union.Events.HumanExitCountDelta.event_id == 5
 
     location = AqaraOccupantLocationCluster
     assert location.id == 0x115FFC0C
     assert location.Attributes.ActivityState.attribute_id == 0x0007
-    target = location.Structs.AqaraTargetStruct
-    # required fields are plain (signed) types; only inZoneID is optional
-    assert target.descriptor.GetFieldByLabel("x").Type is int
-    assert target.descriptor.GetFieldByLabel("inZoneID").Type == (uint | None)
-    assert zone.descriptor.GetFieldByLabel("cells").Type is bytes
-    event = location.Events.LocationInfo(
-        targets=[target(targetID=uint(0), x=-5, y=228, cell=uint(1032))]
+    target = location.Structs.AqaraTargetLocationInfoStruct
+    # required fields are plain (signed) types; only targetZoneID is optional
+    assert target.descriptor.GetFieldByLabel("targetXCoordinate").Type is int
+    assert target.descriptor.GetFieldByLabel("targetZoneID").Type == (uint | None)
+    event = location.Events.Location(
+        location=[
+            target(
+                targetID=uint(0),
+                targetXCoordinate=-5,
+                targetYCoordinate=228,
+                targetZCoordinate=0,
+                targetVelocity=-1,
+                targetSignalToNoiseRatio=uint(20),
+                targetType=location.Enums.TargetTypeEnum.kUnknown,
+                targetPosture=location.Enums.PostureEnum.kUndefined,
+            )
+        ]
     )
-    assert location.Events.LocationInfo.FromTLV(event.ToTLV()).targets[0].x == -5
+    decoded_event = location.Events.Location.FromTLV(event.ToTLV())
+    assert decoded_event.location[0].targetXCoordinate == -5
+    assert decoded_event.location[0].targetVelocity == -1
 
 
 def test_signed_custom_cluster_attributes():
