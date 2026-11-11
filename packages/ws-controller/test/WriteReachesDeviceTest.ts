@@ -19,7 +19,7 @@ import { OnOffLightDevice } from "@matter/node/devices/on-off-light";
 import {
     CameraControllerEndpoint,
     ControllerCommandHandler,
-    foreignFabricEntryOf,
+    ourFabricEntriesOf,
 } from "../src/controller/ControllerCommandHandler.js";
 import { ServerError, ServerErrorCode } from "../src/types/WebSocketMessageTypes.js";
 import { nodeIdOf } from "../src/util/nodeIdOf.js";
@@ -271,6 +271,7 @@ describe("writeAttribute", () => {
             return device.env.get(FabricManager).fabrics[0].fabricIndex;
         }
 
+        // Characterization: without our check, matter.js refuses this entry on this route too.
         it("is refused with ConstraintError without sending anything", async () => {
             const result = await writeAcl(ourFabricIndex() + 1);
 
@@ -295,6 +296,17 @@ describe("writeAttribute", () => {
 
             expect(result.map(({ status }) => status)).deep.equals([Status.Success]);
         });
+
+        for (const timed of [false, true]) {
+            it(`accepts FabricIndex 0, the CHIP client default, on the ${timed ? "timed route (characterization: the encoder drops the field)" : "untimed route"}`, async () => {
+                const result = await writeAcl(0, timed ? { timeout: Millis(5_000) } : {});
+
+                expect(result.map(({ status }) => status)).deep.equals([Status.Success]);
+                expect(device.stateOf(AccessControlServer).acl.map(({ fabricIndex }) => fabricIndex)).deep.equals([
+                    ourFabricIndex(),
+                ]);
+            });
+        }
     });
 
     it("writes bindings, also when they equal the current ones", async () => {
@@ -321,30 +333,33 @@ describe("writeAttribute", () => {
     });
 });
 
-describe("foreignFabricEntryOf", () => {
+describe("ourFabricEntriesOf", () => {
     const ours = FabricIndex(2);
 
-    it("takes entries without a FabricIndex or with OMIT_FABRIC as ours", () => {
-        expect(
-            foreignFabricEntryOf([{}, { fabricIndex: FabricIndex.OMIT_FABRIC }, { fabricIndex: null }], ours),
-        ).equals(undefined);
+    it("keeps entries without a FabricIndex, with OMIT_FABRIC or with ours", () => {
+        const value = [{}, { fabricIndex: FabricIndex.OMIT_FABRIC }, { fabricIndex: 2 }];
+        expect(ourFabricEntriesOf(value, ours)).deep.equals({ kind: "ours", value });
     });
 
-    it("takes an entry with our FabricIndex as ours", () => {
-        expect(foreignFabricEntryOf([{ fabricIndex: 2 }], ours)).equals(undefined);
+    it("replaces NO_FABRIC and null, the CHIP client defaults, by OMIT_FABRIC", () => {
+        expect(ourFabricEntriesOf([{ fabricIndex: 0, a: 1 }, { fabricIndex: null }], ours)).deep.equals({
+            kind: "ours",
+            value: [{ fabricIndex: FabricIndex.OMIT_FABRIC, a: 1 }, { fabricIndex: FabricIndex.OMIT_FABRIC }],
+        });
     });
 
-    it("names the FabricIndex of an entry of another fabric, also NO_FABRIC", () => {
-        expect(foreignFabricEntryOf([{ fabricIndex: 2 }, { fabricIndex: 3 }], ours)).equals(3);
-        expect(foreignFabricEntryOf([{ fabricIndex: FabricIndex.NO_FABRIC }], ours)).equals(0);
+    it("names the first entry of another fabric", () => {
+        expect(ourFabricEntriesOf([{ fabricIndex: 2 }, { fabricIndex: 3 }], ours)).deep.equals({
+            kind: "foreign",
+            fabricIndex: 3,
+        });
     });
 
-    it("reads the FabricIndex under its TLV tag when the model left it there", () => {
-        expect(foreignFabricEntryOf([{ 254: 3 }], ours)).equals(3);
-    });
-
-    it("takes no FabricIndex as ours while our fabric index on the node is unknown", () => {
-        expect(foreignFabricEntryOf([{ fabricIndex: 2 }], undefined)).equals(2);
-        expect(foreignFabricEntryOf([{}], undefined)).equals(undefined);
+    it("cannot check a FabricIndex while ours is unknown, but still replaces NO_FABRIC", () => {
+        expect(ourFabricEntriesOf([{ fabricIndex: 2 }], undefined)).deep.equals({ kind: "unchecked", fabricIndex: 2 });
+        expect(ourFabricEntriesOf([{ fabricIndex: 0 }], undefined)).deep.equals({
+            kind: "ours",
+            value: [{ fabricIndex: FabricIndex.OMIT_FABRIC }],
+        });
     });
 });

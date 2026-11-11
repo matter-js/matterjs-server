@@ -345,34 +345,52 @@ export function attestationRefusalOf(findings: AttestationFinding[], testNetDclE
     return `${named}. ${TEST_NET_HINT}`;
 }
 
+/** The result of {@link ourFabricEntriesOf}. */
+export type OurFabricEntries =
+    | { kind: "ours"; value: unknown }
+    | { kind: "foreign" | "unchecked"; fabricIndex: number };
+
 /**
- * The FabricIndex of the first entry of a fabric-scoped list {@link value} that is not ours, or `undefined` when every
- * entry is ours. An entry without a FabricIndex, or with `FabricIndex.OMIT_FABRIC`, is ours; with our fabric index on
- * the node unknown, any other FabricIndex is not. The WebSocket API writes only entries of our fabric.
+ * Prepares the value of a fabric-scoped list for a write of the WebSocket API, which writes only entries of our
+ * fabric. The device stores every written entry under the writer's fabric, so an entry naming another fabric cannot
+ * mean what the client intended.
+ *
+ * | FabricIndex of an entry                             | Result                                     |
+ * | --------------------------------------------------- | ------------------------------------------ |
+ * | absent, `FabricIndex.OMIT_FABRIC` or ours           | kept                                       |
+ * | `NO_FABRIC` (0) or `null`, the CHIP client defaults | replaced by `FabricIndex.OMIT_FABRIC`      |
+ * | another, with {@link fabricIndexOnPeer} known       | `foreign`, the write is refused            |
+ * | another, with {@link fabricIndexOnPeer} unknown     | `unchecked`, the write is refused          |
+ *
+ * Pass `undefined` as {@link fabricIndexOnPeer} for a group write, whose members may know us by different indexes.
  *
  * @see Matter Core specification § 7.13.6 "FabricIndex Field"
  */
-export function foreignFabricEntryOf(value: unknown, fabricIndexOnPeer: FabricIndex | undefined): number | undefined {
+export function ourFabricEntriesOf(value: unknown, fabricIndexOnPeer: FabricIndex | undefined): OurFabricEntries {
     if (!Array.isArray(value)) {
-        return undefined;
+        return { kind: "ours", value };
     }
+    const entries = new Array<unknown>();
     for (const entry of value) {
         if (!isObject(entry)) {
+            entries.push(entry);
             continue;
         }
-        const fabricIndex = entry.fabricIndex ?? entry[FABRIC_INDEX_TAG];
-        if (fabricIndex === undefined || fabricIndex === null || fabricIndex === FabricIndex.OMIT_FABRIC) {
+        const { fabricIndex } = entry;
+        if (fabricIndex === null || fabricIndex === FabricIndex.NO_FABRIC) {
+            entries.push({ ...entry, fabricIndex: FabricIndex.OMIT_FABRIC });
             continue;
         }
-        if (fabricIndexOnPeer === undefined || Number(fabricIndex) !== fabricIndexOnPeer) {
-            return Number(fabricIndex);
+        if (fabricIndex !== undefined && fabricIndex !== FabricIndex.OMIT_FABRIC && fabricIndex !== fabricIndexOnPeer) {
+            return {
+                kind: fabricIndexOnPeer === undefined ? "unchecked" : "foreign",
+                fabricIndex: Number(fabricIndex),
+            };
         }
+        entries.push(entry);
     }
-    return undefined;
+    return { kind: "ours", value: entries };
 }
-
-/** TLV tag of the global FabricIndex field, under which a struct the model does not describe keeps it. */
-const FABRIC_INDEX_TAG = "254";
 
 /**
  * The `NodeCommissionFailed` error for a failed commissioning, with a `reason` a client can act on. With
@@ -1711,7 +1729,7 @@ export class ControllerCommandHandler {
             throw ServerError.invalidArguments(`Attribute ${attributeId} on cluster ${clusterId} unknown`);
         }
 
-        const value = convertWebSocketTagBasedToMatter(data.value, attributeModel, clusterEntry.model);
+        let value = convertWebSocketTagBasedToMatter(data.value, attributeModel, clusterEntry.model);
         const attributeName = attributeModel.propertyName;
         logger.info(
             `Writing attribute ${clusterId}.${attributeName} (${endpointId ?? "*"}/${clusterId}/${attributeId}) with value`,
@@ -1719,15 +1737,19 @@ export class ControllerCommandHandler {
         );
 
         if (attributeModel.fabricScopedList) {
-            const foreign = foreignFabricEntryOf(value, this.#nodes.get(nodeId).fabricIndexOnPeer);
-            if (foreign !== undefined) {
-                const message = `Refusing to write ${attributeName}: an entry of fabric ${foreign} is not ours`;
+            const entries = ourFabricEntriesOf(value, this.#nodes.get(nodeId).fabricIndexOnPeer);
+            if (entries.kind !== "ours") {
+                const message =
+                    entries.kind === "foreign"
+                        ? `Refusing to write ${attributeName}: an entry of fabric ${entries.fabricIndex} is not ours`
+                        : `Refusing to write ${attributeName}: an entry names fabric ${entries.fabricIndex}, and our fabric index on the node is not known yet`;
                 logger.notice(message);
                 if (endpointId === undefined) {
                     throw ServerError.invalidArguments(message);
                 }
                 return [{ attributeId, clusterId, endpointId, status: Status.ConstraintError }];
             }
+            value = entries.value;
         }
 
         if (endpointId !== undefined && timedInteractionTimeoutMs === undefined) {
@@ -1839,7 +1861,16 @@ export class ControllerCommandHandler {
         if (!clusterEntry || !attributeModel) {
             throw ServerError.invalidArguments(`Attribute ${attributeId} on cluster ${clusterId} unknown`);
         }
-        const value = convertWebSocketTagBasedToMatter(data.value, attributeModel, clusterEntry.model);
+        let value = convertWebSocketTagBasedToMatter(data.value, attributeModel, clusterEntry.model);
+        if (attributeModel.fabricScopedList) {
+            const entries = ourFabricEntriesOf(value, undefined);
+            if (entries.kind !== "ours") {
+                throw ServerError.invalidArguments(
+                    `Refusing to groupcast ${attributeModel.propertyName}: an entry names fabric ${entries.fabricIndex}; a group write takes no FabricIndex`,
+                );
+            }
+            value = entries.value;
+        }
         logger.info(
             `Groupcasting write of attribute ${clusterId}.${attributeModel.propertyName} to ${this.formatNode(nodeId)} with value`,
             value,

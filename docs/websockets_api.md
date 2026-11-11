@@ -605,10 +605,14 @@ takes no wildcard endpoint.
 
 A fabric-scoped list, such as the ACL (`0/31/0`) or Binding (`*/30/0`), is written only for the controller's fabric:
 the list replaces the controller's entries, and the entries of other fabrics stay on the node. An entry may leave out
-the FabricIndex (tag `254`) or give the controller's fabric index. An entry with any other FabricIndex fails the
-write with `Status` `135` (CONSTRAINT_ERROR), or with `InvalidArguments` for a wildcard endpoint, before anything is
-sent. While the controller's fabric index on the node is not known yet, a write to a specific endpoint without
-`timed_request_timeout_ms` fails with `Status` `135` too.
+the FabricIndex (tag `254`), give `0` or `null` (the default of the CHIP Python cluster classes), or give the
+controller's fabric index. An entry with any other FabricIndex fails the write with `Status` `135`
+(CONSTRAINT_ERROR), or with `InvalidArguments` for a wildcard endpoint, before anything is sent. So does a
+FabricIndex the server cannot check yet, because it does not know the controller's fabric index on the node. A group
+write takes no FabricIndex other than `0` or `null`, because its members may know the controller by different
+indexes; any other fails with `InvalidArguments`. In
+that state, a write to a specific endpoint without `timed_request_timeout_ms` fails with `Status` `135` even without
+a FabricIndex.
 
 A write to a specific endpoint without `timed_request_timeout_ms` also updates the node data at once. A wildcard or
 timed write changes the node data only with the device's next report, so without a subscription it stays unchanged
@@ -1096,7 +1100,8 @@ subject that names the node itself is left out, because a node always has access
 }
 ```
 
-Replaces the bindings for the controller's fabric on `endpoint`, like `set_acl_entry` does for the ACL.
+Replaces the bindings for the controller's fabric on `endpoint`, like `set_acl_entry` does for the ACL, and answers
+`Status` `135` the same way while the controller's fabric index on the node is not known yet.
 
 Response: one entry for the Binding attribute of `endpoint`, with the status the node answered. Every call sends the
 write to the node, also when the bindings equal the current ones.
