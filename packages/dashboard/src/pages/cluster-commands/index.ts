@@ -48,3 +48,4 @@ import "./clusters/power-source-commands.js";
 import "./clusters/service-area-commands.js";
 import "./clusters/thermostat-commands.js";
 import "./clusters/water-heater-management-commands.js";
+import "./clusters/zone-management-commands.js";
