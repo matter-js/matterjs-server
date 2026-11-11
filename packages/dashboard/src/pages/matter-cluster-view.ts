@@ -25,6 +25,7 @@ import { renderSemanticTagChips } from "../components/semantic-tag-chips.js";
 import "../components/ha-svg-icon";
 import "../pages/components/node-details";
 // Cluster command components (auto-register on import)
+import { toNumber } from "../util/attribute-shapes.js";
 import { computeActiveClusterFeatures } from "../util/cluster-features.js";
 import { DevModeService } from "../util/dev-mode-service.js";
 import { getEndpointLabel } from "../util/endpoint-label.js";
@@ -437,7 +438,7 @@ class MatterClusterView extends LitElement {
         if (knownFeatures.length === 0) return undefined;
 
         const featureMapValue = this.node.attributes[`${this.endpoint}/${this.cluster}/${FEATURE_MAP_ATTR}`];
-        if (featureMapValue === undefined) return undefined;
+        if (toNumber(featureMapValue) === undefined) return undefined;
 
         const activeFeatures = computeActiveClusterFeatures(featureMapValue, knownFeatures);
 

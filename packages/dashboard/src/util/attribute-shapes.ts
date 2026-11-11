@@ -45,6 +45,10 @@ export function toText(value: unknown): string | undefined {
     return text.length > 0 ? text : undefined;
 }
 
+export function toBoolean(value: unknown): boolean | undefined {
+    return typeof value === "boolean" ? value : undefined;
+}
+
 export function pickBoolean(obj: Record<string, unknown>, key: string): boolean | null {
     const v = obj[key];
     return typeof v === "boolean" ? v : null;

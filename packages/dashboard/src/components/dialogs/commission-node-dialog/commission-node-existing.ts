@@ -14,6 +14,7 @@ import { customElement, property, query, state } from "lit/decorators.js";
 import { clientContext } from "../../../client/client-context.js";
 import { handleAsync } from "../../../util/async-handler.js";
 import { fireEvent } from "../../../util/fire_event.js";
+import { onEnter } from "../../../util/on-enter.js";
 import { showAlertDialog } from "../../dialog-box/show-dialog-box.js";
 
 @customElement("commission-node-existing")
@@ -38,7 +39,12 @@ export class CommissionNodeExisting extends LitElement {
     }
 
     protected override render() {
-        return html`<md-outlined-text-field label="Share code" .disabled="${this._loading}"> </md-outlined-text-field>
+        return html`<md-outlined-text-field
+                label="Share code"
+                .disabled="${this._loading}"
+                @keydown=${onEnter(handleAsync(() => this._commissionNode()))}
+            >
+            </md-outlined-text-field>
             <br />
             <br />
             <md-outlined-button @click=${handleAsync(() => this._commissionNode())} .disabled="${this._loading}"
@@ -47,6 +53,13 @@ export class CommissionNodeExisting extends LitElement {
     }
 
     private async _commissionNode() {
+        if (this._loading) {
+            return;
+        }
+        if (!this._pairingCodeField.value) {
+            showAlertDialog({ title: "Validation error", text: "Share code is required" });
+            return;
+        }
         this._loading = true;
         try {
             const node = await this.client.commissionWithCode(this._pairingCodeField.value, true);

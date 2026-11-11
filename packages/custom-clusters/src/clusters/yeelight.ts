@@ -48,14 +48,27 @@ import {
  */
 function constraint(definition: string): Decorator.PropertyCollector {
     return Decorator<Decorator.PropertyCollector>((_target, context) => {
-        const model = FieldSemantics.of(context).mutableModel;
-        if (!(model instanceof ValueModel)) {
-            throw new InvalidMetadataError(
-                `Cannot constrain ${model.path} because ${model.tag} elements have no value`,
-            );
-        }
-        model.constraint = definition;
+        valueModelOf(context).constraint = definition;
     });
+}
+
+/** Like {@link constraint}, for each entry of a list field. */
+function entryConstraint(definition: string): Decorator.PropertyCollector {
+    return Decorator<Decorator.PropertyCollector>((_target, context) => {
+        const model = valueModelOf(context);
+        if (model.listEntry === undefined) {
+            throw new InvalidMetadataError(`Cannot constrain entries of ${model.path} because it is not a list`);
+        }
+        model.listEntry.constraint = definition;
+    });
+}
+
+function valueModelOf(context: Decorator.PropertyContext) {
+    const model = FieldSemantics.of(context).mutableModel;
+    if (!(model instanceof ValueModel)) {
+        throw new InvalidMetadataError(`Cannot constrain ${model.path} because ${model.tag} elements have no value`);
+    }
+    return model;
 }
 
 /** {@link YeelightCubeControlCluster.rotationAngle} values: the Yeelight app's direction arrows. */
@@ -149,8 +162,11 @@ export class YeelightBasicConfigCluster {
 }
 
 class YeelightUpdateTopologyRequest {
-    /** Module types ({@link YeelightModuleType}), at most 8; the Yeelight app sends [2, 2, 2, 2] for a Cube Lite. */
-    @field(0x0, listOf(uint8), mandatory)
+    /**
+     * Module types ({@link YeelightModuleType}), at most 8; the Yeelight app sends [2, 2, 2, 2] for a Cube Lite. The
+     * device stores a type above 3 as 4 and then fails every read of {@link YeelightCubeControlCluster.cubeTopology}.
+     */
+    @field(0x0, listOf(uint8), mandatory, entryConstraint("max 3"))
     topology!: number[];
 }
 

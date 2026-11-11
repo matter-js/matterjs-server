@@ -23,6 +23,7 @@ export { BaseClusterCommands } from "./base-cluster-commands.js";
 
 // Cluster command components (auto-register on import)
 import "./clusters/access-control-commands.js";
+import "./clusters/ambient-context-sensing-commands.js";
 import "./clusters/avsum-commands.js";
 import "./clusters/basic-information-commands.js";
 import "./clusters/binding-commands.js";
@@ -42,6 +43,7 @@ import "./clusters/meter-identification-commands.js";
 import "./clusters/occupancy-sensing-commands.js";
 import "./clusters/on-off-commands.js";
 import "./clusters/operational-state-commands.js";
+import "./clusters/power-source-commands.js";
 import "./clusters/service-area-commands.js";
 import "./clusters/thermostat-commands.js";
 import "./clusters/water-heater-management-commands.js";

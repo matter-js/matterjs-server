@@ -23,6 +23,11 @@ describe("meter identification util", () => {
         expect(info.powerThresholdSupported).to.equal(false);
     });
 
+    it("reports unsupported when the FeatureMap was removed (null)", () => {
+        const info = meterIdentificationInfo({ "1/2822/65532": null }, 1);
+        expect(info.supported).to.equal(false);
+    });
+
     it("decodes identification strings and the meter type", () => {
         const info = meterIdentificationInfo(METER_ATTRS, 1);
         expect(info.supported).to.equal(true);
