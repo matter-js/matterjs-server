@@ -75,7 +75,7 @@ export function meterIdentificationInfo(
     const featureMap = attr(attributes, endpoint, ATTR_FEATURE_MAP);
 
     return {
-        supported: featureMap !== undefined,
+        supported: toNumber(featureMap) !== undefined,
         meterType: enumName(attr(attributes, endpoint, ATTR_METER_TYPE), METER_TYPE_NAMES),
         pointOfDelivery: toText(attr(attributes, endpoint, ATTR_POINT_OF_DELIVERY)),
         meterSerialNumber: toText(attr(attributes, endpoint, ATTR_METER_SERIAL_NUMBER)),

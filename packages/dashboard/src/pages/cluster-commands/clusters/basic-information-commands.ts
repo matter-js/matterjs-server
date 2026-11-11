@@ -12,6 +12,7 @@ import { showAlertDialog } from "../../../components/dialog-box/show-dialog-box.
 import { handleAsync } from "../../../util/async-handler.js";
 import { errorText } from "../../../util/error-text.js";
 import { MAX_NODE_LABEL_LENGTH, NODE_LABEL_CLUSTER_ID, writeNodeLabel } from "../../../util/node-label.js";
+import { onEnter } from "../../../util/on-enter.js";
 import { BaseClusterCommands } from "../base-cluster-commands.js";
 import { registerClusterCommands } from "../registry.js";
 
@@ -67,6 +68,7 @@ export class BasicInformationClusterCommands extends BaseClusterCommands {
                             label="Node Label"
                             .value=${this._nodeLabel}
                             @input=${this._handleInput}
+                            @keydown=${onEnter(handleAsync(() => this._handleSave()))}
                             maxlength=${MAX_NODE_LABEL_LENGTH}
                             ?disabled=${!this._isNodeAvailable || this._saving}
                             supporting-text="Max ${MAX_NODE_LABEL_LENGTH} characters"
@@ -89,6 +91,9 @@ export class BasicInformationClusterCommands extends BaseClusterCommands {
     }
 
     private async _handleSave() {
+        if (this._saving) {
+            return;
+        }
         if (!this._isNodeAvailable) {
             showAlertDialog({
                 title: "Cannot Save",
