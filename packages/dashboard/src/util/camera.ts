@@ -15,7 +15,7 @@ const ACCEPTED_COMMAND_LIST_ATTR_ID = 0xfff9;
 const CAPTURE_SNAPSHOT_COMMAND_ID = 12;
 const SNAPSHOT_CAPABILITIES_ATTR_ID = 10;
 const FEATURE_MAP_ATTR_ID = 0xfffc;
-// AVSM FeatureMap bits (spec §11.2.4), for gating before any camera command is sent. Once one can be
+// AVSM FeatureMap bits (spec §11.2.5), for gating before any camera command is sent. Once one can be
 // sent, read `features` from camera_get_capabilities instead.
 const FEATURE_VIDEO = 1 << 1;
 const FEATURE_SNAPSHOT = 1 << 2;
