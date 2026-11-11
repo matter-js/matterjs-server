@@ -152,9 +152,9 @@ describe("PeerChangeBus", () => {
         expect(change.events[0].data).deep.equals({ stateValue: true });
     });
 
-    it("resolves a delta event timestamp against an event from before reporting started", async () => {
+    it("forwards the timestamp matter.js resolved, on the clock the device used", async () => {
         await site.commission(controller, device);
-        expect(bus.isReporting(peer())).equals(false);
+        await awaitSubscribed();
         const endpoint = peer().endpoints.for(EndpointNumber(light.number));
         const behavior = endpoint.behaviors.supported.booleanState;
         expect(ClusterBehavior.is(behavior)).equals(true);
@@ -164,21 +164,40 @@ describe("PeerChangeBus", () => {
             return;
         }
         const notifications = controller.env.get(ChangeNotificationService);
-        const broadcast = (number: number, timestamp: number, timestampKind: "system" | "system-delta") =>
+        const broadcast = (
+            number: number,
+            timestamp: number,
+            timestampKind: ChangeNotificationService.TimestampKind,
+            resolvedTimestamp: number | undefined,
+        ) =>
             notifications.broadcastEvent(endpoint, behavior, event, {
                 number: EventNumber(number),
                 timestamp: Timestamp(timestamp),
                 timestampKind,
+                resolvedTimestamp,
                 priority: 1,
                 payload: { stateValue: true },
             });
-
-        broadcast(100, 5_000, "system");
-        await awaitSubscribed();
         events.length = 0;
-        broadcast(101, 4, "system-delta");
 
-        expect(events.map(([, change]) => change.events[0].systemTimestamp)).deep.equals([5_004]);
+        broadcast(100, 1_000, "epoch", 1_000);
+        broadcast(101, 4, "epoch-delta", 1_004);
+        broadcast(102, 5_000, "system", 5_000);
+        broadcast(103, 4, "system-delta", 5_004);
+        broadcast(104, 4, "system-delta", undefined);
+
+        expect(
+            events.map(([, change]) => {
+                const { epochTimestamp, systemTimestamp } = change.events[0];
+                return { epochTimestamp, systemTimestamp };
+            }),
+        ).deep.equals([
+            { epochTimestamp: 1_000, systemTimestamp: undefined },
+            { epochTimestamp: 1_004, systemTimestamp: undefined },
+            { epochTimestamp: undefined, systemTimestamp: 5_000 },
+            { epochTimestamp: undefined, systemTimestamp: 5_004 },
+            { epochTimestamp: undefined, systemTimestamp: undefined },
+        ]);
     });
 
     it("reports one endpoint going away without latching the whole peer as torn down", async () => {

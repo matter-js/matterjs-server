@@ -260,7 +260,7 @@ export function parseCliArgs(argv?: string[]): CliOptions {
         .addOption(
             new Option(
                 "--enable-test-net-dcl [value]",
-                "Enable test-net DCL certificates and OTA updates additionally to Production DCL",
+                "Enable test-net DCL certificates and OTA updates additionally to Production DCL; also commissions devices whose Certification Declaration fails a check (vendor or product id, DAC origin, authorized PAA list)",
             )
                 .argParser(parseBooleanEnv)
                 .preset(true)

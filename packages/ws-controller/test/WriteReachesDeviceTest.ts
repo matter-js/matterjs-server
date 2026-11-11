@@ -210,6 +210,31 @@ describe("writeAttribute", () => {
         ]);
     });
 
+    it("writes ACL and binding entries that leave the fabric index to matter.js, and the device assigns our fabric", async () => {
+        const deviceFabricIndex = device.env.get(FabricManager).fabrics[0].fabricIndex;
+
+        const aclResult = await MockTime.resolve(
+            handler.setAclEntry(nodeId, [
+                { privilege: 5, auth_mode: 2, subjects: [fabric.rootNodeId], targets: null },
+                { privilege: 3, auth_mode: 2, subjects: [0x1234], targets: null },
+            ]),
+            { macrotasks: true },
+        );
+        const bindingResult = await MockTime.resolve(
+            handler.setNodeBinding(nodeId, LIGHT_ENDPOINT, [{ node: 5, group: null, endpoint: 1, cluster: 6 }]),
+            { macrotasks: true },
+        );
+
+        expect([aclResult?.[0].status, bindingResult?.[0].status]).deep.equals([Status.Success, Status.Success]);
+        expect(device.stateOf(AccessControlServer).acl.map(({ fabricIndex }) => fabricIndex)).deep.equals([
+            deviceFabricIndex,
+            deviceFabricIndex,
+        ]);
+        expect(light.stateOf(BindingServer).binding.map(({ fabricIndex }) => fabricIndex)).deep.equals([
+            deviceFabricIndex,
+        ]);
+    });
+
     it("writes bindings, also when they equal the current ones", async () => {
         const bindingsToWrite = [
             { node: 5, group: null, endpoint: 1, cluster: 6 },
