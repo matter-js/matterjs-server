@@ -40,6 +40,7 @@ import "./clusters/ikea-valve-calibration-commands.js";
 import "./clusters/level-control-commands.js";
 import "./clusters/media-playback-commands.js";
 import "./clusters/meter-identification-commands.js";
+import "./clusters/occupancy-sensing-commands.js";
 import "./clusters/on-off-commands.js";
 import "./clusters/operational-state-commands.js";
 import "./clusters/power-source-commands.js";
