@@ -10,6 +10,7 @@ import "@material/web/iconbutton/outlined-icon-button";
 import "@material/web/select/outlined-select";
 import "@material/web/select/select-option";
 import "@material/web/textfield/outlined-text-field";
+import type { MatterNode } from "@matter-server/ws-client";
 import { mdiPencilOutline, mdiPlus, mdiTrashCanOutline } from "@mdi/js";
 import { css, html, nothing, type CSSResultGroup, type TemplateResult } from "lit";
 import { customElement, state } from "lit/decorators.js";
@@ -33,6 +34,7 @@ import {
     ZONE_SOURCE_LABELS,
     ZONE_USE_LABELS,
     ZoneSource,
+    ZoneUse,
     type TriggerInfo,
     type ZoneInfo,
     type ZoneManagementInfo,
@@ -70,9 +72,9 @@ class ZoneManagementClusterCommands extends BaseClusterCommands {
         this._formContext = context;
     }
 
-    private _failureReporter(title: string) {
-        const node = this.node;
-        const endpoint = this.endpoint;
+    /** Capture `node`/`endpoint` before the triggering await, not here: by the time a catch block
+     *  runs, `this.node`/`this.endpoint` may already belong to a different panel navigation. */
+    private _failureReporter(title: string, node: MatterNode, endpoint: number) {
         return (err: Error) => {
             if (!this.isSameContext(node, endpoint)) {
                 console.error(`${title} (panel moved on)`, err);
@@ -115,38 +117,50 @@ class ZoneManagementClusterCommands extends BaseClusterCommands {
         const color = parseZoneColor(this._zoneColor);
         if (vertices === null || color === null || this._editingZoneId === null) return;
         const zone = { name: this._zoneName.trim(), use: Number(this._zoneUse), vertices, color };
+        const creating = this._editingZoneId === -1;
+        const reportFailure = this._failureReporter(
+            creating ? "Create zone failed" : "Update zone failed",
+            node,
+            endpoint,
+        );
 
         this._busy = true;
         try {
-            if (this._editingZoneId === -1) {
+            if (creating) {
                 await createTwoDCartesianZone(this.client, node.node_id, endpoint, zone);
             } else {
                 await updateTwoDCartesianZone(this.client, node.node_id, endpoint, this._editingZoneId, zone);
             }
             if (this.isSameContext(node, endpoint)) this._cancelZoneForm();
         } catch (err) {
-            this._failureReporter(this._editingZoneId === -1 ? "Create zone failed" : "Update zone failed")(
-                err as Error,
-            );
+            reportFailure(err as Error);
         } finally {
             if (this.isSameContext(node, endpoint)) this._busy = false;
         }
     }
 
-    private async _removeZone(zone: ZoneInfo) {
+    private async _removeZone(zone: ZoneInfo, hasTrigger: boolean) {
         const node = this.node;
         const endpoint = this.endpoint;
+        if (hasTrigger) {
+            showAlertDialog({
+                title: "Remove zone",
+                text: `"${zoneLabel(zone)}" (ZoneID ${zone.zoneId}) has a trigger defined for it. The device rejects zone removal while a trigger references it; remove the trigger first.`,
+            }).catch(err => console.error("Failed to show the ZoneManagement command error", err));
+            return;
+        }
         const confirmed = await showPromptDialog({
             title: "Remove zone",
-            text: `Remove "${zoneLabel(zone)}" (ZoneID ${zone.zoneId})? Any trigger defined for it will stop applying.`,
+            text: `Remove "${zoneLabel(zone)}" (ZoneID ${zone.zoneId})?`,
             confirmText: "Remove",
         });
         if (!confirmed || !this.isSameContext(node, endpoint)) return;
+        const reportFailure = this._failureReporter("Remove zone failed", node, endpoint);
         this._busy = true;
         try {
             await removeZone(this.client, node.node_id, endpoint, zone.zoneId);
         } catch (err) {
-            this._failureReporter("Remove zone failed")(err as Error);
+            reportFailure(err as Error);
         } finally {
             if (this.isSameContext(node, endpoint)) this._busy = false;
         }
@@ -170,42 +184,63 @@ class ZoneManagementClusterCommands extends BaseClusterCommands {
         this._triggerSensitivity = trigger.sensitivity !== undefined ? String(trigger.sensitivity) : "";
     }
 
-    private async _submitTrigger(perZoneSensitivity: boolean) {
-        const node = this.node;
-        const endpoint = this.endpoint;
-        const zoneId = Number(this._triggerZoneId);
+    /**
+     * Validates the trigger form against the constraints the ZoneManagement server enforces:
+     * initial duration >= 1, augmentation <= initial, max >= initial, and — when PerZoneSensitivity
+     * is supported — a required sensitivity from 1 through SensitivityMax. Returns null when the
+     * form is not submittable.
+     */
+    private _parseTriggerForm(info: ZoneManagementInfo): TriggerInfo | null {
+        if (this._triggerZoneId === "") return null;
         const initialDuration = parseDurationSeconds(this._triggerInitial);
         const augmentationDuration = parseDurationSeconds(this._triggerAugmentation);
         const maxDuration = parseDurationSeconds(this._triggerMax);
         const blindDuration = parseDurationSeconds(this._triggerBlind);
         if (
-            this._triggerZoneId === "" ||
             initialDuration === null ||
+            initialDuration < 1 ||
             augmentationDuration === null ||
+            augmentationDuration > initialDuration ||
             maxDuration === null ||
+            maxDuration < initialDuration ||
             blindDuration === null
         ) {
-            return;
+            return null;
         }
-        const sensitivity =
-            perZoneSensitivity && this._triggerSensitivity.trim() !== ""
-                ? parseDurationSeconds(this._triggerSensitivity)
-                : undefined;
-        if (perZoneSensitivity && this._triggerSensitivity.trim() !== "" && sensitivity === null) return;
+        let sensitivity: number | undefined;
+        if (info.features.perZoneSensitivity) {
+            sensitivity = parseDurationSeconds(this._triggerSensitivity) ?? undefined;
+            if (
+                sensitivity === undefined ||
+                sensitivity < 1 ||
+                (info.sensitivityMax !== undefined && sensitivity > info.sensitivityMax)
+            ) {
+                return null;
+            }
+        }
+        return {
+            zoneId: Number(this._triggerZoneId),
+            initialDuration,
+            augmentationDuration,
+            maxDuration,
+            blindDuration,
+            sensitivity,
+        };
+    }
 
+    private async _submitTrigger(info: ZoneManagementInfo) {
+        const node = this.node;
+        const endpoint = this.endpoint;
+        const trigger = this._parseTriggerForm(info);
+        if (trigger === null) return;
+
+        const reportFailure = this._failureReporter("Create/update trigger failed", node, endpoint);
         this._busy = true;
         try {
-            await createOrUpdateTrigger(this.client, node.node_id, endpoint, {
-                zoneId,
-                initialDuration,
-                augmentationDuration,
-                maxDuration,
-                blindDuration,
-                sensitivity: sensitivity ?? undefined,
-            });
+            await createOrUpdateTrigger(this.client, node.node_id, endpoint, trigger);
             if (this.isSameContext(node, endpoint)) this._resetTriggerForm();
         } catch (err) {
-            this._failureReporter("Create/update trigger failed")(err as Error);
+            reportFailure(err as Error);
         } finally {
             if (this.isSameContext(node, endpoint)) this._busy = false;
         }
@@ -214,11 +249,12 @@ class ZoneManagementClusterCommands extends BaseClusterCommands {
     private async _removeTriggerFor(zoneId: number) {
         const node = this.node;
         const endpoint = this.endpoint;
+        const reportFailure = this._failureReporter("Remove trigger failed", node, endpoint);
         this._busy = true;
         try {
             await removeTrigger(this.client, node.node_id, endpoint, zoneId);
         } catch (err) {
-            this._failureReporter("Remove trigger failed")(err as Error);
+            reportFailure(err as Error);
         } finally {
             if (this.isSameContext(node, endpoint)) this._busy = false;
         }
@@ -229,7 +265,10 @@ class ZoneManagementClusterCommands extends BaseClusterCommands {
         const info = zoneManagementInfo(this.node.attributes, this.endpoint);
         const online = this.node.available === true;
         const canCreateOrEditZones = info.features.twoDCartesian && info.features.userDefined;
-        const atZoneCapacity = info.maxZones !== undefined && info.zones.length >= info.maxZones;
+        const userZoneCount = info.zones.filter(zone => zone.zoneSource === ZoneSource.User).length;
+        const atZoneCapacity =
+            (info.maxZones !== undefined && info.zones.length >= info.maxZones) ||
+            (info.maxUserDefinedZones !== undefined && userZoneCount >= info.maxUserDefinedZones);
 
         return html`
             <details class="command-panel" open>
@@ -295,7 +334,14 @@ class ZoneManagementClusterCommands extends BaseClusterCommands {
                                       </tr>
                                   </thead>
                                   <tbody>
-                                      ${info.zones.map(zone => this._renderZoneRow(zone, online, canCreateOrEditZones))}
+                                      ${info.zones.map(zone =>
+                                          this._renderZoneRow(
+                                              zone,
+                                              online,
+                                              canCreateOrEditZones,
+                                              info.triggers.some(trigger => trigger.zoneId === zone.zoneId),
+                                          ),
+                                      )}
                                   </tbody>
                               </table>
                           `
@@ -303,7 +349,7 @@ class ZoneManagementClusterCommands extends BaseClusterCommands {
                 ${
                     canCreateOrEditZones
                         ? this._editingZoneId !== null
-                            ? this._renderZoneForm(online)
+                            ? this._renderZoneForm(info, online)
                             : html`<md-outlined-button
                                   ?disabled=${this._busy || !online || atZoneCapacity}
                                   title=${atZoneCapacity ? "Zone capacity reached" : ""}
@@ -318,7 +364,12 @@ class ZoneManagementClusterCommands extends BaseClusterCommands {
         `;
     }
 
-    private _renderZoneRow(zone: ZoneInfo, online: boolean, canCreateOrEditZones: boolean): TemplateResult {
+    private _renderZoneRow(
+        zone: ZoneInfo,
+        online: boolean,
+        canCreateOrEditZones: boolean,
+        hasTrigger: boolean,
+    ): TemplateResult {
         const zoneData = zone.twoDCartesianZone;
         const isUserZone = zone.zoneSource === ZoneSource.User;
         return html`
@@ -358,7 +409,7 @@ class ZoneManagementClusterCommands extends BaseClusterCommands {
                                   title="Remove zone"
                                   aria-label="Remove zone"
                                   ?disabled=${this._busy || !online}
-                                  @click=${handleAsync(() => this._removeZone(zone))}
+                                  @click=${handleAsync(() => this._removeZone(zone, hasTrigger))}
                               >
                                   <ha-svg-icon .path=${mdiTrashCanOutline}></ha-svg-icon>
                               </md-outlined-icon-button>`
@@ -369,7 +420,7 @@ class ZoneManagementClusterCommands extends BaseClusterCommands {
         `;
     }
 
-    private _renderZoneForm(online: boolean): TemplateResult {
+    private _renderZoneForm(info: ZoneManagementInfo, online: boolean): TemplateResult {
         const vertices = parseVertices(this._zoneVertices);
         const color = parseZoneColor(this._zoneColor);
         const isValid = this._zoneName.trim() !== "" && vertices !== null && color !== null;
@@ -392,13 +443,15 @@ class ZoneManagementClusterCommands extends BaseClusterCommands {
                         this._zoneUse = (e.target as HTMLSelectElement).value;
                     }}
                 >
-                    ${Object.entries(ZONE_USE_LABELS).map(
-                        ([id, label]) => html`
-                            <md-select-option value=${id}>
-                                <div slot="headline">${label}</div>
-                            </md-select-option>
-                        `,
-                    )}
+                    ${Object.entries(ZONE_USE_LABELS)
+                        .filter(([id]) => Number(id) !== ZoneUse.Focus || info.features.focusZones)
+                        .map(
+                            ([id, label]) => html`
+                                <md-select-option value=${id}>
+                                    <div slot="headline">${label}</div>
+                                </md-select-option>
+                            `,
+                        )}
                 </md-outlined-select>
                 <md-outlined-text-field
                     type="textarea"
@@ -495,19 +548,7 @@ class ZoneManagementClusterCommands extends BaseClusterCommands {
     }
 
     private _renderTriggerForm(info: ZoneManagementInfo, online: boolean): TemplateResult {
-        const initialDuration = parseDurationSeconds(this._triggerInitial);
-        const augmentationDuration = parseDurationSeconds(this._triggerAugmentation);
-        const maxDuration = parseDurationSeconds(this._triggerMax);
-        const blindDuration = parseDurationSeconds(this._triggerBlind);
-        const sensitivityText = this._triggerSensitivity.trim();
-        const sensitivityValid = sensitivityText === "" || parseDurationSeconds(sensitivityText) !== null;
-        const isValid =
-            this._triggerZoneId !== "" &&
-            initialDuration !== null &&
-            augmentationDuration !== null &&
-            maxDuration !== null &&
-            blindDuration !== null &&
-            sensitivityValid;
+        const isValid = this._parseTriggerForm(info) !== null;
 
         return html`
             <div class="zone-form">
@@ -520,7 +561,10 @@ class ZoneManagementClusterCommands extends BaseClusterCommands {
                     }}
                 >
                     ${info.zones
-                        .filter(zone => zone.twoDCartesianZone === undefined || zone.twoDCartesianZone.use === 0)
+                        .filter(
+                            zone =>
+                                zone.twoDCartesianZone === undefined || zone.twoDCartesianZone.use === ZoneUse.Motion,
+                        )
                         .map(
                             zone => html`
                                 <md-select-option value=${String(zone.zoneId)}>
@@ -532,7 +576,7 @@ class ZoneManagementClusterCommands extends BaseClusterCommands {
                 <md-outlined-text-field
                     type="number"
                     label="Initial duration (s)"
-                    min="0"
+                    min="1"
                     .value=${this._triggerInitial}
                     @input=${(e: Event) => {
                         this._triggerInitial = (e.target as HTMLInputElement).value;
@@ -569,8 +613,8 @@ class ZoneManagementClusterCommands extends BaseClusterCommands {
                     info.features.perZoneSensitivity
                         ? html`<md-outlined-text-field
                               type="number"
-                              label="Sensitivity (optional)"
-                              min="0"
+                              label="Sensitivity"
+                              min="1"
                               max=${info.sensitivityMax !== undefined ? info.sensitivityMax : nothing}
                               .value=${this._triggerSensitivity}
                               @input=${(e: Event) => {
@@ -582,7 +626,7 @@ class ZoneManagementClusterCommands extends BaseClusterCommands {
                 <div class="zone-form-actions">
                     <md-filled-button
                         ?disabled=${this._busy || !online || !isValid}
-                        @click=${handleAsync(() => this._submitTrigger(info.features.perZoneSensitivity))}
+                        @click=${handleAsync(() => this._submitTrigger(info))}
                     >
                         Create / Update
                     </md-filled-button>

@@ -38,6 +38,12 @@ export enum ZoneSource {
     User = 1,
 }
 
+export enum ZoneUse {
+    Motion = 0,
+    Privacy = 1,
+    Focus = 2,
+}
+
 export interface ZoneManagementFeatures {
     twoDCartesian: boolean;
     perZoneSensitivity: boolean;
