@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { tagField as field, toNumber } from "./attribute-shapes.js";
+import { tagField as field, toBoolean, toNumber } from "./attribute-shapes.js";
 import { currencyInfo, formatPrice, type CurrencyInfo } from "./commodity-tariff.js";
 
 export const DEVICE_ENERGY_MANAGEMENT_CLUSTER_ID = 152;
@@ -166,10 +166,6 @@ function enumName(value: unknown, names: Record<number, string>): string | undef
     const raw = toNumber(value);
     if (raw === undefined) return undefined;
     return names[raw] ?? `Unknown (${raw})`;
-}
-
-function toBoolean(value: unknown): boolean | undefined {
-    return typeof value === "boolean" ? value : undefined;
 }
 
 /** power-mW and energy-mWh fields carry milli-units; the dashboard works in W and Wh. */
@@ -353,7 +349,7 @@ export function deviceEnergyManagementInfo(
     const esaTypeId = toNumber(attr(attributes, endpoint, ATTR_ESA_TYPE));
 
     return {
-        supported: featureMap !== undefined,
+        supported: toNumber(featureMap) !== undefined,
         esaTypeId,
         esaType: enumName(esaTypeId, ESA_TYPE_NAMES),
         canGenerate: toBoolean(attr(attributes, endpoint, ATTR_ESA_CAN_GENERATE)),
