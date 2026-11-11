@@ -17,7 +17,7 @@ function names(model: { children: Iterable<{ name?: string }> } | null | undefin
     return [...(model?.children ?? [])].map(child => child.name);
 }
 
-describe("Aqara FP400 clusters", () => {
+describe("Aqara ambient sensing clusters", () => {
     it("models the configuration cluster from the ambient sensing extension", () => {
         const config = cluster(0x115ffc0a);
 

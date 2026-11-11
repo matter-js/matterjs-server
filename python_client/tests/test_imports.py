@@ -223,8 +223,8 @@ def test_wago_window_covering_extension_attributes_exist() -> None:
     assert tags["wagoBlindType"] == 0x15340005
 
 
-def test_aqara_fp400_clusters():
-    """Aqara FP400 clusters expose structs, linked responses and signed fields."""
+def test_aqara_ambient_sensing_clusters():
+    """Aqara ambient sensing clusters expose structs, linked responses and signed fields."""
     from chip.tlv import uint
     from matter_server.common.custom_clusters import (
         AqaraAmbientSensingConfigurationCluster,

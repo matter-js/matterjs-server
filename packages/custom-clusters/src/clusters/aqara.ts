@@ -153,7 +153,7 @@ const ZoneErrorCodeEnum = enumeration("ZoneErrorCodeEnum", "enum8", {
     DuplicateZoneId: 5,
 });
 
-// FP400 sends ZoneType as enum16. The extension lists these values without a base type.
+// Encoded as enum16. The extension lists these values without a base type.
 const ZoneTypeEnum = enumeration("ZoneTypeEnum", "enum16", {
     Other: 0x00,
     LivingRoom: 0x01,
@@ -238,7 +238,7 @@ const TargetTypeEnum = enumeration("TargetTypeEnum", "enum8", {
     Sweeper: 0x06,
     AirPurifier: 0x07,
     Child: 0x08,
-    // The extension lists 0xFE. FP400 sends 0xFF.
+    // The extension lists 0xFE. On the wire this value is 0xFF.
     Unknown: 0xff,
 });
 
@@ -248,7 +248,7 @@ const PostureEnum = enumeration("PostureEnum", "enum8", {
     Stand: 0x02,
     Lie: 0x03,
     Fall: 0x04,
-    // The extension lists 0xFE. FP400 sends 0xFF.
+    // The extension lists 0xFE. On the wire this value is 0xFF.
     Undefined: 0xff,
 });
 
@@ -355,7 +355,7 @@ class AqaraCountDeltaEvent {
 }
 
 class AqaraOccupancyDurationDeltaEvent {
-    // The extension says uint32. FP400 sends uint16.
+    // The extension says uint32. On the wire this value is uint16.
     @constraint("min 1")
     @field(0x0, uint16, mandatory)
     durationDelta!: number;
@@ -366,7 +366,7 @@ class AqaraOccupancyDurationDeltaEvent {
 }
 
 class AqaraWalkingDistanceDeltaEvent {
-    // The extension says uint32 meters. FP400 sends uint16.
+    // The extension says uint32 meters. On the wire this value is uint16.
     @constraint("min 1")
     @field(0x0, uint16, mandatory)
     distanceDelta!: number;
@@ -417,7 +417,7 @@ class AqaraTargetIdRequest {
 
 /**
  * Zone and installation configuration for an Occupancy Sensor leader endpoint.
- * Cluster 0x115FFC0A. FP400 serves this on endpoint 1 with features ZONE and INSTALL.
+ * Cluster 0x115FFC0A.
  */
 @withFeatures([
     { code: "ZONE", bit: 0, title: "ZoneManagement" },
