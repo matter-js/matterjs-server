@@ -9,6 +9,16 @@ This page shows a detailed overview of the changes between versions without the 
 ## **WORK IN PROGRESS**
 
 - Enhancement: Update matter.js to the latest 0.18.1 nightly
+    - After a failed commissioning attempt, the device can be added again right away instead of only after a waiting time
+    - Adding a device over Bluetooth fails faster when the Bluetooth connection drops, and then tries the device's other connection paths instead of giving up
+    - Adding a device is refused when its Matter certification was not signed by the CSA (the Matter standards body) or when it answers with invalid security data
+    - A device that changed its IP address is found again sooner
+    - The server notices when the network addresses of the computer it runs on change, so devices keep finding it
+    - Device updates stay reliable in more cases: a broken subscription is set up again sooner, battery-powered devices are kept up to date with the correct timing, and lost message confirmations no longer make a device drop its connection
+    - The server no longer needs minutes at startup or shutdown after it ran for a long time, and no longer loses recent changes after a crash
+    - Devices that describe their own structure incompletely show all their parts again
+    - Logs no longer show Thread and Wi-Fi network credentials, setup passcodes or keys
+    - mDNS statistics are logged as debug loglevel or info if MATTER_MDNS_STATISTICS=1 is set
 - Enhancement: (@lboue) Dashboard: The Camera AV Stream Management cluster has its own panel to mute the microphone and speaker and to change HDR, night vision, the status light and the soft privacy modes. It also shows the hard privacy switch and the number of allocated streams, and lists only what the camera supports
 - Enhancement: (@lboue) Dashboard: The Occupancy Sensing cluster has its own panel showing whether the area is occupied, the sensor types, and the hold time with its limits
 - Enhancement: (@lboue) Dashboard: The Power Source cluster has its own panel showing status, the wired or battery readings, charge state, replacement description and active faults
