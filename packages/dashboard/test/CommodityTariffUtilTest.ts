@@ -164,6 +164,11 @@ describe("commodity tariff util", () => {
             expect(info.todaySchedule).to.have.lengthOf(0);
         });
 
+        it("reports unsupported when the FeatureMap was removed (null)", () => {
+            const info = commodityTariffInfo({ "1/1792/65532": null }, 1);
+            expect(info.supported).to.equal(false);
+        });
+
         it("decodes tariff header, unit and block mode", () => {
             const info = commodityTariffInfo(TARIFF_ATTRS, 1);
             expect(info.supported).to.equal(true);

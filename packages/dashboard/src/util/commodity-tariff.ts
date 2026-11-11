@@ -395,7 +395,7 @@ export function commodityTariffInfo(attributes: Record<string, unknown>, endpoin
     const nextDayEntryDate = toNumber(attr(attributes, endpoint, ATTR_NEXT_DAY_ENTRY_DATE));
 
     return {
-        supported: featureMap !== undefined,
+        supported: toNumber(featureMap) !== undefined,
         tariffInfo,
         tariffUnit: enumName(attr(attributes, endpoint, ATTR_TARIFF_UNIT), TARIFF_UNIT_NAMES),
         startDate: toNumber(attr(attributes, endpoint, ATTR_START_DATE)),
