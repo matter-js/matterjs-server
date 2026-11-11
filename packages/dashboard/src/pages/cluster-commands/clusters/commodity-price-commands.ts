@@ -8,8 +8,9 @@ import { css, html, nothing, type CSSResultGroup, type TemplateResult } from "li
 import { customElement } from "lit/decorators.js";
 import {
     COMMODITY_PRICE_CLUSTER_ID,
-    type CommodityPriceEntryInfo,
     commodityPriceInfo,
+    formatPriceEntry,
+    type CommodityPriceEntryInfo,
 } from "../../../util/commodity-price.js";
 import { formatEpochTime } from "../../../util/time.js";
 import { BaseClusterCommands } from "../base-cluster-commands.js";
@@ -29,61 +30,38 @@ export class CommodityPriceClusterCommands extends BaseClusterCommands {
             <details class="command-panel" open>
                 <summary>Commodity Price</summary>
                 <div class="command-content">
-                    ${this._renderCurrentPrice(info.currentPrice)} ${this._renderForecast(info.priceForecast)}
-
-                    <dl class="info-grid">
-                        ${
-                            info.tariffUnit !== undefined
-                                ? html`<dt>Unit</dt>
-                                      <dd>${info.tariffUnit}</dd>`
-                                : nothing
-                        }
-                    </dl>
+                    ${this._renderCurrentPrice(info.currentPrice, info.tariffUnit)}
+                    ${this._renderForecast(info.priceForecast, info.tariffUnit)}
                 </div>
             </details>
         `;
     }
 
-    private _renderCurrentPrice(entry: CommodityPriceEntryInfo | undefined): TemplateResult | typeof nothing {
-        if (!entry) return nothing;
+    private _renderCurrentPrice(
+        entry: CommodityPriceEntryInfo | undefined,
+        tariffUnit: string | undefined,
+    ): TemplateResult {
         return html`
-            <div class="now-next">
+            <div class="now">
                 <div class="price-row current">
                     <span class="tag">Now</span>
-                    <span class="text">${entry.amount ?? entry.description ?? "Unknown price"}</span>
-                    <span class="range">${this._renderRange(entry)}</span>
+                    <span class="text">${(entry && formatPriceEntry(entry, tariffUnit)) ?? "Unknown price"}</span>
+                    ${entry ? html`<span class="range">${this._renderRange(entry)}</span>` : nothing}
                 </div>
-                ${this._renderComponents(entry.components)}
             </div>
         `;
     }
 
     private _renderRange(entry: CommodityPriceEntryInfo): TemplateResult {
-        return html`${formatEpochTime(entry.periodStart)}${
-            entry.periodEnd !== undefined ? html`–${formatEpochTime(entry.periodEnd)}` : nothing
-        }`;
+        return entry.periodEnd !== undefined
+            ? html`${formatEpochTime(entry.periodStart)}–${formatEpochTime(entry.periodEnd)}`
+            : html`from ${formatEpochTime(entry.periodStart)}`;
     }
 
-    private _renderComponents(components: CommodityPriceEntryInfo["components"]): TemplateResult | typeof nothing {
-        if (components.length === 0) return nothing;
-        return html`
-            <table class="price-components">
-                <tbody>
-                    ${components.map(
-                        component => html`
-                            <tr>
-                                <td>${component.source}</td>
-                                <td>${component.description ?? "—"}</td>
-                                <td>${component.price ?? "—"}</td>
-                            </tr>
-                        `,
-                    )}
-                </tbody>
-            </table>
-        `;
-    }
-
-    private _renderForecast(entries: CommodityPriceEntryInfo[]): TemplateResult | typeof nothing {
+    private _renderForecast(
+        entries: CommodityPriceEntryInfo[],
+        tariffUnit: string | undefined,
+    ): TemplateResult | typeof nothing {
         if (entries.length === 0) return nothing;
         return html`
             <details class="schedule">
@@ -100,7 +78,7 @@ export class CommodityPriceClusterCommands extends BaseClusterCommands {
                             entry => html`
                                 <tr>
                                     <td>${this._renderRange(entry)}</td>
-                                    <td>${entry.amount ?? "—"}</td>
+                                    <td>${formatPriceEntry(entry, tariffUnit) ?? "—"}</td>
                                 </tr>
                             `,
                         )}
@@ -116,7 +94,7 @@ export class CommodityPriceClusterCommands extends BaseClusterCommands {
             .command-content {
                 font-size: 14px;
             }
-            .now-next {
+            .now {
                 display: flex;
                 flex-direction: column;
                 gap: 4px;
@@ -147,7 +125,6 @@ export class CommodityPriceClusterCommands extends BaseClusterCommands {
                 cursor: pointer;
                 color: var(--md-sys-color-primary);
             }
-            .price-components,
             .price-forecast {
                 width: 100%;
                 border-collapse: collapse;
@@ -160,23 +137,9 @@ export class CommodityPriceClusterCommands extends BaseClusterCommands {
                 padding: 6px 10px;
                 border-bottom: 1px solid var(--md-sys-color-outline-variant);
             }
-            .price-components td,
             .price-forecast td {
                 padding: 6px 10px;
                 border-bottom: 1px solid var(--md-sys-color-outline-variant);
-            }
-            .info-grid {
-                display: grid;
-                grid-template-columns: auto 1fr;
-                gap: 6px 16px;
-                margin: 0;
-            }
-            .info-grid dt {
-                color: var(--text-color, rgba(0, 0, 0, 0.6));
-            }
-            .info-grid dd {
-                margin: 0;
-                font-weight: 500;
             }
         `,
     ];
