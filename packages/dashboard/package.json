@@ -47,7 +47,7 @@
         "@rollup/plugin-typescript": "^12.3.0",
         "lit": "^3.3.3",
         "qrcode-generator": "^2.0.4",
-        "rollup": "^4.67.3",
+        "rollup": "^4.68.0",
         "rollup-plugin-copy": "^3.5.0",
         "serve": "^14.2.6",
         "tslib": "^2.9.1",
