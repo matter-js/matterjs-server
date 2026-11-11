@@ -49,7 +49,7 @@
         "qrcode-generator": "^2.0.4",
         "rollup": "^4.67.3",
         "rollup-plugin-copy": "^3.5.0",
-        "serve": "^14.2.6",
+        "serve": "^14.2.7",
         "tslib": "^2.9.1",
         "vis-network": "^10.1.4"
     }
