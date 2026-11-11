@@ -8,13 +8,13 @@ This page shows a detailed overview of the changes between versions without the 
 -->
 ## **WORK IN PROGRESS**
 
+- Enhancement: Update matter.js to the latest 0.18.1 nightly
 - Enhancement: (@lboue) Dashboard: The Camera AV Stream Management cluster has its own panel to mute the microphone and speaker and to change HDR, night vision, the status light and the soft privacy modes. It also shows the hard privacy switch and the number of allocated streams, and lists only what the camera supports
 - Enhancement: (@lboue) Dashboard: The Occupancy Sensing cluster has its own panel showing whether the area is occupied, the sensor types, and the hold time with its limits
 - Enhancement: (@lboue) Dashboard: The Power Source cluster has its own panel showing status, the wired or battery readings, charge state, replacement description and active faults
 - Enhancement: (@lboue) Dashboard: The Ambient Context Sensing cluster has its own panel showing detection state, detected and supported context types, object counting and predicted activity
 - Enhancement: Dashboard: The "Share device" dialog has a button to copy the setup code, also when the dashboard is opened over plain HTTP
 - Enhancement: Dashboard: Pressing Enter in the share/pairing code, Thread dataset, node label, fabric label and ACL node id fields submits them, the same as clicking the button next to them
-- Enhancement: Update matter.js to nightly 0.18.1-alpha.0-20261111-b84c5d1bc
 - Enhancement: With the test-net DCL option enabled, a device whose Certification Declaration fails a check (vendor or product id, DAC origin, authorized PAA list) is commissioned and a notice is logged. Without the option, the refusal names the failed checks and points to the option when it would accept the device
 - Enhancement: The Docker image is about 250 MB smaller. Installing `matter-server` from npm no longer installs the packages the dashboard only needs to build its web bundle
 - Fix: Event timestamps use the device time that matter.js resolves from each report, in node events and in read results, also for events the server could not resolve before
