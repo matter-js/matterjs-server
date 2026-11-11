@@ -349,7 +349,7 @@ export function deviceEnergyManagementInfo(
     const esaTypeId = toNumber(attr(attributes, endpoint, ATTR_ESA_TYPE));
 
     return {
-        supported: featureMap !== undefined,
+        supported: toNumber(featureMap) !== undefined,
         esaTypeId,
         esaType: enumName(esaTypeId, ESA_TYPE_NAMES),
         canGenerate: toBoolean(attr(attributes, endpoint, ATTR_ESA_CAN_GENERATE)),
