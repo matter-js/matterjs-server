@@ -47,13 +47,13 @@ export class WiFiGraph extends BaseNetworkGraph {
     protected override _getPhysicsOptions(): any {
         return {
             enabled: true,
-            solver: "forceAtlas2Based",
-            forceAtlas2Based: {
-                gravitationalConstant: -120, // Stronger repulsion for star topology
-                centralGravity: 0.003, // Weaker central pull
+            solver: "barnesHut",
+            barnesHut: {
+                gravitationalConstant: -4000, // Stronger repulsion for star topology
+                centralGravity: 0.2, // Weaker central pull
                 springLength: 100, // Shorter springs keep devices close to their AP
-                springConstant: 0.12, // Stronger springs
-                damping: 0.4,
+                springConstant: 0.06, // Stronger springs
+                damping: 0.15,
                 avoidOverlap: 0.8,
             },
             stabilization: {
