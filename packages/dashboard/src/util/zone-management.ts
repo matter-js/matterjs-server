@@ -8,8 +8,8 @@ import type { MatterClient } from "@matter-server/ws-client";
 import { attributeArray } from "./access-control.js";
 import { asObject, pickNumber, tagField as field, toNumber, toText } from "./attribute-shapes.js";
 
-/** ZoneManagement cluster (Matter spec §2.14). */
-export const ZONE_MANAGEMENT_CLUSTER_ID = 1360; // 0x0550
+/** ZoneManagement cluster (Matter 1.6 §2.14). */
+export const ZONE_MANAGEMENT_CLUSTER_ID = 1360;
 
 const ATTR_MAX_USER_DEFINED_ZONES = 0;
 const ATTR_MAX_ZONES = 1;
@@ -80,6 +80,7 @@ export interface TriggerInfo {
 }
 
 export interface ZoneManagementInfo {
+    supported: boolean;
     features: ZoneManagementFeatures;
     maxZones?: number;
     maxUserDefinedZones?: number;
@@ -90,12 +91,7 @@ export interface ZoneManagementInfo {
     triggers: TriggerInfo[];
 }
 
-export interface CommandResult {
-    success: boolean;
-    status: number;
-    statusName: string;
-    statusText?: string;
-}
+type CommandClient = Pick<MatterClient, "deviceCommand">;
 
 function attr(attributes: Record<string, unknown>, endpoint: number, attributeId: number): unknown {
     return attributes[`${endpoint}/${ZONE_MANAGEMENT_CLUSTER_ID}/${attributeId}`];
@@ -162,7 +158,8 @@ function decodeTrigger(entry: unknown): TriggerInfo | undefined {
 }
 
 export function zoneManagementInfo(attributes: Record<string, unknown>, endpoint: number): ZoneManagementInfo {
-    const features = parseFeatures(toNumber(attr(attributes, endpoint, ATTR_FEATURE_MAP)) ?? 0);
+    const featureMap = toNumber(attr(attributes, endpoint, ATTR_FEATURE_MAP));
+    const features = parseFeatures(featureMap ?? 0);
 
     const zones = attributeArray(attr(attributes, endpoint, ATTR_ZONES))
         .map(decodeZone)
@@ -173,6 +170,7 @@ export function zoneManagementInfo(attributes: Record<string, unknown>, endpoint
         .filter((trigger): trigger is TriggerInfo => trigger !== undefined);
 
     return {
+        supported: featureMap !== undefined,
         features,
         maxZones: toNumber(attr(attributes, endpoint, ATTR_MAX_ZONES)),
         maxUserDefinedZones: toNumber(attr(attributes, endpoint, ATTR_MAX_USER_DEFINED_ZONES)),
@@ -190,47 +188,139 @@ export function zoneLabel(zone: ZoneInfo): string {
     return name !== undefined && name.trim() !== "" ? name : `Zone ${zone.zoneId}`;
 }
 
-/** One "x,y" pair per line; a polygon needs at least 3 vertices. Returns null when the text is not submittable. */
-export function parseVertices(text: string): Vertex[] | null {
-    const lines = text
-        .split("\n")
-        .map(line => line.trim())
-        .filter(line => line.length > 0);
-    if (lines.length < 3) return null;
-
-    const vertices: Vertex[] = [];
-    for (const line of lines) {
-        const match = /^(-?\d+)\s*,\s*(-?\d+)$/.exec(line);
-        if (!match) return null;
-        vertices.push({ x: Number(match[1]), y: Number(match[2]) });
-    }
-    return vertices;
+/**
+ * True when the device refuses a further user-defined zone: MaxUserDefinedZones is reached (§2.14.7.1.2). MaxZones is
+ * the manufacturer zones plus MaxUserDefinedZones, so it is checked too.
+ */
+export function zoneCapacityReached(info: ZoneManagementInfo): boolean {
+    const userZoneCount = info.zones.filter(zone => zone.zoneSource === ZoneSource.User).length;
+    return (
+        (info.maxZones !== undefined && info.zones.length >= info.maxZones) ||
+        (info.maxUserDefinedZones !== undefined && userZoneCount >= info.maxUserDefinedZones)
+    );
 }
 
 export function formatVertices(vertices: Vertex[]): string {
     return vertices.map(v => `${v.x},${v.y}`).join("\n");
 }
 
+const ZONE_COLOR_PATTERN = /^#([0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$/;
+
 /**
- * The Color field's CSS sRGB hex form, undefined when blank (field omitted), or null when the text
- * does not match the 6- or 8-digit form the device requires.
+ * The RGB part (#RRGGBB) of the zone color for an opaque swatch, or undefined when the device reported none or a value
+ * that is not hex notation.
  */
-export function parseZoneColor(text: string): string | undefined | null {
-    const trimmed = text.trim();
-    if (trimmed === "") return undefined;
-    return /^#([0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$/.test(trimmed) ? trimmed : null;
+export function zoneSwatchColor(color: string | undefined): string | undefined {
+    if (color === undefined || !ZONE_COLOR_PATTERN.test(color)) return undefined;
+    return color.slice(0, 7);
 }
 
-/** A non-negative integer duration (seconds) field, or null when the text is not submittable. */
-export function parseDurationSeconds(text: string): number | null {
+/** A parsed form: the value to send, or the reason the form cannot be sent. */
+export type FormResult<T> = { value: T; error?: undefined } | { value?: undefined; error: string };
+
+export interface ZoneForm {
+    name: string;
+    use: string;
+    vertices: string;
+    color: string;
+}
+
+export interface TriggerForm {
+    zoneId: string;
+    initialDuration: string;
+    augmentationDuration: string;
+    maxDuration: string;
+    blindDuration: string;
+    sensitivity: string;
+}
+
+const NAME_MAX_BYTES = 32;
+const VERTICES_MIN = 3;
+const VERTICES_MAX = 12;
+const UINT16_MAX = 0xffff;
+const UINT32_MAX = 0xffffffff;
+
+function parseInteger(text: string, min: number, max: number): number | undefined {
     const trimmed = text.trim();
-    if (trimmed === "") return null;
+    if (!/^\d+$/.test(trimmed)) return undefined;
     const value = Number(trimmed);
-    return Number.isInteger(value) && value >= 0 ? value : null;
+    return value >= min && value <= max ? value : undefined;
+}
+
+/**
+ * Checks the zone form against the TwoDCartesianZoneStruct constraints (§2.14.5.7) and TwoDCartesianMax. The device
+ * also rejects a self-intersecting shape and a zone whose vertices and use match another zone; those are left to its
+ * response.
+ */
+export function parseZoneForm(form: ZoneForm, info: ZoneManagementInfo): FormResult<TwoDCartesianZone> {
+    const name = form.name.trim();
+    if (new TextEncoder().encode(name).length > NAME_MAX_BYTES) {
+        return { error: `The name is longer than ${NAME_MAX_BYTES} bytes.` };
+    }
+
+    const use = Number(form.use);
+    if (ZONE_USE_LABELS[use] === undefined || (use === ZoneUse.Focus && !info.features.focusZones)) {
+        return { error: "Select a use the device supports." };
+    }
+
+    const lines = form.vertices
+        .split("\n")
+        .map(line => line.trim())
+        .filter(line => line.length > 0);
+    if (lines.length < VERTICES_MIN || lines.length > VERTICES_MAX) {
+        return { error: `Enter ${VERTICES_MIN} to ${VERTICES_MAX} vertices, one "x,y" pair per line.` };
+    }
+    const maxX = Math.min(info.twoDCartesianMax?.x ?? UINT16_MAX, UINT16_MAX);
+    const maxY = Math.min(info.twoDCartesianMax?.y ?? UINT16_MAX, UINT16_MAX);
+    const vertices = new Array<Vertex>();
+    for (const line of lines) {
+        const [xText, yText, ...rest] = line.split(",");
+        const x = parseInteger(xText ?? "", 0, maxX);
+        const y = parseInteger(yText ?? "", 0, maxY);
+        if (rest.length > 0 || x === undefined || y === undefined) {
+            return { error: `"${line}" is not a vertex from 0,0 to ${maxX},${maxY}.` };
+        }
+        vertices.push({ x, y });
+    }
+
+    const color = form.color.trim();
+    if (color !== "" && !ZONE_COLOR_PATTERN.test(color)) {
+        return { error: "Enter the color as #RRGGBB or #RRGGBBAA." };
+    }
+
+    return { value: { name, use, vertices, color: color === "" ? undefined : color } };
+}
+
+/** Checks the trigger form against the ZoneTriggerControlStruct constraints (§2.14.5.9). */
+export function parseTriggerForm(form: TriggerForm, info: ZoneManagementInfo): FormResult<TriggerInfo> {
+    const zoneId = parseInteger(form.zoneId, 0, UINT16_MAX);
+    if (zoneId === undefined) return { error: "Select a zone." };
+
+    const initialDuration = parseInteger(form.initialDuration, 1, UINT16_MAX);
+    if (initialDuration === undefined) return { error: `Enter an initial duration from 1 to ${UINT16_MAX} s.` };
+    const augmentationDuration = parseInteger(form.augmentationDuration, 0, initialDuration);
+    if (augmentationDuration === undefined) {
+        return { error: `Enter an augmentation duration from 0 to ${initialDuration} s (the initial duration).` };
+    }
+    const maxDuration = parseInteger(form.maxDuration, initialDuration, UINT32_MAX);
+    if (maxDuration === undefined) {
+        return { error: `Enter a max duration of at least ${initialDuration} s (the initial duration).` };
+    }
+    const blindDuration = parseInteger(form.blindDuration, 0, UINT32_MAX);
+    if (blindDuration === undefined) return { error: "Enter a blind duration of 0 s or more." };
+
+    let sensitivity: number | undefined;
+    if (info.features.perZoneSensitivity) {
+        const sensitivityMax = info.sensitivityMax ?? 10;
+        sensitivity = parseInteger(form.sensitivity, 1, sensitivityMax);
+        if (sensitivity === undefined) return { error: `Enter a sensitivity from 1 to ${sensitivityMax}.` };
+    }
+
+    return { value: { zoneId, initialDuration, augmentationDuration, maxDuration, blindDuration, sensitivity } };
 }
 
 export async function createTwoDCartesianZone(
-    client: MatterClient,
+    client: CommandClient,
     nodeId: number | bigint,
     endpoint: number,
     zone: TwoDCartesianZone,
@@ -245,13 +335,13 @@ export async function createTwoDCartesianZone(
         },
     );
     const obj = asObject(response);
-    const zoneId = obj === null ? null : pickNumber(obj, "zoneId");
+    const zoneId = obj === null ? null : pickNumber(obj, "zoneID", "zoneId");
     if (zoneId === null) throw new Error("The device did not return a ZoneID");
     return zoneId;
 }
 
 export async function updateTwoDCartesianZone(
-    client: MatterClient,
+    client: CommandClient,
     nodeId: number | bigint,
     endpoint: number,
     zoneId: number,
@@ -264,7 +354,7 @@ export async function updateTwoDCartesianZone(
 }
 
 export async function removeZone(
-    client: MatterClient,
+    client: CommandClient,
     nodeId: number | bigint,
     endpoint: number,
     zoneId: number,
@@ -273,7 +363,7 @@ export async function removeZone(
 }
 
 export async function createOrUpdateTrigger(
-    client: MatterClient,
+    client: CommandClient,
     nodeId: number | bigint,
     endpoint: number,
     trigger: TriggerInfo,
@@ -292,7 +382,7 @@ export async function createOrUpdateTrigger(
 }
 
 export async function removeTrigger(
-    client: MatterClient,
+    client: CommandClient,
     nodeId: number | bigint,
     endpoint: number,
     zoneId: number,

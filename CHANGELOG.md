@@ -8,6 +8,7 @@ This page shows a detailed overview of the changes between versions without the 
 -->
 ## **WORK IN PROGRESS**
 
+- Enhancement: (@lboue) Dashboard: The Zone Management cluster has its own panel listing zones and triggers, with forms to create, edit and remove user-defined zones and to set and remove triggers on Motion zones. The forms check the input against the Matter limits and the limits the device reports before sending
 - Enhancement: (@lboue) Dashboard: The Occupancy Sensing cluster has its own panel showing whether the area is occupied, the sensor types, and the hold time with its limits
 - Enhancement: (@lboue) Dashboard: The Power Source cluster has its own panel showing status, the wired or battery readings, charge state, replacement description and active faults
 - Enhancement: (@lboue) Dashboard: The Ambient Context Sensing cluster has its own panel showing detection state, detected and supported context types, object counting and predicted activity
