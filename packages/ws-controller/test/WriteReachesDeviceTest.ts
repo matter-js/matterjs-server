@@ -4,11 +4,11 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Endpoint, NetworkClient, NodeId, ServerNode } from "@matter/main";
+import { Duration, Endpoint, Millis, NetworkClient, NodeId, ServerNode } from "@matter/main";
 import { AccessControl } from "@matter/main/clusters/access-control";
 import { BasicInformation } from "@matter/main/clusters/basic-information";
 import { Fabric, FabricManager, SustainedSubscription } from "@matter/main/protocol";
-import { AttributeId, ClusterId, EndpointNumber, Status } from "@matter/main/types";
+import { AttributeId, ClusterId, EndpointNumber, FabricIndex, Status } from "@matter/main/types";
 import { InteractionServer } from "@matter/node";
 import { AccessControlServer } from "@matter/node/behaviors/access-control";
 import { BasicInformationServer } from "@matter/node/behaviors/basic-information";
@@ -16,11 +16,27 @@ import { BindingServer } from "@matter/node/behaviors/binding";
 import { BooleanStateServer } from "@matter/node/behaviors/boolean-state";
 import { OnOffServer } from "@matter/node/behaviors/on-off";
 import { OnOffLightDevice } from "@matter/node/devices/on-off-light";
-import { CameraControllerEndpoint, ControllerCommandHandler } from "../src/controller/ControllerCommandHandler.js";
+import {
+    CameraControllerEndpoint,
+    ControllerCommandHandler,
+    foreignFabricEntryOf,
+} from "../src/controller/ControllerCommandHandler.js";
+import { ServerError, ServerErrorCode } from "../src/types/WebSocketMessageTypes.js";
 import { nodeIdOf } from "../src/util/nodeIdOf.js";
 import { TestSite } from "./support/ControllerSite.js";
 
 const LIGHT_ENDPOINT = EndpointNumber(1);
+
+async function expectInvalidArgumentsOf(promise: Promise<unknown>) {
+    const error = await promise.then(
+        () => undefined,
+        (error: unknown) => error,
+    );
+    expect(error).instanceOf(ServerError);
+    if (error instanceof ServerError) {
+        expect(error.code).equals(ServerErrorCode.InvalidArguments);
+    }
+}
 
 describe("writeAttribute", () => {
     let site: TestSite;
@@ -117,13 +133,13 @@ describe("writeAttribute", () => {
         expect(writeRequests).equals(1);
     });
 
-    it("refuses a value that violates a constraint without sending it", async () => {
+    it("sends a value that violates a constraint and reports the device's refusal", async () => {
         const { nodeLabel } = device.stateOf(BasicInformationServer);
 
         const result = await writeNodeLabel("x".repeat(33));
 
         expect(result.map(({ status }) => status)).deep.equals([Status.ConstraintError]);
-        expect(writeRequests).equals(0);
+        expect(writeRequests).equals(1);
         expect(device.stateOf(BasicInformationServer).nodeLabel).equals(nodeLabel);
     });
 
@@ -235,6 +251,52 @@ describe("writeAttribute", () => {
         ]);
     });
 
+    describe("an ACL entry of another fabric", () => {
+        function writeAcl(fabricIndex: number, options: { wildcard?: boolean; timeout?: Duration } = {}) {
+            const { wildcard = false, timeout } = options;
+            return MockTime.resolve(
+                handler.handleWriteAttribute({
+                    nodeId,
+                    endpointId: wildcard ? undefined : EndpointNumber(0),
+                    clusterId: ClusterId(AccessControl.Cluster.id),
+                    attributeId: AttributeId(AccessControl.Cluster.attributes.acl.id),
+                    value: [{ 1: 5, 2: 2, 3: [fabric.rootNodeId], 4: null, 254: fabricIndex }],
+                    timedInteractionTimeoutMs: timeout,
+                }),
+                { macrotasks: true },
+            );
+        }
+
+        function ourFabricIndex() {
+            return device.env.get(FabricManager).fabrics[0].fabricIndex;
+        }
+
+        it("is refused with ConstraintError without sending anything", async () => {
+            const result = await writeAcl(ourFabricIndex() + 1);
+
+            expect(result.map(({ status }) => status)).deep.equals([Status.ConstraintError]);
+            expect(writeRequests).equals(0);
+        });
+
+        it("is refused on the timed route too", async () => {
+            const result = await writeAcl(ourFabricIndex() + 1, { timeout: Millis(5_000) });
+
+            expect(result.map(({ status }) => status)).deep.equals([Status.ConstraintError]);
+            expect(writeRequests).equals(0);
+        });
+
+        it("is refused on the wildcard route as invalid arguments", async () => {
+            await expectInvalidArgumentsOf(writeAcl(ourFabricIndex() + 1, { wildcard: true }));
+            expect(writeRequests).equals(0);
+        });
+
+        it("is not confused with an entry that names our fabric", async () => {
+            const result = await writeAcl(ourFabricIndex());
+
+            expect(result.map(({ status }) => status)).deep.equals([Status.Success]);
+        });
+    });
+
     it("writes bindings, also when they equal the current ones", async () => {
         const bindingsToWrite = [
             { node: 5, group: null, endpoint: 1, cluster: 6 },
@@ -256,5 +318,33 @@ describe("writeAttribute", () => {
             { node: NodeId(5), group: undefined, endpoint: EndpointNumber(1), cluster: ClusterId(6) },
             { node: undefined, group: 7, endpoint: undefined, cluster: undefined },
         ]);
+    });
+});
+
+describe("foreignFabricEntryOf", () => {
+    const ours = FabricIndex(2);
+
+    it("takes entries without a FabricIndex or with OMIT_FABRIC as ours", () => {
+        expect(
+            foreignFabricEntryOf([{}, { fabricIndex: FabricIndex.OMIT_FABRIC }, { fabricIndex: null }], ours),
+        ).equals(undefined);
+    });
+
+    it("takes an entry with our FabricIndex as ours", () => {
+        expect(foreignFabricEntryOf([{ fabricIndex: 2 }], ours)).equals(undefined);
+    });
+
+    it("names the FabricIndex of an entry of another fabric, also NO_FABRIC", () => {
+        expect(foreignFabricEntryOf([{ fabricIndex: 2 }, { fabricIndex: 3 }], ours)).equals(3);
+        expect(foreignFabricEntryOf([{ fabricIndex: FabricIndex.NO_FABRIC }], ours)).equals(0);
+    });
+
+    it("reads the FabricIndex under its TLV tag when the model left it there", () => {
+        expect(foreignFabricEntryOf([{ 254: 3 }], ours)).equals(3);
+    });
+
+    it("takes no FabricIndex as ours while our fabric index on the node is unknown", () => {
+        expect(foreignFabricEntryOf([{ fabricIndex: 2 }], undefined)).equals(2);
+        expect(foreignFabricEntryOf([{}], undefined)).equals(undefined);
     });
 });

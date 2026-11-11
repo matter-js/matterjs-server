@@ -14,12 +14,13 @@ This page shows a detailed overview of the changes between versions without the 
 - Enhancement: (@lboue) Dashboard: The Ambient Context Sensing cluster has its own panel showing detection state, detected and supported context types, object counting and predicted activity
 - Enhancement: Dashboard: The "Share device" dialog has a button to copy the setup code, also when the dashboard is opened over plain HTTP
 - Enhancement: Dashboard: Pressing Enter in the share/pairing code, Thread dataset, node label, fabric label and ACL node id fields submits them, the same as clicking the button next to them
-- Enhancement: Update matter.js to nightly 0.18.1-alpha.0-20261111-b89790712
+- Enhancement: Update matter.js to nightly 0.18.1-alpha.0-20261111-b84c5d1bc
 - Enhancement: With the test-net DCL option enabled, a device whose Certification Declaration fails a check (vendor or product id, DAC origin, authorized PAA list) is commissioned and a notice is logged. Without the option, the refusal names the failed checks and points to the option when it would accept the device
 - Enhancement: The Docker image is about 250 MB smaller. Installing `matter-server` from npm no longer installs the packages the dashboard only needs to build its web bundle
 - Fix: Event timestamps use the device time that matter.js resolves from each report, in node events and in read results, also for events the server could not resolve before
 - Fix: A device that fails an attestation check the test-net DCL option does not cover is refused with the names of the failed checks, instead of only the hint to enable that option, which would not have helped
-- Fix: Setting ACL entries or bindings no longer fails when the server has not yet read its fabric index on the node
+- Adjustment: `write_attribute` sends a value outside the attribute's constraints (range, length, allowed values, list size) to the device, which decides, and reports the device's status. Before, the server refused such a value before sending it
+- Fix: `write_attribute` refuses an entry of another fabric in a fabric-scoped list such as the ACL or Binding with CONSTRAINT_ERROR, before anything is sent. Before, the node stored such an entry as an entry of the server's fabric
 - Fix: The server pings the clients of its WebSocket API every 30 seconds, so proxies and remote access relays no longer close idle connections; a client that stops answering is disconnected
 - Fix: The dashboard reconnects once on its own when the connection drops, and shows the "Connection lost" page only when that attempt fails
 - Fix: Dashboard: The Device Energy Management, Commodity Tariff and Meter Identification panels no longer show for a cluster whose attributes the device removed

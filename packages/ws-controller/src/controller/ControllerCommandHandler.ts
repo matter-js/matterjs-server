@@ -346,6 +346,35 @@ export function attestationRefusalOf(findings: AttestationFinding[], testNetDclE
 }
 
 /**
+ * The FabricIndex of the first entry of a fabric-scoped list {@link value} that is not ours, or `undefined` when every
+ * entry is ours. An entry without a FabricIndex, or with `FabricIndex.OMIT_FABRIC`, is ours; with our fabric index on
+ * the node unknown, any other FabricIndex is not. The WebSocket API writes only entries of our fabric.
+ *
+ * @see Matter Core specification § 7.13.6 "FabricIndex Field"
+ */
+export function foreignFabricEntryOf(value: unknown, fabricIndexOnPeer: FabricIndex | undefined): number | undefined {
+    if (!Array.isArray(value)) {
+        return undefined;
+    }
+    for (const entry of value) {
+        if (!isObject(entry)) {
+            continue;
+        }
+        const fabricIndex = entry.fabricIndex ?? entry[FABRIC_INDEX_TAG];
+        if (fabricIndex === undefined || fabricIndex === null || fabricIndex === FabricIndex.OMIT_FABRIC) {
+            continue;
+        }
+        if (fabricIndexOnPeer === undefined || Number(fabricIndex) !== fabricIndexOnPeer) {
+            return Number(fabricIndex);
+        }
+    }
+    return undefined;
+}
+
+/** TLV tag of the global FabricIndex field, under which a struct the model does not describe keeps it. */
+const FABRIC_INDEX_TAG = "254";
+
+/**
  * The `NodeCommissionFailed` error for a failed commissioning, with a `reason` a client can act on. With
  * `attestationRejected` the reason is `attestation-rejected`, whatever error the aborted commissioning raised.
  */
@@ -1688,6 +1717,18 @@ export class ControllerCommandHandler {
             `Writing attribute ${clusterId}.${attributeName} (${endpointId ?? "*"}/${clusterId}/${attributeId}) with value`,
             value,
         );
+
+        if (attributeModel.fabricScopedList) {
+            const foreign = foreignFabricEntryOf(value, this.#nodes.get(nodeId).fabricIndexOnPeer);
+            if (foreign !== undefined) {
+                const message = `Refusing to write ${attributeName}: an entry of fabric ${foreign} is not ours`;
+                logger.notice(message);
+                if (endpointId === undefined) {
+                    throw ServerError.invalidArguments(message);
+                }
+                return [{ attributeId, clusterId, endpointId, status: Status.ConstraintError }];
+            }
+        }
 
         if (endpointId !== undefined && timedInteractionTimeoutMs === undefined) {
             const { status, clusterStatus } = await this.#writeAttribute(
