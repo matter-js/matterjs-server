@@ -8,6 +8,7 @@ This page shows a detailed overview of the changes between versions without the 
 -->
 ## **WORK IN PROGRESS**
 
+- Enhancement: (@lboue) Dashboard: The Ambient Context Sensing cluster has its own panel showing detection state, detected and supported context types, object counting and predicted activity
 - Enhancement: Dashboard: The "Share device" dialog has a button to copy the setup code, also when the dashboard is opened over plain HTTP
 - Enhancement: Dashboard: Pressing Enter in the share/pairing code, Thread dataset, node label, fabric label and ACL node id fields submits them, the same as clicking the button next to them
 - Enhancement: The Docker image is about 250 MB smaller. Installing `matter-server` from npm no longer installs the packages the dashboard only needs to build its web bundle
