@@ -8,16 +8,22 @@ This page shows a detailed overview of the changes between versions without the 
 -->
 ## **WORK IN PROGRESS**
 
+- Enhancement: (@lboue) Dashboard: The Zone Management cluster has its own panel listing zones and triggers, with forms to create, edit and remove user-defined zones and to set and remove triggers on Motion zones.
+- Enhancement: (@lboue) Dashboard: The Camera AV Stream Management cluster has its own panel to mute the microphone and speaker and to change HDR, night vision, the status light and the soft privacy modes. It also shows the hard privacy switch and the number of allocated streams, and lists only what the camera supports
+- Enhancement: (@lboue) Dashboard: The Occupancy Sensing cluster has its own panel showing whether the area is occupied, the sensor types, and the hold time with its limits
+- Enhancement: (@lboue) Dashboard: The Power Source cluster has its own panel showing status, the wired or battery readings, charge state, replacement description and active faults
 - Enhancement: (@lboue) Dashboard: The Ambient Context Sensing cluster has its own panel showing detection state, detected and supported context types, object counting and predicted activity
 - Enhancement: Dashboard: The "Share device" dialog has a button to copy the setup code, also when the dashboard is opened over plain HTTP
 - Enhancement: Dashboard: Pressing Enter in the share/pairing code, Thread dataset, node label, fabric label and ACL node id fields submits them, the same as clicking the button next to them
 - Enhancement: The Docker image is about 250 MB smaller. Installing `matter-server` from npm no longer installs the packages the dashboard only needs to build its web bundle
 - Fix: The server pings the clients of its WebSocket API every 30 seconds, so proxies and remote access relays no longer close idle connections; a client that stops answering is disconnected
 - Fix: The dashboard reconnects once on its own when the connection drops, and shows the "Connection lost" page only when that attempt fails
+- Fix: Dashboard: The Device Energy Management, Commodity Tariff and Meter Identification panels no longer show for a cluster whose attributes the device removed
 - Fix: Dashboard: The "Copy URL with dev enabled" button in the Settings dialog works when the dashboard is opened over plain HTTP, and shows whether the copy worked
 - Fix: ws-client: `connect()` and `startListening()` fail when the server closes the connection before it is ready, instead of never returning
 - Fix: Setting the fabric label to the value it already has, as Home Assistant does on every restart, no longer sends the label to every node again
 - Fix: Yeelight: an `updateTopology` request with a module type above 3 is refused before it is sent, so the lamp no longer fails every later read of `cubeTopology`
+- Fix: Dashboard: the Thread and WiFi network graphs no longer keep rotating after they settle or after a node is clicked
 
 ## 1.5.5 (2026-10-24)
 
