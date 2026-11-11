@@ -248,11 +248,17 @@ function parseInteger(text: string, min: number, max: number): number | undefine
 }
 
 /**
- * Checks the zone form against the TwoDCartesianZoneStruct constraints (§2.14.5.7) and TwoDCartesianMax. The device
- * also rejects a self-intersecting shape and a zone whose vertices and use match another zone; those are left to its
- * response.
+ * Checks the zone form against the TwoDCartesianZoneStruct constraints (§2.14.5.7) and TwoDCartesianMax, and a new
+ * zone against the current zone capacity. The device also rejects a self-intersecting shape and a zone whose vertices
+ * and use match another zone; those are left to its response.
  */
-export function parseZoneForm(form: ZoneForm, info: ZoneManagementInfo): FormResult<TwoDCartesianZone> {
+export function parseZoneForm(
+    form: ZoneForm,
+    info: ZoneManagementInfo,
+    creating: boolean,
+): FormResult<TwoDCartesianZone> {
+    if (creating && zoneCapacityReached(info)) return { error: "The device has no free slot for another zone." };
+
     const name = form.name.trim();
     if (new TextEncoder().encode(name).length > NAME_MAX_BYTES) {
         return { error: `The name is longer than ${NAME_MAX_BYTES} bytes.` };
@@ -291,10 +297,18 @@ export function parseZoneForm(form: ZoneForm, info: ZoneManagementInfo): FormRes
     return { value: { name, use, vertices, color: color === "" ? undefined : color } };
 }
 
-/** Checks the trigger form against the ZoneTriggerControlStruct constraints (§2.14.5.9). */
+/**
+ * Checks the trigger form against the ZoneTriggerControlStruct constraints (§2.14.5.9) and that its zone still exists
+ * with use Motion.
+ */
 export function parseTriggerForm(form: TriggerForm, info: ZoneManagementInfo): FormResult<TriggerInfo> {
     const zoneId = parseInteger(form.zoneId, 0, UINT16_MAX);
     if (zoneId === undefined) return { error: "Select a zone." };
+    const zone = info.zones.find(entry => entry.zoneId === zoneId);
+    if (zone === undefined) return { error: `Zone ${zoneId} no longer exists. Select another zone.` };
+    if (zone.twoDCartesianZone !== undefined && zone.twoDCartesianZone.use !== ZoneUse.Motion) {
+        return { error: "Triggers can only be set on Motion zones." };
+    }
 
     const initialDuration = parseInteger(form.initialDuration, 1, UINT16_MAX);
     if (initialDuration === undefined) return { error: `Enter an initial duration from 1 to ${UINT16_MAX} s.` };

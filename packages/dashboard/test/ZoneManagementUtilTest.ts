@@ -185,7 +185,7 @@ describe("parseZoneForm", () => {
     const valid: ZoneForm = { name: " Porch ", use: "0", vertices: "0,0\n 100 , 0 \n\n100,50", color: "" };
 
     it("returns the zone to send", () => {
-        expect(parseZoneForm(valid, info())).to.deep.equal({
+        expect(parseZoneForm(valid, info(), false)).to.deep.equal({
             value: {
                 name: "Porch",
                 use: 0,
@@ -197,38 +197,39 @@ describe("parseZoneForm", () => {
                 color: undefined,
             },
         });
-        expect(parseZoneForm({ ...valid, color: "#00FFFF80" }, info()).value?.color).to.equal("#00FFFF80");
+        expect(parseZoneForm({ ...valid, color: "#00FFFF80" }, info(), false).value?.color).to.equal("#00FFFF80");
     });
 
     it("accepts an empty name and rejects one longer than 32 bytes", () => {
-        expect(parseZoneForm({ ...valid, name: "  " }, info()).value?.name).to.equal("");
-        expect(parseZoneForm({ ...valid, name: "x".repeat(32) }, info()).error).to.equal(undefined);
-        expect(parseZoneForm({ ...valid, name: "x".repeat(33) }, info()).error).to.equal(
+        expect(parseZoneForm({ ...valid, name: "  " }, info(), false).value?.name).to.equal("");
+        expect(parseZoneForm({ ...valid, name: "x".repeat(32) }, info(), false).error).to.equal(undefined);
+        expect(parseZoneForm({ ...valid, name: "x".repeat(33) }, info(), false).error).to.equal(
             "The name is longer than 32 bytes.",
         );
-        expect(parseZoneForm({ ...valid, name: "ä".repeat(17) }, info()).error).to.equal(
+        expect(parseZoneForm({ ...valid, name: "ä".repeat(17) }, info(), false).error).to.equal(
             "The name is longer than 32 bytes.",
         );
     });
 
     it("rejects Focus without the FocusZones feature and unknown uses", () => {
         const error = "Select a use the device supports.";
-        expect(parseZoneForm({ ...valid, use: "2" }, info()).error).to.equal(error);
-        expect(parseZoneForm({ ...valid, use: "3" }, info()).error).to.equal(error);
+        expect(parseZoneForm({ ...valid, use: "2" }, info(), false).error).to.equal(error);
+        expect(parseZoneForm({ ...valid, use: "3" }, info(), false).error).to.equal(error);
         const focusInfo = { ...info(), features: { ...info().features, focusZones: true } };
-        expect(parseZoneForm({ ...valid, use: "2" }, focusInfo).value?.use).to.equal(2);
+        expect(parseZoneForm({ ...valid, use: "2" }, focusInfo, false).value?.use).to.equal(2);
     });
 
     it("needs 3 to 12 vertices", () => {
         const error = 'Enter 3 to 12 vertices, one "x,y" pair per line.';
         const lines = (count: number) => Array.from({ length: count }, (_, i) => `${i},0`).join("\n");
-        expect(parseZoneForm({ ...valid, vertices: lines(2) }, info()).error).to.equal(error);
-        expect(parseZoneForm({ ...valid, vertices: lines(12) }, info()).error).to.equal(undefined);
-        expect(parseZoneForm({ ...valid, vertices: lines(13) }, info()).error).to.equal(error);
+        expect(parseZoneForm({ ...valid, vertices: lines(2) }, info(), false).error).to.equal(error);
+        expect(parseZoneForm({ ...valid, vertices: lines(12) }, info(), false).error).to.equal(undefined);
+        expect(parseZoneForm({ ...valid, vertices: lines(13) }, info(), false).error).to.equal(error);
     });
 
     it("rejects vertices outside 0..TwoDCartesianMax and malformed pairs", () => {
-        const withLast = (last: string) => parseZoneForm({ ...valid, vertices: `0,0\n10,0\n${last}` }, info()).error;
+        const withLast = (last: string) =>
+            parseZoneForm({ ...valid, vertices: `0,0\n10,0\n${last}` }, info(), false).error;
         expect(withLast("1920,1080")).to.equal(undefined);
         expect(withLast("1921,0")).to.equal('"1921,0" is not a vertex from 0,0 to 1920,1080.');
         expect(withLast("0,1081")).to.equal('"0,1081" is not a vertex from 0,0 to 1920,1080.');
@@ -239,15 +240,23 @@ describe("parseZoneForm", () => {
 
     it("uses the uint16 range when TwoDCartesianMax is not reported", () => {
         const noMax = { ...info(), twoDCartesianMax: undefined };
-        const withLast = (last: string) => parseZoneForm({ ...valid, vertices: `0,0\n10,0\n${last}` }, noMax).error;
+        const withLast = (last: string) =>
+            parseZoneForm({ ...valid, vertices: `0,0\n10,0\n${last}` }, noMax, false).error;
         expect(withLast("65535,65535")).to.equal(undefined);
         expect(withLast("65536,0")).to.equal('"65536,0" is not a vertex from 0,0 to 65535,65535.');
     });
 
+    it("rejects a new zone when the zone capacity is reached, but still allows an update", () => {
+        const full = { ...info(), maxUserDefinedZones: 1 };
+        expect(parseZoneForm(valid, full, true).error).to.equal("The device has no free slot for another zone.");
+        expect(parseZoneForm(valid, full, false).error).to.equal(undefined);
+        expect(parseZoneForm(valid, info(), true).error).to.equal(undefined);
+    });
+
     it("rejects a color that is not #RRGGBB or #RRGGBBAA", () => {
         const error = "Enter the color as #RRGGBB or #RRGGBBAA.";
-        expect(parseZoneForm({ ...valid, color: "#00FF" }, info()).error).to.equal(error);
-        expect(parseZoneForm({ ...valid, color: "green" }, info()).error).to.equal(error);
+        expect(parseZoneForm({ ...valid, color: "#00FF" }, info(), false).error).to.equal(error);
+        expect(parseZoneForm({ ...valid, color: "green" }, info(), false).error).to.equal(error);
     });
 });
 
@@ -274,8 +283,16 @@ describe("parseTriggerForm", () => {
         });
     });
 
-    it("needs a zone", () => {
+    it("needs an existing Motion zone", () => {
         expect(parseTriggerForm({ ...valid, zoneId: "" }, info()).error).to.equal("Select a zone.");
+        expect(parseTriggerForm({ ...valid, zoneId: "9" }, info()).error).to.equal(
+            "Zone 9 no longer exists. Select another zone.",
+        );
+        expect(parseTriggerForm({ ...valid, zoneId: "2" }, info()).error).to.equal(
+            "Triggers can only be set on Motion zones.",
+        );
+        const noShape = { ...info(), zones: [{ zoneId: 5, zoneType: 0, zoneSource: 0 }] };
+        expect(parseTriggerForm({ ...valid, zoneId: "5" }, noShape).error).to.equal(undefined);
     });
 
     it("keeps the durations within the struct constraints", () => {

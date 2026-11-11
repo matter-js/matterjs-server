@@ -148,8 +148,9 @@ export class ZoneManagementClusterCommands extends BaseClusterCommands {
 
     private async _submitZoneForm(info: ZoneManagementInfo) {
         const target = this._zoneTarget;
-        const zone = parseZoneForm(this._zoneForm, info).value;
-        if (target === undefined || zone === undefined) return;
+        if (target === undefined) return;
+        const zone = parseZoneForm(this._zoneForm, info, target.create).value;
+        if (zone === undefined) return;
         await this._run(target.create ? "Create zone failed" : "Update zone failed", async (node, endpoint) => {
             if (target.create) {
                 await createTwoDCartesianZone(this.client, node.node_id, endpoint, zone);
@@ -385,7 +386,7 @@ export class ZoneManagementClusterCommands extends BaseClusterCommands {
     }
 
     private _renderZoneForm(info: ZoneManagementInfo, online: boolean, target: ZoneEditTarget): TemplateResult {
-        const { error } = parseZoneForm(this._zoneForm, info);
+        const { error } = parseZoneForm(this._zoneForm, info, target.create);
 
         return html`
             <div class="zone-form">
