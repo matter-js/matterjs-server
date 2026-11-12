@@ -376,8 +376,8 @@ export class MatterController {
         // Test PAA roots/CD signers are always loaded (fetchTestCertificates, unless turned off by ENV
         // variables). Trust is gated separately via acceptTestCertificates: a test device is only
         // commissioned when enableTestNetDcl is set; otherwise the attestation validator reports
-        // TrustedAsTestCertificate and onAttestationFailure rejects with an actionable hint instead of
-        // an opaque PaaNotTrusted.
+        // TrustedAsTestCertificate and onAttestationFailure rejects with an actionable hint (when no other check
+        // fails) instead of an opaque PaaNotTrusted.
         const trustTestCertificates = this.#enableTestNetDcl;
         if (this.#disableDclSeed) {
             new DclCertificateService(this.#env.root, {
@@ -437,6 +437,7 @@ export class MatterController {
                 threadDiagnosticsEnabled: !this.#threadDiagnosticsDisabled,
                 customClusterPollInterval: this.#customClusterPollInterval,
                 disableAutoSubscription: this.#disableAutoSubscription,
+                testNetDclEnabled: this.#enableTestNetDcl,
             });
 
             this.#commandHandler.events.started.once(async () => {

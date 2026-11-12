@@ -5,6 +5,7 @@
  */
 
 import { AttributeId, ClusterId, Endpoint, FabricIndex, GroupId, NodeId, ServerNode } from "@matter/main";
+import { Binding } from "@matter/main/clusters/binding";
 import { EnergyEvse } from "@matter/main/clusters/energy-evse";
 import { GroupKeyManagement } from "@matter/main/clusters/group-key-management";
 import { OnOff } from "@matter/main/clusters/on-off";
@@ -128,6 +129,37 @@ describe("groupcast", () => {
             expect((error as ServerError).code).to.equal(ServerErrorCode.InvalidArguments);
             expect((error as ServerError).message).to.contain("66");
             expect(capture.addresses.length).to.equal(0);
+        });
+
+        it("refuses a Binding entry that names a fabric, before anything is sent", async () => {
+            const { handler, capture } = stubHandler(freshCapture());
+
+            const error = await rejection(
+                handler.handleGroupWriteAttribute({
+                    nodeId: GROUP_NODE_ID,
+                    clusterId: ClusterId(Binding.Cluster.id),
+                    attributeId: AttributeId(Binding.Cluster.attributes.binding.id),
+                    value: [{ 1: 5, 2: 6, 254: 3 }],
+                }),
+            );
+            expect(error).to.be.instanceOf(ServerError);
+            if (error instanceof ServerError) {
+                expect(error.code).to.equal(ServerErrorCode.InvalidArguments);
+            }
+            expect(capture.addresses.length).to.equal(0);
+        });
+
+        it("accepts a Binding entry with FabricIndex 0", async () => {
+            const { handler, capture } = stubHandler(freshCapture());
+
+            await handler.handleGroupWriteAttribute({
+                nodeId: GROUP_NODE_ID,
+                clusterId: ClusterId(Binding.Cluster.id),
+                attributeId: AttributeId(Binding.Cluster.attributes.binding.id),
+                value: [{ 1: 5, 2: 6, 254: 0 }],
+            });
+
+            expect(capture.writes.length).to.equal(1);
         });
     });
 

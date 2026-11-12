@@ -8,6 +8,17 @@ This page shows a detailed overview of the changes between versions without the 
 -->
 ## **WORK IN PROGRESS**
 
+- Enhancement: Update matter.js to the latest 0.18.1 nightly
+    - After a failed commissioning attempt, the device can be added again right away instead of only after a waiting time
+    - Adding a device over Bluetooth fails faster when the Bluetooth connection drops, and then tries the device's other connection paths instead of giving up
+    - Adding a device is refused when its Matter certification was not signed by the CSA (the Matter standards body) or when it answers with invalid security data
+    - A device that changed its IP address is found again sooner
+    - The server notices when the network addresses of the computer it runs on change, so devices keep finding it
+    - Device updates stay reliable in more cases: a broken subscription is set up again sooner, battery-powered devices are kept up to date with the correct timing, and lost message confirmations no longer make a device drop its connection
+    - The server no longer needs minutes at startup or shutdown after it ran for a long time, and no longer loses recent changes after a crash
+    - Devices that describe their own structure incompletely show all their parts again
+    - Logs no longer show Thread and Wi-Fi network credentials, setup passcodes or keys
+    - mDNS statistics are logged as debug loglevel or info if MATTER_MDNS_STATISTICS=1 is set
 - Enhancement: (@lboue) Dashboard: The Commodity Price cluster has its own panel showing the current price per unit, the price level and the price forecast
 - Enhancement: (@lboue) Dashboard: The Zone Management cluster has its own panel listing zones and triggers, with forms to create, edit and remove user-defined zones and to set and remove triggers on Motion zones.
 - Enhancement: (@lboue) Dashboard: The Camera AV Stream Management cluster has its own panel to mute the microphone and speaker and to change HDR, night vision, the status light and the soft privacy modes. It also shows the hard privacy switch and the number of allocated streams, and lists only what the camera supports
@@ -16,7 +27,12 @@ This page shows a detailed overview of the changes between versions without the 
 - Enhancement: (@lboue) Dashboard: The Ambient Context Sensing cluster has its own panel showing detection state, detected and supported context types, object counting and predicted activity
 - Enhancement: Dashboard: The "Share device" dialog has a button to copy the setup code, also when the dashboard is opened over plain HTTP
 - Enhancement: Dashboard: Pressing Enter in the share/pairing code, Thread dataset, node label, fabric label and ACL node id fields submits them, the same as clicking the button next to them
+- Enhancement: With the test-net DCL option enabled, a device that does not report the vendor or product id its Certification Declaration is checked against is commissioned and a notice is logged. Without the option, the refusal names the failed checks and points to the option when it would accept the device
 - Enhancement: The Docker image is about 250 MB smaller. Installing `matter-server` from npm no longer installs the packages the dashboard only needs to build its web bundle
+- Fix: Event timestamps use the device time that matter.js resolves from each report, in node events and in read results, also for events the server could not resolve before
+- Fix: A device that fails an attestation check the test-net DCL option does not cover is refused with the names of the failed checks, instead of only the hint to enable that option, which would not have helped
+- Adjustment: `write_attribute` to a specific endpoint without `timed_request_timeout_ms` sends a value outside the attribute's constraints (range, length, allowed values, list size) to the device, which decides, and reports the device's status, as timed and wildcard writes already did. Before, the server refused such a value before sending it
+- Fix: `write_attribute` refuses an entry of another fabric in a fabric-scoped list such as the ACL or Binding before anything is sent, with CONSTRAINT_ERROR, or `InvalidArguments` for a wildcard endpoint or a group. Before, a timed, wildcard or group write stored such an entry on the node as an entry of the server's fabric. A FabricIndex of 0 or null, the default of the CHIP Python cluster classes, counts as the server's fabric
 - Fix: The server pings the clients of its WebSocket API every 30 seconds, so proxies and remote access relays no longer close idle connections; a client that stops answering is disconnected
 - Fix: The dashboard reconnects once on its own when the connection drops, and shows the "Connection lost" page only when that attempt fails
 - Fix: Dashboard: The Device Energy Management, Commodity Tariff and Meter Identification panels no longer show for a cluster whose attributes the device removed

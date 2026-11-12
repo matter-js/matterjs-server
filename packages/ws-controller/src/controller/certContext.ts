@@ -288,9 +288,10 @@ export async function loadCertContext(
 
 /**
  * Install the context into the runtime groups of the controller fabric, the ones the group send path reads. Nothing is
- * persisted and the GroupKeyManagement cluster state stays untouched, so its device limits do not apply; matter.js only
- * writes these runtime groups from that state, and it is empty on a controller. A fabric that matter.js replaces, as at
- * a NOC rotation, keeps these groups.
+ * persisted and the GroupKeyManagement cluster state stays untouched, so its device limits do not apply. matter.js
+ * rebuilds the group-to-key-set map from that state when the controller's own GroupKeyMap attribute or its Groupcast
+ * memberships change, which drops the installed mapping, so nothing in the server may change them. A fabric that
+ * matter.js replaces, as at a NOC rotation, keeps these groups.
  */
 export async function applyCertContext(node: ServerNode, fabricIndex: FabricIndex, context: CertContext) {
     try {
