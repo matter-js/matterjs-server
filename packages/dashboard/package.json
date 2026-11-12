@@ -37,7 +37,7 @@
         "@material/web": "^2.5.0",
         "@matter-server/custom-clusters": "*",
         "@matter-server/ws-client": "*",
-        "@matter/main": "0.18.1-alpha.0-20261111-b84c5d1bc",
+        "@matter/main": "0.18.1-alpha.0-20261111-d9552e184",
         "@mdi/js": "^7.4.47",
         "@rollup/plugin-babel": "^7.1.0",
         "@rollup/plugin-commonjs": "^29.0.3",
