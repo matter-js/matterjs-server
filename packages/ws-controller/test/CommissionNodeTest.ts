@@ -552,7 +552,23 @@ describe("attestationRefusalOf", () => {
     const cdMismatch: AttestationFinding = {
         level: "error",
         type: DeviceAttestationCheck.CertificationDeclarationFieldMismatch,
-        message: "CD vendor_id 0xFFF1 does not match BasicInformation VendorID (not reported)",
+        message: "CD vendor_id 0xFFF1 does not match BasicInformation VendorID (not reported by the device)",
+    };
+    const cdProductNotReported: AttestationFinding = {
+        level: "error",
+        type: DeviceAttestationCheck.CertificationDeclarationFieldMismatch,
+        message:
+            "CD product_id_array [0x8000] does not contain BasicInformation ProductID (not reported by the device)",
+    };
+    const cdVendorDiffers: AttestationFinding = {
+        level: "error",
+        type: DeviceAttestationCheck.CertificationDeclarationFieldMismatch,
+        message: "CD vendor_id 0xFFF1 does not match BasicInformation VendorID 0xFFF2",
+    };
+    const cdDacMismatch: AttestationFinding = {
+        level: "error",
+        type: DeviceAttestationCheck.CertificationDeclarationFieldMismatch,
+        message: "DAC vendorId 0xFFF2 does not match CD vendor_id 0xFFF1",
     };
     const revokedText = "CertificateRevoked: Device Attestation Certificate has been revoked";
     const cdMismatchText = `CertificationDeclarationFieldMismatch: ${cdMismatch.message}`;
@@ -586,6 +602,18 @@ describe("attestationRefusalOf", () => {
             );
         });
 
+        it("names a CD mismatch of an unreported product id and points to test-net DCL", () => {
+            expect(attestationRefusalOf([cdProductNotReported], false)).equals(
+                `Device attestation refused: CertificationDeclarationFieldMismatch: ${cdProductNotReported.message}. To commission it, enable the test-net DCL option of the Matter Server — only do this if you trust the vendor.`,
+            );
+        });
+
+        it("names a CD mismatch of a reported vendor id without the hint", () => {
+            expect(attestationRefusalOf([cdVendorDiffers], false)).equals(
+                `Device attestation refused: CertificationDeclarationFieldMismatch: ${cdVendorDiffers.message}`,
+            );
+        });
+
         it("names every error finding without the hint when test-net DCL would not help", () => {
             expect(attestationRefusalOf([revoked, testCertificate, cdMismatch], false)).equals(
                 `Device attestation refused: ${revokedText}; TrustedAsTestCertificate: test PAA; ${cdMismatchText}`,
@@ -594,8 +622,20 @@ describe("attestationRefusalOf", () => {
     });
 
     describe("with test-net DCL enabled", () => {
-        it("accepts a CD mismatch", () => {
-            expect(attestationRefusalOf([cdMismatch], true)).equals(undefined);
+        it("accepts a CD mismatch of a vendor or product id the device did not report", () => {
+            expect(attestationRefusalOf([cdMismatch, cdProductNotReported], true)).equals(undefined);
+        });
+
+        it("refuses a CD mismatch of a reported vendor id", () => {
+            expect(attestationRefusalOf([cdVendorDiffers], true)).equals(
+                `Device attestation refused: CertificationDeclarationFieldMismatch: ${cdVendorDiffers.message}`,
+            );
+        });
+
+        it("refuses a CD mismatch against the DAC", () => {
+            expect(attestationRefusalOf([cdDacMismatch], true)).equals(
+                `Device attestation refused: CertificationDeclarationFieldMismatch: ${cdDacMismatch.message}`,
+            );
         });
 
         it("names only the findings test-net DCL does not accept, without the hint", () => {

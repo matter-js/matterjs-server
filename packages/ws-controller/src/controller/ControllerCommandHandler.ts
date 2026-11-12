@@ -302,25 +302,35 @@ class UnreachedAddressError extends Error {
 const UNSCOPED_INVOKES = {};
 
 /**
- * Error-level attestation findings that commissioning accepts only while test-net DCL is enabled, like test
- * certificates. A Certification Declaration mismatch covers every CD check: against the BasicInformation
- * VendorID/ProductID, which some devices fail to report during commissioning, against the DAC and PAI vendor and
- * product ids and the `dac_origin_*` fields, and against the CD's `authorized_paa_list`. matter.js stops validation at
- * all but the BasicInformation check, so the checks after it do not run.
- *
- * @see Matter Core specification § 6.2.3.1 "Attestation Information Validation"
+ * The message matter.js gives a Certification Declaration mismatch when the device did not report its
+ * BasicInformation VendorID or ProductID during commissioning. matter.js uses the same check type for every CD
+ * check, including the DAC, PAI, `dac_origin_*` and `authorized_paa_list` checks, so only the message tells this
+ * case apart.
  */
-const TEST_NET_ACCEPTED_ERRORS: ReadonlySet<DeviceAttestationCheck> = new Set([
-    DeviceAttestationCheck.TrustedAsTestCertificate,
-    DeviceAttestationCheck.CertificationDeclarationFieldMismatch,
-]);
+const BASIC_INFORMATION_NOT_REPORTED = /BasicInformation (VendorID|ProductID) \(not reported by the device\)$/;
 
 const TEST_NET_HINT =
     "To commission it, enable the test-net DCL option of the Matter Server — only do this if you trust the vendor.";
 
-/** Whether `finding` is an error-level finding that commissioning accepts with test-net DCL enabled. */
-export function isTestNetAcceptedError({ level, type }: AttestationFinding): boolean {
-    return level === "error" && TEST_NET_ACCEPTED_ERRORS.has(type);
+/**
+ * Whether `finding` is an error-level finding that commissioning accepts with test-net DCL enabled: a test
+ * certificate, or a Certification Declaration that cannot be checked against the BasicInformation VendorID or
+ * ProductID because the device did not report it.
+ *
+ * @see Matter Core specification § 6.2.3.1 "Attestation Information Validation"
+ */
+export function isTestNetAcceptedError({ level, type, message }: AttestationFinding): boolean {
+    if (level !== "error") {
+        return false;
+    }
+    switch (type) {
+        case DeviceAttestationCheck.TrustedAsTestCertificate:
+            return true;
+        case DeviceAttestationCheck.CertificationDeclarationFieldMismatch:
+            return BASIC_INFORMATION_NOT_REPORTED.test(message);
+        default:
+            return false;
+    }
 }
 
 /**
