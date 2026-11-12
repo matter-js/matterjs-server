@@ -6,7 +6,7 @@
 
 import { FabricIndex, Millis, Minutes, NodeId } from "@matter/main";
 import { PeerAddress } from "@matter/main/protocol";
-import { CustomClusterPoller } from "../src/controller/CustomClusterPoller.js";
+import { checkPolledAttributes, CustomClusterPoller } from "../src/controller/CustomClusterPoller.js";
 import { NodeAttributeReader } from "../src/controller/NodeProcessor.js";
 import { AttributesData } from "../src/types/CommandHandler.js";
 
@@ -57,6 +57,38 @@ class StubReader implements NodeAttributeReader {
         this.#resolvers.splice(0).forEach(resolve => resolve({}));
     }
 }
+
+describe("Eve Thermo schedule polling selection", () => {
+    const configPath = `1/${EVE_CLUSTER_ID}/${0x130a0000}`;
+
+    it("polls the configuration of the verified Eve Thermo", () => {
+        const attributes: AttributesData = {
+            "0/40/2": EVE_VENDOR_ID,
+            "0/40/4": 79,
+            [configPath]: "base64-config",
+        };
+        expect([...checkPolledAttributes(attributes)]).to.deep.equal([configPath]);
+    });
+
+    it("keeps polling the schedule if a standard power cluster exists", () => {
+        const attributes: AttributesData = {
+            "0/40/2": EVE_VENDOR_ID,
+            "0/40/4": 79,
+            "1/144/65532": 0,
+            [configPath]: "base64-config",
+        };
+        expect([...checkPolledAttributes(attributes)]).to.deep.equal([configPath]);
+    });
+
+    it("does not poll other Eve devices' configurations", () => {
+        const attributes: AttributesData = {
+            "0/40/2": EVE_VENDOR_ID,
+            "0/40/4": 80,
+            [configPath]: "base64-config",
+        };
+        expect([...checkPolledAttributes(attributes)]).to.deep.equal([]);
+    });
+});
 
 describe("CustomClusterPoller", () => {
     let reader: StubReader;
