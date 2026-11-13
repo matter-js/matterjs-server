@@ -105,6 +105,16 @@ WebRtcProviderCommandName = Literal[
 # Relayed from schema 14; the offer commands need only schema 12.
 SIGNALLING_PROVIDER_COMMANDS: Final = frozenset({"ProvideAnswer", "ProvideIceCandidates"})
 
+
+class _UnsetType:
+    """Sentinel distinguishing an omitted optional argument from an explicit `None`."""
+
+    def __repr__(self) -> str:
+        return "UNSET"
+
+
+UNSET: Final = _UnsetType()
+
 # Payload carries node_id, so node_filter subscribers receive these events.
 NODE_SCOPED_CAMERA_EVENTS: Final = frozenset(
     {
@@ -727,6 +737,68 @@ class MatterClient:
             interaction_timeout_ms=interaction_timeout_ms,
         )
         return [dataclass_from_dict(BatchedCommandResult, entry) for entry in cast(list[Any], data)]
+
+    async def set_thermostat_preset(
+        self,
+        node_id: int,
+        endpoint_id: int,
+        preset_handle: str | None = None,
+        preset_scenario: int | None = None,
+        name: str | None | _UnsetType = UNSET,
+        heating_setpoint: int | None | _UnsetType = UNSET,
+        cooling_setpoint: int | None | _UnsetType = UNSET,
+    ) -> None:
+        """Create a new preset, or edit an existing one when `preset_handle` is given.
+
+        Runs the Thermostat cluster's Presets attribute AtomicRequest write handshake and its
+        write-rule validation on the server (Matter spec §7.15, §4.3.11.50). Requires schema 15.
+
+        Omitting `name`/`heating_setpoint`/`cooling_setpoint` keeps the preset's current value
+        (a new preset starts with none); passing `None` explicitly clears it where the scenario
+        allows. `preset_scenario` is required when creating a preset and refused on an edit.
+        """
+        args: dict[str, Any] = {}
+        if name is not UNSET:
+            args["name"] = name
+        if heating_setpoint is not UNSET:
+            args["heating_setpoint"] = heating_setpoint
+        if cooling_setpoint is not UNSET:
+            args["cooling_setpoint"] = cooling_setpoint
+        await self.send_command(
+            APICommand.SET_THERMOSTAT_PRESET,
+            require_schema=15,
+            node_id=node_id,
+            endpoint_id=endpoint_id,
+            preset_handle=preset_handle,
+            preset_scenario=preset_scenario,
+            **args,
+        )
+
+    async def clear_thermostat_preset(self, node_id: int, endpoint_id: int, preset_handle: str) -> None:
+        """Remove a preset; refused if it is built-in, active, or referenced by a schedule (§4.3.11.50).
+
+        Requires schema 15.
+        """
+        await self.send_command(
+            APICommand.CLEAR_THERMOSTAT_PRESET,
+            require_schema=15,
+            node_id=node_id,
+            endpoint_id=endpoint_id,
+            preset_handle=preset_handle,
+        )
+
+    async def set_active_preset(self, node_id: int, endpoint_id: int, preset_handle: str | None) -> None:
+        """Wrap SetActivePresetRequest (§4.3.12.3); `preset_handle=None` clears the active preset.
+
+        Requires schema 15.
+        """
+        await self.send_command(
+            APICommand.SET_ACTIVE_PRESET,
+            require_schema=15,
+            node_id=node_id,
+            endpoint_id=endpoint_id,
+            preset_handle=preset_handle,
+        )
 
     async def read_attribute(
         self,

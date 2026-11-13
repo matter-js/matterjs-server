@@ -87,6 +87,9 @@ class APICommand(str, Enum):
     ENABLE_AUTO_SUBSCRIPTION = "enable_auto_subscription"  # schema 14+
     DISABLE_AUTO_SUBSCRIPTION = "disable_auto_subscription"  # schema 14+
     PARSE_ONBOARDING_PAYLOAD = "parse_onboarding_payload"  # schema 14+
+    SET_THERMOSTAT_PRESET = "set_thermostat_preset"  # schema 15+
+    CLEAR_THERMOSTAT_PRESET = "clear_thermostat_preset"  # schema 15+
+    SET_ACTIVE_PRESET = "set_active_preset"  # schema 15+
 
 
 EventCallBackType = Callable[[EventType, Any], None]
