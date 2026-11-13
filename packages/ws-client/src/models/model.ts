@@ -1446,6 +1446,37 @@ export interface APICommands {
         requestArgs: { console_loglevel?: SettableLogLevelString; file_loglevel?: SettableLogLevelString };
         response: LogLevelResponse;
     };
+    /**
+     * Schema 15. Creates a new Thermostat preset (`preset_handle` omitted) or edits an existing one (`preset_handle`
+     * set). Runs the Presets attribute's AtomicRequest write handshake (Matter spec §7.15) and its write-rule
+     * validation (§4.3.11.50) on the server, so callers do not reimplement them.
+     */
+    set_thermostat_preset: {
+        requestArgs: {
+            node_id: number | bigint;
+            endpoint_id: number;
+            /** Omit to create a new preset; set to edit the preset with this handle (as reported in Presets). */
+            preset_handle?: string | null;
+            /** Required when creating a preset; refused together with an edit's `preset_handle`. */
+            preset_scenario?: number;
+            /** `null` clears the name where the scenario supports one. Omit to keep the preset's current name. */
+            name?: string | null;
+            /** Centidegrees. Omit to keep the preset's current value (a new preset starts with none). */
+            heating_setpoint?: number | null;
+            cooling_setpoint?: number | null;
+        };
+        response: null;
+    };
+    /** Schema 15. Removes a preset; refused if it is built-in, active, or referenced by a schedule (§4.3.11.50). */
+    clear_thermostat_preset: {
+        requestArgs: { node_id: number | bigint; endpoint_id: number; preset_handle: string };
+        response: null;
+    };
+    /** Schema 15. Wraps SetActivePresetRequest (§4.3.12.3); `preset_handle: null` clears the active preset. */
+    set_active_preset: {
+        requestArgs: { node_id: number | bigint; endpoint_id: number; preset_handle: string | null };
+        response: null;
+    };
 }
 
 /** Utility type to extract request args for a command */

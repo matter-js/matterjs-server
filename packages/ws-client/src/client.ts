@@ -764,6 +764,68 @@ export class MatterClient {
         );
     }
 
+    /**
+     * Schema 15. Creates a new Thermostat preset, or edits an existing one (`presetHandle` set). Runs the Presets
+     * attribute's AtomicRequest write handshake and write-rule validation on the server.
+     */
+    async setThermostatPreset(
+        nodeId: number | bigint,
+        endpointId: number,
+        args: {
+            presetHandle?: string | null;
+            presetScenario?: number;
+            name?: string | null;
+            heatingSetpoint?: number | null;
+            coolingSetpoint?: number | null;
+        },
+        timeout?: number,
+    ): Promise<void> {
+        await this.sendCommand(
+            "set_thermostat_preset",
+            15,
+            {
+                node_id: nodeId,
+                endpoint_id: endpointId,
+                preset_handle: args.presetHandle,
+                preset_scenario: args.presetScenario,
+                name: args.name,
+                heating_setpoint: args.heatingSetpoint,
+                cooling_setpoint: args.coolingSetpoint,
+            },
+            timeout,
+        );
+    }
+
+    /** Schema 15. Removes a preset; refused if it is built-in, active, or referenced by a schedule. */
+    async clearThermostatPreset(
+        nodeId: number | bigint,
+        endpointId: number,
+        presetHandle: string,
+        timeout?: number,
+    ): Promise<void> {
+        await this.sendCommand(
+            "clear_thermostat_preset",
+            15,
+            { node_id: nodeId, endpoint_id: endpointId, preset_handle: presetHandle },
+            timeout,
+        );
+    }
+
+    /** Schema 15. Wraps SetActivePresetRequest; `presetHandle: null` clears the active preset. */
+    async setActivePreset(
+        nodeId: number | bigint,
+        endpointId: number,
+        presetHandle: string | null,
+        timeout?: number,
+    ): Promise<void> {
+        await this.sendCommand(
+            "set_active_preset",
+            15,
+            { node_id: nodeId, endpoint_id: endpointId, preset_handle: presetHandle },
+            timeout,
+        );
+    }
+
     async sendWebRtcProviderCommand(
         nodeId: number | bigint,
         endpointId: number,

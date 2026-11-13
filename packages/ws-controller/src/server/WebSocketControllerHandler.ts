@@ -54,6 +54,7 @@ import { MatterController, registerThreadCredentialsFromHex } from "../controlle
 import type { TopologyNodeSource } from "../controller/NetworkTopologyService.js";
 import { decodeOnboardingPayload, isQrCode } from "../controller/onboardingPayload.js";
 import { TestNodeCommandHandler } from "../controller/TestNodeCommandHandler.js";
+import { clearThermostatPreset, setActivePreset, setThermostatPreset } from "../controller/ThermostatPresets.js";
 import { dropWebRtcSessionTracking, invokeEndSession } from "../controller/webRtcSessionTracking.js";
 import { VendorIds } from "../data/VendorIDs.js";
 import { ClusterMap, ClusterMapEntry } from "../model/ModelMapper.js";
@@ -111,7 +112,7 @@ function isIdentityConflict(error: unknown): boolean {
 /** Maximum number of events to keep in the history buffer */
 const EVENT_HISTORY_SIZE = 25;
 
-const SCHEMA_VERSION = 14;
+const SCHEMA_VERSION = 15;
 const MAX_INTERACTION_TIMEOUT_MS = Number.MAX_SAFE_INTEGER;
 /** The Timeout field of a Matter TimedRequest is a uint16. */
 const MAX_TIMED_REQUEST_TIMEOUT_MS = 0xffff;
@@ -1043,6 +1044,15 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 case "write_attribute":
                     result = await this.#handleWriteAttribute(args);
                     break;
+                case "set_thermostat_preset":
+                    result = await this.#handleSetThermostatPreset(args);
+                    break;
+                case "clear_thermostat_preset":
+                    result = await this.#handleClearThermostatPreset(args);
+                    break;
+                case "set_active_preset":
+                    result = await this.#handleSetActivePreset(args);
+                    break;
                 case "interview_node":
                     result = await this.#handleInterviewNode(args);
                     break;
@@ -1690,6 +1700,73 @@ export class WebSocketControllerHandler implements WebServerHandler {
             Status: status ?? 0,
             ...(clusterStatus !== undefined && { ClusterStatus: clusterStatus }),
         }));
+    }
+
+    /** Refuses a thermostat preset command against a test node: the handshake runs straight against matter.js. */
+    #thermostatPresetNodeId(node_id: number | bigint, command: string): NodeId {
+        const nodeId = this.#targetNodeId(node_id, command);
+        if (TestNodeCommandHandler.isTestNodeId(nodeId)) {
+            throw ServerError.invalidArguments(`${command} is not supported for test nodes`);
+        }
+        return nodeId;
+    }
+
+    async #handleSetThermostatPreset(
+        args: ArgsOf<"set_thermostat_preset">,
+    ): Promise<ResponseOf<"set_thermostat_preset">> {
+        const { node_id, endpoint_id, preset_handle, preset_scenario, name, heating_setpoint, cooling_setpoint } = args;
+        const nodeId = this.#thermostatPresetNodeId(node_id, "set_thermostat_preset");
+        if (!isUint(endpoint_id, 0xfffe)) {
+            throw ServerError.invalidArguments("set_thermostat_preset requires a numeric endpoint_id");
+        }
+        if (preset_handle !== undefined && preset_handle !== null && typeof preset_handle !== "string") {
+            throw ServerError.invalidArguments("set_thermostat_preset: preset_handle must be a string or null");
+        }
+        if (preset_scenario !== undefined && !isUint(preset_scenario, 254)) {
+            throw ServerError.invalidArguments("set_thermostat_preset: preset_scenario must be a valid scenario");
+        }
+        await setThermostatPreset(this.#commandHandler, {
+            nodeId,
+            endpointId: EndpointNumber(endpoint_id),
+            presetHandle: preset_handle ?? null,
+            presetScenario: preset_scenario,
+            name,
+            heatingSetpoint: heating_setpoint,
+            coolingSetpoint: cooling_setpoint,
+        });
+        return null;
+    }
+
+    async #handleClearThermostatPreset(
+        args: ArgsOf<"clear_thermostat_preset">,
+    ): Promise<ResponseOf<"clear_thermostat_preset">> {
+        const { node_id, endpoint_id, preset_handle } = args;
+        const nodeId = this.#thermostatPresetNodeId(node_id, "clear_thermostat_preset");
+        if (!isUint(endpoint_id, 0xfffe)) {
+            throw ServerError.invalidArguments("clear_thermostat_preset requires a numeric endpoint_id");
+        }
+        if (typeof preset_handle !== "string" || preset_handle.length === 0) {
+            throw ServerError.invalidArguments("clear_thermostat_preset requires preset_handle");
+        }
+        await clearThermostatPreset(this.#commandHandler, {
+            nodeId,
+            endpointId: EndpointNumber(endpoint_id),
+            presetHandle: preset_handle,
+        });
+        return null;
+    }
+
+    async #handleSetActivePreset(args: ArgsOf<"set_active_preset">): Promise<ResponseOf<"set_active_preset">> {
+        const { node_id, endpoint_id, preset_handle } = args;
+        const nodeId = this.#thermostatPresetNodeId(node_id, "set_active_preset");
+        if (!isUint(endpoint_id, 0xfffe)) {
+            throw ServerError.invalidArguments("set_active_preset requires a numeric endpoint_id");
+        }
+        if (preset_handle !== null && typeof preset_handle !== "string") {
+            throw ServerError.invalidArguments("set_active_preset: preset_handle must be a string or null");
+        }
+        await setActivePreset(this.#commandHandler, nodeId, EndpointNumber(endpoint_id), preset_handle ?? null);
+        return null;
     }
 
     async #handleGetVendorNames(args: ArgsOf<"get_vendor_names">): Promise<ResponseOf<"get_vendor_names">> {
