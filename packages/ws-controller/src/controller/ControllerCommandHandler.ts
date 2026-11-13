@@ -22,6 +22,7 @@ import {
     FabricIndex,
     IcdClient,
     IcdMultiAdminError,
+    IcdPeerAsleepError,
     InternalError,
     isObject,
     Logger,
@@ -67,6 +68,7 @@ import {
     PasscodeMismatchError,
     PeerAddress,
     PeerSet,
+    PeerUnreachableError,
     PlainClientSubscribe,
     Read,
     ReadResult,
@@ -313,6 +315,11 @@ function atomicResponseOf(response: unknown): AtomicResponse {
     }
     const { statusCode, attributeStatus, timeout } = response;
     return { statusCode, attributeStatus, timeout: typeof timeout === "number" ? timeout : undefined };
+}
+
+/** Whether an invoke failed before its request was sent: the peer could not be reached, or an ICD did not wake up. */
+function wasNeverSent(error: unknown) {
+    return error instanceof PeerUnreachableError || error instanceof IcdPeerAsleepError;
 }
 
 /** The status of the first attribute that failed, else the status of the whole response (§7.15.6.4). */
@@ -1922,14 +1929,15 @@ export class ControllerCommandHandler {
      * sends the Write again without the data version, inside the same atomic write. The answer is the first status
      * that is not Success: from the BeginWrite, from the Write, or from the CommitWrite.
      *
-     * A failed Write is followed by a RollbackWrite, and so is an error thrown after the BeginWrite was sent. A
-     * CommitWrite answered with a failure is not rolled back, because the device already discarded the pending write
-     * (§7.15.6.4.2). A BeginWrite the device refused is not rolled back either: it opened no atomic write, and a write
+     * A failed Write is followed by a RollbackWrite, and so is an error the Write throws. A CommitWrite is never rolled
+     * back: answered with a failure, the device already discarded the pending write (§7.15.6.4.2); unanswered, the commit
+     * may have landed, and a RollbackWrite could then discard an atomic write another client opened meanwhile. A BeginWrite the device refused is not rolled back either: it opened no atomic write, and a write
      * state that caused the refusal is not ours to discard.
      *
      * A RollbackWrite that fails, other than with INVALID_IN_STATE (no atomic write open), may leave the atomic write
-     * open on the device until its timeout. So may a BeginWrite whose answer is lost. That BeginWrite is not rolled
-     * back: if the device refused it because another client of this server holds an atomic write, the rollback would
+     * open on the device until its timeout. So may a BeginWrite or a CommitWrite whose answer is lost; an error that
+     * shows the BeginWrite was never sent (the peer unreachable, an ICD asleep) does not count. That BeginWrite is not
+     * rolled back: if the device refused it because another client of this server holds an atomic write, the rollback would
      * discard that client's write, since both count as the same writer. In both cases the cluster's lock is kept for the
      * timeout: the one the BeginWrite answered, or the requested one when no answer came.
      *
@@ -2068,7 +2076,7 @@ export class ControllerCommandHandler {
         try {
             begin = await atomicRequest(AtomicRequestType.BeginWrite, [attributeId]);
         } catch (error) {
-            if (!(error instanceof StatusResponseError)) {
+            if (!(error instanceof ReceivedStatusResponseError) && !wasNeverSent(error)) {
                 holdUntilDeviceTimeout("No answer to the BeginWrite of an atomic write", error);
             }
             StatusResponseError.accept(error);
@@ -2087,7 +2095,6 @@ export class ControllerCommandHandler {
                 ? begin.attributeStatus.map(({ attributeId }) => attributeId)
                 : [attributeId];
 
-        let commit: AtomicResponse;
         try {
             const write = (version: number | undefined) =>
                 this.#atomicWriteFailure(
@@ -2110,9 +2117,19 @@ export class ControllerCommandHandler {
                 await rollback(atomicAttributes);
                 return answer(failed.status, failed.clusterStatus);
             }
-            commit = await atomicRequest(AtomicRequestType.CommitWrite, atomicAttributes);
         } catch (error) {
             await rollback(atomicAttributes);
+            StatusResponseError.accept(error);
+            return answer(error.code, error.clusterCode);
+        }
+
+        let commit: AtomicResponse;
+        try {
+            commit = await atomicRequest(AtomicRequestType.CommitWrite, atomicAttributes);
+        } catch (error) {
+            if (!(error instanceof ReceivedStatusResponseError)) {
+                holdUntilDeviceTimeout("No answer to the CommitWrite of an atomic write", error);
+            }
             StatusResponseError.accept(error);
             return answer(error.code, error.clusterCode);
         }

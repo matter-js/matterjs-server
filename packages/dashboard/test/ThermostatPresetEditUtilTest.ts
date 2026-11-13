@@ -320,10 +320,7 @@ describe("thermostat-preset-edit util", () => {
                 "Writing presets failed: the thermostat changed since its presets were read, try again (DataVersionMismatch, 146)",
             ],
             [0x9c, "Writing presets failed: another change of the presets is still running, try again (Busy, 156)"],
-            [
-                0xcb,
-                "Writing presets failed: another client keeps an atomic write of this thermostat open (InvalidInState, 203)",
-            ],
+            [0xcb, "Writing presets failed: the thermostat ended or refused the edit, try again (InvalidInState, 203)"],
         ] as const) {
             it(`throws "${message}" for status ${status}`, async () => {
                 const failed = [{ Path: { EndpointId: 6, ClusterId: 513, AttributeId: 80 }, Status: status }];

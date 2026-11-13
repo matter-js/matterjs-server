@@ -654,6 +654,9 @@ instead of the commit. The device applies the value only when the commit succeed
 }
 ```
 
+- `value` replaces the whole attribute value. For `Presets` it is the complete list: an existing preset left out of
+  it is removed, which the device refuses for a built-in or active preset or one a schedule uses (spec §4.3.11.50).
+  Read the current list first and send it with the changes.
 - `data_version` (required): the data version of the attribute's cluster, as `read` returns it in `data_versions`
   under `endpoint/cluster` (`"1/513"`). The write carries it, so the device refuses the write with `146`
   (DATA_VERSION_MISMATCH) when anything in the cluster changed since that read (spec §8.7.3.2), and the server rolls
@@ -679,7 +682,9 @@ reports `0` without a device having answered.
 The device knows every client of this server as the same writer, because the controller's node id identifies the
 writer (spec §7.15.2). While a client holds an atomic write of its own on the same cluster and endpoint, opened with
 `device_command`, this command fails with `203` (INVALID_IN_STATE) and leaves that atomic write open. A client that
-manages atomic writes itself keeps using `device_command` and `write_attribute`.
+manages atomic writes itself keeps using `device_command` and `write_attribute`. Such a client must check the status
+of its `write_attribute` and roll back when it is not `0`: while the server holds the lock described below, that write
+answers `156` (BUSY) inside the client's own atomic write, and a CommitWrite after it succeeds with nothing written.
 
 For the same reason, the server keeps its own atomic writes apart from other writes. While a `write_atomic_attribute`
 is open on a cluster of an endpoint, another `write_atomic_attribute` and every `write_attribute` to an attribute of that

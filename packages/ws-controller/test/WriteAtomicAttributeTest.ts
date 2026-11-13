@@ -30,6 +30,8 @@ const deviceAnswers: {
     begin?: Thermostat.AtomicResponse;
     /** Runs while the device handles a BeginWrite, so while the controller's atomic write is open. */
     duringBegin?: () => Promise<void>;
+    /** Runs while the device handles a CommitWrite, before it commits. */
+    duringCommit?: () => Promise<void>;
     /** Replaces the attribute statuses of a successful BeginWrite answer. */
     beginAttributeStatus?: Thermostat.AtomicResponse["attributeStatus"];
     /**
@@ -60,6 +62,7 @@ class RecordingThermostatServer extends ThermostatServer.with("Heating", "Coolin
                     : { ...answer, attributeStatus: beginAttributeStatus };
             }
             case Thermostat.RequestType.CommitWrite:
+                await deviceAnswers.duringCommit?.();
                 if (commit === undefined) {
                     return await super.atomicRequest(request);
                 }
@@ -123,6 +126,18 @@ function wirePreset(heatingSetpoint: number, name?: string, scenario = Occupied)
     };
 }
 
+/** How many invokes the controller sent to `peer` from now on. */
+function countInvokes(peer: ClientNode) {
+    const sent = { count: 0 };
+    const interaction = peer.interaction;
+    const invoke = interaction.invoke.bind(interaction);
+    interaction.invoke = (request, session) => {
+        sent.count++;
+        return invoke(request, session);
+    };
+    return sent;
+}
+
 function recordWrites(peer: ClientNode) {
     const interaction = peer.interaction;
     const write = interaction.write.bind(interaction);
@@ -141,6 +156,7 @@ describe("write_atomic_attribute on a commissioned device", () => {
         delete deviceAnswers.begin;
         delete deviceAnswers.beginAttributeStatus;
         delete deviceAnswers.duringBegin;
+        delete deviceAnswers.duringCommit;
         delete deviceAnswers.rollback;
         delete deviceAnswers.rollbackDelay;
         delete deviceAnswers.commit;
@@ -350,14 +366,42 @@ describe("write_atomic_attribute on a commissioned device", () => {
         expect(received).deep.equals(["BeginWrite"]);
     });
 
-    it("rolls back when the commit throws and answers its status", async () => {
+    it("answers the status of a refused commit without rolling back", async () => {
         deviceAnswers.commit = Status.Failure;
 
         const result = await writeAtomic({ value: [wirePreset(1900)] });
 
         expect(result.status).equals(Status.Failure);
-        expect(received).deep.equals(["BeginWrite", "Write", "CommitWrite", "RollbackWrite"]);
+        expect(received).deep.equals(["BeginWrite", "Write", "CommitWrite"]);
         expect(storedPresets()).deep.equals([]);
+    });
+
+    it("does not roll back after a lost CommitWrite answer and answers BUSY until the device's timeout", async () => {
+        let answerCommit = () => {};
+        const answerHeldBack = new Promise<void>(resolve => (answerCommit = resolve));
+        deviceAnswers.duringCommit = () => answerHeldBack;
+        const invokes = countInvokes(site.peer);
+
+        const lost = await writeAtomic({ value: [wirePreset(1900)] }).catch((error: unknown) => error);
+        deviceAnswers.duringCommit = undefined;
+        answerCommit();
+
+        expect(lost).instanceOf(Error);
+        expect(lost).not.instanceOf(StatusResponseError);
+        expect(received).deep.equals(["BeginWrite", "Write", "CommitWrite"]);
+        // BeginWrite and CommitWrite only: no RollbackWrite was sent.
+        expect(invokes.count).equals(2);
+        const [plainWrite] = await MockTime.resolve(
+            site.handler.handleWriteAttribute({
+                nodeId: NODE_ID,
+                endpointId: ENDPOINT,
+                clusterId: THERMOSTAT,
+                attributeId: PRESETS,
+                value: [],
+            }),
+            { macrotasks: true },
+        );
+        expect(plainWrite.status).equals(Status.Busy);
     });
 
     function committedAttributes() {

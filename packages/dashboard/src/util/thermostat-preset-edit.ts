@@ -40,7 +40,7 @@ const DATA_VERSION_MISMATCH = 0x92;
 const PRESET_WRITE_HINTS: Record<number, string> = {
     [DATA_VERSION_MISMATCH]: "the thermostat changed since its presets were read, try again",
     0x9c: "another change of the presets is still running, try again",
-    0xcb: "another client keeps an atomic write of this thermostat open",
+    0xcb: "the thermostat ended or refused the edit, try again",
 };
 
 export interface ThermostatPresetType {
