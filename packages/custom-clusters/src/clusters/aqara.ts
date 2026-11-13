@@ -384,7 +384,7 @@ class AqaraOccupancyDurationDeltaEvent {
 
 class AqaraWalkingDistanceDeltaEvent {
     @constraint("min 1")
-    @field(0x0, uint16, mandatory)
+    @field(0x0, uint32, mandatory)
     distanceDelta!: number;
 
     /** Seconds. */

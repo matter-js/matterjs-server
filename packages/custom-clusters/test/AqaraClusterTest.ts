@@ -105,6 +105,11 @@ describe("Aqara ambient sensing clusters", () => {
             "humanExitCountDelta",
         ]);
 
+        const deltaType = (name: string) =>
+            [...union.events].find(event => event.name === name)?.operationalBase?.children[0]?.operationalBase?.name;
+        expect(deltaType("occupancyDurationDelta")).to.equal("uint16");
+        expect(deltaType("walkingDistanceDelta")).to.equal("uint32");
+
         const motion = [...union.events].find(event => event.name === "motionState");
         expect(names(motion?.operationalBase?.children[0]?.operationalBase)).to.deep.equal([
             "Enter",
