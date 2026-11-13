@@ -43,7 +43,7 @@ import {
 import { ServerError, ServerErrorCode } from "../src/types/WebSocketMessageTypes.js";
 
 describe("convertWebSocketTagBasedToMatter", () => {
-    const clusterEntry = ClusterMap[Thermostat.Cluster.id];
+    const clusterEntry = ClusterMap[Thermostat.id];
     if (clusterEntry === undefined) {
         throw new Error("Thermostat cluster missing from ClusterMap");
     }
@@ -163,7 +163,7 @@ describe("convertWebSocketTagBasedToMatter", () => {
 });
 
 describe("convertWebSocketTagBasedToMatter - legacy propertyName wire-name fallback", () => {
-    const clusterEntry = ClusterMap[GeneralDiagnostics.Cluster.id];
+    const clusterEntry = ClusterMap[GeneralDiagnostics.id];
     if (clusterEntry === undefined) {
         throw new Error("GeneralDiagnostics cluster missing from ClusterMap");
     }
@@ -233,7 +233,7 @@ describe("convertWebsocketDataToMatter", () => {
     }
 
     it("keeps full precision for epoch-us values sent as a decimal string", () => {
-        const utcTime = attributeModel(TimeSynchronization.Cluster.id, "utctime");
+        const utcTime = attributeModel(TimeSynchronization.id, "utctime");
         const unixMicroseconds = 9007199254740993n; // Number.MAX_SAFE_INTEGER + 2
 
         const result = convertWebsocketDataToMatter(unixMicroseconds.toString(), utcTime);
@@ -242,7 +242,7 @@ describe("convertWebsocketDataToMatter", () => {
     });
 
     it("decodes single-bit bitmap members from a numeric string", () => {
-        const occupancy = attributeModel(OccupancySensing.Cluster.id, "occupancy");
+        const occupancy = attributeModel(OccupancySensing.id, "occupancy");
 
         const result = convertWebsocketDataToMatter("1", occupancy) as Record<string, unknown>;
 
@@ -250,7 +250,7 @@ describe("convertWebsocketDataToMatter", () => {
     });
 
     it("decodes multi-bit bitmap subfields as numbers", () => {
-        const operationalStatus = attributeModel(WindowCovering.Cluster.id, "operationalstatus");
+        const operationalStatus = attributeModel(WindowCovering.id, "operationalstatus");
 
         // 0b010110: Global (bits 0-1) = 2, Lift (bits 2-3) = 1, Tilt (bits 4-5) = 1
         const result = convertWebsocketDataToMatter("22", operationalStatus) as Record<string, unknown>;
@@ -293,7 +293,7 @@ describe("convertWebsocketDataToMatter", () => {
     });
 
     it("omits bitmap members whose bit is not set", () => {
-        const occupancy = attributeModel(OccupancySensing.Cluster.id, "occupancy");
+        const occupancy = attributeModel(OccupancySensing.id, "occupancy");
 
         const result = convertWebsocketDataToMatter("0", occupancy) as Record<string, unknown>;
 
@@ -302,7 +302,7 @@ describe("convertWebsocketDataToMatter", () => {
 });
 
 describe("convertMatterToWebSocketTagBased - bitmap packing", () => {
-    const clusterEntry = ClusterMap[WindowCovering.Cluster.id];
+    const clusterEntry = ClusterMap[WindowCovering.id];
     if (clusterEntry === undefined) {
         throw new Error("WindowCovering cluster missing from ClusterMap");
     }
@@ -362,7 +362,7 @@ describe("convertMatterToWebSocketTagBased - bitmap packing", () => {
 });
 
 describe("convertMatterToWebSocketTagBased - list element model", () => {
-    const clusterEntry = ClusterMap[OperationalCredentials.Cluster.id];
+    const clusterEntry = ClusterMap[OperationalCredentials.id];
     if (clusterEntry === undefined) {
         throw new Error("OperationalCredentials cluster missing from ClusterMap");
     }

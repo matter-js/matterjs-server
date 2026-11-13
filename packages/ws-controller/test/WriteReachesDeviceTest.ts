@@ -97,8 +97,8 @@ describe("writeAttribute", () => {
             handler.handleWriteAttribute({
                 nodeId,
                 endpointId: EndpointNumber(0),
-                clusterId: ClusterId(BasicInformation.Cluster.id),
-                attributeId: AttributeId(BasicInformation.Cluster.attributes.nodeLabel.id),
+                clusterId: ClusterId(BasicInformation.id),
+                attributeId: AttributeId(BasicInformation.attributes.nodeLabel.id),
                 value,
             }),
             { macrotasks: true },
@@ -122,8 +122,8 @@ describe("writeAttribute", () => {
             handler.handleWriteAttribute({
                 nodeId,
                 endpointId: EndpointNumber(0),
-                clusterId: ClusterId(BasicInformation.Cluster.id),
-                attributeId: AttributeId(BasicInformation.Cluster.attributes.vendorName.id),
+                clusterId: ClusterId(BasicInformation.id),
+                attributeId: AttributeId(BasicInformation.attributes.vendorName.id),
                 value: vendorName,
             }),
             { macrotasks: true },
@@ -166,8 +166,8 @@ describe("writeAttribute", () => {
         handler.events.attributeChanged.on((_nodeId, { path, value }) => {
             if (
                 path.endpointId === 0 &&
-                path.clusterId === BasicInformation.Cluster.id &&
-                path.attributeId === BasicInformation.Cluster.attributes.nodeLabel.id
+                path.clusterId === BasicInformation.id &&
+                path.attributeId === BasicInformation.attributes.nodeLabel.id
             ) {
                 changes.push(value);
             }
@@ -258,8 +258,8 @@ describe("writeAttribute", () => {
                 handler.handleWriteAttribute({
                     nodeId,
                     endpointId: wildcard ? undefined : EndpointNumber(0),
-                    clusterId: ClusterId(AccessControl.Cluster.id),
-                    attributeId: AttributeId(AccessControl.Cluster.attributes.acl.id),
+                    clusterId: ClusterId(AccessControl.id),
+                    attributeId: AttributeId(AccessControl.attributes.acl.id),
                     value: [{ 1: 5, 2: 2, 3: [fabric.rootNodeId], 4: null, 254: fabricIndex }],
                     timedInteractionTimeoutMs: timeout,
                 }),

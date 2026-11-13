@@ -75,14 +75,14 @@ await node.run();
 // Handle a graceful shutdown
 process.on("SIGTERM", () => {
     console.log("Received SIGTERM, shutting down...");
-    node.cancel()
+    node.stop()
         .then(() => process.exit(0))
         .catch(() => process.exit(1));
 });
 
 process.on("SIGINT", () => {
     console.log("Received SIGINT, shutting down...");
-    node.cancel()
+    node.stop()
         .then(() => process.exit(0))
         .catch(() => process.exit(1));
 });

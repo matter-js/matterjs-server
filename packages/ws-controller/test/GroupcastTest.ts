@@ -93,8 +93,8 @@ describe("groupcast", () => {
 
             await handler.handleGroupWriteAttribute({
                 nodeId: GROUP_NODE_ID,
-                clusterId: ClusterId(OnOff.Cluster.id),
-                attributeId: AttributeId(OnOff.Cluster.attributes.onTime.id),
+                clusterId: ClusterId(OnOff.id),
+                attributeId: AttributeId(OnOff.attributes.onTime.id),
                 value: 5,
             });
 
@@ -110,8 +110,8 @@ describe("groupcast", () => {
             expect(write.timedRequest).to.equal(false);
             expect(write.writeRequests.length).to.equal(1);
             expect(write.writeRequests[0].path.endpointId).to.equal(undefined);
-            expect(write.writeRequests[0].path.clusterId).to.equal(OnOff.Cluster.id);
-            expect(write.writeRequests[0].path.attributeId).to.equal(OnOff.Cluster.attributes.onTime.id);
+            expect(write.writeRequests[0].path.clusterId).to.equal(OnOff.id);
+            expect(write.writeRequests[0].path.attributeId).to.equal(OnOff.attributes.onTime.id);
         });
 
         it("refuses an unknown attribute before building an address", async () => {
@@ -120,7 +120,7 @@ describe("groupcast", () => {
             const error = await rejection(
                 handler.handleGroupWriteAttribute({
                     nodeId: GROUP_NODE_ID,
-                    clusterId: ClusterId(OnOff.Cluster.id),
+                    clusterId: ClusterId(OnOff.id),
                     attributeId: AttributeId(0x0042),
                     value: 1,
                 }),
@@ -137,8 +137,8 @@ describe("groupcast", () => {
             const error = await rejection(
                 handler.handleGroupWriteAttribute({
                     nodeId: GROUP_NODE_ID,
-                    clusterId: ClusterId(Binding.Cluster.id),
-                    attributeId: AttributeId(Binding.Cluster.attributes.binding.id),
+                    clusterId: ClusterId(Binding.id),
+                    attributeId: AttributeId(Binding.attributes.binding.id),
                     value: [{ 1: 5, 2: 6, 254: 3 }],
                 }),
             );
@@ -154,8 +154,8 @@ describe("groupcast", () => {
 
             await handler.handleGroupWriteAttribute({
                 nodeId: GROUP_NODE_ID,
-                clusterId: ClusterId(Binding.Cluster.id),
-                attributeId: AttributeId(Binding.Cluster.attributes.binding.id),
+                clusterId: ClusterId(Binding.id),
+                attributeId: AttributeId(Binding.attributes.binding.id),
                 value: [{ 1: 5, 2: 6, 254: 0 }],
             });
 
@@ -169,7 +169,7 @@ describe("groupcast", () => {
 
             await handler.handleGroupInvoke({
                 nodeId: GROUP_NODE_ID,
-                clusterId: ClusterId(OnOff.Cluster.id),
+                clusterId: ClusterId(OnOff.id),
                 commandName: "toggle",
                 data: {},
             });
@@ -183,8 +183,8 @@ describe("groupcast", () => {
             expect(invoke.timedRequest).to.equal(false);
             expect(invoke.invokeRequests.length).to.equal(1);
             expect(invoke.invokeRequests[0].commandPath.endpointId).to.equal(undefined);
-            expect(invoke.invokeRequests[0].commandPath.clusterId).to.equal(OnOff.Cluster.id);
-            expect(invoke.invokeRequests[0].commandPath.commandId).to.equal(OnOff.Cluster.commands.toggle.id);
+            expect(invoke.invokeRequests[0].commandPath.clusterId).to.equal(OnOff.id);
+            expect(invoke.invokeRequests[0].commandPath.commandId).to.equal(OnOff.commands.toggle.id);
         });
 
         it("refuses a command the cluster does not define before building an address", async () => {
@@ -193,7 +193,7 @@ describe("groupcast", () => {
             const error = await rejection(
                 handler.handleGroupInvoke({
                     nodeId: GROUP_NODE_ID,
-                    clusterId: ClusterId(OnOff.Cluster.id),
+                    clusterId: ClusterId(OnOff.id),
                     commandName: "notACommand",
                     data: {},
                 }),
@@ -210,7 +210,7 @@ describe("groupcast", () => {
             const error = await rejection(
                 handler.handleGroupInvoke({
                     nodeId: GROUP_NODE_ID,
-                    clusterId: ClusterId(EnergyEvse.Cluster.id),
+                    clusterId: ClusterId(EnergyEvse.id),
                     commandName: "disable",
                     data: {},
                 }),
@@ -275,7 +275,7 @@ describe("groupcast against a commissioned controller", () => {
         await MockTime.resolve(
             handler.handleGroupInvoke({
                 nodeId: GROUP_NODE_ID,
-                clusterId: ClusterId(OnOff.Cluster.id),
+                clusterId: ClusterId(OnOff.id),
                 commandName: "toggle",
                 data: {},
             }),
@@ -284,8 +284,8 @@ describe("groupcast against a commissioned controller", () => {
         await MockTime.resolve(
             handler.handleGroupWriteAttribute({
                 nodeId: GROUP_NODE_ID,
-                clusterId: ClusterId(OnOff.Cluster.id),
-                attributeId: AttributeId(OnOff.Cluster.attributes.onTime.id),
+                clusterId: ClusterId(OnOff.id),
+                attributeId: AttributeId(OnOff.attributes.onTime.id),
                 value: 5,
             }),
             { macrotasks: true },

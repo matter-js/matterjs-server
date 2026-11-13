@@ -116,7 +116,7 @@ console.log(`Passcode: ${passcode}`);
 for (const signal of ["SIGTERM", "SIGINT"] as const) {
     process.on(signal, () => {
         console.log(`Received ${signal}, shutting down...`);
-        node.cancel()
+        node.stop()
             .then(() => process.exit(0))
             .catch(() => process.exit(1));
     });

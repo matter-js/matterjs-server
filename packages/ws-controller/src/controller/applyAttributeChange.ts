@@ -25,12 +25,12 @@ function describesNodeStructure(path: AttributeChange["path"]): string | undefin
         return "basic information changed";
     }
 
-    if (clusterId === Descriptor.Cluster.id) {
+    if (clusterId === Descriptor.id) {
         switch (attributeId) {
-            case Descriptor.Cluster.attributes.partsList.id:
-            case Descriptor.Cluster.attributes.serverList.id:
-            case Descriptor.Cluster.attributes.clientList.id:
-            case Descriptor.Cluster.attributes.deviceTypeList.id:
+            case Descriptor.attributes.partsList.id:
+            case Descriptor.attributes.serverList.id:
+            case Descriptor.attributes.clientList.id:
+            case Descriptor.attributes.deviceTypeList.id:
                 return "endpoint composition changed";
         }
     }
