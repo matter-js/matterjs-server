@@ -2051,7 +2051,7 @@ export class ControllerCommandHandler {
             let failure: unknown;
             try {
                 const response = await atomicRequest(AtomicRequestType.RollbackWrite, attributeRequests);
-                if (response.statusCode === Status.Success) {
+                if (response.statusCode === Status.Success || response.statusCode === Status.InvalidInState) {
                     return;
                 }
                 failure = `status ${response.statusCode}`;

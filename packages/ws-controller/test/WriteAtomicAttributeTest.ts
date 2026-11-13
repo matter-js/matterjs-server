@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { AttributeId, ClientNode, ClusterId, Duration, EndpointNumber, Millis, Time } from "@matter/main";
+import { AttributeId, Bytes, ClientNode, ClusterId, Duration, EndpointNumber, Millis, Time } from "@matter/main";
 import { ThermostatDevice } from "@matter/main/devices/thermostat";
 import { AtomicRequestType, Status, StatusResponseError } from "@matter/main/types";
 import { ThermostatClient, ThermostatServer } from "@matter/node/behaviors/thermostat";
@@ -16,6 +16,7 @@ import { HandlerSite, NODE_ID } from "./support/HandlerSite.js";
 const THERMOSTAT = ClusterId(Thermostat.id);
 const PRESETS = AttributeId(Thermostat.attributes.presets.id);
 const ENDPOINT = EndpointNumber(1);
+const { Occupied, Unoccupied, Sleep } = Thermostat.PresetScenario;
 
 /** What the device received, in order: the AtomicRequest types, and each Write as the controller sent it. */
 const received = new Array<string>();
@@ -88,28 +89,33 @@ class RecordingThermostatServer extends ThermostatServer.with("Heating", "Coolin
     }
 }
 
-const PresetsThermostat = ThermostatDevice.with(RecordingThermostatServer).set({
-    thermostat: {
-        controlSequenceOfOperation: Thermostat.ControlSequenceOfOperation.CoolingAndHeating,
-        systemMode: Thermostat.SystemMode.Auto,
-        occupiedHeatingSetpoint: 2000,
-        occupiedCoolingSetpoint: 2600,
-        minSetpointDeadBand: 25,
-        numberOfPresets: 5,
-        // No SupportsNames, so a preset with a name is refused.
-        presetTypes: [
-            { presetScenario: Thermostat.PresetScenario.Occupied, numberOfPresets: 5, presetTypeFeatures: {} },
-        ],
-        activePresetHandle: null,
-        presets: [],
-    },
-});
+/** A thermostat that stores `presets` from the start. */
+function presetsThermostat(presets: Thermostat.Preset[]) {
+    return ThermostatDevice.with(RecordingThermostatServer).set({
+        thermostat: {
+            controlSequenceOfOperation: Thermostat.ControlSequenceOfOperation.CoolingAndHeating,
+            systemMode: Thermostat.SystemMode.Auto,
+            occupiedHeatingSetpoint: 2000,
+            occupiedCoolingSetpoint: 2600,
+            minSetpointDeadBand: 25,
+            numberOfPresets: 5,
+            // No SupportsNames, so a preset with a name is refused.
+            presetTypes: [Occupied, Unoccupied, Sleep].map(presetScenario => ({
+                presetScenario,
+                numberOfPresets: 5,
+                presetTypeFeatures: {},
+            })),
+            activePresetHandle: null,
+            presets,
+        },
+    });
+}
 
 /** A new preset as the wire carries it: tag-keyed, without a handle. */
-function wirePreset(heatingSetpoint: number, name?: string) {
+function wirePreset(heatingSetpoint: number, name?: string, scenario = Occupied) {
     return {
         "0": null,
-        "1": Thermostat.PresetScenario.Occupied,
+        "1": scenario,
         "3": 2600,
         "4": heatingSetpoint,
         "5": false,
@@ -129,7 +135,7 @@ function recordWrites(peer: ClientNode) {
 describe("write_atomic_attribute on a commissioned device", () => {
     let site: HandlerSite;
 
-    beforeEach(async () => {
+    async function startSite(presets: Thermostat.Preset[]) {
         received.length = 0;
         atomicRequests.length = 0;
         delete deviceAnswers.begin;
@@ -139,10 +145,14 @@ describe("write_atomic_attribute on a commissioned device", () => {
         delete deviceAnswers.rollbackDelay;
         delete deviceAnswers.commit;
         site = new HandlerSite();
-        await site.startDevice(undefined, PresetsThermostat);
+        await site.startDevice(undefined, presetsThermostat(presets));
         await site.startController(true);
         await site.commission();
         recordWrites(site.peer);
+    }
+
+    beforeEach(async () => {
+        await startSite([]);
     });
 
     afterEach(async () => {
@@ -245,6 +255,27 @@ describe("write_atomic_attribute on a commissioned device", () => {
         expect(received).deep.equals(["BeginWrite", "Write", "Write", "CommitWrite"]);
         expect(storedPresets().map(({ heatingSetpoint }) => heatingSetpoint)).deep.equals([1900]);
     });
+
+    it("rolls back and commits nothing when a later entry of the list is refused", async () => {
+        const result = await writeAtomic({
+            value: [wirePreset(1700), wirePreset(1800, undefined, Unoccupied), wirePreset(1900, "named", Sleep)],
+        });
+
+        expect(result.status).equals(Status.ConstraintError);
+        expect(received.filter(type => type !== "Write")).deep.equals(["BeginWrite", "RollbackWrite"]);
+        expect(storedPresets()).deep.equals([]);
+    });
+
+    /** The stored presets as the wire carries them, with their handles. */
+    function storedAsWire() {
+        return storedPresets().map(({ presetHandle, presetScenario, coolingSetpoint, heatingSetpoint, builtIn }) => ({
+            "0": presetHandle === null ? null : Bytes.toBase64(presetHandle),
+            "1": presetScenario,
+            "3": coolingSetpoint,
+            "4": heatingSetpoint,
+            "5": builtIn,
+        }));
+    }
 
     it("sends a timed write when the request states a timed request timeout", async () => {
         const result = await writeAtomic({ value: [wirePreset(1900)], timedInteractionTimeoutMs: Millis(2000) });
@@ -543,5 +574,46 @@ describe("write_atomic_attribute on a commissioned device", () => {
         expect(received).deep.equals(["BeginWrite"]);
         const commit = await atomicRequest(Thermostat.RequestType.CommitWrite);
         expect(commit.statusCode).equals(Status.Success);
+    });
+
+    describe("with three stored presets", () => {
+        // The test device draws every new handle from the same mock random bytes, so these presets get theirs here.
+        beforeEach(async () => {
+            await site.close();
+            await startSite(
+                [Occupied, Unoccupied, Sleep].map(presetScenario => ({
+                    presetHandle: new Uint8Array(16).fill(presetScenario),
+                    presetScenario,
+                    coolingSetpoint: 2600,
+                    heatingSetpoint: 2000,
+                    builtIn: false,
+                })),
+            );
+        });
+
+        const withHeating = (heating: number[]) =>
+            storedAsWire().map((preset, index) => ({ ...preset, "4": heating[index] }));
+
+        it("commits the changed list, untimed and timed", async () => {
+            const untimed = await writeAtomic({ value: withHeating([1700, 1800, 1900]) });
+            const timed = await writeAtomic({
+                value: withHeating([1600, 1700, 1800]),
+                timedInteractionTimeoutMs: Millis(2000),
+            });
+
+            expect([untimed.status, timed.status]).deep.equals([Status.Success, Status.Success]);
+            expect(storedPresets().map(({ heatingSetpoint }) => heatingSetpoint)).deep.equals([1600, 1700, 1800]);
+        });
+
+        it("rolls back the whole list with a stale data version", async () => {
+            const result = await writeAtomic({
+                value: withHeating([1700, 1800, 1900]),
+                dataVersion: await staleDataVersion(),
+            });
+
+            expect(result.status).equals(Status.DataVersionMismatch);
+            expect(received).deep.equals(["BeginWrite", "Write", "RollbackWrite"]);
+            expect(storedPresets().map(({ heatingSetpoint }) => heatingSetpoint)).deep.equals([2000, 2000, 2000]);
+        });
     });
 });
