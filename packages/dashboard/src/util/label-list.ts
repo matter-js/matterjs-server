@@ -31,11 +31,21 @@ function labelText(value: unknown): string | undefined {
     return text === undefined || text.includes("\u0000") ? undefined : text;
 }
 
+// A field that's absent, or a string blanked out by NUL padding, is a normal "no value" case.
+// A field present with a non-string type is malformed and must not be conflated with "absent" —
+// it has to surface as a raw/error entry so the reported value isn't silently dropped.
+function decodeLabelField(raw: unknown): { text: string; invalid: boolean } {
+    if (raw === undefined) return { text: "", invalid: false };
+    if (typeof raw !== "string") return { text: "", invalid: true };
+    return { text: labelText(raw) ?? "", invalid: false };
+}
+
 // LabelStruct wire entries are field-tag keyed: "0" Label (category, e.g. "room"), "1" Value.
 function decodeLabelListItem(entry: unknown): LabelListItem | undefined {
-    const label = labelText(tagField(entry, 0));
-    const value = labelText(tagField(entry, 1));
-    return label === undefined && value === undefined ? undefined : { label: label ?? "", value: value ?? "" };
+    const label = decodeLabelField(tagField(entry, 0));
+    const value = decodeLabelField(tagField(entry, 1));
+    if (label.invalid || value.invalid) return undefined;
+    return label.text === "" && value.text === "" ? undefined : { label: label.text, value: value.text };
 }
 
 // undefined means the LabelList attribute hasn't been read yet — an empty array means the

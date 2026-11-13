@@ -70,6 +70,15 @@ describe("decodeLabelList", () => {
             { kind: "label", item: { label: "room", value: "" } },
         ]);
     });
+
+    it("keeps a non-string Label or Value as a raw entry instead of discarding it", () => {
+        expect(decodeLabelList([{ "0": "count", "1": 3 }])).to.deep.equal([
+            { kind: "raw", raw: { "0": "count", "1": 3 } },
+        ]);
+        expect(decodeLabelList([{ "0": true, "1": "Kitchen" }])).to.deep.equal([
+            { kind: "raw", raw: { "0": true, "1": "Kitchen" } },
+        ]);
+    });
 });
 
 describe("describeLabelListEntry", () => {
