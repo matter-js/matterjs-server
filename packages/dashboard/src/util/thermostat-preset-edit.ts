@@ -6,7 +6,7 @@
 
 import type { MatterClient, MatterNode } from "@matter-server/ws-client";
 import { asObject, pickNumber } from "./attribute-shapes.js";
-import { requireAttributeWriteSuccess } from "./matter-status.js";
+import { getMatterStatusName, requireAttributeWriteSuccess } from "./matter-status.js";
 import {
     decodePresets,
     readThermostatAttribute,
@@ -24,6 +24,12 @@ const PRESET_TYPE_SUPPORTS_NAMES = 0x2;
 
 /** PresetScenarioEnum UserDefined (§4.3.10.17): a preset of this scenario must carry a Name. */
 const PRESET_SCENARIO_USER_DEFINED = 254;
+
+/** What a failed preset write means for the user, for the statuses that point at a write running elsewhere. */
+const PRESET_WRITE_HINTS: Record<number, string> = {
+    0x9c: "another change of the presets is still running, try again",
+    0xcb: "another client keeps an atomic write of this thermostat open",
+};
 
 export interface ThermostatPresetType {
     scenario: number;
@@ -167,10 +173,13 @@ export async function writeThermostatPresets(
     const path = presetsPath(endpoint);
     const current = decodePresets((await client.readAttribute(nodeId, path, undefined, true))[path]);
     if (current === undefined) throw new Error("The device did not report its presets");
-    requireAttributeWriteSuccess(
-        await client.writeAtomicAttribute(nodeId, path, buildNext(current).map(toPresetStruct)),
-        "Writing presets failed",
-    );
+    const results = await client.writeAtomicAttribute(nodeId, path, buildNext(current).map(toPresetStruct));
+    const status = results[0]?.Status;
+    const hint = status === undefined ? undefined : PRESET_WRITE_HINTS[status];
+    if (status !== undefined && hint !== undefined) {
+        throw new Error(`Writing presets failed: ${hint} (${getMatterStatusName(status)}, ${status})`);
+    }
+    requireAttributeWriteSuccess(results, "Writing presets failed");
 }
 
 function presetsPath(endpoint: number): string {

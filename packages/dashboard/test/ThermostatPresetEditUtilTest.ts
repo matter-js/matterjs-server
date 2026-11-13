@@ -303,12 +303,21 @@ describe("thermostat-preset-edit util", () => {
             ]);
         });
 
-        it("throws with the status of a failed atomic write", async () => {
-            const { client } = fakePresetsClient({
-                write: [{ Path: { EndpointId: 6, ClusterId: 513, AttributeId: 80 }, Status: 0x9c }],
+        for (const [status, message] of [
+            [0x87, "Writing presets failed: ConstraintError (135)"],
+            [0x9c, "Writing presets failed: another change of the presets is still running, try again (Busy, 156)"],
+            [
+                0xcb,
+                "Writing presets failed: another client keeps an atomic write of this thermostat open (InvalidInState, 203)",
+            ],
+        ] as const) {
+            it(`throws "${message}" for status ${status}`, async () => {
+                const { client } = fakePresetsClient({
+                    write: [{ Path: { EndpointId: 6, ClusterId: 513, AttributeId: 80 }, Status: status }],
+                });
+                await expect(writeThermostatPresets(client, 1, 6, keepAll)).to.be.rejectedWith(message);
             });
-            await expect(writeThermostatPresets(client, 1, 6, keepAll)).to.be.rejectedWith("Busy (156)");
-        });
+        }
 
         it("writes nothing when building the list throws", async () => {
             const { client, steps } = fakePresetsClient();
