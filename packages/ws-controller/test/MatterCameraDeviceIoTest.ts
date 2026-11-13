@@ -599,7 +599,7 @@ describe("MatterCameraDeviceIo.invoke (webrtcProvider routing)", () => {
 describe("MatterCameraDeviceIo.invoke (stream list re-read)", () => {
     const NODE_ID = NodeId(5n);
     const ENDPOINT_ID = EndpointNumber(2);
-    const AVSM = CameraAvStreamManagement.Cluster;
+    const AVSM = CameraAvStreamManagement;
 
     interface ReadRequest {
         isFabricFiltered: boolean;
@@ -882,7 +882,7 @@ describe("MatterCameraDeviceIo.missingCameraClusters", () => {
     it("reports both clusters missing when the endpoint does not exist", async () => {
         const io = new MatterCameraDeviceIo(makeHandler(undefined));
         const missing = await io.missingCameraClusters(NODE_ID, ENDPOINT_ID);
-        expect(missing).to.deep.equal([CameraAvStreamManagement.Cluster.id, WebRtcTransportProvider.Cluster.id]);
+        expect(missing).to.deep.equal([CameraAvStreamManagement.id, WebRtcTransportProvider.id]);
     });
 
     it("reports only the transport provider missing when the endpoint carries just AV stream management", async () => {
@@ -890,7 +890,7 @@ describe("MatterCameraDeviceIo.missingCameraClusters", () => {
             makeHandler({ behaviors: { has: behavior => behavior === CameraAvStreamManagementClient } }),
         );
         const missing = await io.missingCameraClusters(NODE_ID, ENDPOINT_ID);
-        expect(missing).to.deep.equal([WebRtcTransportProvider.Cluster.id]);
+        expect(missing).to.deep.equal([WebRtcTransportProvider.id]);
     });
 
     it("reports only AV stream management missing when the endpoint carries just the transport provider", async () => {
@@ -898,7 +898,7 @@ describe("MatterCameraDeviceIo.missingCameraClusters", () => {
             makeHandler({ behaviors: { has: behavior => behavior === WebRtcTransportProviderClient } }),
         );
         const missing = await io.missingCameraClusters(NODE_ID, ENDPOINT_ID);
-        expect(missing).to.deep.equal([CameraAvStreamManagement.Cluster.id]);
+        expect(missing).to.deep.equal([CameraAvStreamManagement.id]);
     });
 
     it("reports nothing missing when the endpoint carries both clusters", async () => {

@@ -225,7 +225,7 @@ console.log(`Manual pairing code: ${node.state.commissioning.pairingCodes.manual
 
 for (const signal of ["SIGTERM", "SIGINT"] as const) {
     process.on(signal, () => {
-        node.cancel()
+        node.stop()
             .then(() => process.exit(0))
             .catch(() => process.exit(1));
     });

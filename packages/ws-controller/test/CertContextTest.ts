@@ -331,8 +331,8 @@ describe("certContext", () => {
             return MockTime.resolve(
                 site.handler.handleGroupWriteAttribute({
                     nodeId: NodeId.fromGroupId(GroupId(groupId)),
-                    clusterId: ClusterId(OnOff.Cluster.id),
-                    attributeId: AttributeId(OnOff.Cluster.attributes.onTime.id),
+                    clusterId: ClusterId(OnOff.id),
+                    attributeId: AttributeId(OnOff.attributes.onTime.id),
                     value: 5,
                 }),
                 { macrotasks: true },

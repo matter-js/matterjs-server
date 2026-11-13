@@ -249,7 +249,7 @@ export function managerWith(
         missingCameraClusters: async () =>
             missingClusters ??
             (holder.state === undefined
-                ? [CameraAvStreamManagement.Cluster.id, WebRtcTransportProvider.Cluster.id]
+                ? [CameraAvStreamManagement.id, WebRtcTransportProvider.id]
                 : new Array<number>()),
         invoke: async args => {
             const recorded = {
@@ -6579,7 +6579,7 @@ describe("CameraStreamManager", () => {
     describe("camera_not_supported", () => {
         it("reports a missing WebRTC provider cluster rather than allocating a stream first", async () => {
             const { manager, invokes } = managerWith(STATE, async () => ({ videoStreamId: 9 }), [
-                WebRtcTransportProvider.Cluster.id,
+                WebRtcTransportProvider.id,
             ]);
             let thrown: unknown;
             try {
@@ -6597,7 +6597,7 @@ describe("CameraStreamManager", () => {
             }
             expect((thrown as ServerError).code).to.equal(ServerErrorCode.CameraNotSupported);
             expect(JSON.parse((thrown as ServerError).message).missing_clusters).to.deep.equal([
-                WebRtcTransportProvider.Cluster.id,
+                WebRtcTransportProvider.id,
             ]);
             expect(invokes).to.deep.equal([]);
         });
@@ -6610,8 +6610,8 @@ describe("CameraStreamManager", () => {
                 thrown = error;
             }
             expect(JSON.parse((thrown as ServerError).message).missing_clusters).to.deep.equal([
-                CameraAvStreamManagement.Cluster.id,
-                WebRtcTransportProvider.Cluster.id,
+                CameraAvStreamManagement.id,
+                WebRtcTransportProvider.id,
             ]);
         });
     });

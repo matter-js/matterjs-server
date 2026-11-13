@@ -25,7 +25,7 @@ import { nodeIdOf } from "../src/util/nodeIdOf.js";
 import { TestSite } from "./support/ControllerSite.js";
 import { captureLogs, LogCapture } from "./support/LogCapture.js";
 
-const ON_OFF_PATH = `1/${OnOff.Cluster.id}/${OnOff.Cluster.attributes.onOff.id}`;
+const ON_OFF_PATH = `1/${OnOff.id}/${OnOff.attributes.onOff.id}`;
 
 async function createHandler(controller: ServerNode) {
     const webRtcRequestor = await controller.add(new Endpoint(CameraControllerEndpoint, { id: "camera-controller" }));
@@ -208,7 +208,7 @@ describe("restored node cache", () => {
 
     it("keeps a restored node unavailable while its device is unreachable, then sends it once", async () => {
         const device = await changeWhileControllerIsDown();
-        await MockTime.resolve(device.cancel(), { macrotasks: true });
+        await MockTime.resolve(device.stop(), { macrotasks: true });
 
         const { controller, handler, view } = await restartController();
         await MockTime.resolve(handler.initializeNodes(), { macrotasks: true });
@@ -273,7 +273,7 @@ describe("restored node cache", () => {
 
     it("makes a restored node available even when its rebuild produces no snapshot, and serves the stored values", async () => {
         const device = await changeWhileControllerIsDown();
-        await MockTime.resolve(device.cancel(), { macrotasks: true });
+        await MockTime.resolve(device.stop(), { macrotasks: true });
         // During startup only the first-report refresh rebuilds, so this stands in for its populate failing.
         restore = replaceCacheUpdate(async () => {});
 
@@ -288,7 +288,7 @@ describe("restored node cache", () => {
 
     it("makes a restored node available even when its rebuild fails", async () => {
         const device = await changeWhileControllerIsDown();
-        await MockTime.resolve(device.cancel(), { macrotasks: true });
+        await MockTime.resolve(device.stop(), { macrotasks: true });
         restore = replaceCacheUpdate(async () => {
             throw new MatterError("rebuild failure");
         });
@@ -306,7 +306,7 @@ describe("restored node cache", () => {
         const device = await changeWhileControllerIsDown();
         let offline: Promise<void> | undefined;
         restore = replaceCacheUpdate(async (original, cache, node) => {
-            offline ??= device.cancel().then(() => stateOf(node, NodeConnectionState.WaitingForDeviceDiscovery));
+            offline ??= device.stop().then(() => stateOf(node, NodeConnectionState.WaitingForDeviceDiscovery));
             await offline;
             return original.call(cache, node);
         });
@@ -337,14 +337,14 @@ describe("restored node cache", () => {
 
     it("sends an attribute the first report no longer carries as a removal before the node becomes available", async () => {
         await changeWhileControllerIsDown();
-        const removedPath = `1/${OnOff.Cluster.id}/65000`;
+        const removedPath = `1/${OnOff.id}/65000`;
         const add = AttributeDataCache.prototype.add;
         AttributeDataCache.prototype.add = async function (node: ClientNode) {
             await add.call(this, node);
             const stored = this.get(nodeIdOf(node));
             if (stored !== undefined) {
                 stored[removedPath] = 5;
-                stored[`9/${OnOff.Cluster.id}/0`] = true;
+                stored[`9/${OnOff.id}/0`] = true;
             }
         };
         restore = () => {
@@ -430,11 +430,11 @@ describe("restored node cache", () => {
         registered.length = 0;
 
         await device.add(OnOffLightDevice, { id: "second-light", number: 2 });
-        for (let i = 0; i < 5 && !registered.some(paths => paths.includes(`2/${OnOff.Cluster.id}/0`)); i++) {
+        for (let i = 0; i < 5 && !registered.some(paths => paths.includes(`2/${OnOff.id}/0`)); i++) {
             await settle();
         }
 
-        expect(registered.some(paths => paths.includes(`2/${OnOff.Cluster.id}/0`))).equals(true);
+        expect(registered.some(paths => paths.includes(`2/${OnOff.id}/0`))).equals(true);
     });
 
     it("does not send a freshly commissioned node again when its rebuild produces no new snapshot", async () => {

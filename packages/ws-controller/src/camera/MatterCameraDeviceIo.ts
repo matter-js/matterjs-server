@@ -216,10 +216,10 @@ export class MatterCameraDeviceIo implements CameraDeviceIo {
         const endpoint = this.#endpoint(nodeId, endpointId);
         const missing = new Array<number>();
         if (endpoint === undefined || !endpoint.behaviors.has(CameraAvStreamManagementClient)) {
-            missing.push(CameraAvStreamManagement.Cluster.id);
+            missing.push(CameraAvStreamManagement.id);
         }
         if (endpoint === undefined || !endpoint.behaviors.has(WebRtcTransportProviderClient)) {
-            missing.push(WebRtcTransportProvider.Cluster.id);
+            missing.push(WebRtcTransportProvider.id);
         }
         return missing;
     }
@@ -235,7 +235,7 @@ export class MatterCameraDeviceIo implements CameraDeviceIo {
         if (args.cluster === "avsm") {
             const node = this.#handler.getNode(args.nodeId);
             // Widened: the command name is a runtime string validated by the manager.
-            const cluster: Specifier.ClusterLike = CameraAvStreamManagement.Cluster;
+            const cluster: Specifier.ClusterLike = CameraAvStreamManagement;
             const response = await this.#handler.invokeCommand(node, {
                 endpoint: args.endpointId,
                 cluster,
@@ -260,7 +260,7 @@ export class MatterCameraDeviceIo implements CameraDeviceIo {
         }
 
         const node = this.#handler.getNode(args.nodeId);
-        const cluster: Specifier.ClusterLike = WebRtcTransportProvider.Cluster;
+        const cluster: Specifier.ClusterLike = WebRtcTransportProvider;
         const invoke = (): Promise<unknown> =>
             this.#handler.invokeCommand(node, {
                 endpoint: args.endpointId,

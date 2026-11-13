@@ -78,10 +78,7 @@ describe("PeerChangeBus", () => {
         const observers = new ObserverGroup();
         const reported = new Promise<[NodeId, AttributeChange]>(resolve => {
             observers.on(bus.events.attributeChanged, (nodeId, change) => {
-                if (
-                    change.path.clusterId === OnOff.Cluster.id &&
-                    change.path.attributeId === OnOff.Cluster.attributes.onOff.id
-                ) {
+                if (change.path.clusterId === OnOff.id && change.path.attributeId === OnOff.attributes.onOff.id) {
                     resolve([nodeId, change]);
                 }
             });
@@ -110,7 +107,7 @@ describe("PeerChangeBus", () => {
 
         expect(nodeId).equals(peer().peerAddress?.nodeId);
         expect(change.path.endpointId).equals(light.number);
-        expect(change.path.attributeId).equals(OnOff.Cluster.attributes.onOff.id);
+        expect(change.path.attributeId).equals(OnOff.attributes.onOff.id);
         expect(change.value).equals(true);
     });
 
@@ -135,7 +132,7 @@ describe("PeerChangeBus", () => {
 
         const reported = new Promise<[NodeId, EventChange]>(resolve => {
             bus.events.eventTriggered.on((nodeId, change) => {
-                if (change.path.clusterId === BooleanState.Cluster.id) {
+                if (change.path.clusterId === BooleanState.id) {
                     resolve([nodeId, change]);
                 }
             });
@@ -145,7 +142,7 @@ describe("PeerChangeBus", () => {
         const [nodeId, change] = await MockTime.resolve(reported, { macrotasks: true });
         expect(nodeId).equals(peer().peerAddress?.nodeId);
         expect(change.path.endpointId).equals(light.number);
-        expect(change.path.eventId).equals(BooleanState.Cluster.events.stateChange.id);
+        expect(change.path.eventId).equals(BooleanState.events.stateChange.id);
         expect(change.events.length).equals(1);
         expect(change.events[0].eventNumber).not.undefined;
         expect(change.events[0].epochTimestamp).not.undefined;
@@ -158,7 +155,7 @@ describe("PeerChangeBus", () => {
         const endpoint = peer().endpoints.for(EndpointNumber(light.number));
         const behavior = endpoint.behaviors.supported.booleanState;
         expect(ClusterBehavior.is(behavior)).equals(true);
-        const event = Matter.clusters(BooleanState.Cluster.id)?.events(BooleanState.Cluster.events.stateChange.id);
+        const event = Matter.clusters(BooleanState.id)?.events(BooleanState.events.stateChange.id);
         expect(event).not.undefined;
         if (behavior === undefined || event === undefined) {
             return;

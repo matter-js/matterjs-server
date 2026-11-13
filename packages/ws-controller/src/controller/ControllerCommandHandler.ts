@@ -936,7 +936,7 @@ export class ControllerCommandHandler {
             setUtcTime: async fields => {
                 await this.#invokeCommand(node, {
                     endpoint: EndpointNumber(0),
-                    cluster: TimeSynchronization.Cluster,
+                    cluster: TimeSynchronization,
                     command: "setUtcTime",
                     fields,
                 });
@@ -944,14 +944,14 @@ export class ControllerCommandHandler {
             setTimeZone: async fields =>
                 (await this.#invokeCommand(node, {
                     endpoint: EndpointNumber(0),
-                    cluster: TimeSynchronization.Cluster,
+                    cluster: TimeSynchronization,
                     command: "setTimeZone",
                     fields,
                 })) as TimeSynchronization.SetTimeZoneResponse | undefined,
             setDstOffset: async fields => {
                 await this.#invokeCommand(node, {
                     endpoint: EndpointNumber(0),
-                    cluster: TimeSynchronization.Cluster,
+                    cluster: TimeSynchronization,
                     command: "setDstOffset",
                     fields,
                 });
@@ -1687,7 +1687,7 @@ export class ControllerCommandHandler {
                     this.#nodes.get(nodeId),
                     {
                         endpoint: EndpointNumber(0),
-                        cluster: OperationalCredentials.Cluster,
+                        cluster: OperationalCredentials,
                         command: "updateFabricLabel",
                         fields: { label },
                     },
