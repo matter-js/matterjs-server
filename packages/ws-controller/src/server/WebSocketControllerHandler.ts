@@ -1756,7 +1756,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
         const timedInteractionTimeoutMs = timedRequestTimeoutArgument(timed_request_timeout_ms);
         if (statesDataVersion && writesTimed(attributeModel, timedInteractionTimeoutMs)) {
             throw ServerError.invalidArguments(
-                "write_atomic_attribute sends a timed write here, which needs skip_data_version_check instead of data_version: a timed write with a data version fails on lists",
+                "write_atomic_attribute sends a timed write here, which needs skip_data_version_check instead of data_version",
             );
         }
 

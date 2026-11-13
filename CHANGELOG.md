@@ -8,7 +8,7 @@ This page shows a detailed overview of the changes between versions without the 
 -->
 ## **WORK IN PROGRESS**
 
-- Feature: The new `write_atomic_attribute` command writes attributes that a device only accepts inside an atomic write, such as the thermostat presets and schedules. The server begins the atomic write, writes the value and commits it, or rolls it back when the device refuses the value. The write carries the data version the client read, so a value based on an outdated read is refused instead of overwriting a newer change, unless the client explicitly skips that check. Other writes to these attributes answer BUSY while it runs. The dashboard's thermostat preset editor uses it. This needs WebSocket schema 15 — see [WebSocket API schema changelog](docs/websocket-api-schema-changelog.md)
+- Feature: The new `write_atomic_attribute` command writes attributes that a device only accepts inside an atomic write, such as the thermostat presets. The dashboard's thermostat preset editor uses it. This needs WebSocket schema 15 — see [WebSocket API schema changelog](docs/websocket-api-schema-changelog.md)
 - Enhancement: Update matter.js to the latest 0.18.1 nightly
     - After a failed commissioning attempt, the device can be added again right away instead of only after a waiting time
     - Adding a device over Bluetooth fails faster when the Bluetooth connection drops, and then tries the device's other connection paths instead of giving up

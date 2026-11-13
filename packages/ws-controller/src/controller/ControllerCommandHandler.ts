@@ -1929,9 +1929,8 @@ export class ControllerCommandHandler {
      * when the cluster changed since that read (§8.7.3.2), and the server rolls back. With `ignoreDataVersionMismatch`
      * the server instead sends the Write again without the data version, inside the same atomic write. A timed write
      * with a data version, by a stated timeout or because the attribute requires one, is refused with InvalidArguments
-     * before anything is sent: matter.js sends a timed write as one message with the data version on every list entry,
-     * so the entries after the first fail. The answer is the first status that is not Success: from the BeginWrite,
-     * from the Write, or from the CommitWrite.
+     * before anything is sent. The answer is the first status that is not Success: from the BeginWrite, from the
+     * Write, or from the CommitWrite.
      *
      * A failed Write is followed by a RollbackWrite, and so is an error the Write throws. A CommitWrite is never rolled
      * back: answered with a failure, the device already discarded the pending write (§7.15.6.4.2); unanswered, the

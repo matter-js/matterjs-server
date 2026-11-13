@@ -223,9 +223,7 @@ export interface NodeCommandHandler {
     /**
      * Write an attribute with the Atomic quality inside one atomic write (Matter spec §7.15). The caller checks the
      * quality and refuses a timed write (a stated timeout, or an attribute that requires timed writes) with a data
-     * version: matter.js sends the version on every entry of a list in the one timed message, so the entries after the
-     * first fail with DATA_VERSION_MISMATCH. The answer is the first status that is not Success, or Success once the
-     * device committed the value.
+     * version. The answer is the first status that is not Success, or Success once the device committed the value.
      */
     handleWriteAtomicAttribute(data: WriteAtomicAttributeRequest): Promise<AttributeResponseStatus>;
 

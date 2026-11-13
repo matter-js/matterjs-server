@@ -673,9 +673,8 @@ instead of the commit. The device applies the value only when the commit succeed
 - `attribute_path` names one attribute on one endpoint; a wildcard, a group node id, or an attribute without the Atomic
   quality is refused with `InvalidArguments`. Write any other attribute with `write_attribute`.
 - `timed_request_timeout_ms`: sends the write as a timed write, as for `write_attribute`. A timed write, by a value
-  above 0 or because the attribute requires timed writes, needs `skip_data_version_check`; with a `data_version` it is
-  refused with `InvalidArguments`, because matter.js sends a timed write in one message with the data version on
-  every list entry, so every entry after the first fails with `146`.
+  above 0 or because the attribute requires timed writes, is refused with `InvalidArguments` when it has a
+  `data_version`; it needs `skip_data_version_check`.
 - `atomic_timeout_ms`: how long the device keeps the pending write, an integer from 1 to 65535; 30000 when not given. The
   device may answer with a shorter time.
 
