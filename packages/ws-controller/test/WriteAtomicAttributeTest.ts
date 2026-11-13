@@ -410,6 +410,36 @@ describe("write_atomic_attribute on a commissioned device", () => {
         expect(await writePresets()).equals(Status.InvalidInState);
     });
 
+    it("does not roll back after a lost BeginWrite answer, so another client's atomic write still commits", async () => {
+        const held = await atomicRequest(Thermostat.RequestType.BeginWrite);
+        expect(held.statusCode).equals(Status.Success);
+        received.length = 0;
+        let answerBegin = () => {};
+        const answerHeldBack = new Promise<void>(resolve => (answerBegin = resolve));
+        deviceAnswers.duringBegin = () => answerHeldBack;
+
+        const lost = await writeAtomic({ value: [wirePreset(1900)] }).catch((error: unknown) => error);
+        deviceAnswers.duringBegin = undefined;
+        answerBegin();
+
+        expect(lost).instanceOf(Error);
+        expect(lost).not.instanceOf(StatusResponseError);
+        expect(received).deep.equals(["BeginWrite"]);
+        const [plainWrite] = await MockTime.resolve(
+            site.handler.handleWriteAttribute({
+                nodeId: NODE_ID,
+                endpointId: ENDPOINT,
+                clusterId: THERMOSTAT,
+                attributeId: PRESETS,
+                value: [],
+            }),
+            { macrotasks: true },
+        );
+        expect(plainWrite.status).equals(Status.Busy);
+        const commit = await atomicRequest(Thermostat.RequestType.CommitWrite);
+        expect(commit.statusCode).equals(Status.Success);
+    });
+
     it("answers INVALID_IN_STATE while another atomic write is open and does not roll it back", async () => {
         const held = await atomicRequest(Thermostat.RequestType.BeginWrite);
         expect(held.statusCode).equals(Status.Success);

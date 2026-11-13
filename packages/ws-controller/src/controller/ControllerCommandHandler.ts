@@ -1925,8 +1925,10 @@ export class ControllerCommandHandler {
      * state that caused the refusal is not ours to discard.
      *
      * A RollbackWrite that fails, other than with INVALID_IN_STATE (no atomic write open), may leave the atomic write
-     * open on the device until its timeout. The cluster's lock is then kept for that timeout: the one the BeginWrite
-     * answered, or the requested one when no answer came.
+     * open on the device until its timeout. So may a BeginWrite whose answer is lost. That BeginWrite is not rolled
+     * back: if the device refused it because another client of this server holds an atomic write, the rollback would
+     * discard that client's write, since both count as the same writer. In both cases the cluster's lock is kept for the
+     * timeout: the one the BeginWrite answered, or the requested one when no answer came.
      *
      * The CommitWrite and the RollbackWrite name the attribute ids the BeginWrite answered (§7.15.6.4.1). The device
      * knows all clients of this server as one writer (the Atomic Writer ID is the controller's node id, §7.15.2), so a
@@ -2021,11 +2023,14 @@ export class ControllerCommandHandler {
                 }),
             );
 
-        /**
-         * `knownAttributes` says whether the BeginWrite answered: only then does INVALID_IN_STATE mean that no atomic
-         * write is open, because the device may have opened it for more attributes than requested (§7.15.6.4.1).
-         */
-        const rollback = async (attributeRequests: AttributeId[], knownAttributes: boolean) => {
+        const holdUntilDeviceTimeout = (reason: string, cause: unknown) => {
+            unrolled.deviceTimeout = deviceTimeout;
+            logger.warn(
+                `${reason} of ${attributeModel.propertyName} on ${this.formatNode(nodeId)}/${endpointId}; the device may keep it open, so writes to the cluster's atomic attributes answer BUSY for ${Duration.format(deviceTimeout)}:`,
+                cause,
+            );
+        };
+        const rollback = async (attributeRequests: AttributeId[]) => {
             let failure: unknown;
             try {
                 const response = await atomicRequest(AtomicRequestType.RollbackWrite, attributeRequests);
@@ -2034,16 +2039,12 @@ export class ControllerCommandHandler {
                 }
                 failure = `status ${response.statusCode}`;
             } catch (error) {
-                if (knownAttributes && StatusResponseError.is(error, Status.InvalidInState)) {
+                if (StatusResponseError.is(error, Status.InvalidInState)) {
                     return;
                 }
                 failure = error;
             }
-            unrolled.deviceTimeout = deviceTimeout;
-            logger.warn(
-                `Could not roll back an atomic write of ${attributeModel.propertyName} on ${this.formatNode(nodeId)}/${endpointId}; the device may keep it open, so writes to the cluster's atomic attributes answer BUSY for ${Duration.format(deviceTimeout)}:`,
-                failure,
-            );
+            holdUntilDeviceTimeout("Could not roll back an atomic write", failure);
         };
 
         let begin: AtomicResponse;
@@ -2051,8 +2052,7 @@ export class ControllerCommandHandler {
             begin = await atomicRequest(AtomicRequestType.BeginWrite, [attributeId]);
         } catch (error) {
             if (!(error instanceof StatusResponseError)) {
-                // The device may have opened the atomic write before the answer got lost.
-                await rollback([attributeId], false);
+                holdUntilDeviceTimeout("No answer to the BeginWrite of an atomic write", error);
             }
             StatusResponseError.accept(error);
             return answer(error.code, error.clusterCode);
@@ -2080,12 +2080,12 @@ export class ControllerCommandHandler {
                 timedInteractionTimeoutMs,
             );
             if (failed !== undefined) {
-                await rollback(atomicAttributes, true);
+                await rollback(atomicAttributes);
                 return answer(failed.status, failed.clusterStatus);
             }
             commit = await atomicRequest(AtomicRequestType.CommitWrite, atomicAttributes);
         } catch (error) {
-            await rollback(atomicAttributes, true);
+            await rollback(atomicAttributes);
             StatusResponseError.accept(error);
             return answer(error.code, error.clusterCode);
         }

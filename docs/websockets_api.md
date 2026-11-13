@@ -676,8 +676,9 @@ cluster that requires atomic writes answer `156` (BUSY) at once, without anythin
 wildcard endpoint answers BUSY for every endpoint that has the cluster. Without this, the device would take such a write
 into the open atomic write. Writes to the cluster's other attributes, such as a setpoint, are sent as usual. A groupcast
 write is not checked. When the server cannot roll back a failed atomic write, for example because the device does not
-answer, the device may keep it open until its timeout; the server then keeps answering BUSY until that timeout has
-passed.
+answer, or the answer to its BeginWrite is lost, the device may keep the atomic write open until its timeout; the
+server then keeps answering BUSY until that timeout has passed. After a lost BeginWrite answer the server sends no
+rollback, because it could discard an atomic write that another client opened with `device_command`.
 
 The node data changes only with the device's next report, as for a timed `write_attribute`, so a value the device does
 not commit never shows up in it.
