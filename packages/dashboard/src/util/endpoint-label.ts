@@ -5,20 +5,13 @@
  */
 
 import type { MatterNode } from "@matter-server/ws-client";
-import { attributeArray } from "./access-control.js";
-import { tagField, toText } from "./attribute-shapes.js";
+import { toText } from "./attribute-shapes.js";
+import { decodeLabelList, FIXED_LABEL_CLUSTER_ID, LABEL_LIST_ATTR, USER_LABEL_CLUSTER_ID } from "./label-list.js";
 
 // BridgedDeviceBasicInformation cluster (0x39 / 57): carries its own NodeLabel per bridged
 // endpoint, distinct from the whole-node BasicInformation NodeLabel on endpoint 0.
 const BRIDGED_DEVICE_BASIC_INFORMATION_CLUSTER_ID = 57;
 const BRIDGED_NODE_LABEL_ATTRIBUTE_ID = 5;
-
-// FixedLabel (0x40 / 64) and UserLabel (0x41 / 65) both expose a LabelList of LabelStruct
-// entries; either can be present on any endpoint as Matter's generic per-endpoint labeling
-// mechanism (FixedLabel is factory-set, UserLabel is user/controller-writable).
-const FIXED_LABEL_CLUSTER_ID = 64;
-const USER_LABEL_CLUSTER_ID = 65;
-const LABEL_LIST_ATTRIBUTE_ID = 0;
 
 /** The label shares a single-line header with the endpoint number and the cluster name. */
 const MAX_LABEL_ENTRIES = 3;
@@ -33,11 +26,12 @@ function labelText(value: unknown): string | undefined {
     return text === undefined || text.includes("\u0000") ? undefined : text;
 }
 
-// LabelStruct wire entries are field-tag keyed: "0" Label (category, e.g. "room"), "1" Value.
+// Only the Value half of each LabelStruct (Label is the category, e.g. "room") is useful for
+// identifying an endpoint at a glance.
 function decodeLabelListValues(raw: unknown): string[] {
-    return attributeArray(raw)
-        .map(entry => labelText(tagField(entry, 1)))
-        .filter((value): value is string => value !== undefined);
+    return (decodeLabelList(raw) ?? [])
+        .map(entry => (entry.kind === "label" ? entry.item.value : undefined))
+        .filter((value): value is string => value !== undefined && value.length > 0);
 }
 
 function joinLabels(values: string[]): string | undefined {
@@ -60,11 +54,7 @@ export function getEndpointLabel(node: MatterNode, endpoint: number): string | u
     if (bridgedNodeLabel !== undefined) return joinLabels([bridgedNodeLabel]);
 
     return (
-        joinLabels(
-            decodeLabelListValues(node.attributes[`${endpoint}/${USER_LABEL_CLUSTER_ID}/${LABEL_LIST_ATTRIBUTE_ID}`]),
-        ) ??
-        joinLabels(
-            decodeLabelListValues(node.attributes[`${endpoint}/${FIXED_LABEL_CLUSTER_ID}/${LABEL_LIST_ATTRIBUTE_ID}`]),
-        )
+        joinLabels(decodeLabelListValues(node.attributes[`${endpoint}/${USER_LABEL_CLUSTER_ID}/${LABEL_LIST_ATTR}`])) ??
+        joinLabels(decodeLabelListValues(node.attributes[`${endpoint}/${FIXED_LABEL_CLUSTER_ID}/${LABEL_LIST_ATTR}`]))
     );
 }
