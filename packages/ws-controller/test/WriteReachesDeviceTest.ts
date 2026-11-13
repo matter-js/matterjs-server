@@ -4,11 +4,11 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Endpoint, NetworkClient, NodeId, ServerNode } from "@matter/main";
+import { Duration, Endpoint, Millis, NetworkClient, NodeId, ServerNode } from "@matter/main";
 import { AccessControl } from "@matter/main/clusters/access-control";
 import { BasicInformation } from "@matter/main/clusters/basic-information";
 import { Fabric, FabricManager, SustainedSubscription } from "@matter/main/protocol";
-import { AttributeId, ClusterId, EndpointNumber, Status } from "@matter/main/types";
+import { AttributeId, ClusterId, EndpointNumber, FabricIndex, Status } from "@matter/main/types";
 import { InteractionServer } from "@matter/node";
 import { AccessControlServer } from "@matter/node/behaviors/access-control";
 import { BasicInformationServer } from "@matter/node/behaviors/basic-information";
@@ -16,11 +16,27 @@ import { BindingServer } from "@matter/node/behaviors/binding";
 import { BooleanStateServer } from "@matter/node/behaviors/boolean-state";
 import { OnOffServer } from "@matter/node/behaviors/on-off";
 import { OnOffLightDevice } from "@matter/node/devices/on-off-light";
-import { CameraControllerEndpoint, ControllerCommandHandler } from "../src/controller/ControllerCommandHandler.js";
+import {
+    CameraControllerEndpoint,
+    ControllerCommandHandler,
+    ourFabricEntriesOf,
+} from "../src/controller/ControllerCommandHandler.js";
+import { ServerError, ServerErrorCode } from "../src/types/WebSocketMessageTypes.js";
 import { nodeIdOf } from "../src/util/nodeIdOf.js";
 import { TestSite } from "./support/ControllerSite.js";
 
 const LIGHT_ENDPOINT = EndpointNumber(1);
+
+async function expectInvalidArgumentsOf(promise: Promise<unknown>) {
+    const error = await promise.then(
+        () => undefined,
+        (error: unknown) => error,
+    );
+    expect(error).instanceOf(ServerError);
+    if (error instanceof ServerError) {
+        expect(error.code).equals(ServerErrorCode.InvalidArguments);
+    }
+}
 
 describe("writeAttribute", () => {
     let site: TestSite;
@@ -117,13 +133,13 @@ describe("writeAttribute", () => {
         expect(writeRequests).equals(1);
     });
 
-    it("refuses a value that violates a constraint without sending it", async () => {
+    it("sends a value that violates a constraint and reports the device's refusal", async () => {
         const { nodeLabel } = device.stateOf(BasicInformationServer);
 
         const result = await writeNodeLabel("x".repeat(33));
 
         expect(result.map(({ status }) => status)).deep.equals([Status.ConstraintError]);
-        expect(writeRequests).equals(0);
+        expect(writeRequests).equals(1);
         expect(device.stateOf(BasicInformationServer).nodeLabel).equals(nodeLabel);
     });
 
@@ -210,6 +226,89 @@ describe("writeAttribute", () => {
         ]);
     });
 
+    it("writes ACL and binding entries that leave the fabric index to matter.js, and the device assigns our fabric", async () => {
+        const deviceFabricIndex = device.env.get(FabricManager).fabrics[0].fabricIndex;
+
+        const aclResult = await MockTime.resolve(
+            handler.setAclEntry(nodeId, [
+                { privilege: 5, auth_mode: 2, subjects: [fabric.rootNodeId], targets: null },
+                { privilege: 3, auth_mode: 2, subjects: [0x1234], targets: null },
+            ]),
+            { macrotasks: true },
+        );
+        const bindingResult = await MockTime.resolve(
+            handler.setNodeBinding(nodeId, LIGHT_ENDPOINT, [{ node: 5, group: null, endpoint: 1, cluster: 6 }]),
+            { macrotasks: true },
+        );
+
+        expect([aclResult?.[0].status, bindingResult?.[0].status]).deep.equals([Status.Success, Status.Success]);
+        expect(device.stateOf(AccessControlServer).acl.map(({ fabricIndex }) => fabricIndex)).deep.equals([
+            deviceFabricIndex,
+            deviceFabricIndex,
+        ]);
+        expect(light.stateOf(BindingServer).binding.map(({ fabricIndex }) => fabricIndex)).deep.equals([
+            deviceFabricIndex,
+        ]);
+    });
+
+    describe("an ACL entry of another fabric", () => {
+        function writeAcl(fabricIndex: number, options: { wildcard?: boolean; timeout?: Duration } = {}) {
+            const { wildcard = false, timeout } = options;
+            return MockTime.resolve(
+                handler.handleWriteAttribute({
+                    nodeId,
+                    endpointId: wildcard ? undefined : EndpointNumber(0),
+                    clusterId: ClusterId(AccessControl.Cluster.id),
+                    attributeId: AttributeId(AccessControl.Cluster.attributes.acl.id),
+                    value: [{ 1: 5, 2: 2, 3: [fabric.rootNodeId], 4: null, 254: fabricIndex }],
+                    timedInteractionTimeoutMs: timeout,
+                }),
+                { macrotasks: true },
+            );
+        }
+
+        function ourFabricIndex() {
+            return device.env.get(FabricManager).fabrics[0].fabricIndex;
+        }
+
+        // Characterization: without our check, matter.js refuses this entry on this route too.
+        it("is refused with ConstraintError without sending anything", async () => {
+            const result = await writeAcl(ourFabricIndex() + 1);
+
+            expect(result.map(({ status }) => status)).deep.equals([Status.ConstraintError]);
+            expect(writeRequests).equals(0);
+        });
+
+        it("is refused on the timed route too", async () => {
+            const result = await writeAcl(ourFabricIndex() + 1, { timeout: Millis(5_000) });
+
+            expect(result.map(({ status }) => status)).deep.equals([Status.ConstraintError]);
+            expect(writeRequests).equals(0);
+        });
+
+        it("is refused on the wildcard route as invalid arguments", async () => {
+            await expectInvalidArgumentsOf(writeAcl(ourFabricIndex() + 1, { wildcard: true }));
+            expect(writeRequests).equals(0);
+        });
+
+        it("is not confused with an entry that names our fabric", async () => {
+            const result = await writeAcl(ourFabricIndex());
+
+            expect(result.map(({ status }) => status)).deep.equals([Status.Success]);
+        });
+
+        for (const timed of [false, true]) {
+            it(`accepts FabricIndex 0, the CHIP client default, on the ${timed ? "timed route (characterization: the encoder drops the field)" : "untimed route"}`, async () => {
+                const result = await writeAcl(0, timed ? { timeout: Millis(5_000) } : {});
+
+                expect(result.map(({ status }) => status)).deep.equals([Status.Success]);
+                expect(device.stateOf(AccessControlServer).acl.map(({ fabricIndex }) => fabricIndex)).deep.equals([
+                    ourFabricIndex(),
+                ]);
+            });
+        }
+    });
+
     it("writes bindings, also when they equal the current ones", async () => {
         const bindingsToWrite = [
             { node: 5, group: null, endpoint: 1, cluster: 6 },
@@ -231,5 +330,36 @@ describe("writeAttribute", () => {
             { node: NodeId(5), group: undefined, endpoint: EndpointNumber(1), cluster: ClusterId(6) },
             { node: undefined, group: 7, endpoint: undefined, cluster: undefined },
         ]);
+    });
+});
+
+describe("ourFabricEntriesOf", () => {
+    const ours = FabricIndex(2);
+
+    it("keeps entries without a FabricIndex, with OMIT_FABRIC or with ours", () => {
+        const value = [{}, { fabricIndex: FabricIndex.OMIT_FABRIC }, { fabricIndex: 2 }];
+        expect(ourFabricEntriesOf(value, ours)).deep.equals({ kind: "ours", value });
+    });
+
+    it("replaces NO_FABRIC and null, the CHIP client defaults, by OMIT_FABRIC", () => {
+        expect(ourFabricEntriesOf([{ fabricIndex: 0, a: 1 }, { fabricIndex: null }], ours)).deep.equals({
+            kind: "ours",
+            value: [{ fabricIndex: FabricIndex.OMIT_FABRIC, a: 1 }, { fabricIndex: FabricIndex.OMIT_FABRIC }],
+        });
+    });
+
+    it("names the first entry of another fabric", () => {
+        expect(ourFabricEntriesOf([{ fabricIndex: 2 }, { fabricIndex: 3 }], ours)).deep.equals({
+            kind: "foreign",
+            fabricIndex: 3,
+        });
+    });
+
+    it("cannot check a FabricIndex while ours is unknown, but still replaces NO_FABRIC", () => {
+        expect(ourFabricEntriesOf([{ fabricIndex: 2 }], undefined)).deep.equals({ kind: "unchecked", fabricIndex: 2 });
+        expect(ourFabricEntriesOf([{ fabricIndex: 0 }], undefined)).deep.equals({
+            kind: "ours",
+            value: [{ fabricIndex: FabricIndex.OMIT_FABRIC }],
+        });
     });
 });

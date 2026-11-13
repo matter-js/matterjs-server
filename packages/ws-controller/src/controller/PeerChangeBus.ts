@@ -20,7 +20,7 @@ import {
 import { AttributeId, ClusterId, EndpointNumber, EventId, EventNumber } from "@matter/main/types";
 import { ChangeNotificationService } from "@matter/node";
 import { nodeIdOf } from "../util/nodeIdOf.js";
-import { EventTimestampResolver, ResolvedEventTimestamp } from "./EventTimestampResolver.js";
+import { deviceTimestampOfChange } from "./eventTimestamps.js";
 
 const logger = Logger.get("PeerChangeBus");
 
@@ -67,7 +67,6 @@ export class PeerChangeBus {
      * endpoint, which must not reach consumers as individual endpoint removals.
      */
     #tearingDown = new WeakSet<ClientNode>();
-    #eventTimestamps = new WeakMap<ClientNode, EventTimestampResolver>();
 
     readonly events = {
         attributeChanged: new Observable<[nodeId: NodeId, change: AttributeChange]>(),
@@ -173,18 +172,11 @@ export class PeerChangeBus {
                     this.#emitAttributeChanges(nodeId, change);
                 }
                 break;
-            case "event": {
-                // Resolve even when not forwarding: a later delta may build on this event's timestamp.
-                const timestamps = this.#eventTimestampsOf(peer).resolve(
-                    change.number,
-                    change.timestamp,
-                    change.timestampKind,
-                );
+            case "event":
                 if (this.#reporting.has(peer)) {
-                    this.#emitEvent(nodeId, change, timestamps);
+                    this.#emitEvent(nodeId, change);
                 }
                 break;
-            }
             case "delete":
                 // The peer's own root endpoint being destroyed is node removal, reported elsewhere.
                 if (change.endpoint !== peer && !this.#tearingDown.has(peer)) {
@@ -256,16 +248,7 @@ export class PeerChangeBus {
         return attributes[property]?.id;
     }
 
-    #eventTimestampsOf(peer: ClientNode) {
-        let resolver = this.#eventTimestamps.get(peer);
-        if (resolver === undefined) {
-            resolver = new EventTimestampResolver();
-            this.#eventTimestamps.set(peer, resolver);
-        }
-        return resolver;
-    }
-
-    #emitEvent(nodeId: NodeId, change: ChangeNotificationService.EventOccurrence, timestamps: ResolvedEventTimestamp) {
+    #emitEvent(nodeId: NodeId, change: ChangeNotificationService.EventOccurrence) {
         const { endpoint, behavior, event, number, priority, payload } = change;
         if (!ClusterBehavior.is(behavior)) {
             return;
@@ -281,8 +264,8 @@ export class PeerChangeBus {
                 {
                     eventNumber: number,
                     priority,
-                    // An unresolved delta is left out: the WebSocket layer then times the event at reception.
-                    ...timestamps,
+                    // Without a device time the WebSocket layer times the event at reception.
+                    ...deviceTimestampOfChange(change),
                     data: payload,
                 },
             ],

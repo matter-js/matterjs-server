@@ -52,7 +52,8 @@ const TARIFF_PRICE_TYPE_NAMES: Record<number, string> = {
     3: "Incentive",
     4: "Incentive Signal",
 };
-const TARIFF_UNIT_NAMES: Record<number, string> = { 0: "kWh", 1: "kVAh" };
+/** TariffUnitEnum per Matter 1.6 §9.1.3. */
+export const TARIFF_UNIT_NAMES: Record<number, string> = { 0: "kWh", 1: "kVAh" };
 
 /** ISO 4217 numeric currency codes; falls back to the raw code when not listed here. */
 const CURRENCY_SYMBOLS: Record<number, string> = { 978: "€", 840: "$", 826: "£", 756: "CHF" };
@@ -395,7 +396,7 @@ export function commodityTariffInfo(attributes: Record<string, unknown>, endpoin
     const nextDayEntryDate = toNumber(attr(attributes, endpoint, ATTR_NEXT_DAY_ENTRY_DATE));
 
     return {
-        supported: featureMap !== undefined,
+        supported: toNumber(featureMap) !== undefined,
         tariffInfo,
         tariffUnit: enumName(attr(attributes, endpoint, ATTR_TARIFF_UNIT), TARIFF_UNIT_NAMES),
         startDate: toNumber(attr(attributes, endpoint, ATTR_START_DATE)),

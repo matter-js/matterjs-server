@@ -74,8 +74,8 @@ describe("DCL Attestation Enforcement", function () {
     it("should reject commissioning with a test-net-DCL hint when test certs are not trusted", async function () {
         // The TestLightDevice uses a test PAA. Test PAAs are always seeded into the trust store, but
         // without --enable-test-net-dcl they are not trusted: attestation surfaces a
-        // TrustedAsTestCertificate finding and onAttestationFailure rejects with a clear hint to
-        // enable test-net DCL.
+        // TrustedAsTestCertificate finding as the only failed check, and onAttestationFailure rejects with a clear
+        // hint to enable test-net DCL.
         const error = await client.sendCommandExpectError(
             "commission_with_code",
             { code: MANUAL_PAIRING_CODE, network_only: true },

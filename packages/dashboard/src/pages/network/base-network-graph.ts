@@ -39,6 +39,9 @@ export abstract class BaseNetworkGraph extends LitElement {
     /** Whether initial fit has been done (to preserve user's zoom/pan after first load) */
     private _initialFitDone = false;
 
+    /** Node currently drawn with its selected icon variant; set only through `_setIconHighlight` */
+    protected _highlightedNodeId: string | null = null;
+
     /** Store original edge colors for restoration after highlighting */
     private _originalEdgeColors: Map<string, { color: string; highlight: string }> = new Map();
 
@@ -56,13 +59,16 @@ export abstract class BaseNetworkGraph extends LitElement {
     protected _getPhysicsOptions(): any {
         return {
             enabled: true,
-            solver: "forceAtlas2Based",
-            forceAtlas2Based: {
-                gravitationalConstant: -70,
-                centralGravity: 0.005,
+            // barnesHut's avoidOverlap uses only the receiving node's radius, so all nodes must keep the same size or
+            // the layout drifts. forceAtlas2Based scales repulsion by the receiving node's degree and rotates forever
+            // (visjs/vis-network#2193).
+            solver: "barnesHut",
+            barnesHut: {
+                gravitationalConstant: -3000,
+                centralGravity: 0.3,
                 springLength: 130,
-                springConstant: 0.08,
-                damping: 0.4,
+                springConstant: 0.04,
+                damping: 0.15,
                 avoidOverlap: 0.6,
             },
             stabilization: {
@@ -491,7 +497,6 @@ export abstract class BaseNetworkGraph extends LitElement {
             const isSelected = node.id === nodeId;
             return {
                 id: node.id,
-                size: isSelected ? 40 : isNeighbor ? 35 : 25,
                 font: {
                     size: isSelected ? 14 : isNeighbor ? 13 : 11,
                     color: this._getFontColor(),
@@ -501,6 +506,8 @@ export abstract class BaseNetworkGraph extends LitElement {
             };
         });
         this._nodesDataSet.update(nodeUpdates);
+
+        this._setIconHighlight(String(nodeId));
     }
 
     /**
@@ -509,26 +516,18 @@ export abstract class BaseNetworkGraph extends LitElement {
     protected _clearHighlights(): void {
         if (!this._edgesDataSet || !this._nodesDataSet) return;
 
-        // Restore edge widths and original colors
-        const allEdges = this._edgesDataSet.get();
-        const edgeUpdates = allEdges.map((edge: NetworkGraphEdge) => {
-            const originalColor = this._originalEdgeColors.get(String(edge.id));
-            return {
-                id: edge.id,
-                width: 2,
-                color: originalColor ?? {
-                    color: getCssVar("--graph-node-fallback", "#999999"),
-                    highlight: getCssVar("--graph-node-fallback", "#999999"),
-                },
-            };
-        });
+        // Edges without a stored color were built after the last highlight and are already in their base state
+        const edgeUpdates = new Array<Partial<NetworkGraphEdge>>();
+        for (const [id, color] of this._originalEdgeColors) {
+            if (this._edgesDataSet.get(id)) {
+                edgeUpdates.push({ id, width: 2, color });
+            }
+        }
         this._edgesDataSet.update(edgeUpdates);
 
-        // Restore node sizes
         const allNodes = this._nodesDataSet.get();
         const nodeUpdates = allNodes.map((node: NetworkGraphNode) => ({
             id: node.id,
-            size: 30,
             font: {
                 size: 12,
                 color: this._getFontColor(),
@@ -537,6 +536,58 @@ export abstract class BaseNetworkGraph extends LitElement {
             opacity: 1,
         }));
         this._nodesDataSet.update(nodeUpdates);
+
+        this._setIconHighlight(null);
+    }
+
+    /**
+     * Icon of a node in its plain or selected variant, or undefined when the graph cannot draw it.
+     * `_updateGraph` builds every node with its plain icon; the selected variant is set only through
+     * `_setIconHighlight`.
+     */
+    protected abstract _nodeIconUrl(nodeId: string, isHighlighted: boolean): string | undefined;
+
+    /**
+     * Draws `nodeId` with its selected icon and the previously selected node with its plain icon.
+     * `null` only resets the previous node.
+     */
+    protected _setIconHighlight(nodeId: string | null): void {
+        const previous = this._highlightedNodeId;
+        if (previous !== null && previous !== nodeId) {
+            this._applyNodeIcon(previous, false);
+        }
+        this._highlightedNodeId = nodeId;
+        if (nodeId !== null) {
+            this._applyNodeIcon(nodeId, true);
+        }
+    }
+
+    private _applyNodeIcon(nodeId: string, isHighlighted: boolean): void {
+        // DataSet.update() adds unknown ids, so a node that is not in the graph must be skipped
+        if (!this._nodesDataSet?.get(nodeId)) return;
+        const image = this._nodeIconUrl(nodeId, isHighlighted);
+        if (image !== undefined) {
+            this._nodesDataSet.update({ id: nodeId, image });
+        }
+    }
+
+    /**
+     * Applies the current selection to a rebuilt graph. Must run at the end of `_updateGraph` once the datasets hold
+     * the new graph, also when the graph is empty. When the selected node is no longer in the graph, the selection is
+     * dropped and `node-selected` is dispatched with `null`, because vis-network removes the node without a deselect
+     * event.
+     */
+    protected _reapplySelection(): void {
+        if (this._selectedNodeId === null) return;
+        const selected = this._nodesDataSet?.get(this._selectedNodeId);
+        if (selected) {
+            this._highlightConnections(this._selectedNodeId);
+            return;
+        }
+        this._selectedNodeId = null;
+        this._network?.unselectAll();
+        this._clearHighlights();
+        this._dispatchNodeSelected(null);
     }
 
     /**

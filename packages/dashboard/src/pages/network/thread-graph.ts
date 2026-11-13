@@ -99,9 +99,6 @@ export class ThreadGraph extends BaseNetworkGraph {
     /** Whether highlight is currently active */
     private _isHighlighted = false;
 
-    /** Node ID currently highlighted (for icon restoration on clear) */
-    private _highlightedNodeId: string | null = null;
-
     /** Get external Thread devices as a map for use by details panel */
     public get unknownDevicesMap(): ReadonlyMap<string, ThreadExternalDevice> {
         return this._unknownDevicesMapCache;
@@ -283,6 +280,7 @@ export class ThreadGraph extends BaseNetworkGraph {
             this._unknownDevices = [];
             this._unknownDevicesMapCache.clear();
             this._edgePairs.clear();
+            this._reapplySelection();
             return;
         }
 
@@ -354,7 +352,6 @@ export class ThreadGraph extends BaseNetworkGraph {
         // External Thread devices: known Border Routers get a friendly label/icon,
         // unidentified neighbors keep the generic question-mark style.
         for (const device of this._unknownDevices) {
-            const isSelected = device.id === this._selectedNodeId;
             // A Border Router stands on its own mDNS evidence, so it may be labelled from any batch
             // that names it. An unknown device is drawn only because a diagnostics record vouches
             // for it, so it takes its label from that same record — labelling it from a record the
@@ -402,7 +399,7 @@ export class ThreadGraph extends BaseNetworkGraph {
                     id: device.id,
                     label,
                     title: brTitle,
-                    image: createBorderRouterIconDataUrl(isSelected, isLeader, isPrimaryBbr),
+                    image: createBorderRouterIconDataUrl(false, isLeader, isPrimaryBbr),
                     shape: "image" as const,
                     networkType: "thread" as const,
                     isUnknown: false,
@@ -420,7 +417,7 @@ export class ThreadGraph extends BaseNetworkGraph {
                     id: device.id,
                     label: `${typeLabel} [${device.extAddressHex.slice(-8)}]${suffix}`,
                     title,
-                    image: createUnknownDeviceIconDataUrl(device.isRouter, isSelected),
+                    image: createUnknownDeviceIconDataUrl(device.isRouter, false),
                     shape: "image" as const,
                     networkType: "thread" as const,
                     isUnknown: true,
@@ -488,7 +485,7 @@ export class ThreadGraph extends BaseNetworkGraph {
                 id: meshNode.id,
                 label,
                 title: DIAGNOSTIC_MESH_NODE_EXPLANATION,
-                image: createUnknownDeviceIconDataUrl(meshNode.isRouter, meshNode.id === this._selectedNodeId),
+                image: createUnknownDeviceIconDataUrl(meshNode.isRouter, false),
                 shape: "image" as const,
                 networkType: "thread" as const,
                 isUnknown: true,
@@ -695,10 +692,7 @@ export class ThreadGraph extends BaseNetworkGraph {
         this._edgesDataSet.clear();
         this._edgesDataSet.add(graphEdges);
 
-        // Re-apply highlight if a node is selected
-        if (this._selectedNodeId !== null) {
-            this._highlightConnections(this._selectedNodeId);
-        }
+        this._reapplySelection();
     }
 
     /**
@@ -827,7 +821,6 @@ export class ThreadGraph extends BaseNetworkGraph {
             const isSelected = node.id === nodeId;
             return {
                 id: node.id,
-                size: isSelected ? 40 : isNeighbor ? 35 : 25,
                 font: {
                     size: isSelected ? 14 : isNeighbor ? 13 : 11,
                     color: this._getFontColor(),
@@ -838,15 +831,7 @@ export class ThreadGraph extends BaseNetworkGraph {
         });
         this._nodesDataSet.update(nodeUpdates);
 
-        // Switching highlight without a full deselect (e.g. clicking a connection
-        // row in the side panel) keeps the previous node's icon in its selected
-        // variant unless we reset it here.
-        if (this._highlightedNodeId && this._highlightedNodeId !== nodeIdStr) {
-            this._setNodeIconHighlight(this._highlightedNodeId, false);
-        }
-
-        this._highlightedNodeId = nodeIdStr;
-        this._setNodeIconHighlight(nodeIdStr, true);
+        this._setIconHighlight(nodeIdStr);
 
         this._isHighlighted = true;
     }
@@ -887,47 +872,34 @@ export class ThreadGraph extends BaseNetworkGraph {
         };
     }
 
-    /**
-     * Swap a node's icon between the default and highlighted variants.
-     * Kept separate so both `_highlightConnections` (switching target) and
-     * `_clearHighlights` (fully unselecting) reach the same end state.
-     */
-    private _setNodeIconHighlight(nodeId: string, isHighlighted: boolean): void {
-        if (!this._nodesDataSet) return;
+    protected override _nodeIconUrl(nodeId: string, isHighlighted: boolean): string | undefined {
         const nodeData = this.nodes[nodeId];
         if (nodeData) {
-            const threadRole = getThreadRole(nodeData);
-            const isOffline = nodeData.available === false;
-            this._nodesDataSet.update({
-                id: nodeId,
-                image: createNodeIconDataUrl(nodeData, threadRole, isHighlighted, isOffline),
-            });
-            return;
+            return createNodeIconDataUrl(
+                nodeData,
+                getThreadRole(nodeData),
+                isHighlighted,
+                nodeData.available === false,
+            );
         }
         const external = this._unknownDevicesMapCache.get(nodeId);
         if (external?.kind === "br") {
             const decodedState = decodeMeshcopStateBitmap(external.stateBitmapHex);
             const isLeader = decodedState?.threadRoleValue === 3;
             const isPrimaryBbr = decodedState?.bbr === true && decodedState.bbrFunction === "primary";
-            this._nodesDataSet.update({
-                id: nodeId,
-                image: createBorderRouterIconDataUrl(isHighlighted, isLeader, isPrimaryBbr),
-            });
-        } else if (nodeId.startsWith("unknown_") || nodeId.startsWith("br_")) {
-            this._nodesDataSet.update({
-                id: nodeId,
-                image: createUnknownDeviceIconDataUrl(external?.isRouter ?? false, isHighlighted),
-            });
-        } else if (nodeId.startsWith("thread_") || nodeId.startsWith("meshrloc_")) {
+            return createBorderRouterIconDataUrl(isHighlighted, isLeader, isPrimaryBbr);
+        }
+        if (nodeId.startsWith("unknown_") || nodeId.startsWith("br_")) {
+            return createUnknownDeviceIconDataUrl(external?.isRouter ?? false, isHighlighted);
+        }
+        if (nodeId.startsWith("thread_") || nodeId.startsWith("meshrloc_")) {
             // Diagnostic mesh node. Router id scheme: `thread_<MAC>` (always a router) or
             // `meshrloc_<EXTPANID>_<rloc16>` where a router has the low 10 child bits clear.
             const rloc16 = Number(nodeId.slice(nodeId.lastIndexOf("_") + 1));
             const isRouter = nodeId.startsWith("thread_") || (Number.isFinite(rloc16) && (rloc16 & 0x3ff) === 0);
-            this._nodesDataSet.update({
-                id: nodeId,
-                image: createUnknownDeviceIconDataUrl(isRouter, isHighlighted),
-            });
+            return createUnknownDeviceIconDataUrl(isRouter, isHighlighted);
         }
+        return undefined;
     }
 
     /**
@@ -940,16 +912,12 @@ export class ThreadGraph extends BaseNetworkGraph {
         // Restore edges to their base state
         this._restoreEdgeBaseState();
 
-        if (this._highlightedNodeId) {
-            this._setNodeIconHighlight(this._highlightedNodeId, false);
-            this._highlightedNodeId = null;
-        }
+        this._setIconHighlight(null);
 
         // Restore nodes to default styling
         const allNodes = this._nodesDataSet.get();
         const nodeUpdates = allNodes.map((node: NetworkGraphNode) => ({
             id: node.id,
-            size: 30,
             font: {
                 size: 12,
                 color: this._getFontColor(),

@@ -37,20 +37,20 @@
         "@material/web": "^2.5.0",
         "@matter-server/custom-clusters": "*",
         "@matter-server/ws-client": "*",
-        "@matter/main": "0.18.0",
+        "@matter/main": "0.18.1-alpha.0-20261112-1f3a0999c",
         "@mdi/js": "^7.4.47",
         "@rollup/plugin-babel": "^7.1.0",
         "@rollup/plugin-commonjs": "^29.0.3",
         "@rollup/plugin-json": "^6.1.0",
         "@rollup/plugin-node-resolve": "^16.0.3",
-        "@rollup/plugin-terser": "^1.0.0",
-        "@rollup/plugin-typescript": "^12.3.0",
+        "@rollup/plugin-terser": "^1.0.2",
+        "@rollup/plugin-typescript": "^12.3.1",
         "lit": "^3.3.3",
         "qrcode-generator": "^2.0.4",
-        "rollup": "^4.67.3",
+        "rollup": "^4.68.2",
         "rollup-plugin-copy": "^3.5.0",
-        "serve": "^14.2.6",
+        "serve": "^14.2.7",
         "tslib": "^2.9.1",
-        "vis-network": "^10.1.4"
+        "vis-network": "^10.1.5"
     }
 }

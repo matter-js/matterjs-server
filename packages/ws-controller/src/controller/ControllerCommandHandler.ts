@@ -153,6 +153,7 @@ import { applyAttributeChange } from "./applyAttributeChange.js";
 import type { PopulateTiming } from "./AttributeDataCache.js";
 import type { ControllerResources } from "./ControllerNode.js";
 import { CustomClusterPoller } from "./CustomClusterPoller.js";
+import { deviceTimestampOfRead } from "./eventTimestamps.js";
 import { NodeAttributeReader } from "./NodeProcessor.js";
 import { Nodes } from "./Nodes.js";
 import { decodeManualCode, decodeQrCode } from "./onboardingPayload.js";
@@ -264,6 +265,8 @@ export interface ControllerCommandHandlerOptions {
      * per peer. Defaults to false.
      */
     disableAutoSubscription?: boolean;
+    /** Accept the attestation findings that test-net DCL tolerates, see {@link attestationRefusalOf}. Defaults to false. */
+    testNetDclEnabled?: boolean;
 }
 
 /** What a single invoke may set besides its command; `network` and `abort` apply to the exchange, not the request. */
@@ -299,18 +302,104 @@ class UnreachedAddressError extends Error {
 const UNSCOPED_INVOKES = {};
 
 /**
- * Why device attestation refuses a device, as the text the client is shown, or `undefined` when no finding
- * stops it. A test certificate gets an actionable hint; any other error-level finding is named with its check.
+ * The message matter.js gives a Certification Declaration mismatch when the device did not report its
+ * BasicInformation VendorID or ProductID during commissioning. matter.js uses the same check type for every CD
+ * check, including the DAC, PAI, `dac_origin_*` and `authorized_paa_list` checks, so only the message tells this
+ * case apart.
  */
-export function attestationRefusalOf(findings: AttestationFinding[]): string | undefined {
-    if (findings.some(({ type }) => type === DeviceAttestationCheck.TrustedAsTestCertificate)) {
-        return "This device uses a test/development certificate. To commission it, enable the test-net DCL option of the Matter Server — only do this if you trust the vendor.";
+const BASIC_INFORMATION_NOT_REPORTED = /BasicInformation (VendorID|ProductID) \(not reported by the device\)$/;
+
+const TEST_NET_HINT =
+    "To commission it, enable the test-net DCL option of the Matter Server — only do this if you trust the vendor.";
+
+/**
+ * Whether `finding` is an error-level finding that commissioning accepts with test-net DCL enabled: a test
+ * certificate, or a Certification Declaration that cannot be checked against the BasicInformation VendorID or
+ * ProductID because the device did not report it.
+ *
+ * @see Matter Core specification § 6.2.3.1 "Attestation Information Validation"
+ */
+export function isTestNetAcceptedError({ level, type, message }: AttestationFinding): boolean {
+    if (level !== "error") {
+        return false;
     }
-    const errors = findings.filter(({ level }) => level === "error");
+    switch (type) {
+        case DeviceAttestationCheck.TrustedAsTestCertificate:
+            return true;
+        case DeviceAttestationCheck.CertificationDeclarationFieldMismatch:
+            return BASIC_INFORMATION_NOT_REPORTED.test(message);
+        default:
+            return false;
+    }
+}
+
+/**
+ * Why device attestation refuses a device, as the text the client is shown, or `undefined` when no finding
+ * stops it. When enabling test-net DCL would accept the device, the text says so; otherwise every refusing finding is
+ * named with its check.
+ */
+export function attestationRefusalOf(findings: AttestationFinding[], testNetDclEnabled: boolean): string | undefined {
+    const errors = findings.filter(
+        finding => finding.level === "error" && !(testNetDclEnabled && isTestNetAcceptedError(finding)),
+    );
     if (errors.length === 0) {
         return undefined;
     }
-    return `Device attestation refused: ${errors.map(({ type, message }) => `${type}: ${message}`).join("; ")}`;
+    const named = `Device attestation refused: ${errors.map(({ type, message }) => `${type}: ${message}`).join("; ")}`;
+    if (testNetDclEnabled || !errors.every(isTestNetAcceptedError)) {
+        return named;
+    }
+    if (errors.every(({ type }) => type === DeviceAttestationCheck.TrustedAsTestCertificate)) {
+        return `This device uses a test/development certificate. ${TEST_NET_HINT}`;
+    }
+    return `${named}. ${TEST_NET_HINT}`;
+}
+
+/** The result of {@link ourFabricEntriesOf}. */
+export type OurFabricEntries =
+    | { kind: "ours"; value: unknown }
+    | { kind: "foreign" | "unchecked"; fabricIndex: number };
+
+/**
+ * Prepares the value of a fabric-scoped list for a write of the WebSocket API, which writes only entries of our
+ * fabric. The device stores every written entry under the writer's fabric, so an entry naming another fabric cannot
+ * mean what the client intended.
+ *
+ * | FabricIndex of an entry                             | Result                                     |
+ * | --------------------------------------------------- | ------------------------------------------ |
+ * | absent, `FabricIndex.OMIT_FABRIC` or ours           | kept                                       |
+ * | `NO_FABRIC` (0) or `null`, the CHIP client defaults | replaced by `FabricIndex.OMIT_FABRIC`      |
+ * | another, with {@link fabricIndexOnPeer} known       | `foreign`, the write is refused            |
+ * | another, with {@link fabricIndexOnPeer} unknown     | `unchecked`, the write is refused          |
+ *
+ * Pass `undefined` as {@link fabricIndexOnPeer} for a group write, whose members may know us by different indexes.
+ *
+ * @see Matter Core specification § 7.13.6 "FabricIndex Field"
+ */
+export function ourFabricEntriesOf(value: unknown, fabricIndexOnPeer: FabricIndex | undefined): OurFabricEntries {
+    if (!Array.isArray(value)) {
+        return { kind: "ours", value };
+    }
+    const entries = new Array<unknown>();
+    for (const entry of value) {
+        if (!isObject(entry)) {
+            entries.push(entry);
+            continue;
+        }
+        const { fabricIndex } = entry;
+        if (fabricIndex === null || fabricIndex === FabricIndex.NO_FABRIC) {
+            entries.push({ ...entry, fabricIndex: FabricIndex.OMIT_FABRIC });
+            continue;
+        }
+        if (fabricIndex !== undefined && fabricIndex !== FabricIndex.OMIT_FABRIC && fabricIndex !== fabricIndexOnPeer) {
+            return {
+                kind: fabricIndexOnPeer === undefined ? "unchecked" : "foreign",
+                fabricIndex: Number(fabricIndex),
+            };
+        }
+        entries.push(entry);
+    }
+    return { kind: "ours", value: entries };
 }
 
 /**
@@ -358,6 +447,7 @@ export class ControllerCommandHandler {
     readonly #bleEnabled: boolean;
     readonly #bleProxyEnabled: boolean;
     readonly #otaEnabled: boolean;
+    readonly #testNetDclEnabled: boolean;
     readonly #autoSubscriptionDisabled: boolean;
     /** Node management and attribute cache */
     #nodes = new Nodes();
@@ -423,6 +513,7 @@ export class ControllerCommandHandler {
             threadDiagnosticsEnabled = false,
             customClusterPollInterval,
             disableAutoSubscription = false,
+            testNetDclEnabled = false,
         } = options;
 
         this.#node = controller.node;
@@ -450,6 +541,7 @@ export class ControllerCommandHandler {
         logger.info(`BLE is ${bleEnabled ? "enabled" : "disabled"}${bleProxyEnabled ? " (proxy mode)" : ""}`);
         this.#otaEnabled = otaEnabled;
         this.#autoSubscriptionDisabled = disableAutoSubscription;
+        this.#testNetDclEnabled = testNetDclEnabled;
         if (disableAutoSubscription) {
             logger.notice("Auto subscription is disabled; peers are only subscribed to when a client asks");
         }
@@ -1449,8 +1541,7 @@ export class ControllerCommandHandler {
                             convertEventToWebSocket(nodeId, entry.path, {
                                 eventNumber: entry.number,
                                 priority: entry.priority,
-                                epochTimestamp: entry.epochTimestamp,
-                                systemTimestamp: entry.systemTimestamp,
+                                ...deviceTimestampOfRead(entry),
                                 data: entry.value,
                             }),
                         );
@@ -1648,12 +1739,28 @@ export class ControllerCommandHandler {
             throw ServerError.invalidArguments(`Attribute ${attributeId} on cluster ${clusterId} unknown`);
         }
 
-        const value = convertWebSocketTagBasedToMatter(data.value, attributeModel, clusterEntry.model);
+        let value = convertWebSocketTagBasedToMatter(data.value, attributeModel, clusterEntry.model);
         const attributeName = attributeModel.propertyName;
         logger.info(
             `Writing attribute ${clusterId}.${attributeName} (${endpointId ?? "*"}/${clusterId}/${attributeId}) with value`,
             value,
         );
+
+        if (attributeModel.fabricScopedList) {
+            const entries = ourFabricEntriesOf(value, this.#nodes.get(nodeId).fabricIndexOnPeer);
+            if (entries.kind !== "ours") {
+                const message =
+                    entries.kind === "foreign"
+                        ? `Refusing to write ${attributeName}: an entry of fabric ${entries.fabricIndex} is not ours`
+                        : `Refusing to write ${attributeName}: an entry names fabric ${entries.fabricIndex}, and our fabric index on the node is not known yet`;
+                logger.notice(message);
+                if (endpointId === undefined) {
+                    throw ServerError.invalidArguments(message);
+                }
+                return [{ attributeId, clusterId, endpointId, status: Status.ConstraintError }];
+            }
+            value = entries.value;
+        }
 
         if (endpointId !== undefined && timedInteractionTimeoutMs === undefined) {
             const { status, clusterStatus } = await this.#writeAttribute(
@@ -1764,7 +1871,16 @@ export class ControllerCommandHandler {
         if (!clusterEntry || !attributeModel) {
             throw ServerError.invalidArguments(`Attribute ${attributeId} on cluster ${clusterId} unknown`);
         }
-        const value = convertWebSocketTagBasedToMatter(data.value, attributeModel, clusterEntry.model);
+        let value = convertWebSocketTagBasedToMatter(data.value, attributeModel, clusterEntry.model);
+        if (attributeModel.fabricScopedList) {
+            const entries = ourFabricEntriesOf(value, undefined);
+            if (entries.kind !== "ours") {
+                throw ServerError.invalidArguments(
+                    `Refusing to groupcast ${attributeModel.propertyName}: an entry names fabric ${entries.fabricIndex}; a group write takes no FabricIndex`,
+                );
+            }
+            value = entries.value;
+        }
         logger.info(
             `Groupcasting write of attribute ${clusterId}.${attributeModel.propertyName} to ${this.formatNode(nodeId)} with value`,
             value,
@@ -2042,9 +2158,14 @@ export class ControllerCommandHandler {
                 for (const f of findings) {
                     logger.info(`Attestation finding (${f.level}):`, f.type, f.message);
                 }
-                const refusal = attestationRefusalOf(findings);
+                const refusal = attestationRefusalOf(findings, this.#testNetDclEnabled);
                 attestation.rejected = refusal !== undefined;
                 if (refusal === undefined) {
+                    for (const finding of findings.filter(isTestNetAcceptedError)) {
+                        logger.notice(
+                            `Accepting attestation with test-net DCL enabled despite ${finding.type}: ${finding.message}`,
+                        );
+                    }
                     logger.info("Attestation accepted");
                     return true;
                 }
@@ -2608,21 +2729,10 @@ export class ControllerCommandHandler {
     }
 
     /**
-     * Fabric index assigned to this controller on the peer.
-     * Some peers reject the NO_FABRIC (0) sentinel inside fabric-scoped list entries
-     * even though the spec allows server-side auto-fill, so we send the resolved index.
-     */
-    #currentFabricIndex(nodeId: NodeId): FabricIndex {
-        const state = this.#nodes.get(nodeId).maybeStateOf(OperationalCredentialsClient);
-        return state?.currentFabricIndex ?? FabricIndex.NO_FABRIC;
-    }
-
-    /**
      * Set Access Control List entries on a node.
      * Writes to the ACL attribute on the AccessControl cluster (endpoint 0).
      */
     async setAclEntry(nodeId: NodeId, entries: AccessControlEntry[]): Promise<AttributeWriteResult[] | null> {
-        const fabricIndex = this.#currentFabricIndex(nodeId);
         const aclEntries: AccessControl.AccessControlEntry[] = entries.map(entry => ({
             privilege: entry.privilege,
             authMode: entry.auth_mode,
@@ -2633,7 +2743,7 @@ export class ControllerCommandHandler {
                     endpoint: t.endpoint !== null ? EndpointNumber(t.endpoint) : null,
                     deviceType: t.device_type !== null ? DeviceTypeId(t.device_type) : null,
                 })) ?? null,
-            fabricIndex,
+            fabricIndex: FabricIndex.OMIT_FABRIC,
         }));
 
         // A node always has access to itself, so an ACL entry naming the node's own id as a subject
@@ -2682,13 +2792,12 @@ export class ControllerCommandHandler {
         endpointId: EndpointNumber,
         bindings: BindingTarget[],
     ): Promise<AttributeWriteResult[] | null> {
-        const fabricIndex = this.#currentFabricIndex(nodeId);
         const bindingEntries: Binding.Target[] = bindings.map(binding => ({
             node: binding.node !== null ? NodeId(binding.node) : undefined,
             group: binding.group !== null ? GroupId(binding.group) : undefined,
             endpoint: binding.endpoint !== null ? EndpointNumber(binding.endpoint) : undefined,
             cluster: binding.cluster !== null ? ClusterId(binding.cluster) : undefined,
-            fabricIndex,
+            fabricIndex: FabricIndex.OMIT_FABRIC,
         }));
 
         logger.info("Setting bindings on endpoint", endpointId, bindingEntries);
