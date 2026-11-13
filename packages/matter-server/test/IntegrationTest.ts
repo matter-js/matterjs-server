@@ -193,7 +193,7 @@ describe("Integration Test", function () {
 
             expect(info).to.have.property("fabric_id");
             expect(info).to.have.property("compressed_fabric_id");
-            expect(info.schema_version).to.equal(14);
+            expect(info.schema_version).to.equal(15);
             expect(info.min_supported_schema_version).to.equal(11);
             expect(info.sdk_version).to.be.a("string").that.includes("matter-server");
             expect(info.sdk_version).to.be.a("string").that.includes("matter.js");
@@ -236,7 +236,7 @@ describe("Integration Test", function () {
             expect(diag).to.have.property("info");
             expect(diag).to.have.property("nodes");
             expect(diag).to.have.property("events");
-            expect(diag.info.schema_version).to.equal(14);
+            expect(diag.info.schema_version).to.equal(15);
             expect(diag.nodes).to.be.an("array");
             expect(diag.events).to.be.an("array");
         });
@@ -702,6 +702,43 @@ describe("Integration Test", function () {
 
             expect(error.error_code).to.equal(ServerErrorCode.InvalidArguments);
             expect(error.details).to.include("Endpoint 99");
+        });
+
+        it("should write thermostat presets with write_atomic_attribute", async function () {
+            const report = await client.read({ node_id: commissionedNodeId, attribute_paths: ["2/513/80"] });
+            const dataVersion = report.data_versions?.["2/513"];
+            expect(dataVersion).to.be.a("number");
+            const result = await client.writeAtomicAttribute(
+                commissionedNodeId,
+                "2/513/80",
+                [{ "0": null, "1": 1, "3": 2600, "4": 1900, "5": false }],
+                dataVersion ?? 0,
+            );
+
+            expect(result).to.deep.equal([{ Path: { EndpointId: 2, ClusterId: 513, AttributeId: 80 }, Status: 0 }]);
+            const attrs = await client.readAttribute(commissionedNodeId, "2/513/80");
+            const presets = attrs["2/513/80"];
+            expect(presets).to.be.an("array").with.length(1);
+            const [preset] = Array.isArray(presets) ? presets : [];
+            expect(preset).to.include({ "1": 1, "3": 2600, "4": 1900, "5": false });
+        });
+
+        it("should answer INVALID_IN_STATE for a plain write of thermostat presets", async function () {
+            const result = await client.writeAttribute(commissionedNodeId, "2/513/80", []);
+
+            expect(result).to.deep.equal([{ Path: { EndpointId: 2, ClusterId: 513, AttributeId: 80 }, Status: 203 }]);
+        });
+
+        it("should return InvalidArguments for write_atomic_attribute to an attribute without the Atomic quality", async function () {
+            const error = await client.sendCommandExpectError("write_atomic_attribute", {
+                node_id: commissionedNodeId,
+                attribute_path: "0/40/5",
+                value: "x",
+                data_version: 0,
+            });
+
+            expect(error.error_code).to.equal(ServerErrorCode.InvalidArguments);
+            expect(error.details).to.include("write_attribute");
         });
 
         it("should reject when writing a read-only attribute", async function () {

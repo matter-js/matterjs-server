@@ -17,6 +17,7 @@ import {
     MatterNodeData,
     NodeCommandHandler,
     WriteAttributeRequest,
+    WriteAtomicAttributeRequest,
 } from "../types/CommandHandler.js";
 import { MatterNode, ServerError, TEST_NODE_START } from "../types/WebSocketMessageTypes.js";
 
@@ -198,6 +199,15 @@ export class TestNodeCommandHandler implements NodeCommandHandler {
             throw ServerError.invalidArguments("write_attribute to a test node needs a specific endpoint");
         }
         return [{ endpointId, clusterId, attributeId, status: 0 }];
+    }
+
+    /** Logs the write and answers success, like {@link handleWriteAttribute}; no atomic write takes place. */
+    async handleWriteAtomicAttribute(data: WriteAtomicAttributeRequest): Promise<AttributeResponseStatus> {
+        const { nodeId, endpointId, clusterId, attributeId, value } = data;
+        logger.debug(
+            `write_atomic_attribute for test node ${nodeId} on ${endpointId}/${clusterId}/${attributeId} - value: ${toBigIntAwareJson(value)}`,
+        );
+        return { endpointId, clusterId, attributeId, status: Status.Success };
     }
 
     /** Answers success for every command of the batch, like {@link handleInvoke} for one. */

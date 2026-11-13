@@ -26,6 +26,25 @@ export type WriteAttributeRequest = {
     timedInteractionTimeoutMs?: Duration;
 };
 
+export type WriteAtomicAttributeRequest = {
+    nodeId: NodeId;
+    endpointId: EndpointNumber;
+    clusterId: ClusterId;
+    attributeId: AttributeId;
+    value: unknown;
+    /**
+     * Data version of the cluster as the client read it; the device refuses the write when it changed since.
+     * `undefined` writes without a version check.
+     */
+    dataVersion: number | undefined;
+    /** On DATA_VERSION_MISMATCH, send the write again without the data version, in the same atomic write. */
+    ignoreDataVersionMismatch?: boolean;
+    /** Refused together with a `dataVersion`, see {@link NodeCommandHandler.handleWriteAtomicAttribute}. */
+    timedInteractionTimeoutMs?: Duration;
+    /** Timeout of the BeginWrite, the time the device holds the pending write; the device may shorten it. */
+    atomicTimeoutMs?: Duration;
+};
+
 export type BatchedInvokeRequest = {
     nodeId: NodeId;
     commands: Array<{ endpointId: EndpointNumber; clusterId: ClusterId; commandName: string; data: unknown }>;
@@ -200,6 +219,13 @@ export interface NodeCommandHandler {
      * Write an attribute to a node.
      */
     handleWriteAttribute(data: WriteAttributeRequest): Promise<AttributeResponseStatus[]>;
+
+    /**
+     * Write an attribute with the Atomic quality inside one atomic write (Matter spec §7.15). The caller checks the
+     * quality and refuses a timed write (a stated timeout, or an attribute that requires timed writes) with a data
+     * version. The answer is the first status that is not Success, or Success once the device committed the value.
+     */
+    handleWriteAtomicAttribute(data: WriteAtomicAttributeRequest): Promise<AttributeResponseStatus>;
 
     handleBatchedInvoke(data: BatchedInvokeRequest): Promise<BatchedInvokeResult>;
 

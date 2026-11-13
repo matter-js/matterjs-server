@@ -55,6 +55,7 @@ class APICommand(str, Enum):
     GET_VENDOR_NAMES = "get_vendor_names"
     READ_ATTRIBUTE = "read_attribute"
     WRITE_ATTRIBUTE = "write_attribute"
+    WRITE_ATOMIC_ATTRIBUTE = "write_atomic_attribute"  # schema 15+
     PING_NODE = "ping_node"
     GET_NODE_IP_ADDRESSES = "get_node_ip_addresses"
     IMPORT_TEST_NODE = "import_test_node"
