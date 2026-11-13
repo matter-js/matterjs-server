@@ -380,6 +380,40 @@ jobs:
                   echo "minor=${version%.*}" >> $GITHUB_OUTPUT
                   echo "major=${version%.*.*}" >> $GITHUB_OUTPUT
 
+            # github.sha is the PR's temporary merge commit, not the squash-merge commit on main
+            - name: Release commit for the Docker image labels
+              if: steps.publish_tasks.outputs.pr_merged == 'true' && steps.publish_tasks.outputs.docker_needed == 'true'
+              id: release_commit
+              shell: bash
+              env:
+                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+                  PR_NUMBER: ${{ github.event.pull_request.number }}
+                  REPO: ${{ github.repository }}
+              run: |
+                  revision=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json mergeCommit --jq '.mergeCommit.oid') || revision=""
+                  if [[ ! "$revision" =~ ^[0-9a-f]{40}$ ]]; then
+                    echo "::warning::No merge commit found for PR #${PR_NUMBER}; the revision label stays empty"
+                    revision=""
+                  fi
+                  echo "revision=${revision}" >> $GITHUB_OUTPUT
+
+            - name: Docker image labels
+              if: steps.publish_tasks.outputs.pr_merged == 'true' && steps.publish_tasks.outputs.docker_needed == 'true'
+              id: docker_meta
+              # Labels must never block a release whose packages are already published
+              continue-on-error: true
+              uses: docker/metadata-action@v6
+              env:
+                  # Registries read multi-platform image metadata from the index
+                  DOCKER_METADATA_ANNOTATIONS_LEVELS: manifest,index
+              with:
+                  labels: &oci_metadata |
+                      org.opencontainers.image.authors=Open Home Foundation
+                      org.opencontainers.image.documentation=${{ github.server_url }}/${{ github.repository }}/blob/main/docs/docker.md
+                      org.opencontainers.image.version=${{ steps.version.outputs.result }}
+                      org.opencontainers.image.revision=${{ steps.release_commit.outputs.revision }}
+                  annotations: *oci_metadata
+
             - name: Build and push Docker image (release)
               if: steps.publish_tasks.outputs.pr_merged == 'true' && steps.publish_tasks.outputs.docker_needed == 'true' && !contains(steps.version.outputs.result, '-')
               uses: docker/build-push-action@v7
@@ -396,6 +430,8 @@ jobs:
                       ghcr.io/${{ github.repository_owner }}/matterjs-server:latest
                       ghcr.io/${{ github.repository_owner }}/matterjs-server:dev
                   push: true
+                  labels: ${{ steps.docker_meta.outputs.labels }}
+                  annotations: ${{ steps.docker_meta.outputs.annotations }}
                   build-args: |
                       MATTERJS_SERVER_VERSION=${{ steps.version.outputs.result }}
 
@@ -411,6 +447,8 @@ jobs:
                       ghcr.io/${{ github.repository_owner }}/matterjs-server:${{ steps.docker_tags.outputs.patch }}
                       ghcr.io/${{ github.repository_owner }}/matterjs-server:dev
                   push: true
+                  labels: ${{ steps.docker_meta.outputs.labels }}
+                  annotations: ${{ steps.docker_meta.outputs.annotations }}
                   build-args: |
                       MATTERJS_SERVER_VERSION=${{ steps.version.outputs.result }}
 
