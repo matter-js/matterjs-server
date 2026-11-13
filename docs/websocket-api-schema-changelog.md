@@ -18,10 +18,13 @@ Minimum supported: 11.
   `Schedules` attributes, inside one atomic write: the server sends BeginWrite, the write and CommitWrite, or a
   RollbackWrite when the device refuses a part of the write. The required `data_version` (as `read` returns it) goes
   with the write, so the device refuses a value based on an outdated read with status 146;
-  `ignore_data_version_mismatch` writes again without it instead. The response has the format of `write_attribute`. Any
-  other attribute is refused; `device_command` works as before, so a client can still run the atomic write itself.
-  While a `write_atomic_attribute` is open on a cluster, a `write_attribute` to an attribute of that cluster that
-  requires atomic writes, and a second `write_atomic_attribute`, answer BUSY without being sent. See [websockets_api.md](websockets_api.md#attribute-operations).
+  `ignore_data_version_mismatch` writes again without it instead, and `skip_data_version_check` writes without a
+  check. A timed write, by a `timed_request_timeout_ms` above 0 or because the attribute requires one, needs
+  `skip_data_version_check`. The response has the format of `write_attribute`. Any other attribute is refused;
+  `device_command` works as before, so a client can still run the atomic write itself. While a
+  `write_atomic_attribute` is open on a cluster, a `write_attribute` to an attribute of that cluster that requires
+  atomic writes, and a second `write_atomic_attribute`, answer BUSY without being sent. See
+  [websockets_api.md](websockets_api.md#attribute-operations).
 
 ## Schema 14
 

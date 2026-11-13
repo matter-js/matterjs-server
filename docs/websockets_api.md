@@ -657,19 +657,25 @@ instead of the commit. The device applies the value only when the commit succeed
 - `value` replaces the whole attribute value. For `Presets` it is the complete list: an existing preset left out of
   it is removed, which the device refuses for a built-in or active preset or one a schedule uses (spec §4.3.11.50).
   Read the current list first and send it with the changes.
-- `data_version` (required): the data version of the attribute's cluster, as `read` returns it in `data_versions`
-  under `endpoint/cluster` (`"1/513"`). The write carries it, so the device refuses the write with `146`
-  (DATA_VERSION_MISMATCH) when anything in the cluster changed since that read (spec §8.7.3.2), and the server rolls
-  back. This keeps a client from overwriting a change made elsewhere with a list it read before. The data version
-  covers the whole cluster, so a change of another attribute, such as the measured temperature, also counts; read
-  again and retry.
+- `data_version` (required unless `skip_data_version_check` is set): the data version of the attribute's cluster, as
+  `read` returns it in `data_versions` under `endpoint/cluster` (`"1/513"`). The write carries it, so the device
+  refuses the write with `146` (DATA_VERSION_MISMATCH) when anything in the cluster changed since that read (spec
+  §8.7.3.2), and the server rolls back. This keeps a client from overwriting a change made elsewhere with a list it
+  read before. The data version covers the whole cluster, so a change of another attribute, such as the measured
+  temperature, also counts; read again and retry.
+- `skip_data_version_check`: when `true`, the server sends the write without a data version, so the value replaces
+  whatever the cluster holds. Use it only when the value does not come from an earlier read. `data_version` must then
+  be left out or `null`; giving both is refused with `InvalidArguments`.
 - `ignore_data_version_mismatch`: when `true` and the device refuses the write with `146`, the server sends the same
   write again without the data version, in the same atomic write. The value then replaces whatever changed since the
   read. A device may also check the data version again at the commit (spec §7.15.6.4.2); the flag does not cover that,
-  and the commit then fails with `146`.
+  and the commit then fails with `146`. It has no effect with `skip_data_version_check`.
 - `attribute_path` names one attribute on one endpoint; a wildcard, a group node id, or an attribute without the Atomic
   quality is refused with `InvalidArguments`. Write any other attribute with `write_attribute`.
-- `timed_request_timeout_ms`: sends the write as a timed write, as for `write_attribute`.
+- `timed_request_timeout_ms`: sends the write as a timed write, as for `write_attribute`. A timed write, by a value
+  above 0 or because the attribute requires timed writes, needs `skip_data_version_check`; with a `data_version` it is
+  refused with `InvalidArguments`, because matter.js sends a timed write in one message with the data version on
+  every list entry, so every entry after the first fails with `146`.
 - `atomic_timeout_ms`: how long the device keeps the pending write, an integer from 1 to 65535; 30000 when not given. The
   device may answer with a shorter time.
 

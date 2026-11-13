@@ -963,10 +963,11 @@ class MatterClient:
         node_id: int,
         attribute_path: str,
         value: Any,
-        data_version: int,
+        data_version: int | None,
         timed_request_timeout_ms: int | None = None,
         atomic_timeout_ms: int | None = None,
         ignore_data_version_mismatch: bool = False,
+        skip_data_version_check: bool = False,
     ) -> Any:
         """Write an attribute with the Atomic quality inside one atomic write (schema 15).
 
@@ -976,7 +977,10 @@ class MatterClient:
         ``data_versions``; the device refuses the write with status 146
         (DATA_VERSION_MISMATCH) when the cluster changed since. With
         ``ignore_data_version_mismatch`` the server then writes again without the data version,
-        in the same atomic write.
+        in the same atomic write. ``skip_data_version_check`` writes without a data version
+        check; ``data_version`` is then ``None``. A timed write, by a
+        ``timed_request_timeout_ms`` above 0 or because the attribute requires one, needs
+        ``skip_data_version_check``.
         ``atomic_timeout_ms`` is how long the device holds the pending write (server default
         30000 ms); the device may shorten it. The result has the same shape as ``write_attribute``.
         """
@@ -986,7 +990,8 @@ class MatterClient:
             node_id=node_id,
             attribute_path=attribute_path,
             value=dataclass_to_tag_dict(value),
-            data_version=data_version,
+            **({} if data_version is None else {"data_version": data_version}),
+            **({"skip_data_version_check": True} if skip_data_version_check else {}),
             **(
                 {}
                 if timed_request_timeout_ms is None

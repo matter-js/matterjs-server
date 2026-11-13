@@ -3390,7 +3390,6 @@ describe("write_atomic_attribute", () => {
                     attribute_path: PRESETS,
                     value: [],
                     ignore_data_version_mismatch: true,
-                    timed_request_timeout_ms: 2000,
                     atomic_timeout_ms: 8000,
                 },
                 "atomic-write",
@@ -3408,7 +3407,7 @@ describe("write_atomic_attribute", () => {
                     value: [],
                     dataVersion: 7,
                     ignoreDataVersionMismatch: true,
-                    timedInteractionTimeoutMs: 2000,
+                    timedInteractionTimeoutMs: undefined,
                     atomicTimeoutMs: 8000,
                 },
             ]);
@@ -3420,6 +3419,7 @@ describe("write_atomic_attribute", () => {
     for (const [label, timeouts] of [
         ["leaves them out", {}],
         ["states them as null", { timed_request_timeout_ms: null, atomic_timeout_ms: null }],
+        ["states a timed request timeout of 0 with a data version", { timed_request_timeout_ms: 0 }],
     ] as const) {
         it(`leaves both timeouts to the handler when the request ${label}`, async () => {
             const writes = new Array<unknown>();
@@ -3483,22 +3483,89 @@ describe("write_atomic_attribute", () => {
         });
     }
 
-    for (const stated of [1, "true"]) {
-        it(`refuses ignore_data_version_mismatch ${JSON.stringify(stated)}`, async () => {
+    for (const [flag, stated] of [
+        ["ignore_data_version_mismatch", 1],
+        ["ignore_data_version_mismatch", "true"],
+        ["skip_data_version_check", 1],
+        ["skip_data_version_check", "true"],
+    ] as const) {
+        it(`refuses ${flag} ${JSON.stringify(stated)}`, async () => {
             const h = await refusingHarness();
             try {
                 const answer = await answerFor(
                     h,
-                    { attribute_path: PRESETS, value: [], ignore_data_version_mismatch: stated },
-                    `atomic-write-ignore-${String(stated)}`,
+                    { attribute_path: PRESETS, value: [], [flag]: stated },
+                    `atomic-write-${flag}-${String(stated)}`,
                 );
                 expect(answer.error_code).to.equal(8);
-                expect(answer.details).to.contain("ignore_data_version_mismatch");
+                expect(answer.details).to.contain(flag);
             } finally {
                 await h.close();
             }
         });
     }
+
+    for (const [label, dataVersion] of [
+        ["left out", undefined],
+        ["null", null],
+    ] as const) {
+        it(`passes skip_data_version_check on with data_version ${label} as a timed write without a version check`, async () => {
+            const writes = new Array<unknown>();
+            const h = await createHarness(undefined, {
+                handleWriteAtomicAttribute: async ({ dataVersion, timedInteractionTimeoutMs }) => {
+                    writes.push({ dataVersion, timedInteractionTimeoutMs });
+                    return { endpointId: 1, clusterId: 513, attributeId: 80, status: 0 };
+                },
+            });
+            try {
+                const answer = await answerFor(
+                    h,
+                    {
+                        attribute_path: PRESETS,
+                        value: [],
+                        data_version: dataVersion,
+                        skip_data_version_check: true,
+                        timed_request_timeout_ms: 2000,
+                    },
+                    `atomic-write-unversioned-${label}`,
+                );
+                expect(answer.error_code).to.equal(undefined);
+                expect(writes).to.deep.equal([{ dataVersion: undefined, timedInteractionTimeoutMs: 2000 }]);
+            } finally {
+                await h.close();
+            }
+        });
+    }
+
+    it("refuses a timed write with a data version", async () => {
+        const h = await refusingHarness();
+        try {
+            const answer = await answerFor(
+                h,
+                { attribute_path: PRESETS, value: [], timed_request_timeout_ms: 2000 },
+                "atomic-write-timed-versioned",
+            );
+            expect(answer.error_code).to.equal(8);
+            expect(answer.details).to.contain("timed write");
+        } finally {
+            await h.close();
+        }
+    });
+
+    it("refuses skip_data_version_check together with a data_version", async () => {
+        const h = await refusingHarness();
+        try {
+            const answer = await answerFor(
+                h,
+                { attribute_path: PRESETS, value: [], skip_data_version_check: true },
+                "atomic-write-skip-and-version",
+            );
+            expect(answer.error_code).to.equal(8);
+            expect(answer.details).to.contain("not both");
+        } finally {
+            await h.close();
+        }
+    });
 
     for (const stated of [undefined, null, -1, 1.5, "7", 0x1_0000_0000]) {
         it(`refuses data_version ${JSON.stringify(stated) ?? "left out"}`, async () => {

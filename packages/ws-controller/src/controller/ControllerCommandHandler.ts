@@ -152,6 +152,7 @@ import {
     ServerErrorCode,
     UpdateSource,
 } from "../types/WebSocketMessageTypes.js";
+import { writesTimed } from "../util/atomicWrite.js";
 import { isBridgeNode } from "../util/bridgeDetection.js";
 import { formatNodeId } from "../util/formatNodeId.js";
 import { pingIp } from "../util/network.js";
@@ -1924,21 +1925,25 @@ export class ControllerCommandHandler {
     /**
      * Writes one attribute with the Atomic quality inside one atomic write (Matter spec §7.15.1): BeginWrite, the
      * Write, then CommitWrite. The device applies the value only if the commit succeeds. The Write carries the
-     * cluster's data version the client read, so the device refuses it with DATA_VERSION_MISMATCH when the cluster
-     * changed since that read (§8.7.3.2), and the server rolls back. With `ignoreDataVersionMismatch` the server instead
-     * sends the Write again without the data version, inside the same atomic write. The answer is the first status
-     * that is not Success: from the BeginWrite, from the Write, or from the CommitWrite.
+     * cluster's data version the client read, when it gave one, so the device refuses it with DATA_VERSION_MISMATCH
+     * when the cluster changed since that read (§8.7.3.2), and the server rolls back. With `ignoreDataVersionMismatch`
+     * the server instead sends the Write again without the data version, inside the same atomic write. A timed write
+     * with a data version, by a stated timeout or because the attribute requires one, is refused with InvalidArguments
+     * before anything is sent: matter.js sends a timed write as one message with the data version on every list entry,
+     * so the entries after the first fail. The answer is the first status that is not Success: from the BeginWrite,
+     * from the Write, or from the CommitWrite.
      *
      * A failed Write is followed by a RollbackWrite, and so is an error the Write throws. A CommitWrite is never rolled
-     * back: answered with a failure, the device already discarded the pending write (§7.15.6.4.2); unanswered, the commit
-     * may have landed, and a RollbackWrite could then discard an atomic write another client opened meanwhile. A BeginWrite the device refused is not rolled back either: it opened no atomic write, and a write
-     * state that caused the refusal is not ours to discard.
+     * back: answered with a failure, the device already discarded the pending write (§7.15.6.4.2); unanswered, the
+     * commit may have landed, and a RollbackWrite could then discard an atomic write another client opened meanwhile. A
+     * BeginWrite the device refused is not rolled back either: it opened no atomic write, and a write state that caused
+     * the refusal is not ours to discard.
      *
      * A RollbackWrite that fails, other than with INVALID_IN_STATE (no atomic write open), may leave the atomic write
      * open on the device until its timeout. So may a BeginWrite or a CommitWrite whose answer is lost; an error that
      * shows the BeginWrite was never sent (the peer unreachable, an ICD asleep) does not count. That BeginWrite is not
-     * rolled back: if the device refused it because another client of this server holds an atomic write, the rollback would
-     * discard that client's write, since both count as the same writer. In both cases the cluster's lock is kept for the
+     * rolled back: if the device refused it because another client of this server holds an atomic write, the rollback
+     * would discard that client's write, since both count as the same writer. In both cases the cluster's lock is kept for the
      * timeout: the one the BeginWrite answered, or the requested one when no answer came.
      *
      * The CommitWrite and the RollbackWrite name the attribute ids the BeginWrite answered (§7.15.6.4.1). The device
@@ -1960,6 +1965,9 @@ export class ControllerCommandHandler {
             attributeId,
             data.value,
         );
+        if (data.dataVersion !== undefined && writesTimed(attributeModel, data.timedInteractionTimeoutMs)) {
+            throw ServerError.invalidArguments("A timed atomic write takes no data version");
+        }
         const answer = (status: Status, clusterStatus?: number): AttributeResponseStatus => ({
             endpointId,
             clusterId,
@@ -2137,8 +2145,7 @@ export class ControllerCommandHandler {
     }
 
     /**
-     * Sends the Write of an atomic write, chunked if needed, with the data version when given: matter.js puts it on the
-     * entry that replaces a list, and on every entry of a timed write, which it does not split. Answers the first status
+     * Sends the Write of an atomic write, chunked if needed, with the data version when given. Answers the first status
      * that is not Success, if any.
      */
     async #atomicWriteFailure(

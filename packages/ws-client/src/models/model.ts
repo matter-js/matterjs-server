@@ -1398,15 +1398,21 @@ export interface APICommands {
             value: unknown;
             /**
              * The cluster's data version as `read` reports it in `data_versions`. The device refuses the write with
-             * status 146 (DATA_VERSION_MISMATCH) when the cluster changed since.
+             * status 146 (DATA_VERSION_MISMATCH) when the cluster changed since. Required unless
+             * `skip_data_version_check` is set.
              */
-            data_version: number;
+            data_version?: number | null;
+            /** Writes without a data version check; refused together with `data_version`. */
+            skip_data_version_check?: boolean | null;
             /**
              * On status 146, the server sends the write again without `data_version`, in the same atomic write, so the
              * value replaces whatever changed since the read.
              */
             ignore_data_version_mismatch?: boolean | null;
-            /** Sends the write as a timed write with this timeout (0 to 65535). */
+            /**
+             * Sends the write as a timed write with this timeout (0 to 65535). A timed write, by a value above 0 or
+             * because the attribute requires one, needs `skip_data_version_check` instead of `data_version`.
+             */
             timed_request_timeout_ms?: number | null;
             /** How long the device holds the pending write (1 to 65535, default 30000); the device may shorten it. */
             atomic_timeout_ms?: number | null;

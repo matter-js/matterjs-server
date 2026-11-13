@@ -230,6 +230,28 @@ async def test_write_atomic_attribute_sends_tag_keyed_value_with_schema_15() -> 
     )
 
 
+async def test_write_atomic_attribute_skips_the_data_version_check() -> None:
+    client = MatterClient(ws_server_url="ws://example.invalid/ws", aiohttp_session=MagicMock())
+    client.send_command = AsyncMock(return_value=[])
+
+    await client.write_atomic_attribute(
+        node_id=1,
+        attribute_path="1/513/80",
+        value=[],
+        data_version=None,
+        skip_data_version_check=True,
+    )
+
+    client.send_command.assert_awaited_once_with(
+        APICommand.WRITE_ATOMIC_ATTRIBUTE,
+        require_schema=15,
+        node_id=1,
+        attribute_path="1/513/80",
+        value=[],
+        skip_data_version_check=True,
+    )
+
+
 async def test_send_batched_device_commands_sends_one_request_and_parses_results() -> None:
     client = MatterClient(ws_server_url="ws://example.invalid/ws", aiohttp_session=MagicMock())
     client.send_command = AsyncMock(

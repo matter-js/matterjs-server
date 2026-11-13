@@ -434,6 +434,7 @@ describe("ws-client", () => {
                     atomicTimeoutMs: 8000,
                     ignoreDataVersionMismatch: true,
                 });
+                await client.writeAtomicAttribute(1, "1/513/80", [], undefined, { skipDataVersionCheck: true });
 
                 expect(received).to.deep.equal([
                     {
@@ -444,6 +445,7 @@ describe("ws-client", () => {
                         ignore_data_version_mismatch: true,
                         atomic_timeout_ms: 8000,
                     },
+                    { node_id: 1, attribute_path: "1/513/80", value: [], skip_data_version_check: true },
                 ]);
 
                 await server.stop();

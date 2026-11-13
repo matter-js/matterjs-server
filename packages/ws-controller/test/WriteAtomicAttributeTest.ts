@@ -192,7 +192,7 @@ describe("write_atomic_attribute on a commissioned device", () => {
 
     /** An atomic write of the presets with the cluster's current data version, unless the request states one. */
     async function writeAtomic(request: Partial<Omit<WriteAtomicAttributeRequest, "nodeId">> & { value: unknown }) {
-        const dataVersion = request.dataVersion ?? (await thermostatDataVersion());
+        const dataVersion = "dataVersion" in request ? request.dataVersion : await thermostatDataVersion();
         return await MockTime.resolve(
             site.handler.handleWriteAtomicAttribute({
                 nodeId: NODE_ID,
@@ -272,6 +272,24 @@ describe("write_atomic_attribute on a commissioned device", () => {
         expect(storedPresets().map(({ heatingSetpoint }) => heatingSetpoint)).deep.equals([1900]);
     });
 
+    it("writes without a version check and commits when the client gives no data version", async () => {
+        await staleDataVersion();
+        const sentVersions = new Array<number | undefined>();
+        const interaction = site.peer.interaction;
+        const write = interaction.write.bind(interaction);
+        interaction.write = (request, session) => {
+            sentVersions.push(...request.writeRequests.map(({ dataVersion }) => dataVersion));
+            return write(request, session);
+        };
+        const result = await writeAtomic({ value: [wirePreset(1900)], dataVersion: undefined });
+
+        expect(result.status).equals(Status.Success);
+        expect(received).deep.equals(["BeginWrite", "Write", "CommitWrite"]);
+        expect(sentVersions.length).greaterThan(0);
+        expect(sentVersions.every(version => version === undefined)).equals(true);
+        expect(storedPresets().map(({ heatingSetpoint }) => heatingSetpoint)).deep.equals([1900]);
+    });
+
     it("rolls back and commits nothing when a later entry of the list is refused", async () => {
         const result = await writeAtomic({
             value: [wirePreset(1700), wirePreset(1800, undefined, Unoccupied), wirePreset(1900, "named", Sleep)],
@@ -294,10 +312,29 @@ describe("write_atomic_attribute on a commissioned device", () => {
     }
 
     it("sends a timed write when the request states a timed request timeout", async () => {
-        const result = await writeAtomic({ value: [wirePreset(1900)], timedInteractionTimeoutMs: Millis(2000) });
+        const result = await writeAtomic({
+            value: [wirePreset(1900)],
+            dataVersion: undefined,
+            timedInteractionTimeoutMs: Millis(2000),
+        });
 
         expect(result.status).equals(Status.Success);
         expect(received).deep.equals(["BeginWrite", "TimedWrite", "CommitWrite"]);
+    });
+
+    it("refuses a timed write with a data version before sending anything", async () => {
+        const dataVersion = await thermostatDataVersion();
+        received.length = 0;
+        const refusal = await writeAtomic({
+            value: [wirePreset(1900)],
+            dataVersion,
+            timedInteractionTimeoutMs: Millis(2000),
+        }).catch((error: unknown) => error);
+
+        expect(refusal).instanceOf(ServerError);
+        expect(refusal).property("code", ServerErrorCode.InvalidArguments);
+        expect(received).deep.equals([]);
+        expect((await writeAtomic({ value: [wirePreset(1900)] })).status).equals(Status.Success);
     });
 
     it("rolls back when the device refuses the write and answers the write's status", async () => {
@@ -642,6 +679,7 @@ describe("write_atomic_attribute on a commissioned device", () => {
             const untimed = await writeAtomic({ value: withHeating([1700, 1800, 1900]) });
             const timed = await writeAtomic({
                 value: withHeating([1600, 1700, 1800]),
+                dataVersion: undefined,
                 timedInteractionTimeoutMs: Millis(2000),
             });
 

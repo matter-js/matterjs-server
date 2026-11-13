@@ -74,6 +74,7 @@ import {
     ServerInfoMessage,
     SuccessResultMessage,
 } from "../types/WebSocketMessageTypes.js";
+import { writesTimed } from "../util/atomicWrite.js";
 import { formatNodeId } from "../util/formatNodeId.js";
 import { MATTER_VERSION } from "../util/matterVersion.js";
 import { nodeIdTarget } from "../util/nodeIdClasses.js";
@@ -1703,6 +1704,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
             attribute_path,
             value,
             data_version,
+            skip_data_version_check,
             ignore_data_version_mismatch,
             timed_request_timeout_ms,
             atomic_timeout_ms,
@@ -1727,21 +1729,35 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 `${clusterEntry.model.name}.${attributeModel.name} does not require atomic writes; use write_attribute`,
             );
         }
-        if (!isUint(data_version, 0xffff_ffff)) {
-            throw ServerError.invalidArguments(
-                "write_atomic_attribute needs data_version, the cluster's data version as `read` reports it (0 to 4294967295)",
-            );
+        for (const [name, flag] of [
+            ["skip_data_version_check", skip_data_version_check],
+            ["ignore_data_version_mismatch", ignore_data_version_mismatch],
+        ] as const) {
+            if (flag !== undefined && flag !== null && typeof flag !== "boolean") {
+                throw ServerError.invalidArguments(`${name} must be true or false`);
+            }
         }
-        if (
-            ignore_data_version_mismatch !== undefined &&
-            ignore_data_version_mismatch !== null &&
-            typeof ignore_data_version_mismatch !== "boolean"
-        ) {
-            throw ServerError.invalidArguments("ignore_data_version_mismatch must be true or false");
+        const statesDataVersion = data_version !== undefined && data_version !== null;
+        if (skip_data_version_check === true) {
+            if (statesDataVersion) {
+                throw ServerError.invalidArguments(
+                    "write_atomic_attribute takes either data_version or skip_data_version_check, not both",
+                );
+            }
+        } else if (!isUint(data_version, 0xffff_ffff)) {
+            throw ServerError.invalidArguments(
+                "write_atomic_attribute needs data_version, the cluster's data version as `read` reports it (0 to 4294967295), or skip_data_version_check",
+            );
         }
         const statesTimeout = atomic_timeout_ms !== undefined && atomic_timeout_ms !== null;
         if (statesTimeout && !(isUint(atomic_timeout_ms, 0xffff) && atomic_timeout_ms > 0)) {
             throw ServerError.invalidArguments("atomic_timeout_ms must be an integer from 1 to 65535");
+        }
+        const timedInteractionTimeoutMs = timedRequestTimeoutArgument(timed_request_timeout_ms);
+        if (statesDataVersion && writesTimed(attributeModel, timedInteractionTimeoutMs)) {
+            throw ServerError.invalidArguments(
+                "write_atomic_attribute sends a timed write here, which needs skip_data_version_check instead of data_version: a timed write with a data version fails on lists",
+            );
         }
 
         const result = await this.#handlerFor(nodeId).handleWriteAtomicAttribute({
@@ -1750,9 +1766,9 @@ export class WebSocketControllerHandler implements WebServerHandler {
             clusterId,
             attributeId,
             value,
-            dataVersion: data_version,
+            dataVersion: statesDataVersion ? data_version : undefined,
             ignoreDataVersionMismatch: ignore_data_version_mismatch === true,
-            timedInteractionTimeoutMs: timedRequestTimeoutArgument(timed_request_timeout_ms),
+            timedInteractionTimeoutMs,
             atomicTimeoutMs: statesTimeout ? Millis(atomic_timeout_ms) : undefined,
         });
         return [

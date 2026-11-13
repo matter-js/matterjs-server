@@ -135,9 +135,14 @@ export interface WriteAttributeOptions {
 
 /** Options for {@link MatterClient.writeAtomicAttribute}. */
 export interface WriteAtomicAttributeOptions {
+    /** Writes without a data version check; the server refuses it together with a data version. */
+    skipDataVersionCheck?: boolean;
     /** On status 146 (DATA_VERSION_MISMATCH), write again without the data version, in the same atomic write. */
     ignoreDataVersionMismatch?: boolean;
-    /** Sends the write as a timed write with this timeout (0 to 65535 ms). */
+    /**
+     * Sends the write as a timed write with this timeout (0 to 65535 ms). A timed write, by a value above 0 or because
+     * the attribute requires one, needs `skipDataVersionCheck` instead of a data version.
+     */
     timedRequestTimeoutMs?: number;
     /** How long the device holds the pending write (1 to 65535 ms, server default 30000); the device may shorten it. */
     atomicTimeoutMs?: number;
@@ -651,13 +656,14 @@ export class MatterClient {
      * Schema 15. Writes an attribute with the Atomic quality inside one atomic write: the server sends BeginWrite, the
      * write and CommitWrite, or RollbackWrite when the write fails. The server refuses any other attribute.
      * `dataVersion` is the cluster's data version as {@link read} reports it; the device refuses the write with status
-     * 146 (DATA_VERSION_MISMATCH) when the cluster changed since.
+     * 146 (DATA_VERSION_MISMATCH) when the cluster changed since. Pass `undefined` only together with
+     * `skipDataVersionCheck`.
      */
     async writeAtomicAttribute(
         nodeId: number | bigint,
         attributePath: string,
         value: unknown,
-        dataVersion: number,
+        dataVersion: number | undefined,
         opts: WriteAtomicAttributeOptions = {},
     ): Promise<ResponseOf<"write_atomic_attribute">> {
         return await this.sendCommand(
@@ -668,6 +674,7 @@ export class MatterClient {
                 attribute_path: attributePath,
                 value,
                 data_version: dataVersion,
+                skip_data_version_check: opts.skipDataVersionCheck,
                 ignore_data_version_mismatch: opts.ignoreDataVersionMismatch,
                 timed_request_timeout_ms: opts.timedRequestTimeoutMs,
                 atomic_timeout_ms: opts.atomicTimeoutMs,
