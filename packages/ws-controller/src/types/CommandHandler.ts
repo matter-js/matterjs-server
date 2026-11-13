@@ -32,6 +32,10 @@ export type WriteAtomicAttributeRequest = {
     clusterId: ClusterId;
     attributeId: AttributeId;
     value: unknown;
+    /** Data version of the cluster as the client read it; the device refuses the write when it changed since. */
+    dataVersion: number;
+    /** On DATA_VERSION_MISMATCH, send the write again without the data version, in the same atomic write. */
+    ignoreDataVersionMismatch?: boolean;
     timedInteractionTimeoutMs?: Duration;
     /** Timeout of the BeginWrite, the time the device holds the pending write; the device may shorten it. */
     atomicTimeoutMs?: Duration;

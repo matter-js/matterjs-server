@@ -430,10 +430,20 @@ describe("ws-client", () => {
                 await server.start();
                 client = new MatterClient(server.url, createNodeWebSocket);
                 await client.connect();
-                await client.writeAtomicAttribute(1, "1/513/80", [], { atomicTimeoutMs: 8000 });
+                await client.writeAtomicAttribute(1, "1/513/80", [], 7, {
+                    atomicTimeoutMs: 8000,
+                    ignoreDataVersionMismatch: true,
+                });
 
                 expect(received).to.deep.equal([
-                    { node_id: 1, attribute_path: "1/513/80", value: [], atomic_timeout_ms: 8000 },
+                    {
+                        node_id: 1,
+                        attribute_path: "1/513/80",
+                        value: [],
+                        data_version: 7,
+                        ignore_data_version_mismatch: true,
+                        atomic_timeout_ms: 8000,
+                    },
                 ]);
 
                 await server.stop();
@@ -443,7 +453,7 @@ describe("ws-client", () => {
                 await client.connect();
                 let refusal: unknown;
                 try {
-                    await client.writeAtomicAttribute(1, "1/513/80", []);
+                    await client.writeAtomicAttribute(1, "1/513/80", [], 7);
                 } catch (error) {
                     refusal = error;
                 }

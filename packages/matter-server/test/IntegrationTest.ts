@@ -705,9 +705,15 @@ describe("Integration Test", function () {
         });
 
         it("should write thermostat presets with write_atomic_attribute", async function () {
-            const result = await client.writeAtomicAttribute(commissionedNodeId, "2/513/80", [
-                { "0": null, "1": 1, "3": 2600, "4": 1900, "5": false },
-            ]);
+            const report = await client.read({ node_id: commissionedNodeId, attribute_paths: ["2/513/80"] });
+            const dataVersion = report.data_versions?.["2/513"];
+            expect(dataVersion).to.be.a("number");
+            const result = await client.writeAtomicAttribute(
+                commissionedNodeId,
+                "2/513/80",
+                [{ "0": null, "1": 1, "3": 2600, "4": 1900, "5": false }],
+                dataVersion ?? 0,
+            );
 
             expect(result).to.deep.equal([{ Path: { EndpointId: 2, ClusterId: 513, AttributeId: 80 }, Status: 0 }]);
             const attrs = await client.readAttribute(commissionedNodeId, "2/513/80");
@@ -728,6 +734,7 @@ describe("Integration Test", function () {
                 node_id: commissionedNodeId,
                 attribute_path: "0/40/5",
                 value: "x",
+                data_version: 0,
             });
 
             expect(error.error_code).to.equal(ServerErrorCode.InvalidArguments);

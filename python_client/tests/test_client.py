@@ -203,7 +203,12 @@ async def test_write_atomic_attribute_sends_tag_keyed_value_with_schema_15() -> 
     )
 
     await client.write_atomic_attribute(
-        node_id=1, attribute_path="1/513/80", value=[preset], atomic_timeout_ms=8000
+        node_id=1,
+        attribute_path="1/513/80",
+        value=[preset],
+        data_version=7,
+        atomic_timeout_ms=8000,
+        ignore_data_version_mismatch=True,
     )
 
     client.send_command.assert_awaited_once_with(
@@ -219,7 +224,9 @@ async def test_write_atomic_attribute_sends_tag_keyed_value_with_schema_15() -> 
                 "5": False,
             }
         ],
+        data_version=7,
         atomic_timeout_ms=8000,
+        ignore_data_version_mismatch=True,
     )
 
 

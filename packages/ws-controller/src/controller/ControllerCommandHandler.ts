@@ -1916,7 +1916,10 @@ export class ControllerCommandHandler {
 
     /**
      * Writes one attribute with the Atomic quality inside one atomic write (Matter spec §7.15.1): BeginWrite, the
-     * Write, then CommitWrite. The device applies the value only if the commit succeeds. The answer is the first status
+     * Write, then CommitWrite. The device applies the value only if the commit succeeds. The Write carries the
+     * cluster's data version the client read, so the device refuses it with DATA_VERSION_MISMATCH when the cluster
+     * changed since that read (§8.7.3.2), and the server rolls back. With `ignoreDataVersionMismatch` the server instead
+     * sends the Write again without the data version, inside the same atomic write. The answer is the first status
      * that is not Success: from the BeginWrite, from the Write, or from the CommitWrite.
      *
      * A failed Write is followed by a RollbackWrite, and so is an error thrown after the BeginWrite was sent. A
@@ -1999,7 +2002,15 @@ export class ControllerCommandHandler {
 
     /** The handshake of {@link handleWriteAtomicAttribute}, while it holds the cluster's lock. */
     async #atomicWrite(
-        { nodeId, endpointId, attributeId, timedInteractionTimeoutMs, atomicTimeoutMs }: WriteAtomicAttributeRequest,
+        {
+            nodeId,
+            endpointId,
+            attributeId,
+            dataVersion,
+            ignoreDataVersionMismatch,
+            timedInteractionTimeoutMs,
+            atomicTimeoutMs,
+        }: WriteAtomicAttributeRequest,
         clusterEntry: ClusterMapEntry,
         attributeModel: AttributeModel,
         value: unknown,
@@ -2007,6 +2018,8 @@ export class ControllerCommandHandler {
         unrolled: { deviceTimeout?: Duration },
     ): Promise<AttributeResponseStatus> {
         let deviceTimeout = atomicTimeoutMs ?? DEFAULT_ATOMIC_WRITE_TIMEOUT;
+        /** When the BeginWrite was answered; the device's timeout runs from there. */
+        let beginAnsweredAt: Timestamp | undefined = undefined;
         const node = this.#nodes.get(nodeId);
         const cluster = clusterSpecifierOf(clusterEntry);
         const atomicRequest = async (requestType: AtomicRequestType, attributeRequests: AttributeId[]) =>
@@ -2024,9 +2037,13 @@ export class ControllerCommandHandler {
             );
 
         const holdUntilDeviceTimeout = (reason: string, cause: unknown) => {
-            unrolled.deviceTimeout = deviceTimeout;
+            const remaining =
+                beginAnsweredAt === undefined
+                    ? deviceTimeout
+                    : Millis(Math.max(0, deviceTimeout - Timestamp.delta(beginAnsweredAt, Time.nowUs)));
+            unrolled.deviceTimeout = remaining;
             logger.warn(
-                `${reason} of ${attributeModel.propertyName} on ${this.formatNode(nodeId)}/${endpointId}; the device may keep it open, so writes to the cluster's atomic attributes answer BUSY for ${Duration.format(deviceTimeout)}:`,
+                `${reason} of ${attributeModel.propertyName} on ${this.formatNode(nodeId)}/${endpointId}; the device may keep it open, so writes to the cluster's atomic attributes answer BUSY for ${Duration.format(remaining)}:`,
                 cause,
             );
         };
@@ -2060,6 +2077,7 @@ export class ControllerCommandHandler {
         if (begin.statusCode !== Status.Success) {
             return answer(atomicFailureOf(begin));
         }
+        beginAnsweredAt = Time.nowUs;
         if (begin.timeout !== undefined) {
             deviceTimeout = Millis(begin.timeout);
         }
@@ -2071,14 +2089,23 @@ export class ControllerCommandHandler {
 
         let commit: AtomicResponse;
         try {
-            const failed = await this.#atomicWriteFailure(
-                node,
-                endpointId,
-                cluster,
-                attributeModel,
-                value,
-                timedInteractionTimeoutMs,
-            );
+            const write = (version: number | undefined) =>
+                this.#atomicWriteFailure(
+                    node,
+                    endpointId,
+                    cluster,
+                    attributeModel,
+                    value,
+                    version,
+                    timedInteractionTimeoutMs,
+                );
+            let failed = await write(dataVersion);
+            if (failed?.status === Status.DataVersionMismatch && ignoreDataVersionMismatch) {
+                logger.info(
+                    `Data version of ${attributeModel.propertyName} on ${this.formatNode(nodeId)}/${endpointId} changed since the client read it; writing again without it, as the client asked`,
+                );
+                failed = await write(undefined);
+            }
             if (failed !== undefined) {
                 await rollback(atomicAttributes);
                 return answer(failed.status, failed.clusterStatus);
@@ -2092,18 +2119,29 @@ export class ControllerCommandHandler {
         return answer(commit.statusCode === Status.Success ? Status.Success : atomicFailureOf(commit));
     }
 
-    /** Sends the Write of an atomic write, chunked if needed; the first status that is not Success, if any. */
+    /**
+     * Sends the Write of an atomic write, chunked if needed, with the data version when given: matter.js puts it on the
+     * entry that replaces a list, and on every entry of a timed write, which it does not split. Answers the first status
+     * that is not Success, if any.
+     */
     async #atomicWriteFailure(
         node: ClientNode,
         endpoint: EndpointNumber,
         cluster: Specifier.ClusterLike,
         attributeModel: AttributeModel,
         value: unknown,
+        dataVersion: number | undefined,
         timedInteractionTimeoutMs: Duration | undefined,
     ): Promise<{ status: Status; clusterStatus?: number } | undefined> {
         const write = Write(
             { timed: timedInteractionTimeoutMs !== undefined, timeout: timedInteractionTimeoutMs, chunkLists: true },
-            Write.Attribute({ endpoint, cluster, attributes: attributeModel.propertyName, value }),
+            Write.Attribute({
+                endpoint,
+                cluster,
+                attributes: attributeModel.propertyName,
+                value,
+                version: dataVersion,
+            }),
         );
         try {
             const results = await node.interaction.write(write);

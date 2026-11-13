@@ -624,10 +624,13 @@ class TestAttributeOperations:
         """Write the thermostat presets inside an atomic write and verify."""
         _require_state(env, "node_id")
         client: MatterTestClient = env["client"]
+        report = await client.read(env["node_id"], ["2/513/80"])
+        assert report.data_versions is not None
         result = await client.write_atomic_attribute(
             env["node_id"],
             "2/513/80",
             [{"0": None, "1": 1, "3": 2600, "4": 1800, "5": False}],
+            report.data_versions["2/513"],
         )
         assert result == [
             {"Path": {"EndpointId": 2, "ClusterId": 513, "AttributeId": 80}, "Status": 0}

@@ -2579,7 +2579,7 @@ describe("node id classes on the generic node-targeted commands", () => {
         ["ping_node", {}],
         ["get_node", {}],
         ["set_acl_entry", { entry: {} }],
-        ["write_atomic_attribute", { attribute_path: "1/513/80", value: [] }],
+        ["write_atomic_attribute", { attribute_path: "1/513/80", value: [], data_version: 7 }],
     ];
 
     /** The two routes matter.js can carry to a group; they refuse the rest of the classes. */
@@ -3359,7 +3359,11 @@ describe("write_atomic_attribute", () => {
         return answerToFrameText(
             h,
             tag,
-            toBigIntAwareJson({ message_id: tag, command: "write_atomic_attribute", args: { node_id: 1, ...args } }),
+            toBigIntAwareJson({
+                message_id: tag,
+                command: "write_atomic_attribute",
+                args: { node_id: 1, data_version: 7, ...args },
+            }),
         );
     }
 
@@ -3382,7 +3386,13 @@ describe("write_atomic_attribute", () => {
         try {
             const answer = await answerFor(
                 h,
-                { attribute_path: PRESETS, value: [], timed_request_timeout_ms: 2000, atomic_timeout_ms: 8000 },
+                {
+                    attribute_path: PRESETS,
+                    value: [],
+                    ignore_data_version_mismatch: true,
+                    timed_request_timeout_ms: 2000,
+                    atomic_timeout_ms: 8000,
+                },
                 "atomic-write",
             );
             expect(answer.error_code).to.equal(undefined);
@@ -3396,6 +3406,8 @@ describe("write_atomic_attribute", () => {
                     clusterId: 513,
                     attributeId: 80,
                     value: [],
+                    dataVersion: 7,
+                    ignoreDataVersionMismatch: true,
                     timedInteractionTimeoutMs: 2000,
                     atomicTimeoutMs: 8000,
                 },
@@ -3425,7 +3437,11 @@ describe("write_atomic_attribute", () => {
                 );
                 expect(answer.error_code).to.equal(undefined);
                 expect(writes).to.have.length(1);
-                expect(writes[0]).to.include({ timedInteractionTimeoutMs: undefined, atomicTimeoutMs: undefined });
+                expect(writes[0]).to.include({
+                    ignoreDataVersionMismatch: false,
+                    timedInteractionTimeoutMs: undefined,
+                    atomicTimeoutMs: undefined,
+                });
             } finally {
                 await h.close();
             }
@@ -3461,6 +3477,40 @@ describe("write_atomic_attribute", () => {
                 const answer = await answerFor(h, { attribute_path: path, value: [] }, `atomic-write-path-${path}`);
                 expect(answer.error_code).to.equal(8);
                 expect(answer.details).to.contain("attribute_path");
+            } finally {
+                await h.close();
+            }
+        });
+    }
+
+    for (const stated of [1, "true"]) {
+        it(`refuses ignore_data_version_mismatch ${JSON.stringify(stated)}`, async () => {
+            const h = await refusingHarness();
+            try {
+                const answer = await answerFor(
+                    h,
+                    { attribute_path: PRESETS, value: [], ignore_data_version_mismatch: stated },
+                    `atomic-write-ignore-${String(stated)}`,
+                );
+                expect(answer.error_code).to.equal(8);
+                expect(answer.details).to.contain("ignore_data_version_mismatch");
+            } finally {
+                await h.close();
+            }
+        });
+    }
+
+    for (const stated of [undefined, null, -1, 1.5, "7", 0x1_0000_0000]) {
+        it(`refuses data_version ${JSON.stringify(stated) ?? "left out"}`, async () => {
+            const h = await refusingHarness();
+            try {
+                const answer = await answerFor(
+                    h,
+                    { attribute_path: PRESETS, value: [], data_version: stated },
+                    `atomic-write-data-version-${String(stated)}`,
+                );
+                expect(answer.error_code).to.equal(8);
+                expect(answer.details).to.contain("data_version");
             } finally {
                 await h.close();
             }

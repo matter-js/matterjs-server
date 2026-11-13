@@ -52,28 +52,36 @@ function preset(handle: string, overrides: Partial<ThermostatPreset> = {}): Ther
 const HANDLE_2 = "Ag==";
 
 /**
- * Logs every read_attribute and write_atomic_attribute call in order and answers them from `responses`.
- * `devicePresets` is the tag-keyed Presets value the device reports.
+ * Logs every read and write_atomic_attribute call in order and answers them from `responses`.
+ * `devicePresets` is the tag-keyed Presets value the device reports, `dataVersion` the thermostat cluster's version.
  */
-function fakePresetsClient(responses: { write?: unknown; devicePresets?: unknown } = {}) {
+/** `write` answers the writes in order; a write past its end succeeds. */
+function fakePresetsClient(
+    responses: { write?: unknown[]; devicePresets?: unknown; dataVersion?: number | null } = {},
+) {
+    const writeAnswers = [...(responses.write ?? [])];
     const steps = new Array<string>();
-    const reads = new Array<{ path: unknown; fabricFiltered: unknown }>();
-    const writes = new Array<{ path: unknown; value: unknown }>();
+    const reads = new Array<unknown>();
+    const writes = new Array<{ path: unknown; value: unknown; dataVersion: unknown }>();
     const client = {
-        readAttribute: (_nodeId: unknown, path: unknown, _timeout: unknown, fabricFiltered: unknown) => {
+        read: (args: unknown) => {
             steps.push("read");
-            reads.push({ path, fabricFiltered });
-            return Promise.resolve(
-                "devicePresets" in responses && responses.devicePresets === undefined
-                    ? {}
-                    : { "6/513/80": responses.devicePresets ?? [{ "0": HANDLE_1, "1": 1, "5": true }] },
-            );
+            reads.push(args);
+            const dataVersion = responses.dataVersion === undefined ? 42 : responses.dataVersion;
+            return Promise.resolve({
+                attributes:
+                    "devicePresets" in responses && responses.devicePresets === undefined
+                        ? {}
+                        : { "6/513/80": responses.devicePresets ?? [{ "0": HANDLE_1, "1": 1, "5": true }] },
+                events: [],
+                data_versions: dataVersion === null ? {} : { "6/513": dataVersion },
+            });
         },
-        writeAtomicAttribute: (_nodeId: unknown, path: unknown, value: unknown) => {
+        writeAtomicAttribute: (_nodeId: unknown, path: unknown, value: unknown, dataVersion: unknown) => {
             steps.push("write");
-            writes.push({ path, value });
+            writes.push({ path, value, dataVersion });
             return Promise.resolve(
-                responses.write ?? [{ Path: { EndpointId: 6, ClusterId: 513, AttributeId: 80 }, Status: 0 }],
+                writeAnswers.shift() ?? [{ Path: { EndpointId: 6, ClusterId: 513, AttributeId: 80 }, Status: 0 }],
             );
         },
     } as unknown as MatterClient;
@@ -249,12 +257,14 @@ describe("thermostat-preset-edit util", () => {
     describe("writeThermostatPresets", () => {
         const keepAll = (current: ThermostatPreset[]) => current.map(toPresetEdit);
 
-        it("reads the device's presets, then writes them with write_atomic_attribute", async () => {
+        it("reads the presets with their data version, then writes them with write_atomic_attribute", async () => {
             const { client, steps, reads, writes } = fakePresetsClient();
             await writeThermostatPresets(client, 1, 6, keepAll);
             expect(steps).to.deep.equal(["read", "write"]);
-            expect(reads).to.deep.equal([{ path: "6/513/80", fabricFiltered: true }]);
-            expect(writes.map(({ path }) => path)).to.deep.equal(["6/513/80"]);
+            expect(reads).to.deep.equal([{ node_id: 1, attribute_paths: ["6/513/80"] }]);
+            expect(writes.map(({ path, dataVersion }) => ({ path, dataVersion }))).to.deep.equal([
+                { path: "6/513/80", dataVersion: 42 },
+            ]);
         });
 
         it("builds the written list from the presets the device reports", async () => {
@@ -305,6 +315,10 @@ describe("thermostat-preset-edit util", () => {
 
         for (const [status, message] of [
             [0x87, "Writing presets failed: ConstraintError (135)"],
+            [
+                0x92,
+                "Writing presets failed: the thermostat changed since its presets were read, try again (DataVersionMismatch, 146)",
+            ],
             [0x9c, "Writing presets failed: another change of the presets is still running, try again (Busy, 156)"],
             [
                 0xcb,
@@ -312,9 +326,8 @@ describe("thermostat-preset-edit util", () => {
             ],
         ] as const) {
             it(`throws "${message}" for status ${status}`, async () => {
-                const { client } = fakePresetsClient({
-                    write: [{ Path: { EndpointId: 6, ClusterId: 513, AttributeId: 80 }, Status: status }],
-                });
+                const failed = [{ Path: { EndpointId: 6, ClusterId: 513, AttributeId: 80 }, Status: status }];
+                const { client } = fakePresetsClient({ write: [failed, failed] });
                 await expect(writeThermostatPresets(client, 1, 6, keepAll)).to.be.rejectedWith(message);
             });
         }
@@ -329,11 +342,30 @@ describe("thermostat-preset-edit util", () => {
             expect(steps).to.deep.equal(["read"]);
         });
 
-        it("writes nothing when the read carries no Presets value", async () => {
-            const { client, steps } = fakePresetsClient({ devicePresets: undefined });
-            await expect(writeThermostatPresets(client, 1, 6, keepAll)).to.be.rejectedWith("did not report");
-            expect(steps).to.deep.equal(["read"]);
+        it("reads and writes once more after a DATA_VERSION_MISMATCH", async () => {
+            const mismatch = [{ Path: { EndpointId: 6, ClusterId: 513, AttributeId: 80 }, Status: 146 }];
+            const { client, steps } = fakePresetsClient({ write: [mismatch] });
+            await writeThermostatPresets(client, 1, 6, keepAll);
+            expect(steps).to.deep.equal(["read", "write", "read", "write"]);
         });
+
+        it("does not try again after another failure", async () => {
+            const busy = [{ Path: { EndpointId: 6, ClusterId: 513, AttributeId: 80 }, Status: 156 }];
+            const { client, steps } = fakePresetsClient({ write: [busy] });
+            await expect(writeThermostatPresets(client, 1, 6, keepAll)).to.be.rejectedWith("(Busy, 156)");
+            expect(steps).to.deep.equal(["read", "write"]);
+        });
+
+        for (const [label, responses] of [
+            ["no Presets value", { devicePresets: undefined }],
+            ["no data version", { dataVersion: null }],
+        ] as const) {
+            it(`writes nothing when the read carries ${label}`, async () => {
+                const { client, steps } = fakePresetsClient(responses);
+                await expect(writeThermostatPresets(client, 1, 6, keepAll)).to.be.rejectedWith("did not report");
+                expect(steps).to.deep.equal(["read"]);
+            });
+        }
     });
 
     describe("setActivePreset", () => {

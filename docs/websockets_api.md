@@ -648,11 +648,22 @@ instead of the commit. The device applies the value only when the commit succeed
   "args": {
     "node_id": 1,
     "attribute_path": "1/513/80",
-    "value": [{ "0": null, "1": 1, "3": 2600, "4": 2000, "5": false }]
+    "value": [{ "0": null, "1": 1, "3": 2600, "4": 2000, "5": false }],
+    "data_version": 1234567
   }
 }
 ```
 
+- `data_version` (required): the data version of the attribute's cluster, as `read` returns it in `data_versions`
+  under `endpoint/cluster` (`"1/513"`). The write carries it, so the device refuses the write with `146`
+  (DATA_VERSION_MISMATCH) when anything in the cluster changed since that read (spec §8.7.3.2), and the server rolls
+  back. This keeps a client from overwriting a change made elsewhere with a list it read before. The data version
+  covers the whole cluster, so a change of another attribute, such as the measured temperature, also counts; read
+  again and retry.
+- `ignore_data_version_mismatch`: when `true` and the device refuses the write with `146`, the server sends the same
+  write again without the data version, in the same atomic write. The value then replaces whatever changed since the
+  read. A device may also check the data version again at the commit (spec §7.15.6.4.2); the flag does not cover that,
+  and the commit then fails with `146`.
 - `attribute_path` names one attribute on one endpoint; a wildcard, a group node id, or an attribute without the Atomic
   quality is refused with `InvalidArguments`. Write any other attribute with `write_attribute`.
 - `timed_request_timeout_ms`: sends the write as a timed write, as for `write_attribute`.

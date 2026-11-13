@@ -963,13 +963,20 @@ class MatterClient:
         node_id: int,
         attribute_path: str,
         value: Any,
+        data_version: int,
         timed_request_timeout_ms: int | None = None,
         atomic_timeout_ms: int | None = None,
+        ignore_data_version_mismatch: bool = False,
     ) -> Any:
         """Write an attribute with the Atomic quality inside one atomic write (schema 15).
 
         The server sends BeginWrite, the write and CommitWrite, or RollbackWrite when the
         write fails, and refuses any other attribute. ``attribute_path`` takes no wildcard.
+        ``data_version`` is the cluster's data version as ``read`` reports it in
+        ``data_versions``; the device refuses the write with status 146
+        (DATA_VERSION_MISMATCH) when the cluster changed since. With
+        ``ignore_data_version_mismatch`` the server then writes again without the data version,
+        in the same atomic write.
         ``atomic_timeout_ms`` is how long the device holds the pending write (server default
         30000 ms); the device may shorten it. The result has the same shape as ``write_attribute``.
         """
@@ -979,12 +986,14 @@ class MatterClient:
             node_id=node_id,
             attribute_path=attribute_path,
             value=dataclass_to_tag_dict(value),
+            data_version=data_version,
             **(
                 {}
                 if timed_request_timeout_ms is None
                 else {"timed_request_timeout_ms": timed_request_timeout_ms}
             ),
             **({} if atomic_timeout_ms is None else {"atomic_timeout_ms": atomic_timeout_ms}),
+            **({"ignore_data_version_mismatch": True} if ignore_data_version_mismatch else {}),
         )
 
     async def remove_node(self, node_id: int) -> None:

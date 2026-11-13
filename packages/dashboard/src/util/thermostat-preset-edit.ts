@@ -25,8 +25,20 @@ const PRESET_TYPE_SUPPORTS_NAMES = 0x2;
 /** PresetScenarioEnum UserDefined (§4.3.10.17): a preset of this scenario must carry a Name. */
 const PRESET_SCENARIO_USER_DEFINED = 254;
 
-/** What a failed preset write means for the user, for the statuses that point at a write running elsewhere. */
+/** First server schema with `write_atomic_attribute`; older servers cannot write presets for the dashboard. */
+export const PRESET_WRITE_MIN_SCHEMA = 15;
+
+/**
+ * How often a preset write is tried. A DATA_VERSION_MISMATCH mostly comes from another attribute of the cluster, such as
+ * the measured temperature, so the next read usually succeeds.
+ */
+const PRESET_WRITE_ATTEMPTS = 2;
+
+/** What a failed preset write means for the user, for the statuses that point at a change made elsewhere. */
+const DATA_VERSION_MISMATCH = 0x92;
+
 const PRESET_WRITE_HINTS: Record<number, string> = {
+    [DATA_VERSION_MISMATCH]: "the thermostat changed since its presets were read, try again",
     0x9c: "another change of the presets is still running, try again",
     0xcb: "another client keeps an atomic write of this thermostat open",
 };
@@ -161,8 +173,10 @@ export function formatSetpointInput(centidegrees: number | null): string {
  * built-in, active or used by a schedule transition) and `presetHandle: null` is an addition.
  *
  * Presets may only be written inside an atomic write (§7.15.3), which `write_atomic_attribute` runs on the server. The
- * current list is read from the device just before, so a change another client makes between the read and the write
- * is overwritten. The committed list arrives with the next report.
+ * current list is read from the device just before, with the cluster's data version. The write carries that version,
+ * so the device refuses it when anything in the cluster changed since the read (status 146) instead of overwriting a
+ * change made elsewhere; the read and the write are then tried once more. The committed list arrives with the next
+ * report. Needs {@link PRESET_WRITE_MIN_SCHEMA}.
  */
 export async function writeThermostatPresets(
     client: MatterClient,
@@ -171,9 +185,18 @@ export async function writeThermostatPresets(
     buildNext: (current: ThermostatPreset[]) => ThermostatPresetEdit[],
 ): Promise<void> {
     const path = presetsPath(endpoint);
-    const current = decodePresets((await client.readAttribute(nodeId, path, undefined, true))[path]);
-    if (current === undefined) throw new Error("The device did not report its presets");
-    const results = await client.writeAtomicAttribute(nodeId, path, buildNext(current).map(toPresetStruct));
+    let results: Array<{ Status: number }>;
+    let attempt = 0;
+    do {
+        attempt++;
+        const report = await client.read({ node_id: nodeId, attribute_paths: [path] });
+        const current = decodePresets(report.attributes[path]);
+        const dataVersion = report.data_versions?.[`${endpoint}/${THERMOSTAT_CLUSTER_ID}`];
+        if (current === undefined || dataVersion === undefined) {
+            throw new Error("The device did not report its presets");
+        }
+        results = await client.writeAtomicAttribute(nodeId, path, buildNext(current).map(toPresetStruct), dataVersion);
+    } while (results[0]?.Status === DATA_VERSION_MISMATCH && attempt < PRESET_WRITE_ATTEMPTS);
     const status = results[0]?.Status;
     const hint = status === undefined ? undefined : PRESET_WRITE_HINTS[status];
     if (status !== undefined && hint !== undefined) {

@@ -1698,7 +1698,15 @@ export class WebSocketControllerHandler implements WebServerHandler {
     async #handleWriteAtomicAttribute(
         args: ArgsOf<"write_atomic_attribute">,
     ): Promise<ResponseOf<"write_atomic_attribute">> {
-        const { node_id, attribute_path, value, timed_request_timeout_ms, atomic_timeout_ms } = args;
+        const {
+            node_id,
+            attribute_path,
+            value,
+            data_version,
+            ignore_data_version_mismatch,
+            timed_request_timeout_ms,
+            atomic_timeout_ms,
+        } = args;
         const nodeId = this.#targetNodeId(node_id, "write_atomic_attribute");
         const pathRefusal =
             "write_atomic_attribute needs attribute_path as endpoint/cluster/attribute, each a number: an atomic write covers one attribute on one endpoint";
@@ -1719,6 +1727,18 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 `${clusterEntry.model.name}.${attributeModel.name} does not require atomic writes; use write_attribute`,
             );
         }
+        if (!isUint(data_version, 0xffff_ffff)) {
+            throw ServerError.invalidArguments(
+                "write_atomic_attribute needs data_version, the cluster's data version as `read` reports it (0 to 4294967295)",
+            );
+        }
+        if (
+            ignore_data_version_mismatch !== undefined &&
+            ignore_data_version_mismatch !== null &&
+            typeof ignore_data_version_mismatch !== "boolean"
+        ) {
+            throw ServerError.invalidArguments("ignore_data_version_mismatch must be true or false");
+        }
         const statesTimeout = atomic_timeout_ms !== undefined && atomic_timeout_ms !== null;
         if (statesTimeout && !(isUint(atomic_timeout_ms, 0xffff) && atomic_timeout_ms > 0)) {
             throw ServerError.invalidArguments("atomic_timeout_ms must be an integer from 1 to 65535");
@@ -1730,6 +1750,8 @@ export class WebSocketControllerHandler implements WebServerHandler {
             clusterId,
             attributeId,
             value,
+            dataVersion: data_version,
+            ignoreDataVersionMismatch: ignore_data_version_mismatch === true,
             timedInteractionTimeoutMs: timedRequestTimeoutArgument(timed_request_timeout_ms),
             atomicTimeoutMs: statesTimeout ? Millis(atomic_timeout_ms) : undefined,
         });

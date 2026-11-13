@@ -63,6 +63,7 @@ describe("TestNodeCommandHandler", () => {
                 clusterId: ClusterId(513),
                 attributeId: AttributeId(80),
                 value: [],
+                dataVersion: 0,
             });
 
             expect(result).to.deep.equal({ endpointId: 1, clusterId: 513, attributeId: 80, status: 0 });
