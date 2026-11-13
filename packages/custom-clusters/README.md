@@ -11,9 +11,9 @@ Custom clusters are used by device manufacturers to expose proprietary functiona
 
 | Cluster                             | ID         | Vendor                     | Description                                |
 |-------------------------------------|------------|----------------------------|--------------------------------------------|
-| `AqaraAmbientSensingConfigurationCluster` | 0x115ffc0a | Aqara (0x115f/4447)  | FP400 install settings, detection zones    |
-| `AqaraRadarSensingUnionCluster`     | 0x115ffc0b | Aqara (0x115f/4447)        | FP400 zone endpoints, human count, motion events |
-| `AqaraOccupantLocationCluster`      | 0x115ffc0c | Aqara (0x115f/4447)        | FP400 activity state, target positions     |
+| `AqaraAmbientSensingConfigurationCluster` | 0x115ffc0a | Aqara (0x115f/4447) | Occupancy Sensor leader: installation, zones, AI and fall configuration |
+| `AqaraAmbientSensingUnionCluster`   | 0x115ffc0b | Aqara (0x115f/4447) | Leader aggregate and per-zone child sensing (count, motion, deltas) |
+| `AqaraOccupantLocationCluster`      | 0x115ffc0c | Aqara (0x115f/4447) | Leader target locations; child endpoints report zone-scoped state |
 | `EveCluster`                        | 0x130afc01 | Eve (0x130a/4874)          | Energy monitoring, weather, motion sensors |
 | `InovelliCluster`                   | 0x122ffc31 | Inovelli (0x122f/4961)     | LED indicator controls                     |
 | `NeoCluster`                        | 0x125dfc11 | Neo (0x125d/4991)          | Power metering                             |
@@ -28,8 +28,9 @@ Custom clusters are used by device manufacturers to expose proprietary functiona
 | `YeelightOverTheAirCluster`         | 0x1312fc11 | Yeelight (0x1312/4882)     | Cube Lite firmware update state            |
 | `DraftElectricalMeasurementCluster` | 0x00000b04 | Various                    | Draft Matter 1.0 electrical measurement    |
 
-The FP400 answers reads, writes and commands on its clusters with `UnsupportedAttribute` unless the controller's fabric
-uses a vendor id the device trusts (the test vendor id 0xfff1 works, 0x134b does not).
+FP400 firmware before 1.2.0.6 answers reads, writes and commands on its clusters with `UnsupportedAttribute` unless the
+controller's fabric uses a vendor id the device trusts (the test vendor id 0xfff1 works, 0x134b does not). Firmware
+1.2.0.6, planned for release by the end of November 2026, removes this restriction.
 
 ## Adding a New Custom Cluster
 
