@@ -137,7 +137,7 @@ export interface WriteAttributeOptions {
 export interface WriteAtomicAttributeOptions {
     /** Sends the write as a timed write with this timeout (0 to 65535 ms). */
     timedRequestTimeoutMs?: number;
-    /** How long the device holds the pending write (1 to 65535 ms, server default 5000); the device may shorten it. */
+    /** How long the device holds the pending write (1 to 65535 ms, server default 30000); the device may shorten it. */
     atomicTimeoutMs?: number;
     /** Per-call command timeout in ms (overrides {@link MatterClient.commandTimeout}). */
     timeout?: number;

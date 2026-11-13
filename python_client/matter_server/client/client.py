@@ -971,7 +971,7 @@ class MatterClient:
         The server sends BeginWrite, the write and CommitWrite, or RollbackWrite when the
         write fails, and refuses any other attribute. ``attribute_path`` takes no wildcard.
         ``atomic_timeout_ms`` is how long the device holds the pending write (server default
-        5000 ms); the device may shorten it. The result has the same shape as ``write_attribute``.
+        30000 ms); the device may shorten it. The result has the same shape as ``write_attribute``.
         """
         return await self.send_command(
             APICommand.WRITE_ATOMIC_ATTRIBUTE,

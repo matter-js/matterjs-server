@@ -238,7 +238,7 @@ describe("write_atomic_attribute on a commissioned device", () => {
         await writeAtomic({ value: [wirePreset(1900)] });
 
         expect(atomicRequests.map(({ requestType, timeout }) => ({ requestType, timeout }))).deep.equals([
-            { requestType: Thermostat.RequestType.BeginWrite, timeout: 5000 },
+            { requestType: Thermostat.RequestType.BeginWrite, timeout: 30_000 },
             { requestType: Thermostat.RequestType.CommitWrite, timeout: undefined },
         ]);
     });

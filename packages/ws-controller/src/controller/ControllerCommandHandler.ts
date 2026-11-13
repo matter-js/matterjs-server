@@ -298,7 +298,7 @@ function clusterSpecifierOf(entry: ClusterMapEntry): Specifier.ClusterLike {
 }
 
 /** How long the device holds a pending atomic write when the client states no timeout. */
-const DEFAULT_ATOMIC_WRITE_TIMEOUT = Seconds(5);
+const DEFAULT_ATOMIC_WRITE_TIMEOUT = Seconds(30);
 
 interface AtomicResponse {
     statusCode: Status;

@@ -1398,7 +1398,7 @@ export interface APICommands {
             value: unknown;
             /** Sends the write as a timed write with this timeout (0 to 65535). */
             timed_request_timeout_ms?: number | null;
-            /** How long the device holds the pending write (1 to 65535, default 5000); the device may shorten it. */
+            /** How long the device holds the pending write (1 to 65535, default 30000); the device may shorten it. */
             atomic_timeout_ms?: number | null;
         };
         /** One entry, as for `write_attribute`: Status 0 once the device committed the value. */
