@@ -1386,6 +1386,28 @@ export interface APICommands {
             ClusterStatus?: number;
         }> | null;
     };
+    /**
+     * Schema 15. Writes an attribute with the Atomic quality inside one atomic write: BeginWrite, the write, then
+     * CommitWrite, or RollbackWrite when the write fails. Any other attribute is refused.
+     */
+    write_atomic_attribute: {
+        requestArgs: {
+            node_id: number | bigint;
+            /** `endpoint/cluster/attribute`, without a wildcard. */
+            attribute_path: string;
+            value: unknown;
+            /** Sends the write as a timed write with this timeout (0 to 65535). */
+            timed_request_timeout_ms?: number | null;
+            /** How long the device holds the pending write (1 to 65535, default 5000); the device may shorten it. */
+            atomic_timeout_ms?: number | null;
+        };
+        /** One entry, as for `write_attribute`: Status 0 once the device committed the value. */
+        response: Array<{
+            Path: { EndpointId: number; ClusterId: number; AttributeId: number };
+            Status: number;
+            ClusterStatus?: number;
+        }>;
+    };
     ping_node: {
         requestArgs: { node_id: number | bigint; attempts?: number };
         response: NodePingResult;

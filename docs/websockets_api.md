@@ -10,7 +10,7 @@ On connection, the server immediately sends a `server_info` message with fabric 
 {
   "fabric_id": 1234567890,
   "compressed_fabric_id": 9876543210,
-  "schema_version": 14,
+  "schema_version": 15,
   "min_supported_schema_version": 11,
   "sdk_version": "matter-server/1.1.7 (matter.js/0.17.5-alpha)",
   "wifi_credentials_set": true,
@@ -614,6 +614,9 @@ indexes; any other fails with `InvalidArguments`. In
 that state, a write to a specific endpoint without `timed_request_timeout_ms` fails with `Status` `135` even without
 a FabricIndex.
 
+While a `write_atomic_attribute` is open on the cluster (schema 15), a write to an attribute that requires atomic writes
+is not sent and answers `156` (BUSY), see below.
+
 A write to a specific endpoint without `timed_request_timeout_ms` also updates the node data at once. A wildcard or
 timed write changes the node data only with the device's next report, so without a subscription it stays unchanged
 until the next read.
@@ -629,6 +632,59 @@ sent with the response suppressed, so no node answers and there is no status to 
 back, so a groupcast write that every node rejects — a read-only attribute, an attribute none of them
 has — is answered exactly like one they all applied. A wildcard cluster or attribute is refused for a
 group as it is for a node, and so is `timed_request_timeout_ms`.
+
+**write_atomic_attribute** *(schema 15+)* - Write an attribute that requires atomic writes
+
+Some attributes have the Atomic quality (Matter spec §7.7.11): a device accepts a write to them only inside an atomic
+write (§7.15). Today these are the Thermostat `Presets` (`1/513/80`) and `Schedules` (`1/513/81`) attributes. This
+command runs the whole atomic write for one such attribute: the server sends an `AtomicRequest` BeginWrite, the write,
+and then an `AtomicRequest` CommitWrite. When the device refuses a part of the write, the server sends a RollbackWrite
+instead of the commit. The device applies the value only when the commit succeeds.
+
+```json
+{
+  "message_id": "1",
+  "command": "write_atomic_attribute",
+  "args": {
+    "node_id": 1,
+    "attribute_path": "1/513/80",
+    "value": [{ "0": null, "1": 1, "3": 2600, "4": 2000, "5": false }]
+  }
+}
+```
+
+- `attribute_path` names one attribute on one endpoint; a wildcard, a group node id, or an attribute without the Atomic
+  quality is refused with `InvalidArguments`. Write any other attribute with `write_attribute`.
+- `timed_request_timeout_ms`: sends the write as a timed write, as for `write_attribute`.
+- `atomic_timeout_ms`: how long the device keeps the pending write, an integer from 1 to 65535; 5000 when not given. The
+  device may answer with a shorter time.
+
+Response: one entry, in the format of `write_attribute`. `Status` is `0` when the device committed the value.
+Otherwise it is the first status that was not a success. It comes from the BeginWrite (for example `156` BUSY or `203`
+INVALID_IN_STATE), from the write, or from the commit. When the device names a failing attribute in its answer,
+`Status` is that attribute's status; otherwise it is the status of the whole answer. A write to an imported test node
+reports `0` without a device having answered.
+
+The device knows every client of this server as the same writer, because the controller's node id identifies the
+writer (spec §7.15.2). While a client holds an atomic write of its own on the same cluster and endpoint, opened with
+`device_command`, this command fails with `203` (INVALID_IN_STATE) and leaves that atomic write open. A client that
+manages atomic writes itself keeps using `device_command` and `write_attribute`.
+
+For the same reason, the server keeps its own atomic writes apart from other writes. While a `write_atomic_attribute`
+is open on a cluster of an endpoint, another `write_atomic_attribute` and every `write_attribute` to an attribute of that
+cluster that requires atomic writes answer `156` (BUSY) at once, without anything being sent. A `write_attribute` with a
+wildcard endpoint answers BUSY for every endpoint that has the cluster. Without this, the device would take such a write
+into the open atomic write. Writes to the cluster's other attributes, such as a setpoint, are sent as usual. A groupcast
+write is not checked. When the server cannot roll back a failed atomic write, for example because the device does not
+answer, the device may keep it open until its timeout; the server then keeps answering BUSY until that timeout has
+passed.
+
+The node data changes only with the device's next report, as for a timed `write_attribute`, so a value the device does
+not commit never shows up in it.
+
+```json
+[{ "Path": { "EndpointId": 1, "ClusterId": 513, "AttributeId": 80 }, "Status": 0 }]
+```
 
 ### Subscriptions and generic read
 
@@ -2183,7 +2239,7 @@ Sent only to the owning connection, for example when the node was removed or the
   "data": {
     "fabric_id": 1234567890,
     "compressed_fabric_id": 9876543210,
-    "schema_version": 14,
+    "schema_version": 15,
     "min_supported_schema_version": 11,
     "sdk_version": "matter-server/1.1.7 (matter.js/0.17.5-alpha)",
     "wifi_credentials_set": true,
@@ -2380,7 +2436,7 @@ cluster definition.
 
 ## Schema Version
 
-The current schema version is **14** (minimum supported **11**). Commands and events are marked with the schema that added them, for example **(schema 14+)**; see [the schema changelog](websocket-api-schema-changelog.md) for what each version added. The server reports `schema_version` and `min_supported_schema_version` in the initial connection message and via `server_info`. Clients should verify that the server's `schema_version` is within their supported range.
+The current schema version is **15** (minimum supported **11**). Commands and events are marked with the schema that added them, for example **(schema 14+)**; see [the schema changelog](websocket-api-schema-changelog.md) for what each version added. The server reports `schema_version` and `min_supported_schema_version` in the initial connection message and via `server_info`. Clients should verify that the server's `schema_version` is within their supported range.
 
 ## BigInt Handling
 
@@ -2519,6 +2575,7 @@ These commands are available only in the Matter.js server and not in the Python 
 | `disable_auto_subscription` | Switch the server's own subscription to one node off again (schema 14+) |
 | `parse_onboarding_payload` | Decode a QR code or manual pairing code without contacting a device (schema 14+) |
 | `batched_device_commands` | Send several commands to one node in a single InvokeRequest (schema 14+) |
+| `write_atomic_attribute` | Write an attribute with the Atomic quality inside one atomic write (schema 15+) |
 
 ### Data Differences
 

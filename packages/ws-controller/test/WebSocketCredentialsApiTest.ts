@@ -84,6 +84,7 @@ interface StubCameraStreams {
 interface StubCommandHandlerOverrides {
     handleInvoke?(data: InvokeRequest): Promise<unknown>;
     handleWriteAttribute?(data: unknown): Promise<AttributeResponseStatus[]>;
+    handleWriteAtomicAttribute?(data: unknown): Promise<AttributeResponseStatus>;
     handleBatchedInvoke?(data: BatchedInvokeRequest): Promise<BatchedInvokeResult>;
     handleGroupWriteAttribute?(data: unknown): Promise<void>;
     handleGroupInvoke?(data: unknown): Promise<void>;
@@ -190,6 +191,9 @@ function makeStubController(
         handleWriteAttribute:
             commandHandler?.handleWriteAttribute ??
             (async () => [{ endpointId: 1, clusterId: 6, attributeId: 0, status: 0 }]),
+        handleWriteAtomicAttribute:
+            commandHandler?.handleWriteAtomicAttribute ??
+            (async () => ({ endpointId: 1, clusterId: 513, attributeId: 80, status: 0 })),
         handleBatchedInvoke:
             commandHandler?.handleBatchedInvoke ??
             (async (data: BatchedInvokeRequest) => data.commands.map(() => ({ status: Status.Success }))),
@@ -1014,12 +1018,12 @@ describe("WebSocket Credentials API", () => {
         expect(def?.extPanId).to.equal(def?.extPanId?.toUpperCase());
     });
 
-    it("server_info reports schema 14 / min 11", async () => {
+    it("server_info reports schema 15 / min 11", async () => {
         const info = await h.handle<{ schema_version: number; min_supported_schema_version: number }>(
             "server_info",
             {},
         );
-        expect(info.schema_version).to.equal(14);
+        expect(info.schema_version).to.equal(15);
         expect(info.min_supported_schema_version).to.equal(11);
     });
 
@@ -2575,6 +2579,7 @@ describe("node id classes on the generic node-targeted commands", () => {
         ["ping_node", {}],
         ["get_node", {}],
         ["set_acl_entry", { entry: {} }],
+        ["write_atomic_attribute", { attribute_path: "1/513/80", value: [] }],
     ];
 
     /** The two routes matter.js can carry to a group; they refuse the rest of the classes. */
@@ -3345,6 +3350,139 @@ describe("groupcast on the generic commands", () => {
             await h.close();
         }
     });
+});
+
+describe("write_atomic_attribute", () => {
+    const PRESETS = "1/513/80";
+
+    async function answerFor(h: TestHarness, args: Record<string, unknown>, tag: string): Promise<WireFrame> {
+        return answerToFrameText(
+            h,
+            tag,
+            toBigIntAwareJson({ message_id: tag, command: "write_atomic_attribute", args: { node_id: 1, ...args } }),
+        );
+    }
+
+    function refusingHarness() {
+        return createHarness(undefined, {
+            handleWriteAtomicAttribute: async () => {
+                throw new Error("atomic write must not be reached");
+            },
+        });
+    }
+
+    it("passes the request on and answers the node's status as one entry", async () => {
+        const writes = new Array<unknown>();
+        const h = await createHarness(undefined, {
+            handleWriteAtomicAttribute: async data => {
+                writes.push(data);
+                return { endpointId: 1, clusterId: 513, attributeId: 80, status: 0x87, clusterStatus: 2 };
+            },
+        });
+        try {
+            const answer = await answerFor(
+                h,
+                { attribute_path: PRESETS, value: [], timed_request_timeout_ms: 2000, atomic_timeout_ms: 8000 },
+                "atomic-write",
+            );
+            expect(answer.error_code).to.equal(undefined);
+            expect(answer.result).to.deep.equal([
+                { Path: { EndpointId: 1, ClusterId: 513, AttributeId: 80 }, Status: 0x87, ClusterStatus: 2 },
+            ]);
+            expect(writes).to.deep.equal([
+                {
+                    nodeId: 1n,
+                    endpointId: 1,
+                    clusterId: 513,
+                    attributeId: 80,
+                    value: [],
+                    timedInteractionTimeoutMs: 2000,
+                    atomicTimeoutMs: 8000,
+                },
+            ]);
+        } finally {
+            await h.close();
+        }
+    });
+
+    for (const [label, timeouts] of [
+        ["leaves them out", {}],
+        ["states them as null", { timed_request_timeout_ms: null, atomic_timeout_ms: null }],
+    ] as const) {
+        it(`leaves both timeouts to the handler when the request ${label}`, async () => {
+            const writes = new Array<unknown>();
+            const h = await createHarness(undefined, {
+                handleWriteAtomicAttribute: async data => {
+                    writes.push(data);
+                    return { endpointId: 1, clusterId: 513, attributeId: 80, status: 0 };
+                },
+            });
+            try {
+                const answer = await answerFor(
+                    h,
+                    { attribute_path: PRESETS, value: [], ...timeouts },
+                    `atomic-write-defaults-${label}`,
+                );
+                expect(answer.error_code).to.equal(undefined);
+                expect(writes).to.have.length(1);
+                expect(writes[0]).to.include({ timedInteractionTimeoutMs: undefined, atomicTimeoutMs: undefined });
+            } finally {
+                await h.close();
+            }
+        });
+    }
+
+    it("refuses an attribute without the Atomic quality and points to write_attribute", async () => {
+        const h = await refusingHarness();
+        try {
+            const answer = await answerFor(h, { attribute_path: "1/6/16385", value: 5 }, "atomic-write-plain");
+            expect(answer.error_code).to.equal(8);
+            expect(answer.details).to.contain("write_attribute");
+        } finally {
+            await h.close();
+        }
+    });
+
+    it("refuses an attribute the model does not know", async () => {
+        const h = await refusingHarness();
+        try {
+            const answer = await answerFor(h, { attribute_path: "1/513/65000", value: 5 }, "atomic-write-unknown");
+            expect(answer.error_code).to.equal(8);
+            expect(answer.details).to.contain("unknown");
+        } finally {
+            await h.close();
+        }
+    });
+
+    for (const path of ["*/513/80", "65535/513/80", "1/*/80", "1/513/*", "1x/513/80", "1/513"]) {
+        it(`refuses the path ${JSON.stringify(path)}`, async () => {
+            const h = await refusingHarness();
+            try {
+                const answer = await answerFor(h, { attribute_path: path, value: [] }, `atomic-write-path-${path}`);
+                expect(answer.error_code).to.equal(8);
+                expect(answer.details).to.contain("attribute_path");
+            } finally {
+                await h.close();
+            }
+        });
+    }
+
+    for (const stated of [0, -1, 1.5, "5000", 65_536]) {
+        it(`refuses atomic_timeout_ms ${JSON.stringify(stated)}`, async () => {
+            const h = await refusingHarness();
+            try {
+                const answer = await answerFor(
+                    h,
+                    { attribute_path: PRESETS, value: [], atomic_timeout_ms: stated },
+                    `atomic-write-timeout-${String(stated)}`,
+                );
+                expect(answer.error_code).to.equal(8);
+                expect(answer.details).to.contain("atomic_timeout_ms");
+            } finally {
+                await h.close();
+            }
+        });
+    }
 });
 
 describe("WebSocket client_session_key", () => {

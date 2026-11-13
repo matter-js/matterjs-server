@@ -133,6 +133,16 @@ export interface WriteAttributeOptions {
     timeout?: number;
 }
 
+/** Options for {@link MatterClient.writeAtomicAttribute}. */
+export interface WriteAtomicAttributeOptions {
+    /** Sends the write as a timed write with this timeout (0 to 65535 ms). */
+    timedRequestTimeoutMs?: number;
+    /** How long the device holds the pending write (1 to 65535 ms, server default 5000); the device may shorten it. */
+    atomicTimeoutMs?: number;
+    /** Per-call command timeout in ms (overrides {@link MatterClient.commandTimeout}). */
+    timeout?: number;
+}
+
 /** Options for the credential set/remove commands. */
 export interface CredentialCommandOptions {
     /** Named credential entry id (schema 12); omit for the reserved `default` entry. */
@@ -630,6 +640,30 @@ export class MatterClient {
                 attribute_path: attributePath,
                 value: value,
                 timed_request_timeout_ms: opts.timedRequestTimeoutMs,
+            },
+            opts.timeout,
+        );
+    }
+
+    /**
+     * Schema 15. Writes an attribute with the Atomic quality inside one atomic write: the server sends BeginWrite, the
+     * write and CommitWrite, or RollbackWrite when the write fails. The server refuses any other attribute.
+     */
+    async writeAtomicAttribute(
+        nodeId: number | bigint,
+        attributePath: string,
+        value: unknown,
+        opts: WriteAtomicAttributeOptions = {},
+    ): Promise<ResponseOf<"write_atomic_attribute">> {
+        return await this.sendCommand(
+            "write_atomic_attribute",
+            15,
+            {
+                node_id: nodeId,
+                attribute_path: attributePath,
+                value,
+                timed_request_timeout_ms: opts.timedRequestTimeoutMs,
+                atomic_timeout_ms: opts.atomicTimeoutMs,
             },
             opts.timeout,
         );

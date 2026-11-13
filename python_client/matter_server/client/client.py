@@ -958,6 +958,35 @@ class MatterClient:
             ),
         )
 
+    async def write_atomic_attribute(
+        self,
+        node_id: int,
+        attribute_path: str,
+        value: Any,
+        timed_request_timeout_ms: int | None = None,
+        atomic_timeout_ms: int | None = None,
+    ) -> Any:
+        """Write an attribute with the Atomic quality inside one atomic write (schema 15).
+
+        The server sends BeginWrite, the write and CommitWrite, or RollbackWrite when the
+        write fails, and refuses any other attribute. ``attribute_path`` takes no wildcard.
+        ``atomic_timeout_ms`` is how long the device holds the pending write (server default
+        5000 ms); the device may shorten it. The result has the same shape as ``write_attribute``.
+        """
+        return await self.send_command(
+            APICommand.WRITE_ATOMIC_ATTRIBUTE,
+            require_schema=15,
+            node_id=node_id,
+            attribute_path=attribute_path,
+            value=dataclass_to_tag_dict(value),
+            **(
+                {}
+                if timed_request_timeout_ms is None
+                else {"timed_request_timeout_ms": timed_request_timeout_ms}
+            ),
+            **({} if atomic_timeout_ms is None else {"atomic_timeout_ms": atomic_timeout_ms}),
+        )
+
     async def remove_node(self, node_id: int) -> None:
         """Remove a Matter node/device from the fabric."""
         await self.send_command(APICommand.REMOVE_NODE, node_id=node_id)

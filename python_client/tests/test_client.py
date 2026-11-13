@@ -191,6 +191,38 @@ async def test_write_attribute_sends_timed_request_timeout_with_schema_14() -> N
     )
 
 
+async def test_write_atomic_attribute_sends_tag_keyed_value_with_schema_15() -> None:
+    client = MatterClient(ws_server_url="ws://example.invalid/ws", aiohttp_session=MagicMock())
+    client.send_command = AsyncMock(return_value=[])
+
+    preset = clusters.Thermostat.Structs.PresetStruct(
+        presetHandle=b"\x01",
+        presetScenario=clusters.Thermostat.Enums.PresetScenarioEnum.kOccupied,
+        heatingSetpoint=2100,
+        builtIn=False,
+    )
+
+    await client.write_atomic_attribute(
+        node_id=1, attribute_path="1/513/80", value=[preset], atomic_timeout_ms=8000
+    )
+
+    client.send_command.assert_awaited_once_with(
+        APICommand.WRITE_ATOMIC_ATTRIBUTE,
+        require_schema=15,
+        node_id=1,
+        attribute_path="1/513/80",
+        value=[
+            {
+                "0": b"\x01",
+                "1": clusters.Thermostat.Enums.PresetScenarioEnum.kOccupied,
+                "4": 2100,
+                "5": False,
+            }
+        ],
+        atomic_timeout_ms=8000,
+    )
+
+
 async def test_send_batched_device_commands_sends_one_request_and_parses_results() -> None:
     client = MatterClient(ws_server_url="ws://example.invalid/ws", aiohttp_session=MagicMock())
     client.send_command = AsyncMock(

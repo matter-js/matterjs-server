@@ -419,6 +419,38 @@ describe("ws-client", () => {
                 ]);
             });
 
+            it("sends writeAtomicAttribute on schema 15 and refuses it below", async () => {
+                await server.stop();
+                server = new MockMatterServer({ serverInfo: { schema_version: 15 } });
+                const received = new Array<unknown>();
+                server.onCommand("write_atomic_attribute", args => {
+                    received.push(args);
+                    return [];
+                });
+                await server.start();
+                client = new MatterClient(server.url, createNodeWebSocket);
+                await client.connect();
+                await client.writeAtomicAttribute(1, "1/513/80", [], { atomicTimeoutMs: 8000 });
+
+                expect(received).to.deep.equal([
+                    { node_id: 1, attribute_path: "1/513/80", value: [], atomic_timeout_ms: 8000 },
+                ]);
+
+                await server.stop();
+                server = new MockMatterServer({ serverInfo: { schema_version: 14 } });
+                await server.start();
+                client = new MatterClient(server.url, createNodeWebSocket);
+                await client.connect();
+                let refusal: unknown;
+                try {
+                    await client.writeAtomicAttribute(1, "1/513/80", []);
+                } catch (error) {
+                    refusal = error;
+                }
+                expect(refusal).to.be.instanceOf(InvalidServerVersion);
+                expect(server.getReceivedCommands()).to.deep.equal([]);
+            });
+
             it("sends batchedDeviceCommands as one request and refuses it below schema 14", async () => {
                 const received = new Array<unknown>();
                 server.onCommand("batched_device_commands", args => {
