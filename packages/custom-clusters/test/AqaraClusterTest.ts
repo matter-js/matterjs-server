@@ -21,6 +21,7 @@ describe("Aqara ambient sensing clusters", () => {
     it("models the configuration cluster from the ambient sensing extension", () => {
         const config = cluster(0x115ffc0a);
 
+        expect(config.revision).to.equal(2);
         expect(config.features.map(feature => [Number(feature.key), feature.name])).to.deep.equal([
             [0, "ZONE"],
             [1, "INSTALL"],
@@ -78,12 +79,13 @@ describe("Aqara ambient sensing clusters", () => {
             "zoneBitmask",
             "zoneProximityDetectionEnable",
         ]);
-        expect(entry?.operationalBase?.children[1].operationalBase?.type).to.equal("enum16");
+        expect(entry?.operationalBase?.children[1].operationalBase?.type).to.equal("enum8");
     });
 
     it("splits the union cluster into leader and child features", () => {
         const union = cluster(0x115ffc0b);
 
+        expect(union.revision).to.equal(2);
         expect(union.name).to.equal("AqaraAmbientSensingUnionCluster");
         expect(union.features.map(feature => [Number(feature.key), feature.name])).to.deep.equal([
             [0, "LEADER"],
@@ -118,6 +120,7 @@ describe("Aqara ambient sensing clusters", () => {
 
     it("reports a target as coordinates, velocity, type and posture", () => {
         const location = cluster(0x115ffc0c);
+        expect(location.revision).to.equal(2);
         const event = [...location.events].find(item => item.id === 0x00);
         const payload = event?.operationalBase?.children[0];
         const target = payload instanceof ValueModel ? payload.listEntry : undefined;

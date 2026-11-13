@@ -66,6 +66,25 @@ function setManageAccess(_target: unknown, context: DecoratorContext) {
 const manage = Decorator<Decorator.PropertyCollector>(setManageAccess);
 const manageCommand = Decorator<Decorator.MethodCollector>(setManageAccess);
 
+/** The extension's ClusterRevision. A local copy keeps the global attribute unchanged. */
+function revision(value: number): Decorator.ClassCollector {
+    return Decorator((_target, context) => {
+        const model = Semantics.of(context).mutableModel;
+        if (!(model instanceof ClusterModel)) {
+            throw new InvalidMetadataError(`Cannot set the revision of ${model.name}`);
+        }
+        const current = model.attributes(0xfffd);
+        if (current === undefined) {
+            throw new InvalidMetadataError(`${model.name} has no ClusterRevision attribute`);
+        }
+        const owned = current.parent === model ? current : current.clone();
+        owned.default = value;
+        if (owned.parent !== model) {
+            model.children.push(owned);
+        }
+    });
+}
+
 function withFeatures(features: { code: string; bit: number; title: string }[]): Decorator.ClassCollector {
     return Decorator((_target, context) => {
         const model = Semantics.of(context).mutableModel;
@@ -153,8 +172,7 @@ const ZoneErrorCodeEnum = enumeration("ZoneErrorCodeEnum", "enum8", {
     DuplicateZoneId: 5,
 });
 
-// Encoded as enum16. The extension lists these values without a base type.
-const ZoneTypeEnum = enumeration("ZoneTypeEnum", "enum16", {
+const ZoneTypeEnum = enumeration("ZoneTypeEnum", "enum8", {
     Other: 0x00,
     LivingRoom: 0x01,
     Balcony: 0x02,
@@ -238,8 +256,8 @@ const TargetTypeEnum = enumeration("TargetTypeEnum", "enum8", {
     Sweeper: 0x06,
     AirPurifier: 0x07,
     Child: 0x08,
-    // The extension lists 0xFE. On the wire this value is 0xFF.
-    Unknown: 0xff,
+    Unknown: 0xfe,
+    Invalid: 0xff,
 });
 
 const PostureEnum = enumeration("PostureEnum", "enum8", {
@@ -248,8 +266,8 @@ const PostureEnum = enumeration("PostureEnum", "enum8", {
     Stand: 0x02,
     Lie: 0x03,
     Fall: 0x04,
-    // The extension lists 0xFE. On the wire this value is 0xFF.
-    Undefined: 0xff,
+    Undefined: 0xfe,
+    Invalid: 0xff,
 });
 
 /** 40-byte cell bitmask. Bit n (LSB = bit 0) is cell n, numbered 1..320. */
@@ -355,7 +373,6 @@ class AqaraCountDeltaEvent {
 }
 
 class AqaraOccupancyDurationDeltaEvent {
-    // The extension says uint32. On the wire this value is uint16.
     @constraint("min 1")
     @field(0x0, uint16, mandatory)
     durationDelta!: number;
@@ -366,7 +383,6 @@ class AqaraOccupancyDurationDeltaEvent {
 }
 
 class AqaraWalkingDistanceDeltaEvent {
-    // The extension says uint32 meters. On the wire this value is uint16.
     @constraint("min 1")
     @field(0x0, uint16, mandatory)
     distanceDelta!: number;
@@ -419,6 +435,7 @@ class AqaraTargetIdRequest {
  * Zone and installation configuration for an Occupancy Sensor leader endpoint.
  * Cluster 0x115FFC0A.
  */
+@revision(2)
 @withFeatures([
     { code: "ZONE", bit: 0, title: "ZoneManagement" },
     { code: "INSTALL", bit: 1, title: "InstallationModeSelection" },
@@ -747,6 +764,7 @@ export class AqaraAmbientSensingConfigurationCluster {
  * Cluster 0x115FFC0B. LEADER on the leader endpoint carries ChildEndpointList;
  * CHILD on each zone endpoint carries ZoneID.
  */
+@revision(2)
 @withFeatures([
     { code: "LEADER", bit: 0, title: "Leader" },
     { code: "CHILD", bit: 1, title: "Child" },
@@ -795,6 +813,7 @@ export class AqaraAmbientSensingUnionCluster {
  * Cluster 0x115FFC0C. Location reporting and target removal are leader commands;
  * child endpoints report the zone-scoped state attributes.
  */
+@revision(2)
 @withFeatures([
     { code: "LEADER", bit: 0, title: "Leader" },
     { code: "CHILD", bit: 1, title: "Child" },

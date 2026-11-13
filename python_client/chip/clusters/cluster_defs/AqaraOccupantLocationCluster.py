@@ -128,7 +128,8 @@ class AqaraOccupantLocationCluster(Cluster):
             kSweeper = 0x06
             kAirPurifier = 0x07
             kChild = 0x08
-            kUnknown = 0xFF
+            kUnknown = 0xFE
+            kInvalid = 0xFF
             # All received enum values that are not listed above will be mapped
             # to kUnknownEnumValue. This is a helper enum value that should only
             # be used by code to process how it handles receiving an unknown
@@ -141,7 +142,8 @@ class AqaraOccupantLocationCluster(Cluster):
             kStand = 0x02
             kLie = 0x03
             kFall = 0x04
-            kUndefined = 0xFF
+            kUndefined = 0xFE
+            kInvalid = 0xFF
             # All received enum values that are not listed above will be mapped
             # to kUnknownEnumValue. This is a helper enum value that should only
             # be used by code to process how it handles receiving an unknown

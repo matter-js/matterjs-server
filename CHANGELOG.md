@@ -17,7 +17,7 @@ This page shows a detailed overview of the changes between versions without the 
 - Fix: ws-client: `connect()` and `startListening()` fail when the server closes the connection before it is ready, instead of never returning
 - Fix: Setting the fabric label to the value it already has, as Home Assistant does on every restart, no longer sends the label to every node again
 - Fix: Yeelight: an `updateTopology` request with a module type above 3 is refused before it is sent, so the lamp no longer fails every later read of `cubeTopology`
-- Fix: The Aqara ambient sensing custom clusters follow the Aqara manufacturer extension: zone and target structs use the field names and types of the extension, and the missing attributes, commands, events and features are added. `AqaraRadarSensingUnionCluster` is renamed to `AqaraAmbientSensingUnionCluster`
+- Fix: The Aqara ambient sensing custom clusters follow revision 2 of the Aqara manufacturer extension: zone and target structs use the field names and types of the extension, and the missing attributes, commands, events and features are added. `AqaraRadarSensingUnionCluster` is renamed to `AqaraAmbientSensingUnionCluster`
 
 ## 1.5.5 (2026-10-24)
 
