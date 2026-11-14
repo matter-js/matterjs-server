@@ -43,8 +43,6 @@ function decodeSemanticTag(entry: unknown): SemanticTag | undefined {
 
 export type SemanticTagListEntry = { kind: "tag"; semtag: SemanticTag } | { kind: "raw"; raw: unknown };
 
-// undefined means the TagList attribute hasn't been read yet — an empty array means the device
-// reported no semantic tags.
 export function decodeSemanticTagList(value: unknown): SemanticTagListEntry[] | undefined {
     if (value === undefined) return undefined;
     if (!Array.isArray(value) && !isRecord(value)) return [{ kind: "raw", raw: value }];
@@ -55,9 +53,19 @@ export function decodeSemanticTagList(value: unknown): SemanticTagListEntry[] | 
     });
 }
 
-/** Decoded semantic tags (Descriptor TagList) for one endpoint; empty when it reports none. */
+/**
+ * Decoded Descriptor TagList of one endpoint.
+ *
+ * @returns undefined when the attribute was not read or was removed (`null`); an empty array when the
+ *   device reports no semantic tags
+ */
+export function readEndpointTagList(node: MatterNode, endpoint: number): SemanticTagListEntry[] | undefined {
+    return decodeSemanticTagList(node.attributes[`${endpoint}/${DESCRIPTOR_CLUSTER_ID}/${TAG_LIST_ATTR}`] ?? undefined);
+}
+
+/** Decoded semantic tags (Descriptor TagList) for one endpoint; empty when there are none to show. */
 export function getEndpointSemanticTags(node: MatterNode, endpoint: number): SemanticTagListEntry[] {
-    return decodeSemanticTagList(node.attributes[`${endpoint}/${DESCRIPTOR_CLUSTER_ID}/${TAG_LIST_ATTR}`]) ?? [];
+    return readEndpointTagList(node, endpoint) ?? [];
 }
 
 const RAW_ENTRY_TEXT_MAX = 60;

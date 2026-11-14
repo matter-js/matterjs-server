@@ -10,6 +10,7 @@ import {
     describeSemanticTag,
     describeSemanticTagListEntry,
     getEndpointSemanticTags,
+    readEndpointTagList,
 } from "../src/util/semantic-tags.js";
 
 function node(attributes: Record<string, unknown>, node_id: number | bigint = 1): MatterNode {
@@ -30,6 +31,10 @@ function node(attributes: Record<string, unknown>, node_id: number | bigint = 1)
 // matching how packages/ws-controller serializes attribute-read struct values (Converters.ts tagBased path).
 
 describe("decodeSemanticTagList", () => {
+    it("keeps a null value as a raw entry, since no semtag list field is nullable", () => {
+        expect(decodeSemanticTagList(null)).to.deep.equal([{ kind: "raw", raw: null }]);
+    });
+
     it("decodes tag-keyed SemanticTagStruct entries", () => {
         // Real device fixture: Closure Panel endpoint exposing namespace 69 (ClosurePanel), tag 0 (Lift)
         const decoded = decodeSemanticTagList([{ "0": null, "1": 69, "2": 0, "3": "ClosurePanel.Lift" }]);
@@ -159,5 +164,20 @@ describe("getEndpointSemanticTags", () => {
     it("is scoped per endpoint", () => {
         const n = node({ "1/29/4": [{ "1": 8, "2": 2 }] });
         expect(getEndpointSemanticTags(n, 2)).to.deep.equal([]);
+    });
+
+    it("returns an empty array when the TagList attribute was removed", () => {
+        const n = node({ "1/29/4": null });
+        expect(getEndpointSemanticTags(n, 1)).to.deep.equal([]);
+    });
+});
+
+describe("readEndpointTagList", () => {
+    it("returns undefined when the TagList attribute was not read", () => {
+        expect(readEndpointTagList(node({}), 1)).to.be.undefined;
+    });
+
+    it("returns undefined when the TagList attribute was removed", () => {
+        expect(readEndpointTagList(node({ "1/29/4": null }), 1)).to.be.undefined;
     });
 });

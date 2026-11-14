@@ -30,7 +30,7 @@ import { computeActiveClusterFeatures } from "../util/cluster-features.js";
 import { DevModeService } from "../util/dev-mode-service.js";
 import { getEndpointLabel } from "../util/endpoint-label.js";
 import { formatHex, formatNodeAddress, getEffectiveFabricIndex } from "../util/format_hex.js";
-import { decodeSemanticTagList, DESCRIPTOR_CLUSTER_ID, TAG_LIST_ATTR } from "../util/semantic-tags.js";
+import { DESCRIPTOR_CLUSTER_ID, readEndpointTagList } from "../util/semantic-tags.js";
 import { infoPanelStyles, notFoundStyles } from "../util/shared-styles.js";
 import {
     BaseClusterCommands,
@@ -467,8 +467,7 @@ class MatterClusterView extends LitElement {
     private _renderTagListSection(): TemplateResult | undefined {
         if (this.cluster !== DESCRIPTOR_CLUSTER_ID || !this.node) return undefined;
 
-        const tagListValue = this.node.attributes[`${this.endpoint}/${this.cluster}/${TAG_LIST_ATTR}`];
-        const tagList = decodeSemanticTagList(tagListValue);
+        const tagList = readEndpointTagList(this.node, this.endpoint);
         if (tagList === undefined) return undefined;
 
         return html`
