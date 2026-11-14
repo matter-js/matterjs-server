@@ -254,7 +254,7 @@ export function parseCliArgs(argv?: string[]): CliOptions {
         .addOption(
             new Option(
                 "--default-fabric-label <label>",
-                "Pin the fabric label to this value and ignore set_default_fabric_label WebSocket requests",
+                "Pin the fabric label to this value, cut to 32 UTF-8 bytes, and ignore set_default_fabric_label WebSocket requests",
             ).env("DEFAULT_FABRIC_LABEL"),
         )
         .addOption(

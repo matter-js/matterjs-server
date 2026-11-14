@@ -1685,7 +1685,8 @@ export class ControllerCommandHandler {
     }
 
     /**
-     * Set the fabric label. matter.js requires a non-empty label of 1-32 chars; callers must normalize first.
+     * Set the fabric label. matter.js requires a non-empty label of at most 32 UTF-8 bytes; callers pass the result of
+     * `normalizeFabricLabel` from `ConfigStorage`.
      *
      * Resolves once the controller holds the label. The connected nodes are told in the background, see
      * {@link #pushFabricLabel}. `pushed` resolves when that push has finished, was stopped by a newer label or by

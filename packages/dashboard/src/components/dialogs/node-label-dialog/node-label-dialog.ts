@@ -12,7 +12,7 @@ import type { MatterClient, MatterNode } from "@matter-server/ws-client";
 import { html, LitElement } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { handleAsync } from "../../../util/async-handler.js";
-import { MAX_NODE_LABEL_LENGTH, writeNodeLabel } from "../../../util/node-label.js";
+import { NODE_LABEL_MAX_BYTES, writeNodeLabel } from "../../../util/node-label.js";
 import { onEnter } from "../../../util/on-enter.js";
 import { preventDefault } from "../../../util/prevent_default.js";
 import { showAlertDialog } from "../../dialog-box/show-dialog-box.js";
@@ -45,9 +45,8 @@ export class NodeLabelDialog extends LitElement {
                         .value=${this._nodeLabel}
                         @input=${this._handleInput}
                         @keydown=${onEnter(handleAsync(() => this._save()))}
-                        maxlength=${MAX_NODE_LABEL_LENGTH}
                         ?disabled=${this._saving}
-                        supporting-text="Max ${MAX_NODE_LABEL_LENGTH} characters"
+                        supporting-text="Max ${NODE_LABEL_MAX_BYTES} bytes"
                         style="width: 100%; margin-top: 8px;"
                     ></md-outlined-text-field>
                 </div>

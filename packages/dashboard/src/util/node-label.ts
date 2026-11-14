@@ -5,22 +5,27 @@
  */
 
 import type { MatterClient, MatterNode } from "@matter-server/ws-client";
+import { labelLengthError } from "./label-length.js";
 import { requireAttributeWriteSuccess } from "./matter-status.js";
 
 // BasicInformation cluster (0x28 / 40), always on endpoint 0 per Matter specification.
 export const NODE_LABEL_CLUSTER_ID = 0x28;
 export const NODE_LABEL_ATTRIBUTE_ID = 5;
-export const MAX_NODE_LABEL_LENGTH = 32;
+export const NODE_LABEL_MAX_BYTES = 32;
 
 export const NODE_LABEL_ATTRIBUTE_PATH = `0/${NODE_LABEL_CLUSTER_ID}/${NODE_LABEL_ATTRIBUTE_ID}`;
 
 /**
  * Write the BasicInformation NodeLabel attribute for a node.
- * Trims surrounding whitespace so the stored value matches what MatterNode.nodeLabel reads back.
+ * Trims surrounding whitespace so the stored value matches what MatterNode.nodeLabel reads back. Throws without
+ * writing when the label is longer than {@link NODE_LABEL_MAX_BYTES} bytes.
  */
 export async function writeNodeLabel(client: MatterClient, node: MatterNode, label: string): Promise<void> {
+    const trimmed = label.trim();
+    const lengthError = labelLengthError(trimmed, NODE_LABEL_MAX_BYTES);
+    if (lengthError !== undefined) throw new Error(lengthError);
     requireAttributeWriteSuccess(
-        await client.writeAttribute(node.node_id, NODE_LABEL_ATTRIBUTE_PATH, label.trim()),
+        await client.writeAttribute(node.node_id, NODE_LABEL_ATTRIBUTE_PATH, trimmed),
         "Writing the node label failed",
     );
 }

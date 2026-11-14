@@ -13,11 +13,12 @@ import type { MatterClient } from "@matter-server/ws-client";
 import { html, LitElement } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { handleAsync } from "../../../util/async-handler.js";
+import { labelLengthError } from "../../../util/label-length.js";
 import { onEnter } from "../../../util/on-enter.js";
 import { preventDefault } from "../../../util/prevent_default.js";
 import { showAlertDialog } from "../../dialog-box/show-dialog-box.js";
 
-const MAX_FABRIC_LABEL_LENGTH = 32;
+const FABRIC_LABEL_MAX_BYTES = 32;
 
 @customElement("fabric-label-dialog")
 export class FabricLabelDialog extends LitElement {
@@ -50,9 +51,8 @@ export class FabricLabelDialog extends LitElement {
                         .value=${this._fabricLabel}
                         @input=${this._handleInput}
                         @keydown=${onEnter(handleAsync(() => this._save()))}
-                        maxlength=${MAX_FABRIC_LABEL_LENGTH}
                         ?disabled=${this._saving}
-                        supporting-text="Max ${MAX_FABRIC_LABEL_LENGTH} characters. Applies to the whole fabric."
+                        supporting-text="Max ${FABRIC_LABEL_MAX_BYTES} bytes. Applies to the whole fabric."
                         style="width: 100%; margin-top: 8px;"
                     ></md-outlined-text-field>
                 </div>
@@ -82,12 +82,18 @@ export class FabricLabelDialog extends LitElement {
         if (this._saving) {
             return;
         }
+        const label = this._fabricLabel.trim();
+        const lengthError = labelLengthError(label, FABRIC_LABEL_MAX_BYTES);
+        if (lengthError !== undefined) {
+            showAlertDialog({ title: "Failed to set fabric label", text: lengthError });
+            return;
+        }
         this._saving = true;
         try {
-            await this.client.setDefaultFabricLabel(this._fabricLabel);
+            await this.client.setDefaultFabricLabel(label);
             // The server may silently ignore the change (CLI pin, or another connection owns the label),
             // so read it back and confirm it took before reporting success.
-            const expected = (this._fabricLabel.trim() || "HomeAssistant").substring(0, MAX_FABRIC_LABEL_LENGTH);
+            const expected = label || "HomeAssistant";
             const current = await this.client.getFabricLabel();
             if (current !== expected) {
                 this._saving = false;

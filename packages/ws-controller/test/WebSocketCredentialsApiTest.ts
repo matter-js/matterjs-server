@@ -88,6 +88,7 @@ interface StubCommandHandlerOverrides {
     handleBatchedInvoke?(data: BatchedInvokeRequest): Promise<BatchedInvokeResult>;
     handleGroupWriteAttribute?(data: unknown): Promise<void>;
     handleGroupInvoke?(data: unknown): Promise<void>;
+    setFabricLabel?(label: string): Promise<{ pushed: Promise<void> }>;
     removeTrackedWebRtcSession?(webRtcSessionId: number, nodeId: bigint, endpointId: number): Promise<void>;
     invokeWebRtcProviderCommand?(args: {
         commandName: string;
@@ -239,9 +240,7 @@ function makeStubController(
             return [];
         },
         async initializeNodes() {},
-        async setFabricLabel() {
-            return { pushed: Promise.resolve() };
-        },
+        setFabricLabel: commandHandler?.setFabricLabel ?? (async () => ({ pushed: Promise.resolve() })),
         getFabricLabel(): string | undefined {
             return undefined;
         },
@@ -1252,6 +1251,25 @@ describe("WebSocket set_default_fabric_label ownership", () => {
         } finally {
             other.close();
         }
+    });
+
+    it("cuts a label over 32 UTF-8 bytes before applying and storing it", async () => {
+        await h.close();
+        const applied = new Array<string>();
+        h = await createHarness(undefined, {
+            async setFabricLabel(label) {
+                applied.push(label);
+                return { pushed: Promise.resolve() };
+            },
+        });
+        // 32 characters, 34 bytes: each "ü" is two bytes in UTF-8, and the last one would be split at byte 32.
+        const label = "Küchenlicht Erdgeschoss West Süd";
+        expect(label.length).to.equal(32);
+
+        await h.handle("set_default_fabric_label", { label });
+
+        expect(applied).to.deep.equal(["Küchenlicht Erdgeschoss West S"]);
+        expect(h.config.fabricLabel).to.equal("Küchenlicht Erdgeschoss West S");
     });
 
     it("the CLI pin overrides connection ownership", async () => {

@@ -393,7 +393,6 @@ export class ZoneManagementClusterCommands extends BaseClusterCommands {
                 <div class="zone-form-header">${target.create ? "New zone" : `Edit zone ${target.zoneId}`}</div>
                 <md-outlined-text-field
                     label="Name"
-                    maxlength="32"
                     .value=${this._zoneForm.name}
                     @input=${(e: Event) => this._setZoneField("name", e)}
                 ></md-outlined-text-field>

@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Environment, Logger, Mutex, StorageContext, StorageManager, StorageService } from "@matter/main";
+import { Bytes, Environment, Logger, Mutex, StorageContext, StorageManager, StorageService } from "@matter/main";
 
 const logger = new Logger("ConfigStorage");
 
@@ -38,6 +38,20 @@ function sanitizeForLog(key: string, value: unknown): string {
     return String(value);
 }
 
+const DEFAULT_FABRIC_LABEL = "HomeAssistant";
+const FABRIC_LABEL_MAX_BYTES = 32;
+
+/**
+ * The fabric label the server uses for a requested one: trimmed, the default label when empty, and cut to the 32
+ * bytes that a fabric label may have, without splitting a code point. Normalizing the result again changes nothing.
+ *
+ * @see MatterSpecification.v161.Core § 11.18.4.5, § 7.18.3.3
+ */
+export function normalizeFabricLabel(label: string | null | undefined): string {
+    const trimmed = label?.trim();
+    return Bytes.truncateUtf8(trimmed ? trimmed : DEFAULT_FABRIC_LABEL, FABRIC_LABEL_MAX_BYTES).trimEnd();
+}
+
 interface ConfigData {
     fabricLabel: string;
     nextNodeId: number | bigint;
@@ -55,7 +69,7 @@ export class ConfigStorage {
     readonly #nodeIdMutex = new Mutex(this);
     readonly #data: ConfigData = {
         nextNodeId: 1,
-        fabricLabel: "HomeAssistant",
+        fabricLabel: DEFAULT_FABRIC_LABEL,
         wifiSsid: undefined,
         wifiCredentials: undefined,
         threadDataset: undefined,
@@ -160,7 +174,10 @@ export class ConfigStorage {
         return this.#fabricLabelLocked;
     }
 
-    /** Pin the fabric label to a CLI-provided value; overrides any persisted label and blocks later WS changes. */
+    /**
+     * Pin the fabric label to a CLI-provided value, stored as {@link normalizeFabricLabel} returns it; overrides any
+     * persisted label and blocks later WS changes.
+     */
     async lockFabricLabel(label: string) {
         await this.set({ fabricLabel: label });
         this.#fabricLabelLocked = true;
@@ -310,9 +327,13 @@ export class ConfigStorage {
         logger.info("Removed Thread dataset");
     }
 
+    /** Stores the given values. A `fabricLabel` is stored as {@link normalizeFabricLabel} returns it. */
     async set(data: Partial<ConfigData>) {
         if (!this.#configStore) {
             throw new Error("Storage not open");
+        }
+        if (data.fabricLabel !== undefined) {
+            data = { ...data, fabricLabel: normalizeFabricLabel(data.fabricLabel) };
         }
 
         for (const key of Object.keys(data)) {

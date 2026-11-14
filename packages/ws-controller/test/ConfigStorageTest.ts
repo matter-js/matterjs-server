@@ -96,6 +96,30 @@ describe("ConfigStorage", () => {
             expect(config.fabricLabel).to.equal("Pinned");
             expect(config.fabricLabelLocked).to.be.true;
         });
+
+        it("cuts a pinned label to 32 UTF-8 bytes without splitting a character", async () => {
+            await config.lockFabricLabel("  äääääääääääääää€  ");
+            expect(config.fabricLabel).to.equal("äääääääääääääää");
+        });
+
+        it("drops a space the cut leaves at the end", async () => {
+            await config.lockFabricLabel(`${"a".repeat(30)} üx`);
+            expect(config.fabricLabel).to.equal("a".repeat(30));
+        });
+
+        it("cuts a label stored by an earlier version when it opens", async () => {
+            const open = persistentConfig();
+            const first = await open();
+            await first.config.close();
+            first.storage["values"] = { ...first.storage["values"], fabricLabel: "Wohnzimmer Süd Erdgeschoss Küche" };
+
+            const second = await open();
+            try {
+                expect(second.config.fabricLabel).to.equal("Wohnzimmer Süd Erdgeschoss Küc");
+            } finally {
+                await second.config.close();
+            }
+        });
     });
 
     describe("peer settings repair marker", () => {
