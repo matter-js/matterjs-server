@@ -78,7 +78,7 @@ import { writesTimed } from "../util/atomicWrite.js";
 import { formatNodeId } from "../util/formatNodeId.js";
 import { MATTER_VERSION } from "../util/matterVersion.js";
 import { nodeIdTarget } from "../util/nodeIdClasses.js";
-import { ConfigStorage } from "./ConfigStorage.js";
+import { ConfigStorage, normalizeFabricLabel } from "./ConfigStorage.js";
 import { nextConnectionLogTag, nextConnectionOwnerId } from "./connectionIdentity.js";
 import {
     convertEventToWebSocket,
@@ -196,12 +196,6 @@ const skipMessageContentInLogFor = [
  */
 function commandArguments(args: unknown, command: string): Record<string, unknown> {
     return args === undefined || args === null ? {} : requireArgumentObject(args, command);
-}
-
-/** Normalize a requested fabric label: matter.js requires a non-empty label of 1-32 chars. */
-function normalizeFabricLabel(label: string | null): string {
-    const trimmed = label?.trim();
-    return (trimmed && trimmed !== "" ? trimmed : "HomeAssistant").substring(0, 32);
 }
 
 /**

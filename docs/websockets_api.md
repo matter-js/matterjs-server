@@ -274,6 +274,8 @@ Removes a named entry, or clears the reserved `default` (zeroing its SSID + secr
 
 **set_default_fabric_label** - Set the default fabric label
 
+The server trims the label, uses `HomeAssistant` for an empty label or `null`, and cuts it to 32 UTF-8 bytes without splitting a code point.
+
 The answer comes once the server holds the new label. The server then tells the connected nodes in the background, a few at a time. A node that is not reached keeps its old label until the server starts again and connects to it.
 
 Ignored when the server is started with `--default-fabric-label` (env `DEFAULT_FABRIC_LABEL`): the request succeeds but the pinned label is kept. Read the effective value with `get_fabric_label`.

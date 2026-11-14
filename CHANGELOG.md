@@ -45,6 +45,8 @@ This page shows a detailed overview of the changes between versions without the 
 - Fix: Dashboard: In the WiFi network graph, a selected device or access point shows its selected icon right away and loses it on deselect; its connections stay highlighted when device data updates, and keep their signal colors after deselect
 - Fix: Dashboard: When the selected node is removed from the Thread or WiFi network graph, the selection and the details panel are cleared, instead of the graph staying dimmed with the panel open
 - Fix: Dashboard: the Thread and WiFi network graphs no longer keep rotating after they settle or after a node is clicked
+- Fix: A fabric label with accented or non-Latin characters is cut to the 32 bytes a device accepts, also one stored by an earlier version
+- Fix: Dashboard: Node labels, fabric labels and camera preset names are checked against 32 bytes instead of 32 characters
 
 ## 1.5.5 (2026-10-24)
 
