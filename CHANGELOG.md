@@ -8,6 +8,7 @@ This page shows a detailed overview of the changes between versions without the 
 -->
 ## **WORK IN PROGRESS**
 
+- Important (Fix): Uploading an OTA firmware file requires `--enable-test-net-dcl`, because the OTA provider only serves local images to a node while test images are allowed. Without it, `initiate_ota_upload` fails instead of storing an image that no node can download
 - Feature: The new `write_atomic_attribute` command writes attributes that a device only accepts inside an atomic write, such as the thermostat presets. The dashboard's thermostat preset editor uses it. This needs WebSocket schema 15 — see [WebSocket API schema changelog](docs/websocket-api-schema-changelog.md)
 - Enhancement: Update matter.js to the latest 0.18.1 nightly
     - After a failed commissioning attempt, the device can be added again right away instead of only after a waiting time
@@ -19,6 +20,8 @@ This page shows a detailed overview of the changes between versions without the 
     - The server no longer needs minutes at startup or shutdown after it ran for a long time, and no longer loses recent changes after a crash
     - Devices that describe their own structure incompletely show all their parts again
     - Logs no longer show Thread and Wi-Fi network credentials, setup passcodes or keys
+    - A firmware update that failed device-side is not offered to the device again by the server for 24 hours; `update_node` starts it again right away
+    - `update_node` answers right after the update is offered to the device, instead of waiting
     - mDNS statistics are logged as debug loglevel or info if MATTER_MDNS_STATISTICS=1 is set
 - Enhancement: (@lboue) Dashboard: The Commodity Price cluster has its own panel showing the current price per unit, the price level and the price forecast
 - Enhancement: (@lboue) Dashboard: The Zone Management cluster has its own panel listing zones and triggers, with forms to create, edit and remove user-defined zones and to set and remove triggers on Motion zones.
@@ -32,6 +35,8 @@ This page shows a detailed overview of the changes between versions without the 
 - Enhancement: Dashboard: Pressing Enter in the share/pairing code, Thread dataset, node label, fabric label and ACL node id fields submits them, the same as clicking the button next to them
 - Enhancement: With the test-net DCL option enabled, a device that does not report the vendor or product id its Certification Declaration is checked against is commissioned and a notice is logged. Without the option, the refusal names the failed checks and points to the option when it would accept the device
 - Enhancement: The Docker image is about 250 MB smaller. Installing `matter-server` from npm no longer installs the packages the dashboard only needs to build its web bundle
+- Fix: `update_node` fails with `UpdateError` when the device cannot take the update, for example because it already runs this or a newer version, instead of with an unknown error
+- Fix: After a firmware update fails, checking the node for updates asks the update provider again instead of returning the update found before
 - Fix: Event timestamps use the device time that matter.js resolves from each report, in node events and in read results, also for events the server could not resolve before
 - Fix: A device that fails an attestation check the test-net DCL option does not cover is refused with the names of the failed checks, instead of only the hint to enable that option, which would not have helped
 - Adjustment: `write_attribute` to a specific endpoint without `timed_request_timeout_ms` sends a value outside the attribute's constraints (range, length, allowed values, list size) to the device, which decides, and reports the device's status, as timed and wildcard writes already did. Before, the server refused such a value before sending it

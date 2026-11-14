@@ -43,6 +43,18 @@ describe("MatterController DCL options", () => {
         ).to.throw(ImplementationError, "disableDclSeed");
     });
 
+    it("serves local OTA images only with the OTA provider and the test-net DCL enabled", async () => {
+        const config = await ConfigStorage.create(freshEnv());
+        const localImages = (disableOtaProvider: boolean, enableTestNetDcl: boolean) =>
+            new MatterController(freshEnv(), config, { disableOtaProvider, enableTestNetDcl }, "server")
+                .localOtaImagesEnabled;
+
+        expect(localImages(false, true)).equals(true);
+        expect(localImages(false, false)).equals(false);
+        expect(localImages(true, true)).equals(false);
+        expect(localImages(true, false)).equals(false);
+    });
+
     it("installs revocations into the certificate service commissioning consults", async () => {
         const config = await ConfigStorage.create(freshEnv());
         const controller = await MatterController.create(runnableEnv(), config, { dclOffline: true });

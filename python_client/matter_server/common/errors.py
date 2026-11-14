@@ -124,7 +124,8 @@ class OtaUploadError(MatterError):
     """Error raised when uploading a local OTA firmware image failed.
 
     OHF extension (python-matter-server codes stop at 11). Covers a corrupt image, an
-    unknown/expired/already-used upload id, disabled OTA support and store failures.
+    unknown/expired/already-used upload id, disabled OTA support, a server without
+    --enable-test-net-dcl and store failures.
     """
 
     error_code = 101

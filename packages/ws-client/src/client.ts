@@ -704,7 +704,8 @@ export class MatterClient {
      * Store a locally-uploaded .ota firmware file in the server's OTA image store.
      *
      * Two steps: the WebSocket session authorizes the upload and reserves a slot, then the bytes go
-     * over HTTP against the returned single-use id.
+     * over HTTP against the returned single-use id. Fails on a server without `--enable-test-net-dcl`, which serves
+     * no local image to a node.
      */
     async uploadOtaFile(file: Blob, timeout?: number): Promise<MatterSoftwareVersion> {
         // An oversized image is rejected by the server (413) rather than here: a reservation holds

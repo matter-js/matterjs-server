@@ -71,6 +71,13 @@ describe("DCL Attestation Enforcement", function () {
         await cleanupTempStorage(serverStoragePath, deviceStoragePath);
     });
 
+    it("refuses an OTA upload and names the option it needs", async function () {
+        const error = await client.sendCommandExpectError("initiate_ota_upload", {});
+
+        expect(error.error_code).to.equal(ServerErrorCode.OtaUploadError);
+        expect(error.details).to.include("--enable-test-net-dcl");
+    });
+
     it("should reject commissioning with a test-net-DCL hint when test certs are not trusted", async function () {
         // The TestLightDevice uses a test PAA. Test PAAs are always seeded into the trust store, but
         // without --enable-test-net-dcl they are not trusted: attestation surfaces a

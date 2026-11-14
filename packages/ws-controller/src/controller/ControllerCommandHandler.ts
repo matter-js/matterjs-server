@@ -68,6 +68,7 @@ import {
     PasscodeMismatchError,
     PeerAddress,
     PeerSet,
+    OtaUpdateError,
     PeerUnreachableError,
     PlainClientSubscribe,
     Read,
@@ -841,6 +842,11 @@ export class ControllerCommandHandler {
             // Handle updateDone events - clear the cached update info
             softwareUpdateManagerEvents.updateDone.on((peerAddress: PeerAddress) => {
                 logger.notice(`Update done for node ${this.formatNode(peerAddress.nodeId)}`);
+                this.#availableUpdates.delete(peerAddress.nodeId);
+            });
+
+            softwareUpdateManagerEvents.updateFailed.on((peerAddress: PeerAddress) => {
+                logger.notice(`Update failed or cancelled for node ${this.formatNode(peerAddress.nodeId)}`);
                 this.#availableUpdates.delete(peerAddress.nodeId);
             });
 
@@ -3262,13 +3268,20 @@ export class ControllerCommandHandler {
 
         logger.info(`Starting update for node ${this.formatNode(nodeId)} to version ${softwareVersion}`);
 
-        await otaProvider.act(agent =>
-            agent.get(SoftwareUpdateManager).forceUpdate(this.#peerOf(nodeId), {
-                vendorId: updateInfo.vendorId,
-                productId: updateInfo.productId,
-                targetSoftwareVersion: softwareVersion,
-            }),
-        );
+        try {
+            await otaProvider.act(agent =>
+                agent.get(SoftwareUpdateManager).forceUpdate(this.#peerOf(nodeId), {
+                    vendorId: updateInfo.vendorId,
+                    productId: updateInfo.productId,
+                    targetSoftwareVersion: softwareVersion,
+                }),
+            );
+        } catch (error) {
+            if (error instanceof OtaUpdateError) {
+                throw ServerError.updateError(error.message, error);
+            }
+            throw error;
+        }
 
         return this.#convertToMatterSoftwareVersion(updateInfo);
     }
