@@ -169,17 +169,16 @@ async function start() {
         legacyData.mostCommonFabricLabel !== "HomeAssistant" &&
         config.fabricLabel === "HomeAssistant"
     ) {
-        logger.info(`Setting fabric label from legacy data: "${legacyData.mostCommonFabricLabel}"`);
         await config.set({ fabricLabel: legacyData.mostCommonFabricLabel });
+        logger.info(`Setting fabric label from legacy data: "${config.fabricLabel}"`);
     }
 
     // A CLI-pinned fabric label overrides any persisted/legacy value and blocks later WS changes,
     // preventing two Home Assistant instances from playing fabric-label ping-pong.
     const pinnedFabricLabel = cliOptions.defaultFabricLabel?.trim();
     if (pinnedFabricLabel) {
-        const label = pinnedFabricLabel.substring(0, 32);
-        logger.info(`Pinning fabric label to "${label}" via --default-fabric-label`);
-        await config.lockFabricLabel(label);
+        await config.lockFabricLabel(pinnedFabricLabel);
+        logger.info(`Pinning fabric label to "${config.fabricLabel}" via --default-fabric-label`);
     }
 
     // Registered before the controller is built: the controller node records BLE availability as behavior

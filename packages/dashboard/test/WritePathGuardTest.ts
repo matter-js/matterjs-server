@@ -113,6 +113,20 @@ describe("fabric-scoped write paths", () => {
         expect(writes).to.deep.equal(["0/40/5"]);
     });
 
+    it("writeNodeLabel refuses a label of 32 characters but more than 32 bytes without writing", async () => {
+        const writes = new Array<string>();
+        const client = {
+            writeAttribute: async (_nodeId: unknown, path: string) => {
+                writes.push(path);
+                return [{ Path: { EndpointId: 0, ClusterId: 40, AttributeId: 5 }, Status: 0 }];
+            },
+        } as unknown as MatterClient;
+        await expect(writeNodeLabel(client, node({}, 1), "Küchenlicht Erdgeschoss West Süd")).to.be.rejectedWith(
+            /34 bytes long, the maximum is 32/,
+        );
+        expect(writes).to.deep.equal([]);
+    });
+
     // Guards the result-shape wiring: reading `status` off a `Status`-keyed result yields undefined,
     // which would make every accepted write throw.
     it("writeNodeLabel resolves when the device accepted the write", async () => {
