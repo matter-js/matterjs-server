@@ -142,7 +142,7 @@ describe("createControllerNode", () => {
         // A label the fabric cannot take, so the failure lands after the node — and the storage it
         // opened — already exist.
         const { driver, controller } = build({ adminFabricLabel: "l".repeat(33) });
-        await expect(controller).rejectedWith(/at most 32 characters/);
+        await expect(controller).rejectedWith(/the maximum is 32/);
 
         expect(driver.initialized).equals(false);
     });
