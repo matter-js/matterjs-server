@@ -38,7 +38,7 @@ import {
     LABEL_LIST_ATTR,
     USER_LABEL_CLUSTER_ID,
 } from "../util/label-list.js";
-import { decodeSemanticTagList, DESCRIPTOR_CLUSTER_ID, readEndpointTagList, TAG_LIST_ATTR } from "../util/semantic-tags.js";
+import { DESCRIPTOR_CLUSTER_ID, readEndpointTagList } from "../util/semantic-tags.js";
 import { infoPanelStyles, notFoundStyles } from "../util/shared-styles.js";
 import {
     BaseClusterCommands,
