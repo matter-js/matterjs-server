@@ -68,6 +68,7 @@ This page shows a detailed overview of the changes between versions without the 
 
 ## **WORK IN PROGRESS**
 
+- Breaking: Uploading an OTA firmware file requires `--enable-test-net-dcl`, because the OTA provider only serves local images to a node while test images are allowed. Without it, `initiate_ota_upload` fails instead of storing an image that no node can download
 - Fix: After a firmware update fails or is cancelled, checking the node for updates asks the update provider again instead of returning the update found before
 
 ## 1.5.2 (2026-10-21)

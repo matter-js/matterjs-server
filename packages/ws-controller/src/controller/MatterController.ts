@@ -454,7 +454,7 @@ export class MatterController {
                 this.#trackBackgroundInit(this.vendorInfoService(), "Vendor info preload failed");
                 // initPromises.push(this.certificateService()); // postponed to commissioning needs
 
-                if (!this.#disableOtaProvider && this.#enableTestNetDcl) {
+                if (this.localOtaImagesEnabled) {
                     initPromises.push(this.#enableTestOtaImages());
                 }
 
@@ -502,6 +502,11 @@ export class MatterController {
     /** False when the OTA provider (and with it firmware upload) is disabled via `disableOtaProvider`. */
     get otaEnabled(): boolean {
         return !this.#disableOtaProvider;
+    }
+
+    /** True when the OTA provider runs with test images allowed, without which it serves no local image. */
+    get localOtaImagesEnabled(): boolean {
+        return !this.#disableOtaProvider && this.#enableTestNetDcl;
     }
 
     /** Reservations and staging for the two-step OTA upload (`initiate_ota_upload`, then HTTP POST). */

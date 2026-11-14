@@ -76,7 +76,7 @@ Beyond the `python-matter-server` API, the client exposes commands the Matter.js
 - `upload_ota_file(image)` — store a local `.ota` firmware image in the server's OTA image store
   (schema 13+). Takes the raw bytes or a path; reserves an upload id over the WebSocket session,
   then streams the bytes to `POST /ota-upload/<upload_id>`. Raises `OtaUploadError` (code 101) for a
-  corrupt image, an expired/spent id, or disabled OTA support.
+  corrupt image, an expired/spent id, disabled OTA support, or a server without `--enable-test-net-dcl`.
 - `get_icd_state`, `register_icd`, `unregister_icd`, `resync_icd` — ICD Check-In registration
 - `read`, `subscribe`, `unsubscribe`, `enable_auto_subscription`, `disable_auto_subscription` — Matter
   read and subscribe requests with explicit paths (schema 14+). `read` returns an `InteractionReport`,

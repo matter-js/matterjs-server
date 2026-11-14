@@ -215,7 +215,7 @@ To use custom OTA files, you must:
 1. **Enable test-net DCL mode** using `--enable-test-net-dcl` (or env var `ENABLE_TEST_NET_DCL=true`)
 2. **Specify an OTA provider directory** using `--ota-provider-dir <path>` (or env var `OTA_PROVIDER_DIR=<path>`)
 
-Both options are required. If `--ota-provider-dir` is set but `--enable-test-net-dcl` is not enabled, custom OTA files will be ignored and a warning will be logged.
+Both options are required. If `--ota-provider-dir` is set but `--enable-test-net-dcl` is not enabled, custom OTA files will be ignored and a warning will be logged. Uploading an OTA file over the WebSocket API or the dashboard also requires `--enable-test-net-dcl`.
 
 Without your own directory, enabling the `--enable-test-net-dcl` flag would still check the CSA Test-DCL (and Production DCL) for updates available there.
 
@@ -322,4 +322,4 @@ This implementation aims to be API-compatible with the [Python Matter Server](ht
 | Storage Format          | Single `chip.json` and `{fabricId}.json` file              | matter.js native storage (migration supported)                                                             |
 | Attribute Subscriptions | Tracks per-node in `attribute_subscriptions`               | Always empty (handled internally)                                                                          |
 | Endpoint Parents        | Not sent                                                   | `endpoint_parents` in node data: the direct parent endpoint of each endpoint whose parent is known         |
-| Custom OTA Files        | Allows to import them independently from the test-dcl flag | Only imports them when also test-dcl is enabled                                                            |
+| Custom OTA Files        | Allows to import them independently from the test-dcl flag | Only imports or accepts uploads of them when also test-dcl is enabled                                      |

@@ -1218,7 +1218,8 @@ write to the node, also when the bindings equal the current ones.
 Returns an `upload_id` that must be POSTed to `/ota-upload/<upload_id>` (see HTTP Endpoints
 below) within `expires_in` seconds, from the same client that reserved it. Reserving an id also
 claims one of the server's limited in-flight upload slots, so a client must follow through or let
-the reservation expire before retrying. Requires OTA support to be enabled (no `--disable-ota`).
+the reservation expire before retrying. Requires OTA support to be enabled (no `--disable-ota`) and
+`--enable-test-net-dcl`, because the OTA provider only serves local images while test images are allowed.
 
 ```json
 {
@@ -2070,9 +2071,9 @@ its header, not tied to any particular node — `check_node_update` will surface
 whose vendor/product matches. The endpoint exists only while OTA support is enabled; with
 `--disable-ota` it is not registered at all.
 
-A *test* image (typically vendor ID `0xfff1`) is stored like any other, but the OTA provider only
-serves test images when the server also runs with `--enable-test-net-dcl` — the same restriction
-that applies to `--ota-provider-dir`.
+The OTA provider only serves local images to a node when the server runs with
+`--enable-test-net-dcl`, the same restriction as for test images and for `--ota-provider-dir`.
+Without that option, `initiate_ota_upload` fails.
 
 ```
 POST /ota-upload/3f9a1c2e8b7d4a10f6c9e0b2d4a17853

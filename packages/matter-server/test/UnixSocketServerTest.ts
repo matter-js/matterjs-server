@@ -57,7 +57,7 @@ describe("Unix socket server", function () {
     let client: MatterTestClient | undefined;
 
     async function start() {
-        const proc = startServer(serverStoragePath, undefined, undefined, false, [`--listen-address=${socketPath}`]);
+        const proc = startServer(serverStoragePath, undefined, undefined, true, [`--listen-address=${socketPath}`]);
         serverProcess = proc;
         await Promise.race([
             waitForWebSocket(wsUrl),
