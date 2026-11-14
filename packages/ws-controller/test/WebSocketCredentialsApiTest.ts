@@ -84,9 +84,11 @@ interface StubCameraStreams {
 interface StubCommandHandlerOverrides {
     handleInvoke?(data: InvokeRequest): Promise<unknown>;
     handleWriteAttribute?(data: unknown): Promise<AttributeResponseStatus[]>;
+    handleWriteAtomicAttribute?(data: unknown): Promise<AttributeResponseStatus>;
     handleBatchedInvoke?(data: BatchedInvokeRequest): Promise<BatchedInvokeResult>;
     handleGroupWriteAttribute?(data: unknown): Promise<void>;
     handleGroupInvoke?(data: unknown): Promise<void>;
+    setFabricLabel?(label: string): Promise<{ pushed: Promise<void> }>;
     removeTrackedWebRtcSession?(webRtcSessionId: number, nodeId: bigint, endpointId: number): Promise<void>;
     invokeWebRtcProviderCommand?(args: {
         commandName: string;
@@ -190,6 +192,9 @@ function makeStubController(
         handleWriteAttribute:
             commandHandler?.handleWriteAttribute ??
             (async () => [{ endpointId: 1, clusterId: 6, attributeId: 0, status: 0 }]),
+        handleWriteAtomicAttribute:
+            commandHandler?.handleWriteAtomicAttribute ??
+            (async () => ({ endpointId: 1, clusterId: 513, attributeId: 80, status: 0 })),
         handleBatchedInvoke:
             commandHandler?.handleBatchedInvoke ??
             (async (data: BatchedInvokeRequest) => data.commands.map(() => ({ status: Status.Success }))),
@@ -235,9 +240,7 @@ function makeStubController(
             return [];
         },
         async initializeNodes() {},
-        async setFabricLabel() {
-            return { pushed: Promise.resolve() };
-        },
+        setFabricLabel: commandHandler?.setFabricLabel ?? (async () => ({ pushed: Promise.resolve() })),
         getFabricLabel(): string | undefined {
             return undefined;
         },
@@ -1014,12 +1017,12 @@ describe("WebSocket Credentials API", () => {
         expect(def?.extPanId).to.equal(def?.extPanId?.toUpperCase());
     });
 
-    it("server_info reports schema 14 / min 11", async () => {
+    it("server_info reports schema 15 / min 11", async () => {
         const info = await h.handle<{ schema_version: number; min_supported_schema_version: number }>(
             "server_info",
             {},
         );
-        expect(info.schema_version).to.equal(14);
+        expect(info.schema_version).to.equal(15);
         expect(info.min_supported_schema_version).to.equal(11);
     });
 
@@ -1248,6 +1251,25 @@ describe("WebSocket set_default_fabric_label ownership", () => {
         } finally {
             other.close();
         }
+    });
+
+    it("cuts a label over 32 UTF-8 bytes before applying and storing it", async () => {
+        await h.close();
+        const applied = new Array<string>();
+        h = await createHarness(undefined, {
+            async setFabricLabel(label) {
+                applied.push(label);
+                return { pushed: Promise.resolve() };
+            },
+        });
+        // 32 characters, 34 bytes: each "ü" is two bytes in UTF-8, and the last one would be split at byte 32.
+        const label = "Küchenlicht Erdgeschoss West Süd";
+        expect(label.length).to.equal(32);
+
+        await h.handle("set_default_fabric_label", { label });
+
+        expect(applied).to.deep.equal(["Küchenlicht Erdgeschoss West S"]);
+        expect(h.config.fabricLabel).to.equal("Küchenlicht Erdgeschoss West S");
     });
 
     it("the CLI pin overrides connection ownership", async () => {
@@ -2575,6 +2597,7 @@ describe("node id classes on the generic node-targeted commands", () => {
         ["ping_node", {}],
         ["get_node", {}],
         ["set_acl_entry", { entry: {} }],
+        ["write_atomic_attribute", { attribute_path: "1/513/80", value: [], data_version: 7 }],
     ];
 
     /** The two routes matter.js can carry to a group; they refuse the rest of the classes. */
@@ -3345,6 +3368,256 @@ describe("groupcast on the generic commands", () => {
             await h.close();
         }
     });
+});
+
+describe("write_atomic_attribute", () => {
+    const PRESETS = "1/513/80";
+
+    async function answerFor(h: TestHarness, args: Record<string, unknown>, tag: string): Promise<WireFrame> {
+        return answerToFrameText(
+            h,
+            tag,
+            toBigIntAwareJson({
+                message_id: tag,
+                command: "write_atomic_attribute",
+                args: { node_id: 1, data_version: 7, ...args },
+            }),
+        );
+    }
+
+    function refusingHarness() {
+        return createHarness(undefined, {
+            handleWriteAtomicAttribute: async () => {
+                throw new Error("atomic write must not be reached");
+            },
+        });
+    }
+
+    it("passes the request on and answers the node's status as one entry", async () => {
+        const writes = new Array<unknown>();
+        const h = await createHarness(undefined, {
+            handleWriteAtomicAttribute: async data => {
+                writes.push(data);
+                return { endpointId: 1, clusterId: 513, attributeId: 80, status: 0x87, clusterStatus: 2 };
+            },
+        });
+        try {
+            const answer = await answerFor(
+                h,
+                {
+                    attribute_path: PRESETS,
+                    value: [],
+                    ignore_data_version_mismatch: true,
+                    atomic_timeout_ms: 8000,
+                },
+                "atomic-write",
+            );
+            expect(answer.error_code).to.equal(undefined);
+            expect(answer.result).to.deep.equal([
+                { Path: { EndpointId: 1, ClusterId: 513, AttributeId: 80 }, Status: 0x87, ClusterStatus: 2 },
+            ]);
+            expect(writes).to.deep.equal([
+                {
+                    nodeId: 1n,
+                    endpointId: 1,
+                    clusterId: 513,
+                    attributeId: 80,
+                    value: [],
+                    dataVersion: 7,
+                    ignoreDataVersionMismatch: true,
+                    timedInteractionTimeoutMs: undefined,
+                    atomicTimeoutMs: 8000,
+                },
+            ]);
+        } finally {
+            await h.close();
+        }
+    });
+
+    for (const [label, timeouts] of [
+        ["leaves them out", {}],
+        ["states them as null", { timed_request_timeout_ms: null, atomic_timeout_ms: null }],
+        ["states a timed request timeout of 0 with a data version", { timed_request_timeout_ms: 0 }],
+    ] as const) {
+        it(`leaves both timeouts to the handler when the request ${label}`, async () => {
+            const writes = new Array<unknown>();
+            const h = await createHarness(undefined, {
+                handleWriteAtomicAttribute: async data => {
+                    writes.push(data);
+                    return { endpointId: 1, clusterId: 513, attributeId: 80, status: 0 };
+                },
+            });
+            try {
+                const answer = await answerFor(
+                    h,
+                    { attribute_path: PRESETS, value: [], ...timeouts },
+                    `atomic-write-defaults-${label}`,
+                );
+                expect(answer.error_code).to.equal(undefined);
+                expect(writes).to.have.length(1);
+                expect(writes[0]).to.include({
+                    ignoreDataVersionMismatch: false,
+                    timedInteractionTimeoutMs: undefined,
+                    atomicTimeoutMs: undefined,
+                });
+            } finally {
+                await h.close();
+            }
+        });
+    }
+
+    it("refuses an attribute without the Atomic quality and points to write_attribute", async () => {
+        const h = await refusingHarness();
+        try {
+            const answer = await answerFor(h, { attribute_path: "1/6/16385", value: 5 }, "atomic-write-plain");
+            expect(answer.error_code).to.equal(8);
+            expect(answer.details).to.contain("write_attribute");
+        } finally {
+            await h.close();
+        }
+    });
+
+    it("refuses an attribute the model does not know", async () => {
+        const h = await refusingHarness();
+        try {
+            const answer = await answerFor(h, { attribute_path: "1/513/65000", value: 5 }, "atomic-write-unknown");
+            expect(answer.error_code).to.equal(8);
+            expect(answer.details).to.contain("unknown");
+        } finally {
+            await h.close();
+        }
+    });
+
+    for (const path of ["*/513/80", "65535/513/80", "1/*/80", "1/513/*", "1x/513/80", "1/513"]) {
+        it(`refuses the path ${JSON.stringify(path)}`, async () => {
+            const h = await refusingHarness();
+            try {
+                const answer = await answerFor(h, { attribute_path: path, value: [] }, `atomic-write-path-${path}`);
+                expect(answer.error_code).to.equal(8);
+                expect(answer.details).to.contain("attribute_path");
+            } finally {
+                await h.close();
+            }
+        });
+    }
+
+    for (const [flag, stated] of [
+        ["ignore_data_version_mismatch", 1],
+        ["ignore_data_version_mismatch", "true"],
+        ["skip_data_version_check", 1],
+        ["skip_data_version_check", "true"],
+    ] as const) {
+        it(`refuses ${flag} ${JSON.stringify(stated)}`, async () => {
+            const h = await refusingHarness();
+            try {
+                const answer = await answerFor(
+                    h,
+                    { attribute_path: PRESETS, value: [], [flag]: stated },
+                    `atomic-write-${flag}-${String(stated)}`,
+                );
+                expect(answer.error_code).to.equal(8);
+                expect(answer.details).to.contain(flag);
+            } finally {
+                await h.close();
+            }
+        });
+    }
+
+    for (const [label, dataVersion] of [
+        ["left out", undefined],
+        ["null", null],
+    ] as const) {
+        it(`passes skip_data_version_check on with data_version ${label} as a timed write without a version check`, async () => {
+            const writes = new Array<unknown>();
+            const h = await createHarness(undefined, {
+                handleWriteAtomicAttribute: async ({ dataVersion, timedInteractionTimeoutMs }) => {
+                    writes.push({ dataVersion, timedInteractionTimeoutMs });
+                    return { endpointId: 1, clusterId: 513, attributeId: 80, status: 0 };
+                },
+            });
+            try {
+                const answer = await answerFor(
+                    h,
+                    {
+                        attribute_path: PRESETS,
+                        value: [],
+                        data_version: dataVersion,
+                        skip_data_version_check: true,
+                        timed_request_timeout_ms: 2000,
+                    },
+                    `atomic-write-unversioned-${label}`,
+                );
+                expect(answer.error_code).to.equal(undefined);
+                expect(writes).to.deep.equal([{ dataVersion: undefined, timedInteractionTimeoutMs: 2000 }]);
+            } finally {
+                await h.close();
+            }
+        });
+    }
+
+    it("refuses a timed write with a data version", async () => {
+        const h = await refusingHarness();
+        try {
+            const answer = await answerFor(
+                h,
+                { attribute_path: PRESETS, value: [], timed_request_timeout_ms: 2000 },
+                "atomic-write-timed-versioned",
+            );
+            expect(answer.error_code).to.equal(8);
+            expect(answer.details).to.contain("timed write");
+        } finally {
+            await h.close();
+        }
+    });
+
+    it("refuses skip_data_version_check together with a data_version", async () => {
+        const h = await refusingHarness();
+        try {
+            const answer = await answerFor(
+                h,
+                { attribute_path: PRESETS, value: [], skip_data_version_check: true },
+                "atomic-write-skip-and-version",
+            );
+            expect(answer.error_code).to.equal(8);
+            expect(answer.details).to.contain("not both");
+        } finally {
+            await h.close();
+        }
+    });
+
+    for (const stated of [undefined, null, -1, 1.5, "7", 0x1_0000_0000]) {
+        it(`refuses data_version ${JSON.stringify(stated) ?? "left out"}`, async () => {
+            const h = await refusingHarness();
+            try {
+                const answer = await answerFor(
+                    h,
+                    { attribute_path: PRESETS, value: [], data_version: stated },
+                    `atomic-write-data-version-${String(stated)}`,
+                );
+                expect(answer.error_code).to.equal(8);
+                expect(answer.details).to.contain("data_version");
+            } finally {
+                await h.close();
+            }
+        });
+    }
+
+    for (const stated of [0, -1, 1.5, "5000", 65_536]) {
+        it(`refuses atomic_timeout_ms ${JSON.stringify(stated)}`, async () => {
+            const h = await refusingHarness();
+            try {
+                const answer = await answerFor(
+                    h,
+                    { attribute_path: PRESETS, value: [], atomic_timeout_ms: stated },
+                    `atomic-write-timeout-${String(stated)}`,
+                );
+                expect(answer.error_code).to.equal(8);
+                expect(answer.details).to.contain("atomic_timeout_ms");
+            } finally {
+                await h.close();
+            }
+        });
+    }
 });
 
 describe("WebSocket client_session_key", () => {

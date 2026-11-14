@@ -6,6 +6,7 @@
 
 import type { MatterClient, MatterNode } from "@matter-server/ws-client";
 import { asObject, pickNumber, pickString } from "./attribute-shapes.js";
+import { labelLengthError } from "./label-length.js";
 
 /** Camera AV Settings User Level Management cluster (Matter spec). */
 export const AVSUM_CLUSTER_ID = 1362; // 0x0552
@@ -199,6 +200,14 @@ export async function moveToPreset(
     await client.deviceCommand(nodeId, endpoint, AVSUM_CLUSTER_ID, "MPTZMoveToPreset", { presetID: presetId });
 }
 
+export const PRESET_NAME_MAX_BYTES = 32;
+
+/**
+ * Saves the current position as a preset. Throws without sending the command when the name is longer than
+ * {@link PRESET_NAME_MAX_BYTES} bytes.
+ *
+ * @see MatterSpecification.v161.Cluster § 11.3.7.4
+ */
 export async function savePreset(
     client: MatterClient,
     nodeId: number | bigint,
@@ -206,6 +215,8 @@ export async function savePreset(
     name: string,
     presetId?: number,
 ): Promise<void> {
+    const lengthError = labelLengthError(name, PRESET_NAME_MAX_BYTES);
+    if (lengthError !== undefined) throw new Error(lengthError);
     const payload: Record<string, unknown> = { name };
     if (presetId !== undefined) payload.presetID = presetId;
     await client.deviceCommand(nodeId, endpoint, AVSUM_CLUSTER_ID, "MPTZSavePreset", payload);

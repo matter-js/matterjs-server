@@ -1,0 +1,701 @@
+/**
+ * @license
+ * Copyright 2025-2026 Open Home Foundation
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+import { AttributeId, Bytes, ClientNode, ClusterId, Duration, EndpointNumber, Millis, Time } from "@matter/main";
+import { ThermostatDevice } from "@matter/main/devices/thermostat";
+import { AtomicRequestType, Status, StatusResponseError } from "@matter/main/types";
+import { ThermostatClient, ThermostatServer } from "@matter/node/behaviors/thermostat";
+import { Thermostat } from "@matter/types/clusters/thermostat";
+import { WriteAtomicAttributeRequest } from "../src/types/CommandHandler.js";
+import { ServerError, ServerErrorCode } from "../src/types/WebSocketMessageTypes.js";
+import { HandlerSite, NODE_ID } from "./support/HandlerSite.js";
+
+const THERMOSTAT = ClusterId(Thermostat.id);
+const PRESETS = AttributeId(Thermostat.attributes.presets.id);
+const ENDPOINT = EndpointNumber(1);
+const { Occupied, Unoccupied, Sleep } = Thermostat.PresetScenario;
+
+/** What the device received, in order: the AtomicRequest types, and each Write as the controller sent it. */
+const received = new Array<string>();
+
+/** Every AtomicRequest the device received, with its fields. */
+const atomicRequests = new Array<Thermostat.AtomicRequest>();
+
+/** How the test device departs from a plain matter.js thermostat; reset before each test. */
+const deviceAnswers: {
+    /** Answers BeginWrite with this instead of opening an atomic write. */
+    begin?: Thermostat.AtomicResponse;
+    /** Runs while the device handles a BeginWrite, so while the controller's atomic write is open. */
+    duringBegin?: () => Promise<void>;
+    /** Runs while the device handles a CommitWrite, before it commits. */
+    duringCommit?: () => Promise<void>;
+    /** Replaces the attribute statuses of a successful BeginWrite answer. */
+    beginAttributeStatus?: Thermostat.AtomicResponse["attributeStatus"];
+    /**
+     * Answers CommitWrite with this, or throws it when it is a status, instead of committing. The device discards the
+     * write, as it does for a failed commit (§7.15.6.4.2).
+     */
+    commit?: Thermostat.AtomicResponse | Status;
+    /** Throws this status for a RollbackWrite after rolling back, so the controller cannot tell it happened. */
+    rollback?: Status;
+    /** How long the device takes before it throws {@link rollback}. */
+    rollbackDelay?: Duration;
+} = {};
+
+class RecordingThermostatServer extends ThermostatServer.with("Heating", "Cooling", "AutoMode", "Presets") {
+    override async atomicRequest(request: Thermostat.AtomicRequest) {
+        received.push(AtomicRequestType[request.requestType]);
+        atomicRequests.push({ ...request, attributeRequests: [...request.attributeRequests] });
+        const { begin, beginAttributeStatus, commit, duringBegin } = deviceAnswers;
+        switch (request.requestType) {
+            case Thermostat.RequestType.BeginWrite: {
+                await duringBegin?.();
+                if (begin !== undefined) {
+                    return begin;
+                }
+                const answer = await super.atomicRequest(request);
+                return beginAttributeStatus === undefined
+                    ? answer
+                    : { ...answer, attributeStatus: beginAttributeStatus };
+            }
+            case Thermostat.RequestType.CommitWrite:
+                await deviceAnswers.duringCommit?.();
+                if (commit === undefined) {
+                    return await super.atomicRequest(request);
+                }
+                await super.atomicRequest({
+                    ...request,
+                    requestType: Thermostat.RequestType.RollbackWrite,
+                    attributeRequests: [PRESETS],
+                });
+                if (typeof commit === "number") {
+                    throw new StatusResponseError("The test device refuses the commit", commit);
+                }
+                return commit;
+            default: {
+                const answer = await super.atomicRequest(request);
+                if (deviceAnswers.rollback !== undefined) {
+                    if (deviceAnswers.rollbackDelay !== undefined) {
+                        await Time.sleep("slow rollback", deviceAnswers.rollbackDelay);
+                    }
+                    throw new StatusResponseError(
+                        "The test device answers the rollback with an error",
+                        deviceAnswers.rollback,
+                    );
+                }
+                return answer;
+            }
+        }
+    }
+}
+
+/** A thermostat that stores `presets` from the start. */
+function presetsThermostat(presets: Thermostat.Preset[]) {
+    return ThermostatDevice.with(RecordingThermostatServer).set({
+        thermostat: {
+            controlSequenceOfOperation: Thermostat.ControlSequenceOfOperation.CoolingAndHeating,
+            systemMode: Thermostat.SystemMode.Auto,
+            occupiedHeatingSetpoint: 2000,
+            occupiedCoolingSetpoint: 2600,
+            minSetpointDeadBand: 25,
+            numberOfPresets: 5,
+            // No SupportsNames, so a preset with a name is refused.
+            presetTypes: [Occupied, Unoccupied, Sleep].map(presetScenario => ({
+                presetScenario,
+                numberOfPresets: 5,
+                presetTypeFeatures: {},
+            })),
+            activePresetHandle: null,
+            presets,
+        },
+    });
+}
+
+/** A new preset as the wire carries it: tag-keyed, without a handle. */
+function wirePreset(heatingSetpoint: number, name?: string, scenario = Occupied) {
+    return {
+        "0": null,
+        "1": scenario,
+        "3": 2600,
+        "4": heatingSetpoint,
+        "5": false,
+        "2": name,
+    };
+}
+
+/** How many invokes the controller sent to `peer` from now on. */
+function countInvokes(peer: ClientNode) {
+    const sent = { count: 0 };
+    const interaction = peer.interaction;
+    const invoke = interaction.invoke.bind(interaction);
+    interaction.invoke = (request, session) => {
+        sent.count++;
+        return invoke(request, session);
+    };
+    return sent;
+}
+
+function recordWrites(peer: ClientNode) {
+    const interaction = peer.interaction;
+    const write = interaction.write.bind(interaction);
+    interaction.write = (request, session) => {
+        received.push(request.timedRequest ? "TimedWrite" : "Write");
+        return write(request, session);
+    };
+}
+
+describe("write_atomic_attribute on a commissioned device", () => {
+    let site: HandlerSite;
+
+    async function startSite(presets: Thermostat.Preset[]) {
+        received.length = 0;
+        atomicRequests.length = 0;
+        delete deviceAnswers.begin;
+        delete deviceAnswers.beginAttributeStatus;
+        delete deviceAnswers.duringBegin;
+        delete deviceAnswers.duringCommit;
+        delete deviceAnswers.rollback;
+        delete deviceAnswers.rollbackDelay;
+        delete deviceAnswers.commit;
+        site = new HandlerSite();
+        await site.startDevice(undefined, presetsThermostat(presets));
+        await site.startController(true);
+        await site.commission();
+        recordWrites(site.peer);
+    }
+
+    beforeEach(async () => {
+        await startSite([]);
+    });
+
+    afterEach(async () => {
+        await site.close();
+    });
+
+    function storedPresets() {
+        return site.light.stateOf(RecordingThermostatServer).persistedPresets ?? [];
+    }
+
+    /** The thermostat cluster's data version as the server's generic read reports it. */
+    async function thermostatDataVersion() {
+        const report = await MockTime.resolve(
+            site.handler.read({ nodeId: NODE_ID, attributePaths: [`${ENDPOINT}/${THERMOSTAT}/${PRESETS}`] }),
+            { macrotasks: true },
+        );
+        const dataVersion = report.data_versions?.[`${ENDPOINT}/${THERMOSTAT}`];
+        expect(dataVersion).a("number");
+        return dataVersion ?? 0;
+    }
+
+    /** An atomic write of the presets with the cluster's current data version, unless the request states one. */
+    async function writeAtomic(request: Partial<Omit<WriteAtomicAttributeRequest, "nodeId">> & { value: unknown }) {
+        const dataVersion = "dataVersion" in request ? request.dataVersion : await thermostatDataVersion();
+        return await MockTime.resolve(
+            site.handler.handleWriteAtomicAttribute({
+                nodeId: NODE_ID,
+                endpointId: ENDPOINT,
+                clusterId: THERMOSTAT,
+                attributeId: PRESETS,
+                ...request,
+                dataVersion,
+            }),
+            { macrotasks: true },
+        );
+    }
+
+    /** An AtomicRequest of the test's own, as another client of this controller would send it. */
+    async function atomicRequest(requestType: Thermostat.RequestType) {
+        return await MockTime.resolve(
+            site.peer.parts
+                .require("ep1")
+                .commandsOf(ThermostatClient)
+                .atomicRequest({
+                    requestType,
+                    attributeRequests: [PRESETS],
+                    timeout: requestType === Thermostat.RequestType.BeginWrite ? 5000 : undefined,
+                }),
+        );
+    }
+
+    it("begins, writes and commits, and the device stores the value", async () => {
+        const result = await writeAtomic({ value: [wirePreset(1900)] });
+
+        expect(result).deep.equals({
+            endpointId: ENDPOINT,
+            clusterId: THERMOSTAT,
+            attributeId: PRESETS,
+            status: Status.Success,
+            clusterStatus: undefined,
+        });
+        expect(received).deep.equals(["BeginWrite", "Write", "CommitWrite"]);
+        expect(storedPresets().map(({ heatingSetpoint }) => heatingSetpoint)).deep.equals([1900]);
+    });
+
+    /** The cluster's data version before a setpoint write changes it, so the version is stale afterwards. */
+    async function staleDataVersion() {
+        const dataVersion = await thermostatDataVersion();
+        const [setpoint] = await MockTime.resolve(
+            site.handler.handleWriteAttribute({
+                nodeId: NODE_ID,
+                endpointId: ENDPOINT,
+                clusterId: THERMOSTAT,
+                attributeId: AttributeId(Thermostat.attributes.occupiedHeatingSetpoint.id),
+                value: 2100,
+            }),
+            { macrotasks: true },
+        );
+        expect(setpoint.status).equals(Status.Success);
+        received.length = 0;
+        return dataVersion;
+    }
+
+    it("rolls back and answers DATA_VERSION_MISMATCH when the cluster changed since the client's read", async () => {
+        const result = await writeAtomic({ value: [wirePreset(1900)], dataVersion: await staleDataVersion() });
+
+        expect(result.status).equals(Status.DataVersionMismatch);
+        expect(received).deep.equals(["BeginWrite", "Write", "RollbackWrite"]);
+        expect(storedPresets()).deep.equals([]);
+    });
+
+    it("writes again without the data version and commits when the client ignores a mismatch", async () => {
+        const result = await writeAtomic({
+            value: [wirePreset(1900)],
+            dataVersion: await staleDataVersion(),
+            ignoreDataVersionMismatch: true,
+        });
+
+        expect(result.status).equals(Status.Success);
+        expect(received).deep.equals(["BeginWrite", "Write", "Write", "CommitWrite"]);
+        expect(storedPresets().map(({ heatingSetpoint }) => heatingSetpoint)).deep.equals([1900]);
+    });
+
+    it("writes without a version check and commits when the client gives no data version", async () => {
+        await staleDataVersion();
+        const sentVersions = new Array<number | undefined>();
+        const interaction = site.peer.interaction;
+        const write = interaction.write.bind(interaction);
+        interaction.write = (request, session) => {
+            sentVersions.push(...request.writeRequests.map(({ dataVersion }) => dataVersion));
+            return write(request, session);
+        };
+        const result = await writeAtomic({ value: [wirePreset(1900)], dataVersion: undefined });
+
+        expect(result.status).equals(Status.Success);
+        expect(received).deep.equals(["BeginWrite", "Write", "CommitWrite"]);
+        expect(sentVersions.length).greaterThan(0);
+        expect(sentVersions.every(version => version === undefined)).equals(true);
+        expect(storedPresets().map(({ heatingSetpoint }) => heatingSetpoint)).deep.equals([1900]);
+    });
+
+    it("rolls back and commits nothing when a later entry of the list is refused", async () => {
+        const result = await writeAtomic({
+            value: [wirePreset(1700), wirePreset(1800, undefined, Unoccupied), wirePreset(1900, "named", Sleep)],
+        });
+
+        expect(result.status).equals(Status.ConstraintError);
+        expect(received.filter(type => type !== "Write")).deep.equals(["BeginWrite", "RollbackWrite"]);
+        expect(storedPresets()).deep.equals([]);
+    });
+
+    /** The stored presets as the wire carries them, with their handles. */
+    function storedAsWire() {
+        return storedPresets().map(({ presetHandle, presetScenario, coolingSetpoint, heatingSetpoint, builtIn }) => ({
+            "0": presetHandle === null ? null : Bytes.toBase64(presetHandle),
+            "1": presetScenario,
+            "3": coolingSetpoint,
+            "4": heatingSetpoint,
+            "5": builtIn,
+        }));
+    }
+
+    it("sends a timed write when the request states a timed request timeout", async () => {
+        const result = await writeAtomic({
+            value: [wirePreset(1900)],
+            dataVersion: undefined,
+            timedInteractionTimeoutMs: Millis(2000),
+        });
+
+        expect(result.status).equals(Status.Success);
+        expect(received).deep.equals(["BeginWrite", "TimedWrite", "CommitWrite"]);
+    });
+
+    it("refuses a timed write with a data version before sending anything", async () => {
+        const dataVersion = await thermostatDataVersion();
+        received.length = 0;
+        const refusal = await writeAtomic({
+            value: [wirePreset(1900)],
+            dataVersion,
+            timedInteractionTimeoutMs: Millis(2000),
+        }).catch((error: unknown) => error);
+
+        expect(refusal).instanceOf(ServerError);
+        expect(refusal).property("code", ServerErrorCode.InvalidArguments);
+        expect(received).deep.equals([]);
+        expect((await writeAtomic({ value: [wirePreset(1900)] })).status).equals(Status.Success);
+    });
+
+    it("rolls back when the device refuses the write and answers the write's status", async () => {
+        const refused = await writeAtomic({ value: [wirePreset(1900, "named")] });
+
+        expect(refused.status).equals(Status.ConstraintError);
+        expect(received).deep.equals(["BeginWrite", "Write", "RollbackWrite"]);
+        expect(storedPresets()).deep.equals([]);
+        expect(site.peer.parts.require("ep1").stateOf(ThermostatClient).presets).deep.equals([]);
+
+        // Without the rollback the device would still hold the write state and refuse the next BeginWrite.
+        const next = await writeAtomic({ value: [wirePreset(2100)] });
+        expect(next.status).equals(Status.Success);
+    });
+
+    for (const [label, answer, expected] of [
+        [
+            "a failing attribute status",
+            { statusCode: Status.Failure, attributeStatus: [{ attributeId: PRESETS, statusCode: Status.Busy }] },
+            Status.Busy,
+        ],
+        [
+            "only a failing overall status",
+            {
+                statusCode: Status.ConstraintError,
+                attributeStatus: [{ attributeId: PRESETS, statusCode: Status.Success }],
+            },
+            Status.ConstraintError,
+        ],
+    ] as const) {
+        it(`answers a commit refused with ${label} and does not roll it back`, async () => {
+            deviceAnswers.commit = { ...answer, attributeStatus: [...answer.attributeStatus] };
+
+            const result = await writeAtomic({ value: [wirePreset(1900)] });
+
+            expect(result.status).equals(expected);
+            expect(received).deep.equals(["BeginWrite", "Write", "CommitWrite"]);
+            expect(storedPresets()).deep.equals([]);
+        });
+    }
+
+    it("sends the default timeout with BeginWrite only", async () => {
+        await writeAtomic({ value: [wirePreset(1900)] });
+
+        expect(atomicRequests.map(({ requestType, timeout }) => ({ requestType, timeout }))).deep.equals([
+            { requestType: Thermostat.RequestType.BeginWrite, timeout: 30_000 },
+            { requestType: Thermostat.RequestType.CommitWrite, timeout: undefined },
+        ]);
+    });
+
+    it("sends the stated atomic timeout with BeginWrite", async () => {
+        await writeAtomic({ value: [wirePreset(1900)], atomicTimeoutMs: Millis(8000) });
+
+        expect(atomicRequests[0].timeout).equals(8000);
+    });
+
+    it("answers a BeginWrite refused with an AtomicResponse and sends nothing else", async () => {
+        deviceAnswers.begin = {
+            statusCode: Status.Failure,
+            attributeStatus: [{ attributeId: PRESETS, statusCode: Status.Busy }],
+        };
+
+        const result = await writeAtomic({ value: [wirePreset(1900)] });
+
+        expect(result.status).equals(Status.Busy);
+        expect(received).deep.equals(["BeginWrite"]);
+    });
+
+    it("answers the status of a refused commit without rolling back", async () => {
+        deviceAnswers.commit = Status.Failure;
+
+        const result = await writeAtomic({ value: [wirePreset(1900)] });
+
+        expect(result.status).equals(Status.Failure);
+        expect(received).deep.equals(["BeginWrite", "Write", "CommitWrite"]);
+        expect(storedPresets()).deep.equals([]);
+    });
+
+    it("does not roll back after a lost CommitWrite answer and answers BUSY until the device's timeout", async () => {
+        let answerCommit = () => {};
+        const answerHeldBack = new Promise<void>(resolve => (answerCommit = resolve));
+        deviceAnswers.duringCommit = () => answerHeldBack;
+        const invokes = countInvokes(site.peer);
+
+        const lost = await writeAtomic({ value: [wirePreset(1900)] }).catch((error: unknown) => error);
+        deviceAnswers.duringCommit = undefined;
+        answerCommit();
+
+        expect(lost).instanceOf(Error);
+        expect(lost).not.instanceOf(StatusResponseError);
+        expect(received).deep.equals(["BeginWrite", "Write", "CommitWrite"]);
+        // BeginWrite and CommitWrite only: no RollbackWrite was sent.
+        expect(invokes.count).equals(2);
+        const [plainWrite] = await MockTime.resolve(
+            site.handler.handleWriteAttribute({
+                nodeId: NODE_ID,
+                endpointId: ENDPOINT,
+                clusterId: THERMOSTAT,
+                attributeId: PRESETS,
+                value: [],
+            }),
+            { macrotasks: true },
+        );
+        expect(plainWrite.status).equals(Status.Busy);
+    });
+
+    function committedAttributes() {
+        return atomicRequests.find(({ requestType }) => requestType === Thermostat.RequestType.CommitWrite)
+            ?.attributeRequests;
+    }
+
+    it("names the attribute ids the BeginWrite answered in the CommitWrite", async () => {
+        // A device with a shared resource adds attributes to the atomic write (§7.15.6.4.1).
+        const schedules = AttributeId(Thermostat.attributes.schedules.id);
+        deviceAnswers.beginAttributeStatus = [
+            { attributeId: PRESETS, statusCode: Status.Success },
+            { attributeId: schedules, statusCode: Status.Success },
+        ];
+
+        await writeAtomic({ value: [wirePreset(1900)] });
+
+        expect(committedAttributes()).deep.equals([PRESETS, schedules]);
+    });
+
+    it("names the written attribute in the CommitWrite when the BeginWrite answered no attribute", async () => {
+        deviceAnswers.beginAttributeStatus = [];
+
+        const result = await writeAtomic({ value: [wirePreset(1900)] });
+
+        expect(result.status).equals(Status.Success);
+        expect(committedAttributes()).deep.equals([PRESETS]);
+    });
+
+    it("refuses an endpoint without the cluster before sending anything", async () => {
+        const refusal = await writeAtomic({ endpointId: EndpointNumber(9), value: [wirePreset(1900)] }).catch(
+            (error: unknown) => error,
+        );
+
+        expect(refusal).instanceOf(ServerError);
+        expect(refusal).property("code", ServerErrorCode.InvalidArguments);
+        expect(received).deep.equals([]);
+    });
+
+    it("answers BUSY to atomic writes of the cluster while its atomic write is open, and sends other writes", async () => {
+        const heatingSetpoint = AttributeId(Thermostat.attributes.occupiedHeatingSetpoint.id);
+        const presetsWrite = { nodeId: NODE_ID, clusterId: THERMOSTAT, attributeId: PRESETS, value: [] };
+        const answers = new Array<unknown>();
+        let setpointWrite: Promise<unknown> | undefined;
+        deviceAnswers.duringBegin = async () => {
+            deviceAnswers.duringBegin = undefined;
+            answers.push(
+                await site.handler.handleWriteAttribute({ ...presetsWrite, endpointId: ENDPOINT }),
+                await site.handler.handleWriteAttribute(presetsWrite),
+                await site.handler.handleWriteAtomicAttribute({
+                    ...presetsWrite,
+                    endpointId: ENDPOINT,
+                    dataVersion: 0,
+                }),
+            );
+            // Not an atomic attribute: it is sent, and the device applies it outside the atomic write. The device
+            // answers it only after this BeginWrite, so it is not awaited here.
+            setpointWrite = site.handler.handleWriteAttribute({
+                ...presetsWrite,
+                attributeId: heatingSetpoint,
+                endpointId: ENDPOINT,
+                value: 2100,
+            });
+        };
+
+        const result = await writeAtomic({ value: [wirePreset(1900)], ignoreDataVersionMismatch: true });
+        const setpoint = await MockTime.resolve(setpointWrite ?? Promise.reject(new Error("BeginWrite never ran")), {
+            macrotasks: true,
+        });
+
+        // The setpoint changed the cluster's data version, so the atomic write's list is sent again without it.
+        expect(result.status).equals(Status.Success);
+        const busy = { endpointId: ENDPOINT, clusterId: THERMOSTAT, attributeId: PRESETS, status: Status.Busy };
+        expect(answers).deep.equals([[busy], [busy], { ...busy, clusterStatus: undefined }]);
+        expect(setpoint).deep.equals([
+            {
+                endpointId: ENDPOINT,
+                clusterId: THERMOSTAT,
+                attributeId: heatingSetpoint,
+                status: Status.Success,
+                clusterStatus: undefined,
+            },
+        ]);
+        expect(received.filter(type => type !== "Write")).deep.equals(["BeginWrite", "CommitWrite"]);
+        expect(received.filter(type => type === "Write")).length(3);
+        expect(storedPresets().map(({ heatingSetpoint }) => heatingSetpoint)).deep.equals([1900]);
+        expect(site.light.stateOf(RecordingThermostatServer).occupiedHeatingSetpoint).equals(2100);
+    });
+
+    for (const [label, failure] of [
+        ["refused write", () => ({ value: [wirePreset(1900, "named")] })],
+        [
+            "commit that throws",
+            () => {
+                deviceAnswers.commit = Status.Failure;
+                return { value: [wirePreset(1900)] };
+            },
+        ],
+    ] as const) {
+        it(`sends atomic writes of the cluster again once its atomic write ended with a ${label}`, async () => {
+            await writeAtomic(failure());
+
+            const [result] = await MockTime.resolve(
+                site.handler.handleWriteAttribute({
+                    nodeId: NODE_ID,
+                    endpointId: ENDPOINT,
+                    clusterId: THERMOSTAT,
+                    attributeId: PRESETS,
+                    value: [],
+                }),
+                { macrotasks: true },
+            );
+
+            // Outside an atomic write the device refuses the write itself (§7.15.3), instead of the server's BUSY.
+            expect(result.status).equals(Status.InvalidInState);
+        });
+    }
+
+    it("answers BUSY to atomic writes of the cluster until the timeout the device granted when the rollback fails", async () => {
+        deviceAnswers.rollback = Status.Failure;
+        const writePresets = async () => {
+            const [{ status }] = await MockTime.resolve(
+                site.handler.handleWriteAttribute({
+                    nodeId: NODE_ID,
+                    endpointId: ENDPOINT,
+                    clusterId: THERMOSTAT,
+                    attributeId: PRESETS,
+                    value: [],
+                }),
+                { macrotasks: true },
+            );
+            return status;
+        };
+
+        // The matter.js thermostat grants at most 9 s, so the hold must follow its answer, not the 20 s requested.
+        const refused = await writeAtomic({ value: [wirePreset(1900, "named")], atomicTimeoutMs: Millis(20_000) });
+
+        expect(refused.status).equals(Status.ConstraintError);
+        expect(received).deep.equals(["BeginWrite", "Write", "RollbackWrite"]);
+        expect(await writePresets()).equals(Status.Busy);
+        await site.settle(Millis(8_000));
+        expect(await writePresets()).equals(Status.Busy);
+        await site.settle(Millis(1_500));
+        // Outside an atomic write the device refuses the write itself (§7.15.3), instead of the server's BUSY.
+        expect(await writePresets()).equals(Status.InvalidInState);
+    });
+
+    it("does not roll back after a lost BeginWrite answer, so another client's atomic write still commits", async () => {
+        const held = await atomicRequest(Thermostat.RequestType.BeginWrite);
+        expect(held.statusCode).equals(Status.Success);
+        received.length = 0;
+        let answerBegin = () => {};
+        const answerHeldBack = new Promise<void>(resolve => (answerBegin = resolve));
+        deviceAnswers.duringBegin = () => answerHeldBack;
+
+        const lost = await writeAtomic({ value: [wirePreset(1900)] }).catch((error: unknown) => error);
+        deviceAnswers.duringBegin = undefined;
+        answerBegin();
+
+        expect(lost).instanceOf(Error);
+        expect(lost).not.instanceOf(StatusResponseError);
+        expect(received).deep.equals(["BeginWrite"]);
+        const [plainWrite] = await MockTime.resolve(
+            site.handler.handleWriteAttribute({
+                nodeId: NODE_ID,
+                endpointId: ENDPOINT,
+                clusterId: THERMOSTAT,
+                attributeId: PRESETS,
+                value: [],
+            }),
+            { macrotasks: true },
+        );
+        expect(plainWrite.status).equals(Status.Busy);
+        const commit = await atomicRequest(Thermostat.RequestType.CommitWrite);
+        expect(commit.statusCode).equals(Status.Success);
+    });
+
+    it("counts the BUSY time after a failed rollback from the BeginWrite answer", async () => {
+        deviceAnswers.rollback = Status.Failure;
+        deviceAnswers.rollbackDelay = Millis(5_000);
+        const writePresets = async () => {
+            const [{ status }] = await MockTime.resolve(
+                site.handler.handleWriteAttribute({
+                    nodeId: NODE_ID,
+                    endpointId: ENDPOINT,
+                    clusterId: THERMOSTAT,
+                    attributeId: PRESETS,
+                    value: [],
+                }),
+                { macrotasks: true },
+            );
+            return status;
+        };
+
+        // The device grants 9 s; 5 s of it pass before the rollback fails, so about 4 s remain.
+        const refused = await writeAtomic({ value: [wirePreset(1900, "named")], atomicTimeoutMs: Millis(20_000) });
+
+        expect(refused.status).equals(Status.ConstraintError);
+        expect(await writePresets()).equals(Status.Busy);
+        await site.settle(Millis(3_000));
+        expect(await writePresets()).equals(Status.Busy);
+        await site.settle(Millis(1_500));
+        expect(await writePresets()).equals(Status.InvalidInState);
+    });
+
+    it("answers INVALID_IN_STATE while another atomic write is open and does not roll it back", async () => {
+        const held = await atomicRequest(Thermostat.RequestType.BeginWrite);
+        expect(held.statusCode).equals(Status.Success);
+        received.length = 0;
+
+        const refused = await writeAtomic({ value: [wirePreset(1900)] });
+
+        expect(refused.status).equals(Status.InvalidInState);
+        expect(received).deep.equals(["BeginWrite"]);
+        const commit = await atomicRequest(Thermostat.RequestType.CommitWrite);
+        expect(commit.statusCode).equals(Status.Success);
+    });
+
+    describe("with three stored presets", () => {
+        // The test device draws every new handle from the same mock random bytes, so these presets get theirs here.
+        beforeEach(async () => {
+            await site.close();
+            await startSite(
+                [Occupied, Unoccupied, Sleep].map(presetScenario => ({
+                    presetHandle: new Uint8Array(16).fill(presetScenario),
+                    presetScenario,
+                    coolingSetpoint: 2600,
+                    heatingSetpoint: 2000,
+                    builtIn: false,
+                })),
+            );
+        });
+
+        const withHeating = (heating: number[]) =>
+            storedAsWire().map((preset, index) => ({ ...preset, "4": heating[index] }));
+
+        it("commits the changed list, untimed and timed", async () => {
+            const untimed = await writeAtomic({ value: withHeating([1700, 1800, 1900]) });
+            const timed = await writeAtomic({
+                value: withHeating([1600, 1700, 1800]),
+                dataVersion: undefined,
+                timedInteractionTimeoutMs: Millis(2000),
+            });
+
+            expect([untimed.status, timed.status]).deep.equals([Status.Success, Status.Success]);
+            expect(storedPresets().map(({ heatingSetpoint }) => heatingSetpoint)).deep.equals([1600, 1700, 1800]);
+        });
+
+        it("rolls back the whole list with a stale data version", async () => {
+            const result = await writeAtomic({
+                value: withHeating([1700, 1800, 1900]),
+                dataVersion: await staleDataVersion(),
+            });
+
+            expect(result.status).equals(Status.DataVersionMismatch);
+            expect(received).deep.equals(["BeginWrite", "Write", "RollbackWrite"]);
+            expect(storedPresets().map(({ heatingSetpoint }) => heatingSetpoint)).deep.equals([2000, 2000, 2000]);
+        });
+    });
+});

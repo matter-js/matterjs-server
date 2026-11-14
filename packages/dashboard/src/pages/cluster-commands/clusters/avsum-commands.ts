@@ -27,6 +27,7 @@ import {
     AVSUM_CLUSTER_ID,
     clampMptzDelta,
     moveToPreset,
+    PRESET_NAME_MAX_BYTES,
     readDptzStreams,
     readFeatures,
     readMovementState,
@@ -375,10 +376,10 @@ class AvsumClusterCommands extends BaseClusterCommands {
     private async _renamePreset(presetId: number, currentName: string) {
         const node = this.node;
         const endpoint = this.endpoint;
-        const next = window.prompt("New name (max 32 chars)", currentName);
+        const next = window.prompt(`New name (max ${PRESET_NAME_MAX_BYTES} bytes)`, currentName);
         if (typeof next !== "string" || !next.trim()) return;
         try {
-            await savePreset(this.client, node.node_id, endpoint, next.trim().slice(0, 32), presetId);
+            await savePreset(this.client, node.node_id, endpoint, next.trim(), presetId);
         } catch (err) {
             if (this.isSameContext(node, endpoint)) {
                 showAlertDialog({ title: "Rename failed", text: err instanceof Error ? err.message : String(err) });
@@ -408,7 +409,7 @@ class AvsumClusterCommands extends BaseClusterCommands {
         if (!this.node) return;
         const node = this.node;
         const endpoint = this.endpoint;
-        const name = this._newPresetName.trim().slice(0, 32);
+        const name = this._newPresetName.trim();
         if (!name) return;
         try {
             await savePreset(this.client, node.node_id, endpoint, name);

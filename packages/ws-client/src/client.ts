@@ -133,6 +133,23 @@ export interface WriteAttributeOptions {
     timeout?: number;
 }
 
+/** Options for {@link MatterClient.writeAtomicAttribute}. */
+export interface WriteAtomicAttributeOptions {
+    /** Writes without a data version check; the server refuses it together with a data version. */
+    skipDataVersionCheck?: boolean;
+    /** On status 146 (DATA_VERSION_MISMATCH), write again without the data version, in the same atomic write. */
+    ignoreDataVersionMismatch?: boolean;
+    /**
+     * Sends the write as a timed write with this timeout (0 to 65535 ms). A timed write, by a value above 0 or because
+     * the attribute requires one, needs `skipDataVersionCheck` instead of a data version.
+     */
+    timedRequestTimeoutMs?: number;
+    /** How long the device holds the pending write (1 to 65535 ms, server default 30000); the device may shorten it. */
+    atomicTimeoutMs?: number;
+    /** Per-call command timeout in ms (overrides {@link MatterClient.commandTimeout}). */
+    timeout?: number;
+}
+
 /** Options for the credential set/remove commands. */
 export interface CredentialCommandOptions {
     /** Named credential entry id (schema 12); omit for the reserved `default` entry. */
@@ -635,6 +652,37 @@ export class MatterClient {
         );
     }
 
+    /**
+     * Schema 15. Writes an attribute with the Atomic quality inside one atomic write: the server sends BeginWrite, the
+     * write and CommitWrite, or RollbackWrite when the write fails. The server refuses any other attribute.
+     * `dataVersion` is the cluster's data version as {@link read} reports it; the device refuses the write with status
+     * 146 (DATA_VERSION_MISMATCH) when the cluster changed since. Pass `undefined` only together with
+     * `skipDataVersionCheck`.
+     */
+    async writeAtomicAttribute(
+        nodeId: number | bigint,
+        attributePath: string,
+        value: unknown,
+        dataVersion: number | undefined,
+        opts: WriteAtomicAttributeOptions = {},
+    ): Promise<ResponseOf<"write_atomic_attribute">> {
+        return await this.sendCommand(
+            "write_atomic_attribute",
+            15,
+            {
+                node_id: nodeId,
+                attribute_path: attributePath,
+                value,
+                data_version: dataVersion,
+                skip_data_version_check: opts.skipDataVersionCheck,
+                ignore_data_version_mismatch: opts.ignoreDataVersionMismatch,
+                timed_request_timeout_ms: opts.timedRequestTimeoutMs,
+                atomic_timeout_ms: opts.atomicTimeoutMs,
+            },
+            opts.timeout,
+        );
+    }
+
     async checkNodeUpdate(nodeId: number | bigint, timeout?: number): Promise<MatterSoftwareVersion | null> {
         // Check if there is an update for a particular node.
         // Reads the current software version and checks the DCL if there is an update
@@ -656,7 +704,8 @@ export class MatterClient {
      * Store a locally-uploaded .ota firmware file in the server's OTA image store.
      *
      * Two steps: the WebSocket session authorizes the upload and reserves a slot, then the bytes go
-     * over HTTP against the returned single-use id.
+     * over HTTP against the returned single-use id. Fails on a server without `--enable-test-net-dcl`, which serves
+     * no local image to a node.
      */
     async uploadOtaFile(file: Blob, timeout?: number): Promise<MatterSoftwareVersion> {
         // An oversized image is rejected by the server (413) rather than here: a reservation holds

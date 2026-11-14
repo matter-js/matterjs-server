@@ -189,4 +189,20 @@ describe("write_attribute on a commissioned device", () => {
         ]);
         expect(site.light.stateOf("onOff").onTime).equals(3);
     });
+
+    // Characterization: matter.js refuses the value, this server only passes the status on.
+    it("answers CONSTRAINT_ERROR for a node label of 32 characters but more than 32 bytes", async () => {
+        const results = await MockTime.resolve(
+            site.handler.handleWriteAttribute({
+                nodeId: NODE_ID,
+                clusterId: ClusterId(0x28),
+                attributeId: AttributeId(5),
+                endpointId: EndpointNumber(0),
+                value: "Küchenlicht Erdgeschoss West Süd",
+            }),
+            { macrotasks: true },
+        );
+
+        expect(results.map(({ status }) => status)).deep.equals([Status.ConstraintError]);
+    });
 });

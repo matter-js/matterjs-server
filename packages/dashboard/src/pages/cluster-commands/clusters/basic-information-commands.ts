@@ -11,7 +11,7 @@ import { customElement, state } from "lit/decorators.js";
 import { showAlertDialog } from "../../../components/dialog-box/show-dialog-box.js";
 import { handleAsync } from "../../../util/async-handler.js";
 import { errorText } from "../../../util/error-text.js";
-import { MAX_NODE_LABEL_LENGTH, NODE_LABEL_CLUSTER_ID, writeNodeLabel } from "../../../util/node-label.js";
+import { NODE_LABEL_MAX_BYTES, NODE_LABEL_CLUSTER_ID, writeNodeLabel } from "../../../util/node-label.js";
 import { onEnter } from "../../../util/on-enter.js";
 import { BaseClusterCommands } from "../base-cluster-commands.js";
 import { registerClusterCommands } from "../registry.js";
@@ -69,9 +69,8 @@ export class BasicInformationClusterCommands extends BaseClusterCommands {
                             .value=${this._nodeLabel}
                             @input=${this._handleInput}
                             @keydown=${onEnter(handleAsync(() => this._handleSave()))}
-                            maxlength=${MAX_NODE_LABEL_LENGTH}
                             ?disabled=${!this._isNodeAvailable || this._saving}
-                            supporting-text="Max ${MAX_NODE_LABEL_LENGTH} characters"
+                            supporting-text="Max ${NODE_LABEL_MAX_BYTES} bytes"
                         ></md-outlined-text-field>
                         <md-filled-button
                             @click=${handleAsync(() => this._handleSave())}

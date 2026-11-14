@@ -10,6 +10,15 @@ The server-side constants live in `packages/ws-controller/src/server/WebSocketCo
 (`SCHEMA_VERSION`, `MIN_SUPPORTED_SCHEMA_VERSION`). Versions predating this document are not
 listed retroactively; entries start at the first version maintained here.
 
+## Schema 15
+
+Minimum supported: 11.
+
+- **`write_atomic_attribute`** (new) writes an attribute with the Atomic quality, such as the Thermostat `Presets`,
+  inside one atomic write run by the server. It takes the cluster's `data_version` from `read`, or
+  `skip_data_version_check`. While it runs, other writes to the cluster's Atomic attributes answer BUSY. See
+  [websockets_api.md](websockets_api.md#attribute-operations).
+
 ## Schema 14
 
 Minimum supported: 11 (older clients keep working with the pre-14 command shapes).
@@ -218,11 +227,11 @@ See `packages/ws-client/src/models/model.ts` for the exact `NetworkTopology` / `
 
 ### OTA firmware upload
 
-- **New command `initiate_ota_upload`** (no arguments) → `{ upload_id, expires_in, max_size }`. Authorizes exactly one upload of a local `.ota` firmware image and claims one of the server's limited in-flight upload slots. `upload_id` is a random 32-hex string, single-use, bound to the client that reserved it, and valid for `expires_in` seconds — that window bounds when the following POST may *start*; the transfer itself is bounded by `max_size` (bytes), not by time. Fails with `OtaUploadError` (101) when OTA support is disabled (`--disable-ota`) or all slots are taken (`--ota-upload-max-in-flight`, default 5).
+- **New command `initiate_ota_upload`** (no arguments) → `{ upload_id, expires_in, max_size }`. Authorizes exactly one upload of a local `.ota` firmware image and claims one of the server's limited in-flight upload slots. `upload_id` is a random 32-hex string, single-use, bound to the client that reserved it, and valid for `expires_in` seconds — that window bounds when the following POST may *start*; the transfer itself is bounded by `max_size` (bytes), not by time. Fails with `OtaUploadError` (101) when OTA support is disabled (`--disable-ota`), when the server runs without `--enable-test-net-dcl` (local images are only served with it), or when all slots are taken (`--ota-upload-max-in-flight`, default 5).
 - **New HTTP endpoint `POST /ota-upload/<upload_id>`** on the same listener as `/ws` — not a WebSocket command, so a firmware image neither pays the ~33% base64 overhead nor has to be buffered whole in memory. Body is the raw `.ota` bytes. Answers `200` with a `MatterSoftwareVersion` (`update_source: "local"`), `400` `{ error_code, message }` for a corrupt image / unknown / expired / already-used / foreign-client id, `404` for a malformed id, `413` when the image exceeds `max_size` (`--ota-upload-max-size-mb`, default 64). The reservation and the staged file are always discarded before the response is sent, success or failure.
 - **New error code `OtaUploadError` = 101** (OHF extension; python-matter-server codes stop at 11).
-- Stored images are indexed by the vendor ID / product ID / software version in their header, not against a node: `check_node_update` surfaces one for any node whose vendor/product matches (its cached answer for that vendor/product is dropped on upload). *Test* images are only served when the server also runs with `--enable-test-net-dcl`, the same restriction that applies to `--ota-provider-dir`.
-- **Clients detect support via `server_info.schema_version >= 13`** — the endpoint is unavailable both on older servers and when OTA is disabled.
+- Stored images are indexed by the vendor ID / product ID / software version in their header, not against a node: `check_node_update` surfaces one for any node whose vendor/product matches (its cached answer for that vendor/product is dropped on upload). Local images, like test images, are only served when the server also runs with `--enable-test-net-dcl`, the same restriction that applies to `--ota-provider-dir`.
+- **Clients detect support via `server_info.schema_version >= 13`** — the endpoint is unavailable on older servers, when OTA is disabled, and when the server runs without `--enable-test-net-dcl` (`schema_version` does not show these two cases; `initiate_ota_upload` fails with `OtaUploadError`).
 
 ## Schema 12
 

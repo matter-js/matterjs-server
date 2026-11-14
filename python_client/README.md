@@ -76,7 +76,7 @@ Beyond the `python-matter-server` API, the client exposes commands the Matter.js
 - `upload_ota_file(image)` — store a local `.ota` firmware image in the server's OTA image store
   (schema 13+). Takes the raw bytes or a path; reserves an upload id over the WebSocket session,
   then streams the bytes to `POST /ota-upload/<upload_id>`. Raises `OtaUploadError` (code 101) for a
-  corrupt image, an expired/spent id, or disabled OTA support.
+  corrupt image, an expired/spent id, disabled OTA support, or a server without `--enable-test-net-dcl`.
 - `get_icd_state`, `register_icd`, `unregister_icd`, `resync_icd` — ICD Check-In registration
 - `read`, `subscribe`, `unsubscribe`, `enable_auto_subscription`, `disable_auto_subscription` — Matter
   read and subscribe requests with explicit paths (schema 14+). `read` returns an `InteractionReport`,
@@ -97,6 +97,10 @@ Beyond the `python-matter-server` API, the client exposes commands the Matter.js
   one `BatchedCommandResult` per command (schema 14+)
 - `write_attribute` takes `*` as the endpoint to write all endpoints of the node that have the attribute, and
   `timed_request_timeout_ms` for a timed write (schema 14+)
+- `write_atomic_attribute` — writes an attribute that requires atomic writes, such as the Thermostat presets, with
+  the whole atomic write done by the server; takes the cluster's `data_version` from `read`, or
+  `skip_data_version_check=True` with `data_version=None`, and `ignore_data_version_mismatch`; same result as
+  `write_attribute` (schema 15+)
 - `parse_onboarding_payload` — decodes a QR code or manual pairing code without contacting a device and returns
   `QrOnboardingPayloadResult` or `ManualOnboardingPayloadResult` (schema 14+)
 - `camera_get_capabilities`, `camera_start_stream`, `camera_provide_answer`,

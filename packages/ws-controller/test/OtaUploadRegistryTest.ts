@@ -29,6 +29,7 @@ const IMAGE_INFO: OtaImageInfo = {
 
 class TestController implements OtaUploadController {
     otaEnabled = true;
+    localOtaImagesEnabled = true;
     storeError?: Error;
     readonly storedPaths = new Array<string>();
     readonly invalidated = new Array<[number, number]>();
@@ -93,6 +94,15 @@ describe("OtaUploadRegistry", () => {
 
             const error = await expectOtaUploadError(() => uploads.initiateOtaUpload());
             expect(error.message).to.include("OTA is disabled");
+        });
+
+        it("refuses to issue an id while local OTA images are not offered", async () => {
+            controller.localOtaImagesEnabled = false;
+            const uploads = registry();
+
+            const error = await expectOtaUploadError(() => uploads.initiateOtaUpload());
+            expect(error.message).to.include("--enable-test-net-dcl");
+            expect(uploads.inFlight).to.equal(0);
         });
 
         it("holds a slot from issue time, before any upload arrives", async () => {

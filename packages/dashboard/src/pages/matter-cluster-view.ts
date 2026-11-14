@@ -18,6 +18,7 @@ import { customElement, property, state } from "lit/decorators.js";
 import { unsafeHTML } from "lit/directives/unsafe-html.js";
 import { clientContext, tickContext } from "../client/client-context.js";
 import { clusters } from "../client/models/descriptions.js";
+import { renderChipList } from "../components/chip-list.js";
 import { showAlertDialog } from "../components/dialog-box/show-dialog-box.js";
 import { showAttributeWriteDialog } from "../components/dialogs/dev/show-attribute-write-dialog.js";
 import { showCommandInvokeDialog } from "../components/dialogs/dev/show-command-invoke-dialog.js";
@@ -30,6 +31,13 @@ import { computeActiveClusterFeatures } from "../util/cluster-features.js";
 import { DevModeService } from "../util/dev-mode-service.js";
 import { getEndpointLabel } from "../util/endpoint-label.js";
 import { formatHex, formatNodeAddress, getEffectiveFabricIndex } from "../util/format_hex.js";
+import {
+    decodeLabelList,
+    describeLabelListEntry,
+    FIXED_LABEL_CLUSTER_ID,
+    LABEL_LIST_ATTR,
+    USER_LABEL_CLUSTER_ID,
+} from "../util/label-list.js";
 import { decodeSemanticTagList, DESCRIPTOR_CLUSTER_ID, TAG_LIST_ATTR } from "../util/semantic-tags.js";
 import { infoPanelStyles, notFoundStyles } from "../util/shared-styles.js";
 import {
@@ -418,7 +426,11 @@ class MatterClusterView extends LitElement {
 
     private _renderClusterInfoPanel(): TemplateResult | typeof nothing {
         const sections = new Array<TemplateResult>();
-        for (const section of [this._renderFeaturesSection(), this._renderTagListSection()]) {
+        for (const section of [
+            this._renderFeaturesSection(),
+            this._renderTagListSection(),
+            this._renderLabelListSection(),
+        ]) {
             if (section !== undefined) sections.push(section);
         }
         if (sections.length === 0) return nothing;
@@ -475,6 +487,28 @@ class MatterClusterView extends LitElement {
             <div class="info-section">
                 <div class="info-section-header">Semantic Tags (TagList)</div>
                 ${tagList.length === 0 ? html`<p class="empty">No semantic tags</p>` : renderSemanticTagChips(tagList)}
+            </div>
+        `;
+    }
+
+    private _renderLabelListSection(): TemplateResult | undefined {
+        if (this.cluster !== USER_LABEL_CLUSTER_ID && this.cluster !== FIXED_LABEL_CLUSTER_ID) return undefined;
+        if (!this.node) return undefined;
+
+        const value = this.node.attributes[`${this.endpoint}/${this.cluster}/${LABEL_LIST_ATTR}`];
+        const labelList = decodeLabelList(value);
+        if (labelList === undefined) return undefined;
+
+        const title = this.cluster === USER_LABEL_CLUSTER_ID ? "User Labels (LabelList)" : "Fixed Labels (LabelList)";
+
+        return html`
+            <div class="info-section">
+                <div class="info-section-header">${title}</div>
+                ${
+                    labelList.length === 0
+                        ? html`<p class="empty">No labels</p>`
+                        : renderChipList(labelList.map(describeLabelListEntry))
+                }
             </div>
         `;
     }
