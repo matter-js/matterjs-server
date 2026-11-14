@@ -60,6 +60,8 @@ export interface OtaImageInfo {
  */
 export interface OtaUploadController {
     readonly otaEnabled: boolean;
+    /** Whether the OTA provider serves local images to nodes, which matter.js ties to allowing test images. */
+    readonly localOtaImagesEnabled: boolean;
     storeOtaImage(filePath: string): Promise<OtaImageInfo>;
     readonly commandHandler: {
         invalidateAvailableUpdates(vendorId: number, productId: number): void;
@@ -138,6 +140,11 @@ export class OtaUploadRegistry implements OtaUploadStaging {
     async initiateOtaUpload(peerAddress?: string): Promise<OtaUploadTicket> {
         if (!this.#controller.otaEnabled) {
             throw ServerError.otaUploadError("OTA is disabled");
+        }
+        if (!this.#controller.localOtaImagesEnabled) {
+            throw ServerError.otaUploadError(
+                "Uploading OTA images requires the server option --enable-test-net-dcl, without which devices are not offered uploaded images",
+            );
         }
 
         await this.sweepExpired();

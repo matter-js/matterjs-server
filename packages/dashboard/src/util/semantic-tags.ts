@@ -5,9 +5,9 @@
  */
 
 import type { MatterNode } from "@matter-server/ws-client";
-import { toBigIntAwareJson } from "@matter-server/ws-client";
 import { semantic_tag_namespaces } from "../client/models/descriptions.js";
 import { attributeArray } from "./access-control.js";
+import { describeRawEntry, type ChipText } from "./chip-text.js";
 import { formatHex } from "./format_hex.js";
 
 // Descriptor cluster and its TagList attribute (semantic tags for the endpoint)
@@ -68,18 +68,9 @@ export function getEndpointSemanticTags(node: MatterNode, endpoint: number): Sem
     return readEndpointTagList(node, endpoint) ?? [];
 }
 
-const RAW_ENTRY_TEXT_MAX = 60;
-
-export function describeSemanticTagListEntry(entry: SemanticTagListEntry): {
-    text: string;
-    title: string;
-    erroneous: boolean;
-} {
+export function describeSemanticTagListEntry(entry: SemanticTagListEntry): ChipText {
     if (entry.kind === "tag") return { ...describeSemanticTag(entry.semtag), erroneous: false };
-
-    const raw = entry.raw === undefined ? "undefined" : toBigIntAwareJson(entry.raw);
-    const text = raw.length > RAW_ENTRY_TEXT_MAX ? `${raw.slice(0, RAW_ENTRY_TEXT_MAX - 1)}…` : raw;
-    return { text, title: `Not a SemanticTagStruct: ${raw}`, erroneous: true };
+    return describeRawEntry(entry.raw, "SemanticTagStruct");
 }
 
 // Renders a single semantic tag as "Namespace → Tag", falling back to raw ids when the

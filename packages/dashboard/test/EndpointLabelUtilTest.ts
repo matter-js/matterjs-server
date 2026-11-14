@@ -71,7 +71,12 @@ describe("endpoint-label util", () => {
             expect(getEndpointLabel(n, 1)).to.equal("Garden");
         });
 
-        it("rejects a NUL-padded label the way MatterNode.nodeLabel does", () => {
+        it("uses the Value of a LabelStruct whose Label is malformed", () => {
+            const n = node({ "1/65/0": [{ "0": null, "1": "Kitchen" }] });
+            expect(getEndpointLabel(n, 1)).to.equal("Kitchen");
+        });
+
+        it("rejects a NUL-padded BridgedDeviceBasicInformation NodeLabel and falls back to UserLabel", () => {
             const n = node({
                 "1/57/5": "Kitchen Plug\u0000\u0000\u0000",
                 "1/65/0": [{ "0": "room", "1": "Kitchen" }],
