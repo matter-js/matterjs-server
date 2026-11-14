@@ -409,6 +409,7 @@ jobs:
               with:
                   labels: &oci_metadata |
                       org.opencontainers.image.authors=Open Home Foundation
+                      org.opencontainers.image.vendor=Open Home Foundation
                       org.opencontainers.image.documentation=${{ github.server_url }}/${{ github.repository }}/blob/main/docs/docker.md
                       org.opencontainers.image.version=${{ steps.version.outputs.result }}
                       org.opencontainers.image.revision=${{ steps.release_commit.outputs.revision }}
