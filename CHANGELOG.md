@@ -6,7 +6,7 @@ This page shows a detailed overview of the changes between versions without the 
 	Placeholder for the next version (at the beginning of the line):
 	## **WORK IN PROGRESS**
 -->
-## **WORK IN PROGRESS**
+## 1.6.0 (2026-11-14)
 
 - Important (Fix): Uploading an OTA firmware file requires `--enable-test-net-dcl`, because the OTA provider only serves local images to a node while test images are allowed. Without it, `initiate_ota_upload` fails instead of storing an image that no node can download
 - Feature: The new `write_atomic_attribute` command writes attributes that a device only accepts inside an atomic write, such as the thermostat presets. The dashboard's thermostat preset editor uses it. This needs WebSocket schema 15 — see [WebSocket API schema changelog](docs/websocket-api-schema-changelog.md)
