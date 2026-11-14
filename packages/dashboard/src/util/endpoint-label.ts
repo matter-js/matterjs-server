@@ -5,8 +5,14 @@
  */
 
 import type { MatterNode } from "@matter-server/ws-client";
-import { toText } from "./attribute-shapes.js";
-import { decodeLabelList, FIXED_LABEL_CLUSTER_ID, LABEL_LIST_ATTR, USER_LABEL_CLUSTER_ID } from "./label-list.js";
+import { attributeArray } from "./access-control.js";
+import { tagField, toText } from "./attribute-shapes.js";
+import {
+    FIXED_LABEL_CLUSTER_ID,
+    LABEL_LIST_ATTR,
+    LABEL_STRUCT_VALUE_TAG,
+    USER_LABEL_CLUSTER_ID,
+} from "./label-list.js";
 
 // BridgedDeviceBasicInformation cluster (0x39 / 57): carries its own NodeLabel per bridged
 // endpoint, distinct from the whole-node BasicInformation NodeLabel on endpoint 0.
@@ -17,21 +23,18 @@ const BRIDGED_NODE_LABEL_ATTRIBUTE_ID = 5;
 const MAX_LABEL_ENTRIES = 3;
 const MAX_LABEL_LENGTH = 60;
 
-/**
- * A device padding a fixed-width label field with NULs reports the padding as text;
- * `MatterNode.nodeLabel` rejects the same shape rather than rendering it.
- */
+/** A device padding a fixed-width label field with NULs reports the padding as text. */
 function labelText(value: unknown): string | undefined {
     const text = toText(value);
     return text === undefined || text.includes("\u0000") ? undefined : text;
 }
 
-// Only the Value half of each LabelStruct (Label is the category, e.g. "room") is useful for
-// identifying an endpoint at a glance.
+// Best effort: only the Value of each LabelStruct identifies the endpoint (Label is the category,
+// e.g. "room"), so a malformed Label does not hide a usable Value.
 function decodeLabelListValues(raw: unknown): string[] {
-    return (decodeLabelList(raw) ?? [])
-        .map(entry => (entry.kind === "label" ? entry.item.value : undefined))
-        .filter((value): value is string => value !== undefined && value.length > 0);
+    return attributeArray(raw)
+        .map(entry => labelText(tagField(entry, LABEL_STRUCT_VALUE_TAG)))
+        .filter((value): value is string => value !== undefined);
 }
 
 function joinLabels(values: string[]): string | undefined {

@@ -18,10 +18,10 @@ import { customElement, property, state } from "lit/decorators.js";
 import { unsafeHTML } from "lit/directives/unsafe-html.js";
 import { clientContext, tickContext } from "../client/client-context.js";
 import { clusters } from "../client/models/descriptions.js";
+import { renderChipList } from "../components/chip-list.js";
 import { showAlertDialog } from "../components/dialog-box/show-dialog-box.js";
 import { showAttributeWriteDialog } from "../components/dialogs/dev/show-attribute-write-dialog.js";
 import { showCommandInvokeDialog } from "../components/dialogs/dev/show-command-invoke-dialog.js";
-import { renderLabelListChips } from "../components/label-list-chips.js";
 import { renderSemanticTagChips } from "../components/semantic-tag-chips.js";
 import "../components/ha-svg-icon";
 import "../pages/components/node-details";
@@ -31,7 +31,13 @@ import { computeActiveClusterFeatures } from "../util/cluster-features.js";
 import { DevModeService } from "../util/dev-mode-service.js";
 import { getEndpointLabel } from "../util/endpoint-label.js";
 import { formatHex, formatNodeAddress, getEffectiveFabricIndex } from "../util/format_hex.js";
-import { decodeLabelList, FIXED_LABEL_CLUSTER_ID, LABEL_LIST_ATTR, USER_LABEL_CLUSTER_ID } from "../util/label-list.js";
+import {
+    decodeLabelList,
+    describeLabelListEntry,
+    FIXED_LABEL_CLUSTER_ID,
+    LABEL_LIST_ATTR,
+    USER_LABEL_CLUSTER_ID,
+} from "../util/label-list.js";
 import { decodeSemanticTagList, DESCRIPTOR_CLUSTER_ID, TAG_LIST_ATTR } from "../util/semantic-tags.js";
 import { infoPanelStyles, notFoundStyles } from "../util/shared-styles.js";
 import {
@@ -498,7 +504,11 @@ class MatterClusterView extends LitElement {
         return html`
             <div class="info-section">
                 <div class="info-section-header">${title}</div>
-                ${labelList.length === 0 ? html`<p class="empty">No labels</p>` : renderLabelListChips(labelList)}
+                ${
+                    labelList.length === 0
+                        ? html`<p class="empty">No labels</p>`
+                        : renderChipList(labelList.map(describeLabelListEntry))
+                }
             </div>
         `;
     }

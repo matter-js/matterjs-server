@@ -23,19 +23,47 @@ describe("decodeLabelList", () => {
         expect(decodeLabelList(undefined)).to.be.undefined;
     });
 
-    it("defaults a missing Label or Value field to an empty string", () => {
-        expect(decodeLabelList([{ "1": "Kitchen" }])).to.deep.equal([
-            { kind: "label", item: { label: "", value: "Kitchen" } },
+    it("returns undefined when the attribute was removed", () => {
+        expect(decodeLabelList(null)).to.be.undefined;
+    });
+
+    it("accepts empty and blank strings, which the spec allows for both fields", () => {
+        expect(decodeLabelList([{ "0": "", "1": "" }])).to.deep.equal([
+            { kind: "label", item: { label: "", value: "" } },
         ]);
-        expect(decodeLabelList([{ "0": "room" }])).to.deep.equal([
-            { kind: "label", item: { label: "room", value: "" } },
+        expect(decodeLabelList([{ "0": "room", "1": "   " }])).to.deep.equal([
+            { kind: "label", item: { label: "room", value: "   " } },
         ]);
     });
 
-    it("keeps entries that aren't LabelStruct-shaped as raw", () => {
-        expect(decodeLabelList([1, { foo: "bar" }])).to.deep.equal([
-            { kind: "raw", raw: 1 },
-            { kind: "raw", raw: { foo: "bar" } },
+    it("keeps an entry with a missing Label or Value as raw, since both fields are mandatory", () => {
+        expect(decodeLabelList([{ "1": "Kitchen" }, { "0": "room" }])).to.deep.equal([
+            { kind: "raw", raw: { "1": "Kitchen" } },
+            { kind: "raw", raw: { "0": "room" } },
+        ]);
+    });
+
+    it("keeps an entry with a non-string Label or Value as raw", () => {
+        expect(
+            decodeLabelList([
+                { "0": "count", "1": 3 },
+                { "0": null, "1": "Kitchen" },
+            ]),
+        ).to.deep.equal([
+            { kind: "raw", raw: { "0": "count", "1": 3 } },
+            { kind: "raw", raw: { "0": null, "1": "Kitchen" } },
+        ]);
+    });
+
+    it("keeps an entry with NUL characters as raw, so the corrupted text stays visible", () => {
+        expect(
+            decodeLabelList([
+                { "0": "room", "1": "Kitchen\u0000" },
+                { "0": "ro\u0000om", "1": "Kitchen" },
+            ]),
+        ).to.deep.equal([
+            { kind: "raw", raw: { "0": "room", "1": "Kitchen\u0000" } },
+            { kind: "raw", raw: { "0": "ro\u0000om", "1": "Kitchen" } },
         ]);
     });
 
@@ -55,30 +83,6 @@ describe("decodeLabelList", () => {
             { kind: "label", item: { label: "room", value: "Kitchen" } },
         ]);
     });
-
-    it("rejects a NUL-padded Label or Value the way MatterNode.nodeLabel does", () => {
-        expect(decodeLabelList([{ "0": "room\u0000", "1": "Kitchen" }])).to.deep.equal([
-            { kind: "label", item: { label: "", value: "Kitchen" } },
-        ]);
-        expect(decodeLabelList([{ "0": "room", "1": "Kitchen\u0000" }])).to.deep.equal([
-            { kind: "label", item: { label: "room", value: "" } },
-        ]);
-    });
-
-    it("treats a blank Value as absent, not an empty string carrying meaning", () => {
-        expect(decodeLabelList([{ "0": "room", "1": "   " }])).to.deep.equal([
-            { kind: "label", item: { label: "room", value: "" } },
-        ]);
-    });
-
-    it("keeps a non-string Label or Value as a raw entry instead of discarding it", () => {
-        expect(decodeLabelList([{ "0": "count", "1": 3 }])).to.deep.equal([
-            { kind: "raw", raw: { "0": "count", "1": 3 } },
-        ]);
-        expect(decodeLabelList([{ "0": true, "1": "Kitchen" }])).to.deep.equal([
-            { kind: "raw", raw: { "0": true, "1": "Kitchen" } },
-        ]);
-    });
 });
 
 describe("describeLabelListEntry", () => {
@@ -92,15 +96,29 @@ describe("describeLabelListEntry", () => {
         expect(erroneous).to.be.false;
     });
 
-    it("omits the value suffix when the Value is blank", () => {
-        const { text } = describeLabelListEntry({ kind: "label", item: { label: "room", value: "" } });
+    it("shows only the non-empty field when the other one is empty", () => {
+        expect(describeLabelListEntry({ kind: "label", item: { label: "room", value: "" } }).text).to.equal("room");
+        expect(describeLabelListEntry({ kind: "label", item: { label: "", value: "Kitchen" } }).text).to.equal(
+            "Kitchen",
+        );
+    });
+
+    it("trims the chip text but shows the reported strings in the tooltip", () => {
+        const { text, title } = describeLabelListEntry({ kind: "label", item: { label: " room ", value: "   " } });
         expect(text).to.equal("room");
+        expect(title).to.equal('Label " room " = "   "');
+    });
+
+    it("shows a placeholder for a label with both fields empty", () => {
+        const { text, erroneous } = describeLabelListEntry({ kind: "label", item: { label: "", value: "" } });
+        expect(text).to.equal("(empty label)");
+        expect(erroneous).to.be.false;
     });
 
     it("marks a raw entry erroneous and shows its JSON", () => {
         const { text, title, erroneous } = describeLabelListEntry({ kind: "raw", raw: { foo: "bar" } });
         expect(text).to.equal('{"foo":"bar"}');
-        expect(title).to.equal('Not a LabelStruct: {"foo":"bar"}');
+        expect(title).to.equal('Invalid LabelStruct: {"foo":"bar"}');
         expect(erroneous).to.be.true;
     });
 
@@ -109,7 +127,14 @@ describe("describeLabelListEntry", () => {
         const json = JSON.stringify(raw);
         const { text, title } = describeLabelListEntry({ kind: "raw", raw });
         expect(text).to.equal(`${json.slice(0, 59)}…`);
-        expect(title).to.equal(`Not a LabelStruct: ${json}`);
+        expect(title).to.equal(`Invalid LabelStruct: ${json}`);
+    });
+
+    it("keeps a raw entry of exactly the chip limit uncut", () => {
+        const raw = "x".repeat(58);
+        const { text } = describeLabelListEntry({ kind: "raw", raw });
+        expect(text).to.equal(JSON.stringify(raw));
+        expect(text).to.have.length(60);
     });
 
     it("renders an undefined raw entry without crashing", () => {

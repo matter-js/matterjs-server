@@ -4,9 +4,9 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { toBigIntAwareJson } from "@matter-server/ws-client";
 import { attributeArray } from "./access-control.js";
-import { tagField, toText } from "./attribute-shapes.js";
+import { tagField } from "./attribute-shapes.js";
+import { describeRawEntry, type ChipText } from "./chip-text.js";
 
 // FixedLabel (0x40 / 64) and UserLabel (0x41 / 65) both expose a LabelList of LabelStruct
 // entries; either can be present on any endpoint as Matter's generic per-endpoint labeling
@@ -14,6 +14,8 @@ import { tagField, toText } from "./attribute-shapes.js";
 export const FIXED_LABEL_CLUSTER_ID = 64;
 export const USER_LABEL_CLUSTER_ID = 65;
 export const LABEL_LIST_ATTR = 0;
+export const LABEL_STRUCT_LABEL_TAG = 0;
+export const LABEL_STRUCT_VALUE_TAG = 1;
 
 export interface LabelListItem {
     label: string;
@@ -22,37 +24,28 @@ export interface LabelListItem {
 
 export type LabelListEntry = { kind: "label"; item: LabelListItem } | { kind: "raw"; raw: unknown };
 
-/**
- * A device padding a fixed-width label field with NULs reports the padding as text;
- * `MatterNode.nodeLabel` rejects the same shape rather than rendering it.
- */
-function labelText(value: unknown): string | undefined {
-    const text = toText(value);
-    return text === undefined || text.includes("\u0000") ? undefined : text;
+function labelField(raw: unknown): string | undefined {
+    return typeof raw === "string" && !raw.includes("\u0000") ? raw : undefined;
 }
 
-// A field that's absent, or a string blanked out by NUL padding, is a normal "no value" case.
-// A field present with a non-string type is malformed and must not be conflated with "absent" —
-// it has to surface as a raw/error entry so the reported value isn't silently dropped.
-function decodeLabelField(raw: unknown): { text: string; invalid: boolean } {
-    if (raw === undefined) return { text: "", invalid: false };
-    if (typeof raw !== "string") return { text: "", invalid: true };
-    return { text: labelText(raw) ?? "", invalid: false };
-}
-
-// LabelStruct wire entries are field-tag keyed: "0" Label (category, e.g. "room"), "1" Value.
+// Both fields are mandatory, so an entry missing one is flagged instead of taking the spec's empty fallback.
 function decodeLabelListItem(entry: unknown): LabelListItem | undefined {
-    const label = decodeLabelField(tagField(entry, 0));
-    const value = decodeLabelField(tagField(entry, 1));
-    if (label.invalid || value.invalid) return undefined;
-    return label.text === "" && value.text === "" ? undefined : { label: label.text, value: value.text };
+    const label = labelField(tagField(entry, LABEL_STRUCT_LABEL_TAG));
+    const value = labelField(tagField(entry, LABEL_STRUCT_VALUE_TAG));
+    return label === undefined || value === undefined ? undefined : { label, value };
 }
 
-// undefined means the LabelList attribute hasn't been read yet — an empty array means the
-// device reported no labels.
+/**
+ * Decodes a FixedLabel/UserLabel LabelList for display. An entry that is not a LabelStruct with two
+ * strings, or that carries NUL characters, stays a `raw` entry so the reported data remains visible.
+ *
+ * @returns undefined when the attribute was not read or was removed (`null`); an empty array when the
+ *   device reports no labels
+ * @see MatterSpecification.v161.Core § 9.7.4.1
+ */
 export function decodeLabelList(value: unknown): LabelListEntry[] | undefined {
-    if (value === undefined) return undefined;
-    if (!Array.isArray(value) && (typeof value !== "object" || value === null)) return [{ kind: "raw", raw: value }];
+    if (value === undefined || value === null) return undefined;
+    if (typeof value !== "object") return [{ kind: "raw", raw: value }];
 
     return attributeArray(value).map((entry): LabelListEntry => {
         const item = decodeLabelListItem(entry);
@@ -60,16 +53,12 @@ export function decodeLabelList(value: unknown): LabelListEntry[] | undefined {
     });
 }
 
-const RAW_ENTRY_TEXT_MAX = 60;
+export function describeLabelListEntry(entry: LabelListEntry): ChipText {
+    if (entry.kind === "raw") return describeRawEntry(entry.raw, "LabelStruct");
 
-export function describeLabelListEntry(entry: LabelListEntry): { text: string; title: string; erroneous: boolean } {
-    if (entry.kind === "label") {
-        const { label, value } = entry.item;
-        const text = value.length > 0 ? `${label}: ${value}` : label;
-        return { text, title: `Label "${label}" = "${value}"`, erroneous: false };
-    }
-
-    const raw = entry.raw === undefined ? "undefined" : toBigIntAwareJson(entry.raw);
-    const text = raw.length > RAW_ENTRY_TEXT_MAX ? `${raw.slice(0, RAW_ENTRY_TEXT_MAX - 1)}…` : raw;
-    return { text, title: `Not a LabelStruct: ${raw}`, erroneous: true };
+    const label = entry.item.label.trim();
+    const value = entry.item.value.trim();
+    const text = label !== "" && value !== "" ? `${label}: ${value}` : label || value || "(empty label)";
+    const title = `Label ${JSON.stringify(entry.item.label)} = ${JSON.stringify(entry.item.value)}`;
+    return { text, title, erroneous: false };
 }

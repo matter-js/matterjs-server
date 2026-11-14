@@ -125,7 +125,7 @@ describe("describeSemanticTagListEntry", () => {
     it("marks a raw entry erroneous and shows its JSON", () => {
         const { text, title, erroneous } = describeSemanticTagListEntry({ kind: "raw", raw: { foo: "bar" } });
         expect(text).to.equal('{"foo":"bar"}');
-        expect(title).to.equal('Not a SemanticTagStruct: {"foo":"bar"}');
+        expect(title).to.equal('Invalid SemanticTagStruct: {"foo":"bar"}');
         expect(erroneous).to.be.true;
     });
 
@@ -134,7 +134,7 @@ describe("describeSemanticTagListEntry", () => {
         const json = JSON.stringify(raw);
         const { text, title } = describeSemanticTagListEntry({ kind: "raw", raw });
         expect(text).to.equal(`${json.slice(0, 59)}…`);
-        expect(title).to.equal(`Not a SemanticTagStruct: ${json}`);
+        expect(title).to.equal(`Invalid SemanticTagStruct: ${json}`);
     });
 
     it("renders an undefined raw entry without crashing", () => {
