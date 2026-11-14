@@ -39,6 +39,7 @@ import {
     type ThermostatPresetEdit,
     type ThermostatPresetType,
     toPresetEdit,
+    PRESET_WRITE_MIN_SCHEMA,
     writeThermostatPresets,
 } from "../../../util/thermostat-preset-edit.js";
 import {
@@ -366,6 +367,7 @@ class ThermostatClusterCommands extends BaseClusterCommands {
         const heatActive = isFeatureActive(this.node, this.endpoint, "HEAT");
         const coolActive = isFeatureActive(this.node, this.endpoint, "COOL");
         const busy = this._presetWriteOperation !== null;
+        const editable = (this.client?.serverInfo?.schema_version ?? 0) >= PRESET_WRITE_MIN_SCHEMA;
 
         return html`
             <details class="command-panel" open>
@@ -375,6 +377,13 @@ class ThermostatClusterCommands extends BaseClusterCommands {
                     <span class="feature-map-badge">FeatureMap: PRES</span>
                 </summary>
                 <div class="command-content">
+                    ${
+                        editable
+                            ? nothing
+                            : html`<p class="empty">
+                                  Editing presets needs a server with schema ${PRESET_WRITE_MIN_SCHEMA} or newer.
+                              </p>`
+                    }
                     ${
                         presets === undefined
                             ? html`<p class="empty">Presets attribute not available.</p>`
@@ -392,13 +401,13 @@ class ThermostatClusterCommands extends BaseClusterCommands {
                                                       coolActive,
                                                       busy,
                                                   )
-                                                : this._renderPresetRow(p, p.handle === activeHandle, busy),
+                                                : this._renderPresetRow(p, p.handle === activeHandle, busy, editable),
                                         )}
                                     </ul>
                                 `
                     }
                     ${
-                        presets === undefined
+                        presets === undefined || !editable
                             ? nothing
                             : this._renderAddPresetForm(presets, presetTypes, heatActive, coolActive, busy)
                     }
@@ -407,7 +416,12 @@ class ThermostatClusterCommands extends BaseClusterCommands {
         `;
     }
 
-    private _renderPresetRow(preset: ThermostatPreset, isActive: boolean, busy: boolean): TemplateResult {
+    private _renderPresetRow(
+        preset: ThermostatPreset,
+        isActive: boolean,
+        busy: boolean,
+        editable: boolean,
+    ): TemplateResult {
         const activating = this._activateOperation !== null;
         const removeBlockedReason = preset.builtIn
             ? "Built-in presets cannot be removed"
@@ -451,22 +465,28 @@ class ThermostatClusterCommands extends BaseClusterCommands {
                               </md-outlined-icon-button>
                           `
                 }
-                <md-outlined-icon-button
-                    title="Edit preset"
-                    aria-label="Edit preset"
-                    ?disabled=${busy}
-                    @click=${() => this._startEditPreset(preset)}
-                >
-                    <ha-svg-icon .path=${mdiPencilOutline}></ha-svg-icon>
-                </md-outlined-icon-button>
-                <md-outlined-icon-button
-                    title=${removeBlockedReason ?? "Remove preset"}
-                    aria-label="Remove preset"
-                    ?disabled=${busy || activating || removeBlockedReason !== null}
-                    @click=${handleAsync(() => this._handleDeletePreset(preset))}
-                >
-                    <ha-svg-icon .path=${mdiTrashCanOutline}></ha-svg-icon>
-                </md-outlined-icon-button>
+                ${
+                    editable
+                        ? html`
+                              <md-outlined-icon-button
+                                  title="Edit preset"
+                                  aria-label="Edit preset"
+                                  ?disabled=${busy}
+                                  @click=${() => this._startEditPreset(preset)}
+                              >
+                                  <ha-svg-icon .path=${mdiPencilOutline}></ha-svg-icon>
+                              </md-outlined-icon-button>
+                              <md-outlined-icon-button
+                                  title=${removeBlockedReason ?? "Remove preset"}
+                                  aria-label="Remove preset"
+                                  ?disabled=${busy || activating || removeBlockedReason !== null}
+                                  @click=${handleAsync(() => this._handleDeletePreset(preset))}
+                              >
+                                  <ha-svg-icon .path=${mdiTrashCanOutline}></ha-svg-icon>
+                              </md-outlined-icon-button>
+                          `
+                        : nothing
+                }
             </li>
         `;
     }

@@ -5,7 +5,7 @@
  */
 
 import type { MatterClient, MatterNode } from "@matter-server/ws-client";
-import { asObject, pickArray, pickNumber } from "./attribute-shapes.js";
+import { asObject, pickNumber } from "./attribute-shapes.js";
 import { getMatterStatusName, requireAttributeWriteSuccess } from "./matter-status.js";
 import {
     decodePresets,
@@ -25,20 +25,23 @@ const PRESET_TYPE_SUPPORTS_NAMES = 0x2;
 /** PresetScenarioEnum UserDefined (§4.3.10.17): a preset of this scenario must carry a Name. */
 const PRESET_SCENARIO_USER_DEFINED = 254;
 
-/** How long the device holds our pending Presets write before discarding it (AtomicRequest Timeout, ms). */
-const ATOMIC_WRITE_TIMEOUT_MS = 5_000;
+/** First server schema with `write_atomic_attribute`; older servers cannot write presets for the dashboard. */
+export const PRESET_WRITE_MIN_SCHEMA = 15;
 
-/** Shortest window the device may grant that still fits the read, the timed write and the commit (ms). */
-const MIN_ATOMIC_WRITE_TIMEOUT_MS = 2_000;
+/**
+ * How often a preset write is tried. A DATA_VERSION_MISMATCH mostly comes from another attribute of the cluster, such as
+ * the measured temperature, so the next read usually succeeds.
+ */
+const PRESET_WRITE_ATTEMPTS = 2;
 
-/** Timed-interaction window for the Presets write itself (TimedRequest to WriteRequest, ms). */
-const TIMED_WRITE_TIMEOUT_MS = 3_000;
+/** What a failed preset write means for the user, for the statuses that point at a change made elsewhere. */
+const DATA_VERSION_MISMATCH = 0x92;
 
-enum AtomicRequestType {
-    BeginWrite = 0,
-    CommitWrite = 1,
-    RollbackWrite = 2,
-}
+const PRESET_WRITE_HINTS: Record<number, string> = {
+    [DATA_VERSION_MISMATCH]: "the thermostat changed since its presets were read, try again",
+    0x9c: "another change of the presets is still running, try again",
+    0xcb: "the thermostat ended or refused the edit, try again",
+};
 
 export interface ThermostatPresetType {
     scenario: number;
@@ -164,70 +167,16 @@ export function formatSetpointInput(centidegrees: number | null): string {
     return centidegrees === null ? "" : String(centidegrees / 100);
 }
 
-interface AtomicAttributeStatus {
-    attributeId: number;
-    statusCode: number;
-}
-
-interface AtomicResponse {
-    statusCode: number;
-    attributeStatus: AtomicAttributeStatus[];
-    /** Effective timeout in ms; present only on a BeginWrite response (§7.15.7.3). */
-    timeout: number | null;
-}
-
-/** Command responses are name-keyed (convertMatterToWebSocketNameBased), unlike tag-keyed attribute values. */
-function decodeAtomicResponse(raw: unknown): AtomicResponse {
-    const obj = asObject(raw);
-    const statusCode = obj ? pickNumber(obj, "statusCode") : null;
-    if (!obj || statusCode === null) throw new Error("The device answered AtomicRequest without a status");
-    const attributeStatus = pickArray(obj, "attributeStatus")
-        .map(entry => {
-            const status = asObject(entry);
-            const attributeId = status ? pickNumber(status, "attributeId") : null;
-            const code = status ? pickNumber(status, "statusCode") : null;
-            return attributeId === null || code === null ? null : { attributeId, statusCode: code };
-        })
-        .filter((s): s is AtomicAttributeStatus => s !== null);
-    return { statusCode, attributeStatus, timeout: pickNumber(obj, "timeout") };
-}
-
-async function atomicRequest(
-    client: MatterClient,
-    nodeId: number | bigint,
-    endpoint: number,
-    requestType: AtomicRequestType,
-    attributeRequests: number[],
-    timeout?: number,
-): Promise<AtomicResponse> {
-    return decodeAtomicResponse(
-        await client.deviceCommand(nodeId, endpoint, THERMOSTAT_CLUSTER_ID, "AtomicRequest", {
-            requestType,
-            attributeRequests,
-            timeout,
-        }),
-    );
-}
-
-function describeAtomicFailure(response: AtomicResponse): string {
-    const code = response.attributeStatus.find(s => s.statusCode !== 0)?.statusCode ?? response.statusCode;
-    return `${getMatterStatusName(code)} (${code})`;
-}
-
 /**
  * Replaces the device's Presets list with the list `buildNext` derives from the device's current one. The result is
  * the full intended list, not a diff: per §4.3.11.50 a handle missing from it is a removal (rejected if that preset is
  * built-in, active or used by a schedule transition) and `presetHandle: null` is an addition.
  *
- * Presets may only be written inside the cluster's atomic-write handshake (§7.15.3). The current list is read from the
- * device inside that window, as the §7.15.1 flow describes: another client's BeginWrite gets BUSY while we hold the
- * window (§7.15.6.4.1), and a change by command after our read may fail our commit (§7.15.3) instead of being
- * overwritten. The write is sent timed so the controller does not put the pending list into its cache; the committed
- * list arrives with the next report.
- *
- * A window shorter than {@link MIN_ATOMIC_WRITE_TIMEOUT_MS} is rolled back without writing (§7.15.1 step 1.2). A
- * failed CommitWrite response already discards the pending write on the device (§7.15.6.4.2); any other failure after
- * BeginWrite, including one thrown by `buildNext`, is followed by a RollbackWrite.
+ * Presets may only be written inside an atomic write (§7.15.3), which `write_atomic_attribute` runs on the server. The
+ * current list is read from the device just before, with the cluster's data version. The write carries that version,
+ * so the device refuses it when anything in the cluster changed since the read (status 146) instead of overwriting a
+ * change made elsewhere; the read and the write are then tried once more. The committed list arrives with the next
+ * report. Needs {@link PRESET_WRITE_MIN_SCHEMA}.
  */
 export async function writeThermostatPresets(
     client: MatterClient,
@@ -235,43 +184,25 @@ export async function writeThermostatPresets(
     endpoint: number,
     buildNext: (current: ThermostatPreset[]) => ThermostatPresetEdit[],
 ): Promise<void> {
-    const begin = await atomicRequest(
-        client,
-        nodeId,
-        endpoint,
-        AtomicRequestType.BeginWrite,
-        [ATTR_PRESETS],
-        ATOMIC_WRITE_TIMEOUT_MS,
-    );
-    if (begin.statusCode !== 0) {
-        throw new Error(`Could not start editing presets: ${describeAtomicFailure(begin)}`);
-    }
-    // §7.15.6.4.1: the device may add attributes that share a resource with Presets; commit and rollback name them all.
-    const atomicAttributes =
-        begin.attributeStatus.length > 0 ? begin.attributeStatus.map(s => s.attributeId) : [ATTR_PRESETS];
-
     const path = presetsPath(endpoint);
-    let commit: AtomicResponse;
-    try {
-        if (begin.timeout !== null && begin.timeout < MIN_ATOMIC_WRITE_TIMEOUT_MS) {
-            throw new Error(`The device allows only ${begin.timeout} ms to edit presets, too short to write them`);
+    let results: Array<{ Status: number }>;
+    let attempt = 0;
+    do {
+        attempt++;
+        const report = await client.read({ node_id: nodeId, attribute_paths: [path] });
+        const current = decodePresets(report.attributes[path]);
+        const dataVersion = report.data_versions?.[`${endpoint}/${THERMOSTAT_CLUSTER_ID}`];
+        if (current === undefined || dataVersion === undefined) {
+            throw new Error("The device did not report its presets");
         }
-        const current = decodePresets((await client.readAttribute(nodeId, path, undefined, true))[path]);
-        if (current === undefined) throw new Error("The device did not report its presets");
-        const writeResults = await client.writeAttribute(nodeId, path, buildNext(current).map(toPresetStruct), {
-            timedRequestTimeoutMs: TIMED_WRITE_TIMEOUT_MS,
-        });
-        requireAttributeWriteSuccess(writeResults, "Writing presets failed");
-        commit = await atomicRequest(client, nodeId, endpoint, AtomicRequestType.CommitWrite, atomicAttributes);
-    } catch (error) {
-        await atomicRequest(client, nodeId, endpoint, AtomicRequestType.RollbackWrite, atomicAttributes).catch(
-            (rollbackError: unknown) => console.error("Could not roll back a failed preset write", rollbackError),
-        );
-        throw error;
+        results = await client.writeAtomicAttribute(nodeId, path, buildNext(current).map(toPresetStruct), dataVersion);
+    } while (results[0]?.Status === DATA_VERSION_MISMATCH && attempt < PRESET_WRITE_ATTEMPTS);
+    const status = results[0]?.Status;
+    const hint = status === undefined ? undefined : PRESET_WRITE_HINTS[status];
+    if (status !== undefined && hint !== undefined) {
+        throw new Error(`Writing presets failed: ${hint} (${getMatterStatusName(status)}, ${status})`);
     }
-    if (commit.statusCode !== 0) {
-        throw new Error(`Could not commit preset changes: ${describeAtomicFailure(commit)}`);
-    }
+    requireAttributeWriteSuccess(results, "Writing presets failed");
 }
 
 function presetsPath(endpoint: number): string {

@@ -11,8 +11,11 @@
  */
 
 import { Environment, ServerNode } from "@matter/main";
+import { ThermostatServer } from "@matter/main/behaviors/thermostat";
 import { UserLabelServer } from "@matter/main/behaviors/user-label";
+import { Thermostat } from "@matter/main/clusters/thermostat";
 import { OnOffLightDevice } from "@matter/main/devices/on-off-light";
+import { ThermostatDevice } from "@matter/main/devices/thermostat";
 import { VendorId } from "@matter/main/types";
 import { DEVICE_DISCRIMINATOR, DEVICE_PASSCODE, DEVICE_PORT, MANUAL_PAIRING_CODE } from "../helpers/ProcessHelpers.js";
 
@@ -62,6 +65,24 @@ await node.add(OnOffLightDevice.with(UserLabelServer), {
     id: "light",
     userLabel: {
         labelList: [{ label: "room", value: "bedroom" }],
+    },
+});
+
+// Its Presets attribute can only be written inside an atomic write (write_atomic_attribute).
+await node.add(ThermostatDevice.with(ThermostatServer.with("Heating", "Cooling", "AutoMode", "Presets")), {
+    id: "thermostat",
+    thermostat: {
+        controlSequenceOfOperation: Thermostat.ControlSequenceOfOperation.CoolingAndHeating,
+        systemMode: Thermostat.SystemMode.Auto,
+        occupiedHeatingSetpoint: 2000,
+        occupiedCoolingSetpoint: 2600,
+        minSetpointDeadBand: 25,
+        numberOfPresets: 5,
+        presetTypes: [
+            { presetScenario: Thermostat.PresetScenario.Occupied, numberOfPresets: 5, presetTypeFeatures: {} },
+        ],
+        activePresetHandle: null,
+        presets: [],
     },
 });
 

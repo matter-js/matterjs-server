@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { NodeId } from "@matter/main";
+import { AttributeId, ClusterId, EndpointNumber, NodeId } from "@matter/main";
 import { TestNodeCommandHandler } from "../src/controller/TestNodeCommandHandler.js";
 
 function dump(endpointParents: unknown): string {
@@ -49,6 +49,24 @@ describe("TestNodeCommandHandler", () => {
             const node = await importOne(undefined);
 
             expect(node.endpoint_parents).to.equal(undefined);
+        });
+    });
+
+    describe("handleWriteAtomicAttribute", () => {
+        it("answers success for the written path without a device", async () => {
+            const handler = new TestNodeCommandHandler();
+            const [nodeId] = handler.importTestNodes(dump(undefined));
+
+            const result = await handler.handleWriteAtomicAttribute({
+                nodeId: NodeId(nodeId),
+                endpointId: EndpointNumber(1),
+                clusterId: ClusterId(513),
+                attributeId: AttributeId(80),
+                value: [],
+                dataVersion: 0,
+            });
+
+            expect(result).to.deep.equal({ endpointId: 1, clusterId: 513, attributeId: 80, status: 0 });
         });
     });
 });

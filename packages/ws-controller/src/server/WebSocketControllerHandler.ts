@@ -74,6 +74,7 @@ import {
     ServerInfoMessage,
     SuccessResultMessage,
 } from "../types/WebSocketMessageTypes.js";
+import { writesTimed } from "../util/atomicWrite.js";
 import { formatNodeId } from "../util/formatNodeId.js";
 import { MATTER_VERSION } from "../util/matterVersion.js";
 import { nodeIdTarget } from "../util/nodeIdClasses.js";
@@ -111,7 +112,7 @@ function isIdentityConflict(error: unknown): boolean {
 /** Maximum number of events to keep in the history buffer */
 const EVENT_HISTORY_SIZE = 25;
 
-const SCHEMA_VERSION = 14;
+const SCHEMA_VERSION = 15;
 const MAX_INTERACTION_TIMEOUT_MS = Number.MAX_SAFE_INTEGER;
 /** The Timeout field of a Matter TimedRequest is a uint16. */
 const MAX_TIMED_REQUEST_TIMEOUT_MS = 0xffff;
@@ -1043,6 +1044,9 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 case "write_attribute":
                     result = await this.#handleWriteAttribute(args);
                     break;
+                case "write_atomic_attribute":
+                    result = await this.#handleWriteAtomicAttribute(args);
+                    break;
                 case "interview_node":
                     result = await this.#handleInterviewNode(args);
                     break;
@@ -1690,6 +1694,90 @@ export class WebSocketControllerHandler implements WebServerHandler {
             Status: status ?? 0,
             ...(clusterStatus !== undefined && { ClusterStatus: clusterStatus }),
         }));
+    }
+
+    async #handleWriteAtomicAttribute(
+        args: ArgsOf<"write_atomic_attribute">,
+    ): Promise<ResponseOf<"write_atomic_attribute">> {
+        const {
+            node_id,
+            attribute_path,
+            value,
+            data_version,
+            skip_data_version_check,
+            ignore_data_version_mismatch,
+            timed_request_timeout_ms,
+            atomic_timeout_ms,
+        } = args;
+        const nodeId = this.#targetNodeId(node_id, "write_atomic_attribute");
+        const pathRefusal =
+            "write_atomic_attribute needs attribute_path as endpoint/cluster/attribute, each a number: an atomic write covers one attribute on one endpoint";
+        if (!isWellFormedPath(attribute_path, 3)) {
+            throw ServerError.invalidArguments(pathRefusal);
+        }
+        const { endpointId, clusterId, attributeId } = splitAttributePath(attribute_path);
+        if (endpointId === undefined || clusterId === undefined || attributeId === undefined) {
+            throw ServerError.invalidArguments(pathRefusal);
+        }
+        const clusterEntry = ClusterMap[clusterId];
+        const attributeModel = clusterEntry?.attributes[attributeId];
+        if (clusterEntry === undefined || attributeModel === undefined) {
+            throw ServerError.invalidArguments(`Attribute ${attributeId} on cluster ${clusterId} unknown`);
+        }
+        if (!attributeModel.quality.atomic) {
+            throw ServerError.invalidArguments(
+                `${clusterEntry.model.name}.${attributeModel.name} does not require atomic writes; use write_attribute`,
+            );
+        }
+        for (const [name, flag] of [
+            ["skip_data_version_check", skip_data_version_check],
+            ["ignore_data_version_mismatch", ignore_data_version_mismatch],
+        ] as const) {
+            if (flag !== undefined && flag !== null && typeof flag !== "boolean") {
+                throw ServerError.invalidArguments(`${name} must be true or false`);
+            }
+        }
+        const statesDataVersion = data_version !== undefined && data_version !== null;
+        if (skip_data_version_check === true) {
+            if (statesDataVersion) {
+                throw ServerError.invalidArguments(
+                    "write_atomic_attribute takes either data_version or skip_data_version_check, not both",
+                );
+            }
+        } else if (!isUint(data_version, 0xffff_ffff)) {
+            throw ServerError.invalidArguments(
+                "write_atomic_attribute needs data_version, the cluster's data version as `read` reports it (0 to 4294967295), or skip_data_version_check",
+            );
+        }
+        const statesTimeout = atomic_timeout_ms !== undefined && atomic_timeout_ms !== null;
+        if (statesTimeout && !(isUint(atomic_timeout_ms, 0xffff) && atomic_timeout_ms > 0)) {
+            throw ServerError.invalidArguments("atomic_timeout_ms must be an integer from 1 to 65535");
+        }
+        const timedInteractionTimeoutMs = timedRequestTimeoutArgument(timed_request_timeout_ms);
+        if (statesDataVersion && writesTimed(attributeModel, timedInteractionTimeoutMs)) {
+            throw ServerError.invalidArguments(
+                "write_atomic_attribute sends a timed write here, which needs skip_data_version_check instead of data_version",
+            );
+        }
+
+        const result = await this.#handlerFor(nodeId).handleWriteAtomicAttribute({
+            nodeId,
+            endpointId,
+            clusterId,
+            attributeId,
+            value,
+            dataVersion: statesDataVersion ? data_version : undefined,
+            ignoreDataVersionMismatch: ignore_data_version_mismatch === true,
+            timedInteractionTimeoutMs,
+            atomicTimeoutMs: statesTimeout ? Millis(atomic_timeout_ms) : undefined,
+        });
+        return [
+            {
+                Path: { EndpointId: result.endpointId, ClusterId: result.clusterId, AttributeId: result.attributeId },
+                Status: result.status ?? 0,
+                ...(result.clusterStatus !== undefined && { ClusterStatus: result.clusterStatus }),
+            },
+        ];
     }
 
     async #handleGetVendorNames(args: ArgsOf<"get_vendor_names">): Promise<ResponseOf<"get_vendor_names">> {

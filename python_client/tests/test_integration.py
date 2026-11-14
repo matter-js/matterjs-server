@@ -184,7 +184,7 @@ class TestServerCommands:
 
         assert "fabric_id" in info
         assert "compressed_fabric_id" in info
-        assert info["schema_version"] == 14
+        assert info["schema_version"] == 15
         assert info["min_supported_schema_version"] == 11
         assert "matter-server" in info["sdk_version"]
         assert "matter.js" in info["sdk_version"]
@@ -229,7 +229,7 @@ class TestServerCommands:
         client: MatterTestClient = env["client"]
         diag = await client.get_diagnostics()
         assert diag.info is not None
-        assert diag.info.schema_version == 14
+        assert diag.info.schema_version == 15
         assert isinstance(diag.nodes, list)
         assert isinstance(diag.events, list)
 
@@ -619,6 +619,25 @@ class TestAttributeOperations:
         # Read back
         attrs = await client.read_attribute(env["node_id"], "1/65/0")
         assert attrs["1/65/0"] == [{"0": "room", "1": "den"}]
+
+    async def test_32b_write_atomic_attribute(self, env):
+        """Write the thermostat presets inside an atomic write and verify."""
+        _require_state(env, "node_id")
+        client: MatterTestClient = env["client"]
+        report = await client.read(env["node_id"], ["2/513/80"])
+        assert report.data_versions is not None
+        result = await client.write_atomic_attribute(
+            env["node_id"],
+            "2/513/80",
+            [{"0": None, "1": 1, "3": 2600, "4": 1800, "5": False}],
+            report.data_versions["2/513"],
+        )
+        assert result == [
+            {"Path": {"EndpointId": 2, "ClusterId": 513, "AttributeId": 80}, "Status": 0}
+        ]
+
+        attrs = await client.read_attribute(env["node_id"], "2/513/80")
+        assert [preset["4"] for preset in attrs["2/513/80"]] == [1800]
 
 
 # ============================================================================

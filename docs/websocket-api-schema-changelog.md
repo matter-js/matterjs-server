@@ -10,6 +10,15 @@ The server-side constants live in `packages/ws-controller/src/server/WebSocketCo
 (`SCHEMA_VERSION`, `MIN_SUPPORTED_SCHEMA_VERSION`). Versions predating this document are not
 listed retroactively; entries start at the first version maintained here.
 
+## Schema 15
+
+Minimum supported: 11.
+
+- **`write_atomic_attribute`** (new) writes an attribute with the Atomic quality, such as the Thermostat `Presets`,
+  inside one atomic write run by the server. It takes the cluster's `data_version` from `read`, or
+  `skip_data_version_check`. While it runs, other writes to the cluster's Atomic attributes answer BUSY. See
+  [websockets_api.md](websockets_api.md#attribute-operations).
+
 ## Schema 14
 
 Minimum supported: 11 (older clients keep working with the pre-14 command shapes).

@@ -22,10 +22,12 @@ import {
     FabricIndex,
     IcdClient,
     IcdMultiAdminError,
+    IcdPeerAsleepError,
     InternalError,
     isObject,
     Logger,
     MatterAggregateError,
+    MatterError,
     Millis,
     NodeId,
     Observable,
@@ -53,6 +55,7 @@ import {
     TimeSynchronization,
 } from "@matter/main/clusters";
 import { WebRtcTransportProvider } from "@matter/main/clusters/web-rtc-transport-provider";
+import type { AttributeModel } from "@matter/main/model";
 import {
     AttestationFinding,
     ClientInvoke,
@@ -65,6 +68,7 @@ import {
     PasscodeMismatchError,
     PeerAddress,
     PeerSet,
+    PeerUnreachableError,
     PlainClientSubscribe,
     Read,
     ReadResult,
@@ -73,6 +77,8 @@ import {
     Write,
 } from "@matter/main/protocol";
 import {
+    AtomicAttributeStatus,
+    AtomicRequestType,
     AttributeId,
     ClusterId,
     ClusterType,
@@ -128,6 +134,7 @@ import {
     OpenCommissioningWindowRequest,
     OpenCommissioningWindowResponse,
     WriteAttributeRequest,
+    WriteAtomicAttributeRequest,
     BatchedInvokeRequest,
     BatchedInvokeResult,
 } from "../types/CommandHandler.js";
@@ -145,6 +152,7 @@ import {
     ServerErrorCode,
     UpdateSource,
 } from "../types/WebSocketMessageTypes.js";
+import { writesTimed } from "../util/atomicWrite.js";
 import { isBridgeNode } from "../util/bridgeDetection.js";
 import { formatNodeId } from "../util/formatNodeId.js";
 import { pingIp } from "../util/network.js";
@@ -290,6 +298,34 @@ function invokeRequestOf(definition: Invoke.Definition) {
  */
 function clusterSpecifierOf(entry: ClusterMapEntry): Specifier.ClusterLike {
     return ClusterType(entry.model) as Specifier.ClusterLike;
+}
+
+/** How long the device holds a pending atomic write when the client states no timeout. */
+const DEFAULT_ATOMIC_WRITE_TIMEOUT = Seconds(30);
+
+interface AtomicResponse {
+    statusCode: Status;
+    attributeStatus: AtomicAttributeStatus[];
+    /** The timeout the device grants, in ms; only in a BeginWrite answer. */
+    timeout?: number;
+}
+
+function atomicResponseOf(response: unknown): AtomicResponse {
+    if (!isObject(response) || typeof response.statusCode !== "number" || !Array.isArray(response.attributeStatus)) {
+        throw new MatterError("The device answered AtomicRequest without an AtomicResponse");
+    }
+    const { statusCode, attributeStatus, timeout } = response;
+    return { statusCode, attributeStatus, timeout: typeof timeout === "number" ? timeout : undefined };
+}
+
+/** Whether an invoke failed before its request was sent: the peer could not be reached, or an ICD did not wake up. */
+function wasNeverSent(error: unknown) {
+    return error instanceof PeerUnreachableError || error instanceof IcdPeerAsleepError;
+}
+
+/** The status of the first attribute that failed, else the status of the whole response (§7.15.6.4). */
+function atomicFailureOf({ statusCode, attributeStatus }: AtomicResponse): Status {
+    return attributeStatus.find(status => status.statusCode !== Status.Success)?.statusCode ?? statusCode;
 }
 
 /** A known-address attempt that left the device off the fabric, so discovery may still reach it. */
@@ -476,6 +512,10 @@ export class ControllerCommandHandler {
     readonly #autoSubscribeRequested = new WeakMap<ClientNode, boolean>();
     /** In-flight invokes per dedup scope; a scope dropped by its owner takes its entries with it. */
     readonly #inFlightInvokes = new WeakMap<object, Map<string, Promise<unknown>>>();
+    /** Endpoints with an open {@link handleWriteAtomicAttribute}, per `node/cluster`. */
+    readonly #atomicWrites = new Map<string, Set<EndpointNumber>>();
+    /** Timers that release an atomic write lock once the device has dropped an atomic write we could not roll back. */
+    readonly #atomicWriteHolds = new Set<Timer>();
     events = {
         started: new AsyncObservable(),
         /** A removed attribute is reported with an `undefined` value. */
@@ -967,6 +1007,10 @@ export class ControllerCommandHandler {
             timer.stop();
         }
         this.#nodeUpdateTimers.clear();
+        for (const timer of this.#atomicWriteHolds) {
+            timer.stop();
+        }
+        this.#atomicWriteHolds.clear();
         this.#nodeUpdateDeadlines.clear();
         this.#pendingNodeUpdates.clear();
         // Observers first: a state change reaching #handleNodeStateChange re-registers the node with
@@ -1727,39 +1771,95 @@ export class ControllerCommandHandler {
     }
 
     /**
-     * A concrete, untimed write goes through the node's state, which also updates the node data at once. A wildcard
-     * endpoint or a timed write is sent as a plain Write; the node data then changes only with the next report.
+     * The attribute's model and the value converted for matter.js. A fabric-scoped list keeps only the controller's
+     * own entries; `refusal` says why a value that names another fabric must not be written.
      */
-    async handleWriteAttribute(data: WriteAttributeRequest): Promise<AttributeResponseStatus[]> {
-        const { nodeId, endpointId, clusterId, attributeId, timedInteractionTimeoutMs } = data;
-
+    #attributeWriteOf(
+        nodeId: NodeId,
+        endpointId: EndpointNumber | undefined,
+        clusterId: ClusterId,
+        attributeId: AttributeId,
+        wireValue: unknown,
+    ) {
         const clusterEntry = ClusterMap[clusterId];
         const attributeModel = clusterEntry?.attributes[attributeId];
         if (!clusterEntry || !attributeModel) {
             throw ServerError.invalidArguments(`Attribute ${attributeId} on cluster ${clusterId} unknown`);
         }
 
-        let value = convertWebSocketTagBasedToMatter(data.value, attributeModel, clusterEntry.model);
+        const value = convertWebSocketTagBasedToMatter(wireValue, attributeModel, clusterEntry.model);
         const attributeName = attributeModel.propertyName;
         logger.info(
             `Writing attribute ${clusterId}.${attributeName} (${endpointId ?? "*"}/${clusterId}/${attributeId}) with value`,
             value,
         );
+        if (!attributeModel.fabricScopedList) {
+            return { clusterEntry, attributeModel, value };
+        }
 
-        if (attributeModel.fabricScopedList) {
-            const entries = ourFabricEntriesOf(value, this.#nodes.get(nodeId).fabricIndexOnPeer);
-            if (entries.kind !== "ours") {
-                const message =
-                    entries.kind === "foreign"
-                        ? `Refusing to write ${attributeName}: an entry of fabric ${entries.fabricIndex} is not ours`
-                        : `Refusing to write ${attributeName}: an entry names fabric ${entries.fabricIndex}, and our fabric index on the node is not known yet`;
-                logger.notice(message);
-                if (endpointId === undefined) {
-                    throw ServerError.invalidArguments(message);
-                }
-                return [{ attributeId, clusterId, endpointId, status: Status.ConstraintError }];
+        const entries = ourFabricEntriesOf(value, this.#nodes.get(nodeId).fabricIndexOnPeer);
+        if (entries.kind === "ours") {
+            return { clusterEntry, attributeModel, value: entries.value };
+        }
+        const refusal =
+            entries.kind === "foreign"
+                ? `Refusing to write ${attributeName}: an entry of fabric ${entries.fabricIndex} is not ours`
+                : `Refusing to write ${attributeName}: an entry names fabric ${entries.fabricIndex}, and our fabric index on the node is not known yet`;
+        logger.notice(refusal);
+        return { clusterEntry, attributeModel, value, refusal };
+    }
+
+    /** The endpoints a write would reach that have an open atomic write of the cluster; all of them for a wildcard. */
+    #endpointsInAtomicWrite(
+        nodeId: NodeId,
+        clusterId: ClusterId,
+        endpointId: EndpointNumber | undefined,
+        clusterEntry: ClusterMapEntry,
+    ): EndpointNumber[] {
+        const open = this.#atomicWrites.get(`${nodeId}/${clusterId}`);
+        if (open === undefined) {
+            return [];
+        }
+        if (endpointId !== undefined) {
+            return open.has(endpointId) ? [endpointId] : [];
+        }
+        return [...this.#nodes.get(nodeId).endpoints]
+            .filter(endpoint => endpoint.behaviors.has(clusterEntry.model.propertyName))
+            .map(endpoint => endpoint.number);
+    }
+
+    /**
+     * A concrete, untimed write goes through the node's state, which also updates the node data at once. A wildcard
+     * endpoint or a timed write is sent as a plain Write; the node data then changes only with the next report.
+     *
+     * While a {@link handleWriteAtomicAttribute} on the cluster is open, a write to an attribute with the Atomic quality
+     * is not sent and answers BUSY: the device would take it into that atomic write (Matter spec §7.15.3). A wildcard
+     * endpoint then answers BUSY for every endpoint with the cluster.
+     */
+    async handleWriteAttribute(data: WriteAttributeRequest): Promise<AttributeResponseStatus[]> {
+        const { nodeId, endpointId, clusterId, attributeId, timedInteractionTimeoutMs } = data;
+
+        const { clusterEntry, attributeModel, value, refusal } = this.#attributeWriteOf(
+            nodeId,
+            endpointId,
+            clusterId,
+            attributeId,
+            data.value,
+        );
+        const attributeName = attributeModel.propertyName;
+        if (refusal !== undefined) {
+            if (endpointId === undefined) {
+                throw ServerError.invalidArguments(refusal);
             }
-            value = entries.value;
+            return [{ attributeId, clusterId, endpointId, status: Status.ConstraintError }];
+        }
+
+        const busy = attributeModel.quality.atomic
+            ? this.#endpointsInAtomicWrite(nodeId, clusterId, endpointId, clusterEntry)
+            : [];
+        if (busy.length > 0) {
+            logger.info(`Not writing ${attributeName}: an atomic write of the cluster is open`);
+            return busy.map(endpointId => ({ attributeId, clusterId, endpointId, status: Status.Busy }));
         }
 
         if (endpointId !== undefined && timedInteractionTimeoutMs === undefined) {
@@ -1819,6 +1919,259 @@ export class ControllerCommandHandler {
                 `Invalid value for ${attributeName}: ${error.message}`,
                 error,
             );
+        }
+    }
+
+    /**
+     * Writes one attribute with the Atomic quality inside one atomic write (Matter spec §7.15.1): BeginWrite, the
+     * Write, then CommitWrite. The device applies the value only if the commit succeeds. The Write carries the
+     * cluster's data version the client read, when it gave one, so the device refuses it with DATA_VERSION_MISMATCH
+     * when the cluster changed since that read (§8.7.3.2), and the server rolls back. With `ignoreDataVersionMismatch`
+     * the server instead sends the Write again without the data version, inside the same atomic write. A timed write
+     * with a data version, by a stated timeout or because the attribute requires one, is refused with InvalidArguments
+     * before anything is sent. The answer is the first status that is not Success: from the BeginWrite, from the
+     * Write, or from the CommitWrite.
+     *
+     * A failed Write is followed by a RollbackWrite, and so is an error the Write throws. A CommitWrite is never rolled
+     * back: answered with a failure, the device already discarded the pending write (§7.15.6.4.2); unanswered, the
+     * commit may have landed, and a RollbackWrite could then discard an atomic write another client opened meanwhile. A
+     * BeginWrite the device refused is not rolled back either: it opened no atomic write, and a write state that caused
+     * the refusal is not ours to discard.
+     *
+     * A RollbackWrite that fails, other than with INVALID_IN_STATE (no atomic write open), may leave the atomic write
+     * open on the device until its timeout. So may a BeginWrite or a CommitWrite whose answer is lost; an error that
+     * shows the BeginWrite was never sent (the peer unreachable, an ICD asleep) does not count. That BeginWrite is not
+     * rolled back: if the device refused it because another client of this server holds an atomic write, the rollback
+     * would discard that client's write, since both count as the same writer. In both cases the cluster's lock is kept for the
+     * timeout: the one the BeginWrite answered, or the requested one when no answer came.
+     *
+     * The CommitWrite and the RollbackWrite name the attribute ids the BeginWrite answered (§7.15.6.4.1). The device
+     * knows all clients of this server as one writer (the Atomic Writer ID is the controller's node id, §7.15.2), so a
+     * client that holds its own atomic write through `device_command` makes this write fail with INVALID_IN_STATE.
+     * For the same reason the server keeps its own atomic writes apart: while one is open on the cluster, another one
+     * and every {@link handleWriteAttribute} to an attribute of the cluster with the Atomic quality answer BUSY without
+     * being sent.
+     *
+     * The Write does not go through the node's state, so the pending value never reaches the node data; the committed
+     * value arrives with the next report.
+     */
+    async handleWriteAtomicAttribute(data: WriteAtomicAttributeRequest): Promise<AttributeResponseStatus> {
+        const { nodeId, endpointId, clusterId, attributeId } = data;
+        const { clusterEntry, attributeModel, value, refusal } = this.#attributeWriteOf(
+            nodeId,
+            endpointId,
+            clusterId,
+            attributeId,
+            data.value,
+        );
+        if (data.dataVersion !== undefined && writesTimed(attributeModel, data.timedInteractionTimeoutMs)) {
+            throw ServerError.invalidArguments("A timed atomic write takes no data version");
+        }
+        const answer = (status: Status, clusterStatus?: number): AttributeResponseStatus => ({
+            endpointId,
+            clusterId,
+            attributeId,
+            status,
+            clusterStatus,
+        });
+        if (refusal !== undefined) {
+            return answer(Status.ConstraintError);
+        }
+        this.#clusterEndpoint(nodeId, endpointId, clusterEntry.model.propertyName);
+
+        const lockKey = `${nodeId}/${clusterId}`;
+        let open = this.#atomicWrites.get(lockKey);
+        if (open?.has(endpointId)) {
+            logger.info(`Not writing ${attributeModel.propertyName}: an atomic write of the cluster is open`);
+            return answer(Status.Busy);
+        }
+        if (open === undefined) {
+            open = new Set();
+            this.#atomicWrites.set(lockKey, open);
+        }
+        open.add(endpointId);
+        const locked = open;
+        const release = () => {
+            locked.delete(endpointId);
+            if (locked.size === 0 && this.#atomicWrites.get(lockKey) === locked) {
+                this.#atomicWrites.delete(lockKey);
+            }
+        };
+        const unrolled: { deviceTimeout?: Duration } = {};
+        try {
+            return await this.#atomicWrite(data, clusterEntry, attributeModel, value, answer, unrolled);
+        } finally {
+            const { deviceTimeout } = unrolled;
+            if (deviceTimeout === undefined || this.#shutdown.aborted) {
+                release();
+            } else {
+                const timer = Time.getTimer(`atomic-write-${lockKey}/${endpointId}`, deviceTimeout, () => {
+                    this.#atomicWriteHolds.delete(timer);
+                    release();
+                });
+                this.#atomicWriteHolds.add(timer);
+                timer.start();
+            }
+        }
+    }
+
+    /** The handshake of {@link handleWriteAtomicAttribute}, while it holds the cluster's lock. */
+    async #atomicWrite(
+        {
+            nodeId,
+            endpointId,
+            attributeId,
+            dataVersion,
+            ignoreDataVersionMismatch,
+            timedInteractionTimeoutMs,
+            atomicTimeoutMs,
+        }: WriteAtomicAttributeRequest,
+        clusterEntry: ClusterMapEntry,
+        attributeModel: AttributeModel,
+        value: unknown,
+        answer: (status: Status, clusterStatus?: number) => AttributeResponseStatus,
+        unrolled: { deviceTimeout?: Duration },
+    ): Promise<AttributeResponseStatus> {
+        let deviceTimeout = atomicTimeoutMs ?? DEFAULT_ATOMIC_WRITE_TIMEOUT;
+        /** When the BeginWrite was answered; the device's timeout runs from there. */
+        let beginAnsweredAt: Timestamp | undefined = undefined;
+        const node = this.#nodes.get(nodeId);
+        const cluster = clusterSpecifierOf(clusterEntry);
+        const atomicRequest = async (requestType: AtomicRequestType, attributeRequests: AttributeId[]) =>
+            atomicResponseOf(
+                await this.#invokeCommand(node, {
+                    endpoint: endpointId,
+                    cluster,
+                    command: "atomicRequest",
+                    fields: {
+                        requestType,
+                        attributeRequests,
+                        timeout: requestType === AtomicRequestType.BeginWrite ? deviceTimeout : undefined,
+                    },
+                }),
+            );
+
+        const holdUntilDeviceTimeout = (reason: string, cause: unknown) => {
+            const remaining =
+                beginAnsweredAt === undefined
+                    ? deviceTimeout
+                    : Millis(Math.max(0, deviceTimeout - Timestamp.delta(beginAnsweredAt, Time.nowUs)));
+            unrolled.deviceTimeout = remaining;
+            logger.warn(
+                `${reason} of ${attributeModel.propertyName} on ${this.formatNode(nodeId)}/${endpointId}; the device may keep it open, so writes to the cluster's atomic attributes answer BUSY for ${Duration.format(remaining)}:`,
+                cause,
+            );
+        };
+        const rollback = async (attributeRequests: AttributeId[]) => {
+            let failure: unknown;
+            try {
+                const response = await atomicRequest(AtomicRequestType.RollbackWrite, attributeRequests);
+                if (response.statusCode === Status.Success || response.statusCode === Status.InvalidInState) {
+                    return;
+                }
+                failure = `status ${response.statusCode}`;
+            } catch (error) {
+                if (StatusResponseError.is(error, Status.InvalidInState)) {
+                    return;
+                }
+                failure = error;
+            }
+            holdUntilDeviceTimeout("Could not roll back an atomic write", failure);
+        };
+
+        let begin: AtomicResponse;
+        try {
+            begin = await atomicRequest(AtomicRequestType.BeginWrite, [attributeId]);
+        } catch (error) {
+            if (!(error instanceof ReceivedStatusResponseError) && !wasNeverSent(error)) {
+                holdUntilDeviceTimeout("No answer to the BeginWrite of an atomic write", error);
+            }
+            StatusResponseError.accept(error);
+            return answer(error.code, error.clusterCode);
+        }
+        if (begin.statusCode !== Status.Success) {
+            return answer(atomicFailureOf(begin));
+        }
+        beginAnsweredAt = Time.nowUs;
+        if (begin.timeout !== undefined) {
+            deviceTimeout = Millis(begin.timeout);
+        }
+
+        const atomicAttributes =
+            begin.attributeStatus.length > 0
+                ? begin.attributeStatus.map(({ attributeId }) => attributeId)
+                : [attributeId];
+
+        try {
+            const write = (version: number | undefined) =>
+                this.#atomicWriteFailure(
+                    node,
+                    endpointId,
+                    cluster,
+                    attributeModel,
+                    value,
+                    version,
+                    timedInteractionTimeoutMs,
+                );
+            let failed = await write(dataVersion);
+            if (failed?.status === Status.DataVersionMismatch && ignoreDataVersionMismatch) {
+                logger.info(
+                    `Data version of ${attributeModel.propertyName} on ${this.formatNode(nodeId)}/${endpointId} changed since the client read it; writing again without it, as the client asked`,
+                );
+                failed = await write(undefined);
+            }
+            if (failed !== undefined) {
+                await rollback(atomicAttributes);
+                return answer(failed.status, failed.clusterStatus);
+            }
+        } catch (error) {
+            await rollback(atomicAttributes);
+            StatusResponseError.accept(error);
+            return answer(error.code, error.clusterCode);
+        }
+
+        let commit: AtomicResponse;
+        try {
+            commit = await atomicRequest(AtomicRequestType.CommitWrite, atomicAttributes);
+        } catch (error) {
+            if (!(error instanceof ReceivedStatusResponseError)) {
+                holdUntilDeviceTimeout("No answer to the CommitWrite of an atomic write", error);
+            }
+            StatusResponseError.accept(error);
+            return answer(error.code, error.clusterCode);
+        }
+        return answer(commit.statusCode === Status.Success ? Status.Success : atomicFailureOf(commit));
+    }
+
+    /**
+     * Sends the Write of an atomic write, chunked if needed, with the data version when given. Answers the first status
+     * that is not Success, if any.
+     */
+    async #atomicWriteFailure(
+        node: ClientNode,
+        endpoint: EndpointNumber,
+        cluster: Specifier.ClusterLike,
+        attributeModel: AttributeModel,
+        value: unknown,
+        dataVersion: number | undefined,
+        timedInteractionTimeoutMs: Duration | undefined,
+    ): Promise<{ status: Status; clusterStatus?: number } | undefined> {
+        const write = Write(
+            { timed: timedInteractionTimeoutMs !== undefined, timeout: timedInteractionTimeoutMs, chunkLists: true },
+            Write.Attribute({
+                endpoint,
+                cluster,
+                attributes: attributeModel.propertyName,
+                value,
+                version: dataVersion,
+            }),
+        );
+        try {
+            const results = await node.interaction.write(write);
+            return results.find(({ status }) => status !== Status.Success);
+        } catch (error) {
+            StatusResponseError.accept(error);
+            return { status: error.code, clusterStatus: error.clusterCode };
         }
     }
 
