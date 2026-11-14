@@ -35,6 +35,7 @@ This page shows a detailed overview of the changes between versions without the 
 - Enhancement: Dashboard: Pressing Enter in the share/pairing code, Thread dataset, node label, fabric label and ACL node id fields submits them, the same as clicking the button next to them
 - Enhancement: With the test-net DCL option enabled, a device that does not report the vendor or product id its Certification Declaration is checked against is commissioned and a notice is logged. Without the option, the refusal names the failed checks and points to the option when it would accept the device
 - Enhancement: The Docker image is about 250 MB smaller. Installing `matter-server` from npm no longer installs the packages the dashboard only needs to build its web bundle
+- Enhancement: (@luukvisser) The Docker image carries the standard OCI labels (version, source commit, source repository, license and more), so update checkers and `docker image inspect` can see which release an image is
 - Fix: `update_node` fails with `UpdateError` when the device cannot take the update, for example because it already runs this or a newer version, instead of with an unknown error
 - Fix: After a firmware update fails, checking the node for updates asks the update provider again instead of returning the update found before
 - Fix: Event timestamps use the device time that matter.js resolves from each report, in node events and in read results, also for events the server could not resolve before
