@@ -68,6 +68,7 @@ import {
     PasscodeMismatchError,
     PeerAddress,
     PeerSet,
+    OtaUpdateError,
     PeerUnreachableError,
     PlainClientSubscribe,
     Read,
@@ -3267,13 +3268,20 @@ export class ControllerCommandHandler {
 
         logger.info(`Starting update for node ${this.formatNode(nodeId)} to version ${softwareVersion}`);
 
-        await otaProvider.act(agent =>
-            agent.get(SoftwareUpdateManager).forceUpdate(this.#peerOf(nodeId), {
-                vendorId: updateInfo.vendorId,
-                productId: updateInfo.productId,
-                targetSoftwareVersion: softwareVersion,
-            }),
-        );
+        try {
+            await otaProvider.act(agent =>
+                agent.get(SoftwareUpdateManager).forceUpdate(this.#peerOf(nodeId), {
+                    vendorId: updateInfo.vendorId,
+                    productId: updateInfo.productId,
+                    targetSoftwareVersion: softwareVersion,
+                }),
+            );
+        } catch (error) {
+            if (error instanceof OtaUpdateError) {
+                throw ServerError.updateError(error.message, error);
+            }
+            throw error;
+        }
 
         return this.#convertToMatterSoftwareVersion(updateInfo);
     }

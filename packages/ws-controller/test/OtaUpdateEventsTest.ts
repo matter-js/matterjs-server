@@ -7,6 +7,7 @@
 import { NodeId, SoftwareUpdateInfo, SoftwareUpdateManager } from "@matter/main";
 import { PeerAddress } from "@matter/main/protocol";
 import { VendorId } from "@matter/main/types";
+import { ServerError, ServerErrorCode } from "../src/types/WebSocketMessageTypes.js";
 import { HandlerSite, NODE_ID } from "./support/HandlerSite.js";
 
 const UPDATE: SoftwareUpdateInfo = {
@@ -76,5 +77,22 @@ describe("OTA update events", () => {
 
         expect((await checkNodeUpdate(OTHER_NODE_ID))?.software_version).equals(2);
         expect(queries).equals(0);
+    });
+
+    it("reports an update the node cannot take as an update error", async () => {
+        await checkNodeUpdate();
+
+        const error = await MockTime.resolve(
+            site.handler.updateNode(NODE_ID, UPDATE.softwareVersion).then(
+                () => undefined,
+                (error: unknown) => error,
+            ),
+            { macrotasks: true },
+        );
+
+        if (!(error instanceof ServerError)) {
+            throw new Error(`expected a ServerError, got ${String(error)}`);
+        }
+        expect(error.code).equals(ServerErrorCode.UpdateError);
     });
 });

@@ -1202,6 +1202,9 @@ write to the node, also when the bindings equal the current ones.
 
 **update_node** - Apply a firmware update
 
+Fails with `UpdateError` (11) when the device cannot take the update: it already runs this or a newer version, it
+transfers another update right now, or it does not support OTA updates.
+
 ```json
 {
   "message_id": "1",
