@@ -48,22 +48,28 @@ The server detects whether a node uses Thread or WiFi/Ethernet. For Thread devic
 
 The server stores all data in a filesystem-based key/value store in the data directory. Do not edit files in these directories:
 
-- `server`: all node data, one file per storage key.
+- `server` or `server-<fabric ID>-<vendor ID>` (IDs in hex): the controller data, one file per storage key.
 - `ota`: downloaded OTA update files. To add your own OTA files, use a separate directory, see [Importing Custom OTA Firmware Files](../README.md#importing-custom-ota-firmware-files).
 - `certificates`: downloaded Matter certificate chains, used to validate devices during commissioning.
 - `vendors`: the downloaded list of Matter vendors.
 
-The fabric configuration from `chip.json` is migrated into the matter.js storage.
+The controller certificate authority and the fabric from `chip.json` are migrated into the controller storage (`server`, or `server-<fabric ID>-<vendor ID>`).
 
-The node data from `<long-number>.json` are converted to the matter.js format. On a first start with empty storage, the server writes them directly into the controller node storage (`nodes.peerX.endpoints.*`). If the storage already contains nodes, the server writes each node that is not yet known as `node-<NodeID>.*` files in the `server` directory and imports them into the controller node on start. Only the `nodes.peerX.endpoints.*` data are updated and used afterwards.
+The node data from `<long-number>.json` are converted to the matter.js format and written into the controller node storage (`nodes.peerX.endpoints.*`). A node that is already in the storage is skipped, so a start that ended early is completed by the next one.
 
-The migration runs once per node in `<long-number>.json`. It is skipped for a node that already has data in the `server` directory.
+Once the certificate authority, the fabric and every node from `<long-number>.json` are in the storage, the server renames the Python Matter Server files, see the next section. Data that earlier versions wrote for the migration (the `credentials` context, `node-<NodeID>` data and the `commissionedNodes` list) is removed once its content is in the current layout.
+
+A `server` directory that holds exactly the configured fabric is renamed to `server-<fabric ID>-<vendor ID>` on the next start. The data in it stays the same.
+
+Controller storage that a matter.js controller before version 0.16 wrote is migrated too, when no Python Matter Server data for the configured fabric is present. Place it as `server-<fabric ID>-<vendor ID>` in the data directory: under the name `server`, the server would not find its fabric and would start a new storage.
 
 ## Switching back to the Python Matter Server
 
-The server keeps `<long-number>.json` up to date when nodes are added or removed, so the Python Matter Server can be started again on the same data files. Stop this server first. Nodes removed in this server are gone there too.
+The server does not write changes back into the Python Matter Server data files. Once the storage holds all of the Python Matter Server data, the server renames `<long-number>.json` to `<long-number>.json.migrated`, and a `<long-number>.json.backup` to `<long-number>.json.backup.migrated`. It renames `chip.json` to `chip.json.migrated` once no other fabric in it still has a node file. Later starts do not read the renamed files.
 
-For nodes added in this server, no attribute data are written into `<long-number>.json`. The Python Matter Server has to interview them again, and they can show empty values until they reconnect.
+A node you remove in this server before the files are renamed is migrated again on the next start.
+
+To go back to the Python Matter Server, stop this server and restore the backup from before the migration. Nodes added or removed in this server since then are not in that backup.
 
 ## Troubleshooting
 
@@ -85,7 +91,7 @@ On the first start, every node is discovered and interviewed completely. With ma
 
 ### The log says the Python Matter Server data is not migrated
 
-The server does not migrate the Python Matter Server data when the storage directory already holds matter.js controller data that does not match it. This happens after a failed migration attempt, or when the server ran on this directory before the Python data files were copied in. The server keeps the existing data and does not keep `<long-number>.json` up to date. Restore the backup from before the first migration attempt, or start with a storage directory that holds only the Python Matter Server data files.
+The server does not migrate the Python Matter Server data when the storage directory already holds matter.js controller data that does not match it. This happens after a failed migration attempt, or when the server ran on this directory before the Python data files were copied in. The server keeps the existing data, leaves the Python data files unchanged and renames nothing. Restore the backup from before the first migration attempt, or start with a storage directory that holds only the Python Matter Server data files.
 
 ### Devices are not found or stay offline
 
