@@ -6,6 +6,7 @@ This page shows a detailed overview of the changes between versions without the 
 	Placeholder for the next version (at the beginning of the line):
 	## **WORK IN PROGRESS**
 -->
+
 ## 1.6.0 (2026-11-14)
 
 - Important (Fix): Uploading an OTA firmware file requires `--enable-test-net-dcl`, because the OTA provider only serves local images to a node while test images are allowed. Without it, `initiate_ota_upload` fails instead of storing an image that no node can download
@@ -36,11 +37,11 @@ This page shows a detailed overview of the changes between versions without the 
 - Enhancement: With the test-net DCL option enabled, a device that does not report the vendor or product id its Certification Declaration is checked against is commissioned and a notice is logged. Without the option, the refusal names the failed checks and points to the option when it would accept the device
 - Enhancement: The Docker image is about 250 MB smaller. Installing `matter-server` from npm no longer installs the packages the dashboard only needs to build its web bundle
 - Enhancement: (@luukvisser) The Docker image carries the standard OCI labels (version, source commit, source repository, license and more), so update checkers and `docker image inspect` can see which release an image is
+- Adjustment: `write_attribute` to a specific endpoint without `timed_request_timeout_ms` sends a value outside the attribute's constraints (range, length, allowed values, list size) to the device, which decides, and reports the device's status, as timed and wildcard writes already did. Before, the server refused such a value before sending it
 - Fix: `update_node` fails with `UpdateError` when the device cannot take the update, for example because it already runs this or a newer version, instead of with an unknown error
 - Fix: After a firmware update fails, checking the node for updates asks the update provider again instead of returning the update found before
 - Fix: Event timestamps use the device time that matter.js resolves from each report, in node events and in read results, also for events the server could not resolve before
 - Fix: A device that fails an attestation check the test-net DCL option does not cover is refused with the names of the failed checks, instead of only the hint to enable that option, which would not have helped
-- Adjustment: `write_attribute` to a specific endpoint without `timed_request_timeout_ms` sends a value outside the attribute's constraints (range, length, allowed values, list size) to the device, which decides, and reports the device's status, as timed and wildcard writes already did. Before, the server refused such a value before sending it
 - Fix: `write_attribute` refuses an entry of another fabric in a fabric-scoped list such as the ACL or Binding before anything is sent, with CONSTRAINT_ERROR, or `InvalidArguments` for a wildcard endpoint or a group. Before, a timed, wildcard or group write stored such an entry on the node as an entry of the server's fabric. A FabricIndex of 0 or null, the default of the CHIP Python cluster classes, counts as the server's fabric
 - Fix: The server pings the clients of its WebSocket API every 30 seconds, so proxies and remote access relays no longer close idle connections; a client that stops answering is disconnected
 - Fix: The dashboard reconnects once on its own when the connection drops, and shows the "Connection lost" page only when that attempt fails
