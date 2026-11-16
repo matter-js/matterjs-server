@@ -22,6 +22,10 @@ const logger = Logger.get("CustomClusterPoller");
 // Eve vendor ID (0x130A = 4874)
 const VENDOR_ID_EVE = 4874;
 
+// Verified against Eve Thermo 20EBP1701 firmware 3.5.2.
+const EVE_THERMO_PRODUCT_ID = 79;
+const EVE_THERMO_CONFIG_ATTRIBUTE_ID = 0x130a0000;
+
 // Eve custom cluster ID (0x130AFC01)
 const EVE_CLUSTER_ID = 0x130afc01;
 
@@ -97,31 +101,36 @@ export function checkPolledAttributes(attributes: AttributesData): Set<Attribute
         return polledAttributes;
     }
 
-    // Check if ElectricalPowerMeasurement cluster exists (if so, no need to poll Eve cluster)
-    // The standard cluster would be on endpoint 2 typically
-    for (const attrPath of Object.keys(attributes)) {
-        const [, clusterStr] = attrPath.split("/");
-        const clusterId = Number(clusterStr);
-        if (clusterId === ELECTRICAL_POWER_MEASUREMENT_CLUSTER_ID) {
-            // Has standard cluster, no need to poll Eve energy attributes
-            logger.debug("Node has standard ElectricalPowerMeasurement cluster, skipping Eve energy polling");
-            return polledAttributes;
+    // Eve Thermo keeps the local heating schedule enabled flag in its
+    // proprietary configuration blob. The device does not reliably report
+    // changes made through the Eve app to other Matter controllers.
+    if (attributes["0/40/4"] === EVE_THERMO_PRODUCT_ID) {
+        for (const endpoint of eveEndpoints) {
+            const path = `${endpoint}/${EVE_CLUSTER_ID}/${EVE_THERMO_CONFIG_ATTRIBUTE_ID}`;
+            if (attributes[path] !== undefined) {
+                polledAttributes.add(path);
+            }
         }
     }
 
-    // Add Eve energy attributes to a poll for each Eve endpoint
-    for (const endpoint of eveEndpoints) {
-        for (const [, attributeId] of Object.entries(EVE_ENERGY_ATTRIBUTE_IDS)) {
-            const attrPath = `${endpoint}/${EVE_CLUSTER_ID}/${attributeId}`;
-            // Only add if the attribute exists in the node's attributes
-            if (attributes[attrPath] !== undefined) {
-                polledAttributes.add(attrPath);
+    // Eve Energy only needs proprietary power telemetry polling when the
+    // standard ElectricalPowerMeasurement cluster is absent.
+    const hasStandardPowerCluster = Object.keys(attributes).some(
+        path => Number(path.split("/")[1]) === ELECTRICAL_POWER_MEASUREMENT_CLUSTER_ID,
+    );
+    if (!hasStandardPowerCluster) {
+        for (const endpoint of eveEndpoints) {
+            for (const attributeId of Object.values(EVE_ENERGY_ATTRIBUTE_IDS)) {
+                const path = `${endpoint}/${EVE_CLUSTER_ID}/${attributeId}`;
+                if (attributes[path] !== undefined) {
+                    polledAttributes.add(path);
+                }
             }
         }
     }
 
     if (polledAttributes.size > 0) {
-        logger.info(`Eve device detected, will poll ${polledAttributes.size} energy attributes`);
+        logger.info(`Eve device detected, will poll ${polledAttributes.size} proprietary attributes`);
     }
 
     return polledAttributes;
@@ -211,7 +220,7 @@ export class CustomClusterPoller extends NodeProcessor {
     protected override onCycleComplete(processedCount: number, intervalFormatted: string): void {
         if (processedCount > 0) {
             const next = intervalFormatted === "" ? "" : ` Next poll in ${intervalFormatted}.`;
-            logger.info(`Polled ${processedCount} nodes for energy data.${next}`);
+            logger.info(`Polled ${processedCount} nodes for proprietary data.${next}`);
         }
     }
 }
