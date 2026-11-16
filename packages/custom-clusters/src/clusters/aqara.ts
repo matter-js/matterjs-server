@@ -399,16 +399,12 @@ class AqaraWalkingDistanceDeltaEvent {
  * Firmware 1.1.9.6 and later sends the fields below.
  */
 class AqaraTargetLocationInfoStruct {
-    /** Target identifier, 0 to 9. */
-    @constraint("0 to 9")
     @field(0x0, uint8, mandatory)
     targetId!: number;
 
-    /** X coordinate, in hundredths of a meter. -150 is -1.50 m. */
     @field(0x1, int16, mandatory)
     targetXCoordinate!: number;
 
-    /** Y coordinate, in hundredths of a meter. 250 is 2.50 m. */
     @field(0x2, int16, mandatory)
     targetYCoordinate!: number;
 
@@ -420,12 +416,6 @@ class AqaraTargetLocationInfoStruct {
     @field(0x4, uint16, mandatory)
     mmsPnts!: number;
 
-    /**
-     * Packed tracking state:
-     * isInBackground×10000 + activeCause×1000 + freeCause×100 + isImportTarget×10 + lockState.
-     * A non-zero freeCause is a tombstone for a target that has been removed.
-     */
-    @constraint("0 to 19919")
     @field(0x5, uint16, mandatory)
     trackingState!: number;
 
@@ -435,14 +425,12 @@ class AqaraTargetLocationInfoStruct {
     @field(0x7, PostureEnum, mandatory)
     targetPosture!: number;
 
-    /** Zone that contains the target. 0 means the target is not in a configured zone. */
-    @constraint("0 to 8")
+    /** Zone that contains the target. */
     @field(0x8, uint8, mandatory)
     targetZoneId!: number;
 }
 
 class AqaraLocationEvent {
-    @constraint("max 10")
     @field(0x0, listOf(AqaraTargetLocationInfoStruct), mandatory)
     location!: AqaraTargetLocationInfoStruct[];
 }
