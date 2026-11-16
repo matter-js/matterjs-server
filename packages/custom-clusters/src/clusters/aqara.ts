@@ -266,7 +266,8 @@ const PostureEnum = enumeration("PostureEnum", "enum8", {
     Stand: 0x02,
     Lie: 0x03,
     Fall: 0x04,
-    Undefined: 0xfe,
+    SuspectedFall: 0x05,
+    Unknown: 0xfe,
     Invalid: 0xff,
 });
 
@@ -392,24 +393,41 @@ class AqaraWalkingDistanceDeltaEvent {
     observationDuration!: number;
 }
 
+/**
+ * One tracked target, in the layout stable from firmware 1.2.0.6.
+ * Firmware 1.1.8.2 sent a grid index, an activity and a fall flag in fields 3 to 5.
+ * Firmware 1.1.9.6 and later sends the fields below.
+ */
 class AqaraTargetLocationInfoStruct {
+    /** Target identifier, 0 to 9. */
+    @constraint("0 to 9")
     @field(0x0, uint8, mandatory)
     targetId!: number;
 
+    /** X coordinate, in hundredths of a meter. -150 is -1.50 m. */
     @field(0x1, int16, mandatory)
     targetXCoordinate!: number;
 
+    /** Y coordinate, in hundredths of a meter. 250 is 2.50 m. */
     @field(0x2, int16, mandatory)
     targetYCoordinate!: number;
 
-    @field(0x3, int16, mandatory)
-    targetZCoordinate!: number;
+    /** Dynamic point-cloud points for this target in the current frame. */
+    @field(0x3, uint16, mandatory)
+    dynPnts!: number;
 
-    @field(0x4, int16, mandatory)
-    targetVelocity!: number;
+    /** Micro-motion point-cloud points for this target in the current frame. */
+    @field(0x4, uint16, mandatory)
+    mmsPnts!: number;
 
+    /**
+     * Packed tracking state:
+     * isInBackground×10000 + activeCause×1000 + freeCause×100 + isImportTarget×10 + lockState.
+     * A non-zero freeCause is a tombstone for a target that has been removed.
+     */
+    @constraint("0 to 19919")
     @field(0x5, uint16, mandatory)
-    targetSignalToNoiseRatio!: number;
+    trackingState!: number;
 
     @field(0x6, TargetTypeEnum, mandatory)
     targetType!: number;
@@ -417,11 +435,14 @@ class AqaraTargetLocationInfoStruct {
     @field(0x7, PostureEnum, mandatory)
     targetPosture!: number;
 
-    @field(0x8, uint8)
-    targetZoneId?: number;
+    /** Zone that contains the target. 0 means the target is not in a configured zone. */
+    @constraint("0 to 8")
+    @field(0x8, uint8, mandatory)
+    targetZoneId!: number;
 }
 
 class AqaraLocationEvent {
+    @constraint("max 10")
     @field(0x0, listOf(AqaraTargetLocationInfoStruct), mandatory)
     location!: AqaraTargetLocationInfoStruct[];
 }
@@ -498,7 +519,7 @@ export class AqaraAmbientSensingConfigurationCluster {
     @attribute(0x0013, octstr, writable, manage, nullable)
     interferenceRegionBitmask?: Bytes | null;
 
-    /** Manually marked edge cells. Null means none; a null write clears the marking. */
+    /** Manually marked edge cells. A set bit is a cell the device does not monitor. Null means none; a null write clears the marking. */
     @constraint("40")
     @attribute(0x0014, octstr, writable, manage, nullable)
     edgeRegionBitmask?: Bytes | null;
@@ -512,8 +533,8 @@ export class AqaraAmbientSensingConfigurationCluster {
     interferenceSourceRecognitionReportingTimeout?: number;
 
     /**
-     * Seconds allowed for one AI space background learning attempt after {@link enableAiSpaceBackgroundLearning}.
-     * The client waits at least this long for {@link aiSpaceBackgroundLearningComplete}.
+     * Length of one AI space background learning run, in seconds. 20 means the run lasts 20 seconds.
+     * The client waits at least this long after {@link enableAiSpaceBackgroundLearning} for {@link aiSpaceBackgroundLearningComplete}.
      */
     @constraint("min 1")
     @attribute(0x0016, uint16)

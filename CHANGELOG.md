@@ -6,6 +6,10 @@ This page shows a detailed overview of the changes between versions without the 
 	Placeholder for the next version (at the beginning of the line):
 	## **WORK IN PROGRESS**
 -->
+## **WORK IN PROGRESS**
+
+- Fix: Aqara occupant location reports a target as the tracking packet (dynamic points, micro-motion points and packed tracking state) instead of a Z coordinate, velocity and signal-to-noise ratio. A set bit in the edge region is a cell the device does not monitor
+
 ## 1.6.0 (2026-11-14)
 
 - Important (Fix): Uploading an OTA firmware file requires `--enable-test-net-dcl`, because the OTA provider only serves local images to a node while test images are allowed. Without it, `initiate_ota_upload` fails instead of storing an image that no node can download

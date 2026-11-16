@@ -142,7 +142,8 @@ class AqaraOccupantLocationCluster(Cluster):
             kStand = 0x02
             kLie = 0x03
             kFall = 0x04
-            kUndefined = 0xFE
+            kSuspectedFall = 0x05
+            kUnknown = 0xFE
             kInvalid = 0xFF
             # All received enum values that are not listed above will be mapped
             # to kUnknownEnumValue. This is a helper enum value that should only
@@ -165,23 +166,23 @@ class AqaraOccupantLocationCluster(Cluster):
                         ClusterObjectFieldDescriptor(Label="targetID", Tag=0, Type=uint),
                         ClusterObjectFieldDescriptor(Label="targetXCoordinate", Tag=1, Type=int),
                         ClusterObjectFieldDescriptor(Label="targetYCoordinate", Tag=2, Type=int),
-                        ClusterObjectFieldDescriptor(Label="targetZCoordinate", Tag=3, Type=int),
-                        ClusterObjectFieldDescriptor(Label="targetVelocity", Tag=4, Type=int),
-                        ClusterObjectFieldDescriptor(Label="targetSignalToNoiseRatio", Tag=5, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="dynPnts", Tag=3, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="mmsPnts", Tag=4, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="trackingState", Tag=5, Type=uint),
                         ClusterObjectFieldDescriptor(Label="targetType", Tag=6, Type=AqaraOccupantLocationCluster.Enums.TargetTypeEnum),
                         ClusterObjectFieldDescriptor(Label="targetPosture", Tag=7, Type=AqaraOccupantLocationCluster.Enums.PostureEnum),
-                        ClusterObjectFieldDescriptor(Label="targetZoneID", Tag=8, Type=typing.Optional[uint]),
+                        ClusterObjectFieldDescriptor(Label="targetZoneID", Tag=8, Type=uint),
                     ])
 
             targetID: uint = 0
             targetXCoordinate: int = 0
             targetYCoordinate: int = 0
-            targetZCoordinate: int = 0
-            targetVelocity: int = 0
-            targetSignalToNoiseRatio: uint = 0
+            dynPnts: uint = 0
+            mmsPnts: uint = 0
+            trackingState: uint = 0
             targetType: AqaraOccupantLocationCluster.Enums.TargetTypeEnum = 0
             targetPosture: AqaraOccupantLocationCluster.Enums.PostureEnum = 0
-            targetZoneID: typing.Optional[uint] = None
+            targetZoneID: uint = 0
 
     class Commands:
         @dataclass
