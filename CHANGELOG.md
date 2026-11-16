@@ -8,7 +8,7 @@ This page shows a detailed overview of the changes between versions without the 
 -->
 ## **WORK IN PROGRESS**
 
-- Fix: Aqara occupant location reports a target as the tracking packet (dynamic points, micro-motion points and packed tracking state) instead of a Z coordinate, velocity and signal-to-noise ratio. A set bit in the edge region is a cell the device does not monitor
+- Fix: Aqara occupant location reports a target as the tracking packet (dynamic points, micro-motion points and packed tracking state) instead of a Z coordinate, velocity and signal-to-noise ratio. In the edge region, 1 means the cell is not monitored and 0 means it is monitored
 
 ## 1.6.0 (2026-11-14)
 

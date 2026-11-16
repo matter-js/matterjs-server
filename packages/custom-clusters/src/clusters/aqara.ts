@@ -508,7 +508,7 @@ export class AqaraAmbientSensingConfigurationCluster {
     @attribute(0x0013, octstr, writable, manage, nullable)
     interferenceRegionBitmask?: Bytes | null;
 
-    /** Manually marked edge cells. A set bit is a cell the device does not monitor. Null means none; a null write clears the marking. */
+    /** Manually marked edge cells. 1 means that cell is not monitored; 0 means it is. Null means none; a null write clears the marking. */
     @constraint("40")
     @attribute(0x0014, octstr, writable, manage, nullable)
     edgeRegionBitmask?: Bytes | null;
