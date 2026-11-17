@@ -393,11 +393,6 @@ class AqaraWalkingDistanceDeltaEvent {
     observationDuration!: number;
 }
 
-/**
- * One tracked target, in the layout stable from firmware 1.2.0.6.
- * Firmware 1.1.8.2 sent a grid index, an activity and a fall flag in fields 3 to 5.
- * Firmware 1.1.9.6 and later sends the fields below.
- */
 class AqaraTargetLocationInfoStruct {
     @field(0x0, uint8, mandatory)
     targetId!: number;
@@ -408,7 +403,10 @@ class AqaraTargetLocationInfoStruct {
     @field(0x2, int16, mandatory)
     targetYCoordinate!: number;
 
-    /** Dynamic point-cloud points for this target in the current frame. */
+    /**
+     * Dynamic point-cloud points for this target in the current frame. Above 0 for any noticeable movement, including
+     * movement in place, and larger for larger movement; 0 means only micro-motion, so the target is still.
+     */
     @field(0x3, uint16, mandatory)
     dynPnts!: number;
 
@@ -416,6 +414,7 @@ class AqaraTargetLocationInfoStruct {
     @field(0x4, uint16, mandatory)
     mmsPnts!: number;
 
+    /** Tracker diagnostics; not a presence or motion signal. */
     @field(0x5, uint16, mandatory)
     trackingState!: number;
 
