@@ -407,11 +407,13 @@ class AqaraTargetLocationInfoStruct {
      * Dynamic point-cloud points for this target in the current frame. Above 0 for any noticeable movement, including
      * movement in place, and larger for larger movement; 0 means only micro-motion, so the target is still.
      */
-    @field(0x3, uint16, mandatory)
+    @constraint("0 to 10000")
+    @field(0x3, int16, mandatory)
     dynPnts!: number;
 
     /** Micro-motion point-cloud points for this target in the current frame. */
-    @field(0x4, uint16, mandatory)
+    @constraint("0 to 10000")
+    @field(0x4, int16, mandatory)
     mmsPnts!: number;
 
     /** Tracker diagnostics; not a presence or motion signal. */

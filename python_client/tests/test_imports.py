@@ -264,7 +264,8 @@ def test_aqara_ambient_sensing_clusters():
     assert location.Attributes.ActivityState.attribute_id == 0x0007
     target = location.Structs.AqaraTargetLocationInfoStruct
     assert target.descriptor.GetFieldByLabel("targetXCoordinate").Type is int
-    assert target.descriptor.GetFieldByLabel("dynPnts").Type is uint
+    assert target.descriptor.GetFieldByLabel("dynPnts").Type is int
+    assert target.descriptor.GetFieldByLabel("mmsPnts").Type is int
     assert target.descriptor.GetFieldByLabel("trackingState").Type is uint
     assert target.descriptor.GetFieldByLabel("targetZoneID").Type is uint
     event = location.Events.Location(
@@ -273,8 +274,8 @@ def test_aqara_ambient_sensing_clusters():
                 targetID=uint(0),
                 targetXCoordinate=-5,
                 targetYCoordinate=228,
-                dynPnts=uint(40),
-                mmsPnts=uint(7),
+                dynPnts=40,
+                mmsPnts=7,
                 trackingState=uint(11),
                 targetType=location.Enums.TargetTypeEnum.kUnknown,
                 targetPosture=location.Enums.PostureEnum.kUnknown,

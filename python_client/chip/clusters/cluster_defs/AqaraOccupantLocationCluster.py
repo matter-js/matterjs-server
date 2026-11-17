@@ -166,8 +166,8 @@ class AqaraOccupantLocationCluster(Cluster):
                         ClusterObjectFieldDescriptor(Label="targetID", Tag=0, Type=uint),
                         ClusterObjectFieldDescriptor(Label="targetXCoordinate", Tag=1, Type=int),
                         ClusterObjectFieldDescriptor(Label="targetYCoordinate", Tag=2, Type=int),
-                        ClusterObjectFieldDescriptor(Label="dynPnts", Tag=3, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="mmsPnts", Tag=4, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="dynPnts", Tag=3, Type=int),
+                        ClusterObjectFieldDescriptor(Label="mmsPnts", Tag=4, Type=int),
                         ClusterObjectFieldDescriptor(Label="trackingState", Tag=5, Type=uint),
                         ClusterObjectFieldDescriptor(Label="targetType", Tag=6, Type=AqaraOccupantLocationCluster.Enums.TargetTypeEnum),
                         ClusterObjectFieldDescriptor(Label="targetPosture", Tag=7, Type=AqaraOccupantLocationCluster.Enums.PostureEnum),
@@ -177,8 +177,8 @@ class AqaraOccupantLocationCluster(Cluster):
             targetID: uint = 0
             targetXCoordinate: int = 0
             targetYCoordinate: int = 0
-            dynPnts: uint = 0
-            mmsPnts: uint = 0
+            dynPnts: int = 0
+            mmsPnts: int = 0
             trackingState: uint = 0
             targetType: AqaraOccupantLocationCluster.Enums.TargetTypeEnum = 0
             targetPosture: AqaraOccupantLocationCluster.Enums.PostureEnum = 0
