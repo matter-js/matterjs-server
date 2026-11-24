@@ -114,6 +114,12 @@ async function discoverMatterCharacteristics(
     return { c1Uuid, c2Uuid };
 }
 
+function releasePeripheral(connection: BleProxyConnection, connectionHandle: number, peripheralAddress: string) {
+    connection
+        .sendCommand(BleProxyCommand.Disconnect, { connection_handle: connectionHandle })
+        .catch(error => logger.debug(`Peripheral ${peripheralAddress}: Error during connect-failure cleanup`, error));
+}
+
 /**
  * ConnectionlessTransport implementation that opens BLE channels through the proxy WebSocket.
  * Replaces NobleBleCentralInterface from @matter/nodejs-ble.
@@ -129,7 +135,9 @@ export class ProxyBleCentralInterface implements Transport {
         this.#handler = handler;
     }
 
-    async openChannel(address: ServerAddress): Promise<Channel<Bytes>> {
+    /** An abort during the open disconnects the peripheral, including one the proxy connects after the abort. */
+    async openChannel(address: ServerAddress, options?: Transport.OpenChannelOptions): Promise<Channel<Bytes>> {
+        const abort = options?.abort;
         if (this.#closed) {
             throw new NetworkError("Network interface is closed");
         }
@@ -155,9 +163,20 @@ export class ProxyBleCentralInterface implements Transport {
         logger.debug(`Connecting to peripheral ${peripheralAddress} (rssi=${rssi ?? "n/a"}) via proxy`);
 
         // 1. Connect
-        const { connection_handle, mtu: peripheralMtu } = await connection.sendCommand(BleProxyCommand.Connect, {
-            address: peripheralAddress,
-        });
+        const connecting = connection.sendCommand(BleProxyCommand.Connect, { address: peripheralAddress });
+        let connected: Awaited<typeof connecting>;
+        try {
+            connected = await Abort.attempt(abort, connecting);
+        } catch (error) {
+            if (abort?.aborted) {
+                connecting.then(
+                    ({ connection_handle }) => releasePeripheral(connection, connection_handle, peripheralAddress),
+                    () => {},
+                );
+            }
+            throw error;
+        }
+        const { connection_handle, mtu: peripheralMtu } = connected;
 
         const segmentSize = MatterBle.btpSegmentSizeFromAttMtu(peripheralMtu ?? 0);
         logger.info(
@@ -166,23 +185,22 @@ export class ProxyBleCentralInterface implements Transport {
 
         let link: ProxyPeripheralLink;
         try {
-            const { c1Uuid, c2Uuid } = await discoverMatterCharacteristics(
-                connection,
-                connection_handle,
-                peripheralAddress,
-                hasAdditionalAdvertisementData,
+            const { c1Uuid, c2Uuid } = await Abort.attempt(
+                abort,
+                discoverMatterCharacteristics(
+                    connection,
+                    connection_handle,
+                    peripheralAddress,
+                    hasAdditionalAdvertisementData,
+                ),
             );
             link = { connection, connectionHandle: connection_handle, peripheralAddress, c1Uuid, c2Uuid };
         } catch (error) {
-            connection
-                .sendCommand(BleProxyCommand.Disconnect, { connection_handle })
-                .catch(cleanupError =>
-                    logger.debug(`Peripheral ${peripheralAddress}: Error during connect-failure cleanup`, cleanupError),
-                );
+            releasePeripheral(connection, connection_handle, peripheralAddress);
             throw error;
         }
 
-        return await ProxyBleChannel.open(link, onMatterMessageListener, segmentSize);
+        return await ProxyBleChannel.open(link, onMatterMessageListener, segmentSize, abort);
     }
 
     onData(listener: (socket: Channel<Bytes>, data: Bytes) => void): Transport.Listener {
@@ -228,8 +246,8 @@ function isBtpHandshakeResponse(data: Uint8Array) {
  */
 export class ProxyBleChannel extends BleChannel<Bytes> {
     /**
-     * Performs the BTP handshake on a connected peripheral and returns the channel. On failure the peripheral is
-     * disconnected.
+     * Performs the BTP handshake on a connected peripheral and returns the channel. On failure or abort the peripheral
+     * is disconnected.
      *
      * @throws {BleDisconnectedError} when the peripheral or its proxy client is lost meanwhile
      * @throws {BleError} when the handshake response does not arrive in time; proxy command errors pass through
@@ -238,10 +256,14 @@ export class ProxyBleChannel extends BleChannel<Bytes> {
         link: ProxyPeripheralLink,
         onMatterMessage: (socket: Channel<Bytes>, data: Bytes) => void,
         segmentSize: number,
+        abort?: AbortSignal,
     ): Promise<ProxyBleChannel> {
         const channel = new ProxyBleChannel(link, onMatterMessage);
         try {
-            await channel.#adoptSession(await channel.#handshake(segmentSize), segmentSize);
+            const establishing = channel
+                .#handshake(segmentSize)
+                .then(response => channel.#adoptSession(response, segmentSize));
+            await Abort.attempt(abort, establishing);
         } catch (error) {
             const lost = !channel.#usable;
             await channel.close();

@@ -12,6 +12,7 @@
 import { Bytes, InternalError, Seconds } from "@matter/main";
 import { BleDisconnectedError, MatterBle } from "@matter/main/protocol";
 import { createServer } from "node:http";
+import { BleProxyClientDisconnectedError } from "../src/BleProxyConnection.js";
 import { BleProxyHandler } from "../src/BleProxyHandler.js";
 import { BinaryFrameOpcode, BleProxyCommand } from "../src/BleProxyProtocol.js";
 import { ProxyBle } from "../src/ProxyBle.js";
@@ -601,6 +602,101 @@ describe("BLE Proxy Integration", function () {
             } finally {
                 MockTime.disable();
             }
+        });
+
+        // Discovers a device and answers Connect; the remaining commands are up to the test.
+        const prepareOpen = async (discriminator: number, connectionHandle: number) => {
+            const proxyBle = new ProxyBle(handler);
+            const mockDevice = new MockBleDevice({ discriminator, vendorId: 0xfff1, productId: 0x8000 });
+            await discoverDevice(proxyBle, mockDevice);
+            testClient.onCommand(BleProxyCommand.Connect, async () => ({
+                connection_handle: connectionHandle,
+                mtu: 247,
+            }));
+            testClient.onCommand(BleProxyCommand.DiscoverServices, async () => ({ services: mockDevice.services }));
+            testClient.onCommand(BleProxyCommand.DiscoverCharacteristics, async () => ({
+                characteristics: mockDevice.characteristics,
+            }));
+            testClient.onCommand(BleProxyCommand.Disconnect, async () => ({}));
+            const central = proxyBle.centralInterface as ProxyBleCentralInterface;
+            central.onData(() => {});
+            return { central, mockDevice };
+        };
+
+        const abortedOpen = (central: ProxyBleCentralInterface, peripheralAddress: string, abort: AbortController) =>
+            central.openChannel({ type: "ble", peripheralAddress }, { abort: abort.signal }).then(
+                () => expect.fail("open should not resolve"),
+                (error: unknown) => error,
+            );
+
+        it("disconnects when the open is aborted during the BTP handshake", async () => {
+            const { central, mockDevice } = await prepareOpen(8000, 14);
+            testClient.onCommand(BleProxyCommand.WriteAndSubscribe, () => new Promise<void>(() => {}));
+            const abort = new AbortController();
+
+            const outcome = abortedOpen(central, mockDevice.address, abort);
+            await testClient.waitForCommand("write_and_subscribe", 1000);
+            abort.abort(new InternalError("aborted by test"));
+
+            expect(await outcome).to.be.instanceOf(InternalError);
+            await waitFor(() => sentDisconnects().length > 0);
+            await settle();
+            expect(sentDisconnects().length).to.equal(1);
+        });
+
+        it("disconnects when the open is aborted during service discovery", async () => {
+            const { central, mockDevice } = await prepareOpen(8100, 15);
+            testClient.onCommand(BleProxyCommand.DiscoverServices, () => new Promise<void>(() => {}));
+            const abort = new AbortController();
+
+            const outcome = abortedOpen(central, mockDevice.address, abort);
+            await testClient.waitForCommand("discover_services", 1000);
+            abort.abort(new InternalError("aborted by test"));
+
+            expect(await outcome).to.be.instanceOf(InternalError);
+            await waitFor(() => sentDisconnects().length > 0);
+        });
+
+        it("disconnects a peripheral the proxy connects after the open was aborted", async () => {
+            const { central, mockDevice } = await prepareOpen(8200, 16);
+            let finishConnect = () => {};
+            testClient.onCommand(
+                BleProxyCommand.Connect,
+                () =>
+                    new Promise(resolve => {
+                        finishConnect = () => resolve({ connection_handle: 16, mtu: 247 });
+                    }),
+            );
+            const abort = new AbortController();
+
+            const outcome = abortedOpen(central, mockDevice.address, abort);
+            await testClient.waitForCommand("connect", 1000);
+            abort.abort(new InternalError("aborted by test"));
+            expect(await outcome).to.be.instanceOf(InternalError);
+            finishConnect();
+
+            const disconnect = await testClient.waitForCommand("disconnect", 1000);
+            expect((disconnect.args as { connection_handle: number }).connection_handle).to.equal(16);
+        });
+
+        it("reports a vanished proxy client with a typed disconnect error", async () => {
+            const { central, mockDevice } = await prepareOpen(8300, 17);
+            testClient.onCommand(BleProxyCommand.WriteAndSubscribe, () => new Promise<void>(() => {}));
+            const connection = handler.getOwner(mockDevice.address);
+            expect(connection).to.exist;
+
+            const opening = central.openChannel({ type: "ble", peripheralAddress: mockDevice.address });
+            await testClient.waitForCommand("write_and_subscribe", 1000);
+            testClient.close();
+
+            await expect(opening).rejectedWith(BleDisconnectedError);
+            await waitFor(() => !connection!.connected);
+            expect(() => connection!.sendBinaryFrame(BinaryFrameOpcode.WriteData, 17, new Uint8Array(1))).to.throw(
+                BleProxyClientDisconnectedError,
+            );
+            await expect(connection!.sendCommand(BleProxyCommand.Disconnect, { connection_handle: 17 })).rejectedWith(
+                BleProxyClientDisconnectedError,
+            );
         });
 
         it("fails the open right away when the proxy loses the peripheral during the handshake", async () => {

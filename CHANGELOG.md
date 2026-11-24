@@ -12,6 +12,7 @@ This page shows a detailed overview of the changes between versions without the 
 - Fix: With the BLE proxy, commissioning notices a lost Bluetooth connection right away instead of waiting for a timeout
 - Fix: With the Home Assistant BLE proxy on Linux, commissioning sends Bluetooth packets as large as the connection allows instead of always 20 bytes, so it finishes faster
 - Fix: With the BLE proxy, when a device does not answer large Bluetooth packets, commissioning continues on the same connection with the smallest packet size, as it already does without the proxy
+- Fix: With the BLE proxy, a commissioning attempt that is cancelled while it connects over Bluetooth now closes that Bluetooth connection
 
 ## **WORK IN PROGRESS**
 
