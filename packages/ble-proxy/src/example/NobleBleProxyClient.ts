@@ -604,7 +604,7 @@ export class NobleBleProxyClient {
             };
             release();
             // The server no longer waits for this connect, so it could never disconnect a late success itself
-            interview?.then(release, () => {});
+            interview?.then(release, release);
             this.#sendError(id, BleProxyErrorCode.ConnectionFailed, reason);
         } finally {
             log(`[SCAN] resuming scan after connect+interview...`);

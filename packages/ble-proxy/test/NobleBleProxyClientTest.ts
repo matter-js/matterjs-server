@@ -470,6 +470,33 @@ describe("NobleBleProxyClient", () => {
             expect(responses.filter(response => response.id === 2).length).to.equal(1);
         });
 
+        it("disconnects a peripheral that connects after the connect timeout and then fails discovery", async () => {
+            const log = new Array<string>();
+            let finishConnect = () => {};
+            const connecting = new Promise<void>(resolve => {
+                finishConnect = resolve;
+            });
+            const peripheral = new FakePeripheral(
+                "dd:dd:dd:dd:dd:dd",
+                log,
+                () => Promise.reject(new Error("discovery failed")),
+                () => connecting,
+            );
+
+            startScan(1, ["fff6"]);
+            await waitFor(() => responseFor(1) !== undefined);
+            noble.emitDiscover(peripheral);
+            await waitFor(() => events.length === 1);
+
+            sendCommand(2, BleProxyCommand.Connect, { address: "dd:dd:dd:dd:dd:dd", timeout: 50 });
+            await waitFor(() => responseFor(2) !== undefined);
+            expect(responseFor(2)?.success).to.equal(false);
+
+            finishConnect();
+            await waitFor(() => log.includes("discover-services:dd:dd:dd:dd:dd:dd"));
+            await waitFor(() => peripheral.state === "disconnected");
+        });
+
         it("answers a start_scan whose noble call never settles, and keeps serving commands", async () => {
             noble.hangOn = "start";
             startScan(1, ["fff6"]);
