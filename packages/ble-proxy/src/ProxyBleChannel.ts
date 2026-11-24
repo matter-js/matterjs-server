@@ -27,12 +27,19 @@ import {
 } from "@matter/main/protocol";
 import type { BleProxyConnection } from "./BleProxyConnection.js";
 import type { BleProxyHandler } from "./BleProxyHandler.js";
-import { type BinaryFrame, BinaryFrameOpcode, BleProxyCommand, BleProxyEvent } from "./BleProxyProtocol.js";
+import {
+    type BinaryFrame,
+    BinaryFrameOpcode,
+    BleProxyCommand,
+    BleProxyCommandError,
+    BleProxyErrorCode,
+    BleProxyEvent,
+} from "./BleProxyProtocol.js";
 import type { ProxyBleScanner } from "./ProxyBleScanner.js";
 
 const logger = Logger.get("ProxyBleChannel");
 
-/** BTP handshake response identification bytes (Matter spec 4.18.2.5.6) */
+/** BTP handshake response identification bytes (Matter spec §4.19.3.2) */
 const BTP_HANDSHAKE_RESPONSE_OPCODE_1 = 0x65;
 const BTP_HANDSHAKE_RESPONSE_OPCODE_2 = 0x6c;
 const BTP_HANDSHAKE_RESPONSE_LENGTH = 6;
@@ -67,7 +74,6 @@ async function discoverMatterCharacteristics(
     peripheralAddress: string,
     hasAdditionalAdvertisementData: boolean,
 ) {
-    // 2. Discover services
     const { services } = await connection.sendCommand(BleProxyCommand.DiscoverServices, {
         connection_handle: connectionHandle,
     });
@@ -77,7 +83,6 @@ async function discoverMatterCharacteristics(
         throw new BleError(`Peripheral ${peripheralAddress} does not have Matter BLE service`);
     }
 
-    // 3. Discover characteristics
     const { characteristics } = await connection.sendCommand(BleProxyCommand.DiscoverCharacteristics, {
         connection_handle: connectionHandle,
         service_uuid: matterService.uuid,
@@ -102,7 +107,6 @@ async function discoverMatterCharacteristics(
         throw new BleError(`Peripheral ${peripheralAddress} missing required Matter characteristics (C1/C2)`);
     }
 
-    // 4. Read C3 if present and has additional data
     if (c3Uuid && hasAdditionalAdvertisementData) {
         logger.debug(`Reading additional commissioning data from C3`);
         await connection.sendCommand(BleProxyCommand.ReadCharacteristic, {
@@ -129,6 +133,7 @@ export class ProxyBleCentralInterface implements Transport {
     readonly #handler: BleProxyHandler;
     #onMatterMessageListener: ((socket: Channel<Bytes>, data: Bytes) => void) | undefined;
     #closed = false;
+    readonly #channels = new Set<ProxyBleChannel>();
 
     constructor(bleScanner: ProxyBleScanner, handler: BleProxyHandler) {
         this.#bleScanner = bleScanner;
@@ -162,7 +167,7 @@ export class ProxyBleCentralInterface implements Transport {
 
         logger.debug(`Connecting to peripheral ${peripheralAddress} (rssi=${rssi ?? "n/a"}) via proxy`);
 
-        // 1. Connect
+        abort?.throwIfAborted();
         const connecting = connection.sendCommand(BleProxyCommand.Connect, { address: peripheralAddress });
         let connected: Awaited<typeof connecting>;
         try {
@@ -197,10 +202,15 @@ export class ProxyBleCentralInterface implements Transport {
             link = { connection, connectionHandle: connection_handle, peripheralAddress, c1Uuid, c2Uuid };
         } catch (error) {
             releasePeripheral(connection, connection_handle, peripheralAddress);
-            throw error;
+            throw asLinkError(error, peripheralAddress);
         }
 
-        return await ProxyBleChannel.open(link, onMatterMessageListener, segmentSize, abort);
+        const channel = await ProxyBleChannel.open(link, onMatterMessageListener, segmentSize, abort);
+        this.#channels.add(channel);
+        channel.closed.once(() => {
+            this.#channels.delete(channel);
+        });
+        return channel;
     }
 
     onData(listener: (socket: Channel<Bytes>, data: Bytes) => void): Transport.Listener {
@@ -210,8 +220,10 @@ export class ProxyBleCentralInterface implements Transport {
         };
     }
 
+    /** Stops new opens and closes the open channels, which disconnects their peripherals. */
     async close() {
         this.#closed = true;
+        await Promise.all([...this.#channels].map(channel => channel.close()));
     }
 
     supports(type: ChannelType, _address?: string) {
@@ -236,13 +248,40 @@ function isBtpHandshakeResponse(data: Uint8Array) {
     );
 }
 
+/** A proxy reply saying the peripheral is not connected means the BLE link is gone. */
+function asLinkError(error: unknown, peripheralAddress: string) {
+    if (error instanceof BleProxyCommandError && error.code === BleProxyErrorCode.NotConnected) {
+        return new BleDisconnectedError(`Peripheral ${peripheralAddress}: ${error.detail}`, { cause: error });
+    }
+    return error;
+}
+
+/**
+ * Lifecycle of a {@link ProxyBleChannel}:
+ *
+ * ```
+ * opening ──handshake──▶ open ──stall──▶ retrying ──handshake, resend──▶ open
+ *    └───────────── close / peripheral lost / session end ─────────────▶ closed
+ * ```
+ *
+ * `retrying` carries the new session once its handshake completed, so incoming data reaches it while the
+ * unacknowledged messages are resent; sends wait for `done`.
+ */
+type ChannelState =
+    | { readonly kind: "opening" }
+    | { readonly kind: "open"; readonly session: BtpSessionHandler }
+    | { readonly kind: "retrying"; readonly done: Promise<void>; readonly session?: BtpSessionHandler }
+    | { readonly kind: "closed" };
+
+const CLOSED: ChannelState = { kind: "closed" };
+
 /**
  * BLE channel that communicates through the proxy WebSocket.
  * Replaces NobleBleChannel from @matter/nodejs-ble.
  *
  * The channel owns its BTP session. When the peer stalls after the handshake (see
  * {@link BtpSessionHandler.stalledAfterHandshake}), the channel establishes one new session with the minimum segment
- * size and resends the messages the peer never acknowledged, as NobleBleChannel does. Sends wait for that.
+ * size and resends the messages the peer never acknowledged, as NobleBleChannel does.
  */
 export class ProxyBleChannel extends BleChannel<Bytes> {
     /**
@@ -250,7 +289,8 @@ export class ProxyBleChannel extends BleChannel<Bytes> {
      * is disconnected.
      *
      * @throws {BleDisconnectedError} when the peripheral or its proxy client is lost meanwhile
-     * @throws {BleError} when the handshake response does not arrive in time; proxy command errors pass through
+     * @throws {BleError} when the handshake response does not arrive in time, or a proxy command fails
+     * @throws the abort reason when `abort` fires
      */
     static async open(
         link: ProxyPeripheralLink,
@@ -263,9 +303,10 @@ export class ProxyBleChannel extends BleChannel<Bytes> {
             const establishing = channel
                 .#handshake(segmentSize)
                 .then(response => channel.#adoptSession(response, segmentSize));
-            await Abort.attempt(abort, establishing);
+            const session = await Abort.attempt(abort, establishing);
+            channel.#state = { kind: "open", session };
         } catch (error) {
-            const lost = !channel.#usable;
+            const lost = channel.#state.kind === "closed";
             await channel.close();
             if (lost && !(error instanceof BleDisconnectedError)) {
                 throw new BleDisconnectedError(
@@ -273,20 +314,18 @@ export class ProxyBleChannel extends BleChannel<Bytes> {
                     { cause: error },
                 );
             }
-            throw error;
+            throw asLinkError(error, link.peripheralAddress);
         }
         return channel;
     }
 
     readonly #link: ProxyPeripheralLink;
     readonly #onMatterMessage: (socket: Channel<Bytes>, data: Bytes) => void;
-    #connected = true;
-    #closing = false;
+    #state: ChannelState = { kind: "opening" };
+    /** Cleared once the proxy no longer holds the BLE link for us, so Disconnect is sent at most once. */
     #peripheralLinked = true;
-    #btpSession?: BtpSessionHandler;
     #pendingHandshake?: { resolver: (response: Uint8Array) => void; rejecter: (error: Error) => void };
     readonly #framesBeforeSession = new Array<Uint8Array>();
-    #renegotiation?: Promise<void>;
     readonly #lifetime = new AbortController();
     readonly #closeListeners = new Set<() => void>();
     #iteratorQueue = new Array<Bytes>();
@@ -315,11 +354,13 @@ export class ProxyBleChannel extends BleChannel<Bytes> {
             }
             return;
         }
-        if (this.#btpSession === undefined) {
+        const state = this.#state;
+        const session = state.kind === "open" || state.kind === "retrying" ? state.session : undefined;
+        if (session === undefined) {
             this.#framesBeforeSession.push(data);
             return;
         }
-        this.#forwardToSession(this.#btpSession, data);
+        this.#forwardToSession(session, data);
     };
 
     readonly #onEvent = (event: string, data: Record<string, unknown>) => {
@@ -332,13 +373,6 @@ export class ProxyBleChannel extends BleChannel<Bytes> {
         this.#peripheralLost(`Owning proxy client for ${this.#link.peripheralAddress} disconnected`);
     };
 
-    #detachObservers() {
-        const { connection } = this.#link;
-        connection.binaryFrameReceived.off(this.#onBinaryFrame);
-        connection.eventReceived.off(this.#onEvent);
-        connection.closed.off(this.#onOwnerClosed);
-    }
-
     #forwardToSession(session: BtpSessionHandler, data: Uint8Array) {
         session
             .handleIncomingBleData(data)
@@ -350,7 +384,6 @@ export class ProxyBleChannel extends BleChannel<Bytes> {
     #peripheralLost(reason: string) {
         logger.info(reason);
         this.#peripheralLinked = false;
-        this.#connected = false;
         this.close().catch(error =>
             logger.debug(`Peripheral ${this.#link.peripheralAddress}: Error closing channel`, error),
         );
@@ -409,8 +442,9 @@ export class ProxyBleChannel extends BleChannel<Bytes> {
         }
     }
 
+    /** Creates the BTP session for a completed handshake and delivers the frames that arrived before it. */
     async #adoptSession(handshakeResponse: Uint8Array, segmentSize: number) {
-        const { connection, connectionHandle, peripheralAddress } = this.#link;
+        const { connection, connectionHandle } = this.#link;
         const session = await BtpSessionHandler.createAsCentral(
             handshakeResponse,
             async (data: Bytes) => {
@@ -423,54 +457,40 @@ export class ProxyBleChannel extends BleChannel<Bytes> {
             },
             segmentSize,
         );
-        if (!this.#usable) {
-            session.suspend();
-            throw new BleDisconnectedError(
-                `Peripheral ${peripheralAddress}: Channel was lost while establishing the BTP session`,
-            );
-        }
-        this.#btpSession = session;
         session.closed.once(() => {
-            this.#connected = false;
-            this.#detachObservers();
-            this.#terminateIterator();
+            // close() closes the session itself and finishes the channel
+            if (this.#state.kind === "closed") {
+                return;
+            }
+            this.#state = CLOSED;
+            this.#release();
             this.emitClosed();
         });
-        session.stalledAfterHandshake.once(messagesToReplay => this.#startRenegotiation(messagesToReplay));
+        session.stalledAfterHandshake.once(messagesToReplay => this.#startRetry(messagesToReplay));
         for (const data of this.#framesBeforeSession.splice(0)) {
             this.#forwardToSession(session, data);
         }
+        return session;
     }
 
-    #startRenegotiation(messagesToReplay: readonly Bytes[]) {
-        if (this.#renegotiation !== undefined) {
-            return;
-        }
-        this.#btpSession = undefined;
-        // Every send awaits this promise: it must exist before the first step runs and never settle rejected
-        this.#renegotiation = Promise.resolve()
-            .then(() => Abort.attempt(this.#lifetime, this.#renegotiate(messagesToReplay)))
+    #startRetry(messagesToReplay: readonly Bytes[]) {
+        const done = Promise.resolve()
+            .then(() => Abort.attempt(this.#lifetime, this.#retry(messagesToReplay)))
             .catch(async error => {
                 const { peripheralAddress } = this.#link;
-                if (this.#closing) {
-                    logger.debug(`Peripheral ${peripheralAddress}: Renegotiation ended by closing the channel`);
+                if (this.#state.kind === "closed") {
+                    logger.debug(`Peripheral ${peripheralAddress}: Retry ended by closing the channel`, error);
                     return;
                 }
-                if (this.#usable) {
-                    logger.warn(`Peripheral ${peripheralAddress}: Renegotiating the BTP session failed`, error);
-                } else {
-                    logger.debug(`Peripheral ${peripheralAddress}: Renegotiation ended by disconnect`, error);
-                }
+                logger.warn(`Peripheral ${peripheralAddress}: Retrying the BTP session failed`, error);
                 await this.close().catch(closeError =>
-                    logger.debug(
-                        `Peripheral ${peripheralAddress}: Error closing after a failed renegotiation`,
-                        closeError,
-                    ),
+                    logger.debug(`Peripheral ${peripheralAddress}: Error closing after a failed retry`, closeError),
                 );
             });
+        this.#state = { kind: "retrying", done };
     }
 
-    async #renegotiate(messagesToReplay: readonly Bytes[]) {
+    async #retry(messagesToReplay: readonly Bytes[]) {
         const { connection, connectionHandle, peripheralAddress, c2Uuid } = this.#link;
         logger.info(
             `Peripheral ${peripheralAddress}: Peer did not respond to any BTP packet, retrying with a ${MatterBle.MINIMUM_ATT_MTU} byte BTP segment size`,
@@ -480,37 +500,24 @@ export class ProxyBleChannel extends BleChannel<Bytes> {
             connection_handle: connectionHandle,
             characteristic_uuid: c2Uuid,
         });
-        this.#assertRenegotiable();
-        const handshakeResponse = await this.#handshake(MatterBle.MINIMUM_ATT_MTU);
-        this.#assertRenegotiable();
-        await this.#adoptSession(handshakeResponse, MatterBle.MINIMUM_ATT_MTU);
+        const state = this.#state;
+        if (state.kind !== "retrying") {
+            return;
+        }
+        const session = await this.#adoptSession(
+            await this.#handshake(MatterBle.MINIMUM_ATT_MTU),
+            MatterBle.MINIMUM_ATT_MTU,
+        );
+        this.#state = { kind: "retrying", done: state.done, session };
         for (const message of messagesToReplay) {
-            await this.#currentSession.sendMatterMessage(message);
+            await session.sendMatterMessage(message);
         }
-    }
-
-    #assertRenegotiable() {
-        if (!this.#usable) {
-            throw new BleDisconnectedError(
-                `Peripheral ${this.#link.peripheralAddress}: Channel was lost while renegotiating the BTP session`,
-            );
-        }
-    }
-
-    get #usable() {
-        return this.#connected;
-    }
-
-    /** Absent only while a renegotiation replaces the session or after it failed, which also ends the channel. */
-    get #currentSession() {
-        if (this.#btpSession === undefined) {
-            throw new BleDisconnectedError(`Peripheral ${this.#link.peripheralAddress}: No BTP session`);
-        }
-        return this.#btpSession;
+        this.#state = { kind: "open", session };
     }
 
     get connected() {
-        return this.#connected;
+        const { kind } = this.#state;
+        return kind === "open" || kind === "retrying";
     }
 
     pushMessage(data: Bytes): void {
@@ -538,7 +545,7 @@ export class ProxyBleChannel extends BleChannel<Bytes> {
                 if (this.#iteratorQueue.length > 0) {
                     return Promise.resolve({ value: this.#iteratorQueue.shift()!, done: false });
                 }
-                if (this.#iteratorDone || !this.#connected) {
+                if (this.#iteratorDone) {
                     return Promise.resolve({ value: undefined as unknown as Bytes, done: true });
                 }
                 return new Promise<IteratorResult<Bytes>>(resolve => {
@@ -548,25 +555,41 @@ export class ProxyBleChannel extends BleChannel<Bytes> {
         };
     }
 
-    #terminateIterator(): void {
+    /** Detaches from the proxy connection, ends the iterator and notifies the close listeners. */
+    #release() {
+        const { connection, peripheralAddress } = this.#link;
+        connection.binaryFrameReceived.off(this.#onBinaryFrame);
+        connection.eventReceived.off(this.#onEvent);
+        connection.closed.off(this.#onOwnerClosed);
         if (!this.#iteratorDone) {
             this.#iteratorDone = true;
             this.#iteratorWaiter?.({ value: undefined, done: true });
             this.#iteratorWaiter = undefined;
         }
+        for (const listener of this.#closeListeners) {
+            try {
+                listener();
+            } catch (error) {
+                logger.warn(`Peripheral ${peripheralAddress}: Close listener failed`, error);
+            }
+        }
     }
 
     /**
-     * Waits for a pending renegotiation of the BTP session.
+     * Waits while the BTP session is being retried with the minimum segment size.
      *
      * @throws {BleDisconnectedError} once the peripheral, the BTP session or the channel has ended
      */
     async send(data: Bytes) {
-        await this.#renegotiation;
-        if (!this.#usable) {
+        const state = this.#state;
+        if (state.kind === "retrying") {
+            await state.done;
+        }
+        const current = this.#state;
+        if (current.kind !== "open") {
             throw new BleDisconnectedError(`Cannot send data, not connected to ${this.#link.peripheralAddress}`);
         }
-        await this.#currentSession.sendMatterMessage(data);
+        await current.session.sendMatterMessage(data);
     }
 
     get name() {
@@ -574,32 +597,19 @@ export class ProxyBleChannel extends BleChannel<Bytes> {
     }
 
     async close() {
-        if (!this.#finish()) {
+        const previous = this.#state;
+        if (previous.kind === "closed") {
             return;
         }
-        this.#btpSession.closed.off(this.#onBtpSessionClosed);
-        await this.#btpSession.close();
-        this.emitClosed();
-    }
-
-    /** Ends the channel once, whether {@link close} or the BTP session ends it; false if it already ended. */
-    #finish() {
-        if (this.#closing) {
-            return false;
-        }
-        this.#closing = true;
-        this.#connected = false;
+        this.#state = CLOSED;
         this.#lifetime.abort();
         this.#pendingHandshake?.rejecter(
             new BleDisconnectedError(`Peripheral ${this.#link.peripheralAddress}: Channel closed`),
         );
-        this.#detachObservers();
-        this.#terminateIterator();
-        for (const listener of this.#closeListeners) {
-            listener();
-        }
-        await this.#btpSession?.close();
-        // Covers a session that already ended or a renegotiation in progress, where no session asks for it
+        this.#release();
+        const session = previous.kind === "open" || previous.kind === "retrying" ? previous.session : undefined;
+        await session?.close();
+        // Covers a session that already ended or a retry in progress, where no session asks for it
         this.#disconnectPeripheral();
         this.emitClosed();
     }

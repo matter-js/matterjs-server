@@ -7,7 +7,11 @@
 import { Seconds } from "@matter/main";
 import { createServer } from "node:http";
 import { WebSocket, WebSocketServer } from "ws";
-import { BleProxyConnection } from "../src/BleProxyConnection.js";
+import {
+    BleProxyClientDisconnectedError,
+    BleProxyCommandTimeoutError,
+    BleProxyConnection,
+} from "../src/BleProxyConnection.js";
 import { BLE_PROXY_PROTOCOL_VERSION, BinaryFrameOpcode, BleProxyCommand } from "../src/BleProxyProtocol.js";
 import { BleProxyTestClient } from "./BleProxyTestClient.js";
 
@@ -166,11 +170,20 @@ describe("BleProxyConnection", function () {
         testClient.close();
 
         await closedEmitted;
+        await expect(pending).rejectedWith(BleProxyClientDisconnectedError, "disconnected");
+    });
+
+    it("rejects a command the client never answers after the command timeout", async () => {
+        testClient.onCommand(BleProxyCommand.StopScan, async () => new Promise(() => {}));
+
+        MockTime.enable();
         try {
-            await pending;
-            expect.fail("Should have rejected");
-        } catch (err) {
-            expect((err as Error).message).to.include("disconnected");
+            const pending = connection.sendCommand(BleProxyCommand.StopScan);
+            await MockTime.advance(Seconds(61));
+
+            await expect(pending).rejectedWith(BleProxyCommandTimeoutError);
+        } finally {
+            MockTime.disable();
         }
     });
 });

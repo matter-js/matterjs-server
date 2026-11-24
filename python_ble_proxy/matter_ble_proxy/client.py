@@ -65,16 +65,17 @@ def _att_mtu(client: BleakClient) -> int:
     """Best known ATT MTU of the link, 23 if the backend cannot tell.
 
     BlueZ reports a fixed 23 from `mtu_size` (with a warning) unless a private
-    call ran; only then the per-characteristic write size is used, as other
-    backends may derive it from an earlier connection's cached services.
+    bleak call ran. For BlueZ the largest characteristic write size plus the
+    ATT header is used instead; BlueZ 5.62 and newer derive it from the link.
     """
+    from bleak.backends import BleakBackend
     from bleak.exc import BleakError
 
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore", message="Using default MTU value")
         mtu = getattr(client, "mtu_size", _DEFAULT_ATT_MTU)
-    if mtu > _DEFAULT_ATT_MTU:
-        return mtu
+    if getattr(client, "backend_id", None) != BleakBackend.BLUEZ_DBUS:
+        return max(_DEFAULT_ATT_MTU, mtu)
     try:
         services = client.services
     except BleakError:
@@ -84,7 +85,7 @@ def _att_mtu(client: BleakClient) -> int:
         for service in services or ()
         for char in service.characteristics
     ]
-    return max([_DEFAULT_ATT_MTU, *sizes])
+    return max([_DEFAULT_ATT_MTU, mtu, *sizes])
 
 
 def _normalize_uuid(uuid: str) -> str:

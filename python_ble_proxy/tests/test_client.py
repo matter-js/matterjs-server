@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
+import warnings
 
 from matter_ble_proxy.client import BleDeviceResolver, BleScanSource, ConnectionState, MatterBleProxy
 from matter_ble_proxy.protocol import (
@@ -250,10 +251,18 @@ class _StubService:
         self.characteristics = [_StubChar(size) for size in sizes]
 
 
+_BLUEZ = "bluez_dbus"
+
+
 def _mtu_connection(
-    proxy: MatterBleProxy, *, mtu_size: int | None, char_sizes: tuple[int, ...] | None
+    proxy: MatterBleProxy,
+    *,
+    mtu_size: int | None,
+    char_sizes: tuple[int, ...] | None,
+    backend_id: str = _BLUEZ,
 ) -> _StubBleakClient:
     _conn, client = _connection(proxy, 1)
+    client.backend_id = backend_id  # type: ignore[attr-defined]
     if mtu_size is not None:
         client.mtu_size = mtu_size  # type: ignore[attr-defined]
     if char_sizes is not None:
@@ -261,13 +270,18 @@ def _mtu_connection(
     return client
 
 
-async def test_request_mtu_derives_att_mtu_from_characteristic_write_size_when_mtu_size_is_default():
+async def _request_mtu(proxy: MatterBleProxy, ws: Any) -> int:
+    await proxy._handle_request_mtu(5, {"connection_handle": 1})
+    assert ws.sent[-1]["success"] is True
+    mtu: int = ws.sent[-1]["result"]["mtu"]
+    return mtu
+
+
+async def test_request_mtu_on_bluez_derives_att_mtu_from_characteristic_write_size():
     proxy, ws = _proxy()
     _mtu_connection(proxy, mtu_size=23, char_sizes=(20, 244))
 
-    await proxy._handle_request_mtu(5, {"connection_handle": 1})
-
-    assert ws.sent == [{"id": 5, "success": True, "result": {"mtu": 247}}]
+    assert await _request_mtu(proxy, ws) == 247
 
 
 async def test_request_mtu_falls_back_to_23_without_any_mtu_information():
@@ -275,23 +289,46 @@ async def test_request_mtu_falls_back_to_23_without_any_mtu_information():
     proxy, ws = _proxy()
     _mtu_connection(proxy, mtu_size=None, char_sizes=None)
 
-    await proxy._handle_request_mtu(5, {"connection_handle": 1})
-
-    assert ws.sent == [{"id": 5, "success": True, "result": {"mtu": 23}}]
+    assert await _request_mtu(proxy, ws) == 23
 
 
-async def test_request_mtu_prefers_backend_mtu_size_over_cached_characteristic_sizes():
+async def test_request_mtu_off_bluez_ignores_characteristic_sizes_from_cached_services():
     proxy, ws = _proxy()
-    _mtu_connection(proxy, mtu_size=185, char_sizes=(244,))
+    _mtu_connection(proxy, mtu_size=23, char_sizes=(244,), backend_id="esphome")
 
-    await proxy._handle_request_mtu(5, {"connection_handle": 1})
+    assert await _request_mtu(proxy, ws) == 23
 
-    assert ws.sent == [{"id": 5, "success": True, "result": {"mtu": 185}}]
+
+async def test_request_mtu_off_bluez_reports_the_backend_mtu_size():
+    proxy, ws = _proxy()
+    _mtu_connection(proxy, mtu_size=185, char_sizes=None, backend_id="core_bluetooth")
+
+    assert await _request_mtu(proxy, ws) == 185
+
+
+async def test_request_mtu_on_bluez_hides_the_default_mtu_warning():
+    class _WarningClient(_StubBleakClient):
+        backend_id = _BLUEZ
+
+        @property
+        def mtu_size(self) -> int:
+            warnings.warn("Using default MTU value. Call _acquire_mtu() first.", UserWarning, stacklevel=2)
+            return 23
+
+    proxy, ws = _proxy()
+    proxy._connections[1] = ConnectionState(_WarningClient(), 1)  # type: ignore[arg-type]
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        assert await _request_mtu(proxy, ws) == 23
+
+    assert caught == []
 
 
 async def test_connect_reports_att_mtu_derived_from_characteristic_write_size(monkeypatch):
     proxy, ws = _proxy()
     stub = _StubBleakClient()
+    stub.backend_id = _BLUEZ  # type: ignore[attr-defined]
     stub.mtu_size = 23  # type: ignore[attr-defined]
     stub.services = [_StubService(244)]
 
@@ -306,10 +343,11 @@ async def test_connect_reports_att_mtu_derived_from_characteristic_write_size(mo
     assert ws.sent[0]["result"]["mtu"] == 247
 
 
-async def test_request_mtu_falls_back_to_23_when_service_discovery_has_not_completed():
+async def test_request_mtu_on_bluez_falls_back_to_23_when_service_discovery_has_not_completed():
     from bleak.exc import BleakError
 
     class _UndiscoveredClient(_StubBleakClient):
+        backend_id = _BLUEZ
         mtu_size = 23
 
         @property
@@ -319,6 +357,4 @@ async def test_request_mtu_falls_back_to_23_when_service_discovery_has_not_compl
     proxy, ws = _proxy()
     proxy._connections[1] = ConnectionState(_UndiscoveredClient(), 1)  # type: ignore[arg-type]
 
-    await proxy._handle_request_mtu(5, {"connection_handle": 1})
-
-    assert ws.sent == [{"id": 5, "success": True, "result": {"mtu": 23}}]
+    assert await _request_mtu(proxy, ws) == 23

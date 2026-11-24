@@ -15,7 +15,7 @@ import {
     type Timer,
     withTimeout,
 } from "@matter/main";
-import { BleDisconnectedError, Mark } from "@matter/main/protocol";
+import { BleDisconnectedError, BleError, Mark } from "@matter/main/protocol";
 import { WebSocket } from "ws";
 import {
     BLE_PROXY_PROTOCOL_VERSION,
@@ -67,14 +67,17 @@ const PING_INTERVAL = Seconds(15);
 /** Evaluated on the ping schedule, so a dead client is detected between this and one extra {@link PING_INTERVAL}. */
 const LIVENESS_TIMEOUT = Seconds(45);
 
+/** The proxy client is not connected, or went away before it answered. */
+export class BleProxyClientDisconnectedError extends BleDisconnectedError {}
+
+/** The proxy client did not answer a command within the command timeout. */
+export class BleProxyCommandTimeoutError extends BleError {}
+
 /**
  * One BLE proxy client socket. Owns that client's handshake state, pending
  * command map, and command/event/binary-frame plumbing. The hub
  * (`BleProxyHandler`) creates one per accepted WebSocket connection.
  */
-/** The proxy client is not connected, or went away before it answered. */
-export class BleProxyClientDisconnectedError extends BleDisconnectedError {}
-
 export class BleProxyConnection {
     readonly #ws: WebSocket;
     readonly #id = generateConnectionId();
@@ -149,6 +152,7 @@ export class BleProxyConnection {
      *
      * @throws {BleProxyClientDisconnectedError} when the connection is not ready or the client disconnects first
      * @throws {BleProxyCommandError} when the client answers with an error
+     * @throws {BleProxyCommandTimeoutError} when the client does not answer within 60 seconds
      */
     async sendCommand<C extends BleProxyCommandName>(
         command: C,
@@ -180,9 +184,11 @@ export class BleProxyConnection {
             }
         });
 
-        return withTimeout(COMMAND_TIMEOUT, promise, () => this.#pendingCommands.delete(id)) as Promise<
-            BleProxyCommandMap[C]["result"]
-        >;
+        const answered = withTimeout(COMMAND_TIMEOUT, promise, () => {
+            this.#pendingCommands.delete(id);
+            rejecter(new BleProxyCommandTimeoutError(`BLE proxy client did not answer command ${command}`));
+        });
+        return answered as Promise<BleProxyCommandMap[C]["result"]>;
     }
 
     /** @throws {BleProxyClientDisconnectedError} when the connection is not ready */
@@ -291,14 +297,20 @@ export class BleProxyConnection {
             return;
         }
 
+        let frame: BinaryFrame;
         try {
-            const frame = decodeBinaryFrame(new Uint8Array(data));
-            logger.debug(
-                `[${this.#id}] [FRAME] ${Mark.INBOUND} opcode=${frame.opcode} handle=${frame.connectionHandle} len=${frame.payload.length} head=${frameHead(frame.payload)}`,
-            );
-            this.binaryFrameReceived.emit(frame);
+            frame = decodeBinaryFrame(new Uint8Array(data));
         } catch (err) {
             logger.warn(`[${this.#id}] Failed to decode binary frame:`, err);
+            return;
+        }
+        logger.debug(
+            `[${this.#id}] [FRAME] ${Mark.INBOUND} opcode=${frame.opcode} handle=${frame.connectionHandle} len=${frame.payload.length} head=${frameHead(frame.payload)}`,
+        );
+        try {
+            this.binaryFrameReceived.emit(frame);
+        } catch (err) {
+            logger.warn(`[${this.#id}] Error handling binary frame:`, err);
         }
     }
 
