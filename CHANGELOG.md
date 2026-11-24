@@ -7,6 +7,10 @@ This page shows a detailed overview of the changes between versions without the 
 	## **WORK IN PROGRESS**
 -->
 
+## **WORK IN PROGRESS**
+
+- Fix: A device that changed its features while it was briefly offline is shown with its new set of attributes after it reconnects, instead of with the attributes it no longer has
+
 ## 1.6.0 (2026-11-14)
 
 - Important (Fix): Uploading an OTA firmware file requires `--enable-test-net-dcl`, because the OTA provider only serves local images to a node while test images are allowed. Without it, `initiate_ota_upload` fails instead of storing an image that no node can download
