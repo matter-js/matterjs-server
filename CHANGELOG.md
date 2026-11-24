@@ -16,6 +16,7 @@ This page shows a detailed overview of the changes between versions without the 
 - Fix: With the BLE proxy, a commissioning attempt that is cancelled while it connects over Bluetooth now closes that Bluetooth connection, and stopping the server closes the open ones and the ones still being opened
 - Fix: With the BLE proxy, a proxy command that gets no answer now fails after 60 seconds instead of waiting forever
 - Fix: With the BLE proxy, a failed Bluetooth connection no longer cancels commissioning attempts over the network that run at the same time
+- Fix: The example Noble BLE proxy client applies the `connect` timeout to connecting and service discovery together, and disconnects a device that connects only after the timeout
 
 ## **WORK IN PROGRESS**
 

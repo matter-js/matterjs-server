@@ -45,8 +45,18 @@ const CONNECT_DISCOVERY_TIMEOUT_MS = 5_000;
 /** Bounds one noble scan call, so a wedged adapter cannot stall every later scan and connect. */
 const SCAN_OPERATION_TIMEOUT_MS = 10_000;
 
+/**
+ * Bounds connect plus GATT interview when the `connect` command names no `timeout`. Stays well below the server's
+ * 60 s command timeout, after which the server ignores the reply and could not release the connection.
+ */
+const DEFAULT_CONNECT_TIMEOUT_MS = 30_000;
+
 function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
-    return Promise.race([promise, new Promise<never>((_, reject) => setTimeout(() => reject(new Error(message)), ms))]);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(message)), ms);
+    });
+    return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
 function ts(): string {
@@ -558,6 +568,7 @@ export class NobleBleProxyClient {
 
         log(`[CONN] Connecting to "${args.address}" (state=${peripheral.state})...`);
         let releaseScanPause: (() => Promise<void>) | undefined;
+        let interview: Promise<number> | undefined;
         try {
             // Pause scanning during connect + GATT discovery. On macOS, scanning concurrently
             // with `service.discoverCharacteristicsAsync` causes the CoreBluetooth delegate
@@ -565,37 +576,13 @@ export class NobleBleProxyClient {
             log(`[SCAN] pausing scan for connect+interview...`);
             releaseScanPause = await this.#acquireScanPause();
 
-            await peripheral.connectAsync();
-            log(`[CONN] Connected handle=${handle} state=${peripheral.state} mtu=${peripheral.mtu ?? "?"}`);
-
-            log(`[GATT] handle=${handle} discoverServicesAsync(["fff6"])...`);
-            const services = await withTimeout(
-                peripheral.discoverServicesAsync(["fff6"]),
-                30_000,
-                "discoverServices(fff6) timed out after 30s",
+            interview = this.#connectAndInterview(handle, peripheral, connState);
+            const timeoutMs = args.timeout ?? DEFAULT_CONNECT_TIMEOUT_MS;
+            const mtu = await withTimeout(
+                interview,
+                timeoutMs,
+                `connect to ${args.address} timed out after ${timeoutMs}ms`,
             );
-            log(`[GATT] handle=${handle} services: ${services.map(s => s.uuid).join(", ")} state=${peripheral.state}`);
-
-            for (const service of services) {
-                connState.services.set(service.uuid, service);
-                if (service.uuid !== "fff6") continue;
-                log(`[GATT] handle=${handle} discoverCharacteristicsAsync() on ${service.uuid}...`);
-                const chars = await withTimeout(
-                    service.discoverCharacteristicsAsync(),
-                    30_000,
-                    `discoverCharacteristics(${service.uuid}) timed out after 30s`,
-                );
-                for (const char of chars) {
-                    connState.characteristics.set(char.uuid, char);
-                }
-                log(
-                    `[GATT] handle=${handle} chars on ${service.uuid}: ${chars.map(c => c.uuid).join(", ")} state=${peripheral.state}`,
-                );
-            }
-
-            const mtu = peripheral.mtu ?? 23;
-            log(`[GATT] handle=${handle} ready mtu=${mtu}`);
-
             this.#sendSuccess(id, { connection_handle: handle, mtu });
         } catch (err) {
             const reason = disconnectedReason ?? (err as Error).message;
@@ -604,13 +591,20 @@ export class NobleBleProxyClient {
                 this.#connections.delete(handle);
             }
             peripheral.removeListener("disconnect", disconnectListener);
-            if (peripheral.state === "connected") {
-                peripheral
-                    .disconnectAsync()
-                    .catch(disconnectErr =>
-                        warn(`[CONN] handle=${handle} cleanup disconnect failed: ${(disconnectErr as Error).message}`),
-                    );
-            }
+            const release = () => {
+                if (peripheral.state === "connected") {
+                    peripheral
+                        .disconnectAsync()
+                        .catch(disconnectErr =>
+                            warn(
+                                `[CONN] handle=${handle} cleanup disconnect failed: ${(disconnectErr as Error).message}`,
+                            ),
+                        );
+                }
+            };
+            release();
+            // The server no longer waits for this connect, so it could never disconnect a late success itself
+            interview?.then(release, () => {});
             this.#sendError(id, BleProxyErrorCode.ConnectionFailed, reason);
         } finally {
             log(`[SCAN] resuming scan after connect+interview...`);
@@ -618,6 +612,41 @@ export class NobleBleProxyClient {
                 warn(`[SCAN] failed to resume scanning after connect: ${(scanErr as Error).message}`),
             );
         }
+    }
+
+    /** Connects and discovers the Matter service and its characteristics; resolves with the ATT MTU. */
+    async #connectAndInterview(handle: number, peripheral: Peripheral, connState: ConnectionState): Promise<number> {
+        await peripheral.connectAsync();
+        log(`[CONN] Connected handle=${handle} state=${peripheral.state} mtu=${peripheral.mtu ?? "?"}`);
+
+        log(`[GATT] handle=${handle} discoverServicesAsync(["fff6"])...`);
+        const services = await withTimeout(
+            peripheral.discoverServicesAsync(["fff6"]),
+            30_000,
+            "discoverServices(fff6) timed out after 30s",
+        );
+        log(`[GATT] handle=${handle} services: ${services.map(s => s.uuid).join(", ")} state=${peripheral.state}`);
+
+        for (const service of services) {
+            connState.services.set(service.uuid, service);
+            if (service.uuid !== "fff6") continue;
+            log(`[GATT] handle=${handle} discoverCharacteristicsAsync() on ${service.uuid}...`);
+            const chars = await withTimeout(
+                service.discoverCharacteristicsAsync(),
+                30_000,
+                `discoverCharacteristics(${service.uuid}) timed out after 30s`,
+            );
+            for (const char of chars) {
+                connState.characteristics.set(char.uuid, char);
+            }
+            log(
+                `[GATT] handle=${handle} chars on ${service.uuid}: ${chars.map(c => c.uuid).join(", ")} state=${peripheral.state}`,
+            );
+        }
+
+        const mtu = peripheral.mtu ?? 23;
+        log(`[GATT] handle=${handle} ready mtu=${mtu}`);
+        return mtu;
     }
 
     async #handleDisconnect(id: number, connectionHandle: number): Promise<void> {

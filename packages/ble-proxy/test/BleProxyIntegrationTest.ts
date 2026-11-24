@@ -489,6 +489,8 @@ describe("BLE Proxy Integration", function () {
                     type: "ble",
                     peripheralAddress: mockDevice.address,
                 });
+                let closeNotifications = 0;
+                channel.onClose(() => closeNotifications++);
                 // The mock device never answers, so a BTP timeout closes the session
                 await channel.send(Bytes.fromHex("0102"));
                 await MockTime.advance(MatterBle.BTP_CONN_IDLE_TIMEOUT);
