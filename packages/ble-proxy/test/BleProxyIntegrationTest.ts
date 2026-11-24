@@ -9,7 +9,8 @@
  * Tests the full flow: BleProxyHandler <-> BleProxyTestClient with mock data.
  */
 
-import { InternalError, Seconds } from "@matter/main";
+import { Bytes, InternalError, Seconds } from "@matter/main";
+import { BleDisconnectedError, MatterBle } from "@matter/main/protocol";
 import { createServer } from "node:http";
 import { BleProxyHandler } from "../src/BleProxyHandler.js";
 import { BinaryFrameOpcode, BleProxyCommand } from "../src/BleProxyProtocol.js";
@@ -406,6 +407,116 @@ describe("BLE Proxy Integration", function () {
             await new Promise<void>(resolve => setTimeout(resolve, 100));
 
             expect(channel.connected).to.be.false;
+        });
+
+        const openConnectedChannel = async (discriminator: number, connectionHandle: number) => {
+            const proxyBle = new ProxyBle(handler);
+            const mockDevice = new MockBleDevice({ discriminator, vendorId: 0xfff1, productId: 0x8000 });
+            await discoverDevice(proxyBle, mockDevice);
+            wireBtpFlow(mockDevice, connectionHandle);
+            testClient.onCommand(BleProxyCommand.Disconnect, async () => ({}));
+
+            const central = proxyBle.centralInterface as ProxyBleCentralInterface;
+            central.onData(() => {});
+            return (await central.openChannel({
+                type: "ble",
+                peripheralAddress: mockDevice.address,
+            })) as ProxyBleChannel;
+        };
+
+        const sentDisconnects = () => testClient.receivedCommands.filter(c => c.command === "disconnect");
+        // Disconnect is sent without waiting for its reply, so give a wrongly sent one time to arrive
+        const settle = () => new Promise<void>(resolve => setTimeout(resolve, 100));
+
+        it("disconnects the peripheral once when a connected channel is closed", async () => {
+            const channel = await openConnectedChannel(7100, 4);
+
+            await channel.close();
+            await channel.close();
+            await waitFor(() => sentDisconnects().length > 0);
+            await settle();
+
+            const disconnects = sentDisconnects();
+            expect(disconnects.length).to.equal(1);
+            expect((disconnects[0].args as { connection_handle: number }).connection_handle).to.equal(4);
+        });
+
+        it("closes without waiting for the proxy to finish the disconnect", async () => {
+            const channel = await openConnectedChannel(7300, 6);
+            testClient.onCommand(BleProxyCommand.Disconnect, () => new Promise<void>(() => {}));
+
+            await channel.close();
+
+            await testClient.waitForCommand("disconnect", 1000);
+        });
+
+        it("notifies close listeners once when closed twice", async () => {
+            const channel = await openConnectedChannel(7400, 7);
+            let closeNotifications = 0;
+            channel.onClose(() => closeNotifications++);
+
+            await channel.close();
+            await channel.close();
+
+            expect(closeNotifications).to.equal(1);
+        });
+
+        it("rejects sends after the proxy reported the peripheral as disconnected", async () => {
+            const channel = await openConnectedChannel(7500, 8);
+
+            testClient.sendEvent("disconnected", { connection_handle: 8 });
+            await waitFor(() => !channel.connected);
+
+            await expect(channel.send(Bytes.fromHex("0102"))).rejectedWith(BleDisconnectedError);
+        });
+
+        it("ends the channel when the BTP session closes itself", async () => {
+            const proxyBle = new ProxyBle(handler);
+            const mockDevice = new MockBleDevice({ discriminator: 7600, vendorId: 0xfff1, productId: 0x8000 });
+            await discoverDevice(proxyBle, mockDevice);
+            wireBtpFlow(mockDevice, 9);
+            testClient.onCommand(BleProxyCommand.Disconnect, async () => ({}));
+            const central = proxyBle.centralInterface as ProxyBleCentralInterface;
+            central.onData(() => {});
+
+            // MockTime only around the channel's lifetime: discovery above relies on real timers
+            MockTime.enable();
+            try {
+                const channel = (await central.openChannel({
+                    type: "ble",
+                    peripheralAddress: mockDevice.address,
+                })) as ProxyBleChannel;
+                let closeNotifications = 0;
+                channel.onClose(() => closeNotifications++);
+                // The mock device never answers, so a BTP timeout closes the session
+                await channel.send(Bytes.fromHex("0102"));
+                await MockTime.advance(MatterBle.BTP_CONN_IDLE_TIMEOUT);
+
+                expect(channel.isClosed).to.be.true;
+                expect(channel.connected).to.be.false;
+                expect(closeNotifications).to.equal(1);
+                await expect(channel.send(Bytes.fromHex("0102"))).rejectedWith(BleDisconnectedError);
+                await waitFor(() => sentDisconnects().length > 0);
+
+                testClient.sendEvent("disconnected", { connection_handle: 9 });
+                await channel.close();
+                await settle();
+                expect(closeNotifications).to.equal(1);
+            } finally {
+                MockTime.disable();
+            }
+        });
+
+        it("does not send a disconnect after the proxy reported the peripheral as disconnected", async () => {
+            const channel = await openConnectedChannel(7200, 5);
+
+            testClient.sendEvent("disconnected", { connection_handle: 5 });
+            await waitFor(() => !channel.connected);
+
+            await channel.close();
+            await settle();
+
+            expect(sentDisconnects().length).to.equal(0);
         });
     });
 });

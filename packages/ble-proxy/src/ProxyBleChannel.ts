@@ -16,7 +16,14 @@ import {
     Time,
     type Transport,
 } from "@matter/main";
-import { BleChannel, BleError, BtpCodec, BtpFlowError, BtpSessionHandler, MatterBle } from "@matter/main/protocol";
+import {
+    BleChannel,
+    BleDisconnectedError,
+    BleError,
+    BtpCodec,
+    BtpSessionHandler,
+    MatterBle,
+} from "@matter/main/protocol";
 import type { BleProxyHandler } from "./BleProxyHandler.js";
 import { BinaryFrameOpcode, BleProxyCommand, BleProxyEvent } from "./BleProxyProtocol.js";
 import type { ProxyBleScanner } from "./ProxyBleScanner.js";
@@ -212,6 +219,12 @@ export class ProxyBleCentralInterface implements Transport {
             // race as step 5); frames seen before the session exists are buffered, then flushed below.
             const onMatterMessageListener = this.#onMatterMessageListener;
             const channelRef: { channel?: ProxyBleChannel } = {};
+            // Separate from channel.connected: close() clears that before the BTP session asks for the disconnect.
+            let peripheralLinked = true;
+            const peripheralLost = () => {
+                peripheralLinked = false;
+                channelRef.channel?.markDisconnected();
+            };
             const sessionRef: { session?: BtpSessionHandler } = {};
             const earlyFrames = new Array<Uint8Array>();
 
@@ -246,16 +259,17 @@ export class ProxyBleCentralInterface implements Transport {
                 },
                 // Disconnect callback
                 async () => {
-                    if (!channelRef.channel?.connected) return;
+                    if (!peripheralLinked) return;
                     logger.debug(`Disconnecting from ${peripheralAddress} via proxy`);
-                    try {
-                        await connection.sendCommand(BleProxyCommand.Disconnect, { connection_handle });
-                    } catch (error) {
-                        logger.debug(
-                            `Peripheral ${peripheralAddress}: Error sending Disconnect to proxy client`,
-                            error,
+                    // Not awaited: the proxy replies only after the BLE disconnect, and PASE close waits for this
+                    connection
+                        .sendCommand(BleProxyCommand.Disconnect, { connection_handle })
+                        .catch(error =>
+                            logger.debug(
+                                `Peripheral ${peripheralAddress}: Error sending Disconnect to proxy client`,
+                                error,
+                            ),
                         );
-                    }
                 },
                 // Matter message callback
                 async (data: Bytes) => {
@@ -281,7 +295,7 @@ export class ProxyBleCentralInterface implements Transport {
                     data.connection_handle === connection_handle
                 ) {
                     logger.info(`Peripheral ${peripheralAddress} disconnected unexpectedly`);
-                    channelRef.channel?.markDisconnected();
+                    peripheralLost();
                     channelRef.channel
                         ?.close()
                         .catch(error => logger.debug(`Peripheral ${peripheralAddress}: Error closing channel`, error));
@@ -292,7 +306,7 @@ export class ProxyBleCentralInterface implements Transport {
             // The Disconnected event covers one peripheral; this covers the whole owning client vanishing.
             const ownerClosedObserver = () => {
                 logger.info(`Owning proxy client for ${peripheralAddress} disconnected`);
-                channelRef.channel?.markDisconnected();
+                peripheralLost();
                 channelRef.channel
                     ?.close()
                     .catch(error => logger.debug(`Peripheral ${peripheralAddress}: Error closing channel`, error));
@@ -342,6 +356,7 @@ export class ProxyBleCentralInterface implements Transport {
  */
 export class ProxyBleChannel extends BleChannel<Bytes> {
     #connected = true;
+    #closing = false;
     readonly #peripheralAddress: string;
     readonly #btpSession: BtpSessionHandler;
     readonly #cleanupObservers: () => void;
@@ -356,8 +371,12 @@ export class ProxyBleChannel extends BleChannel<Bytes> {
         this.#peripheralAddress = peripheralAddress;
         this.#btpSession = btpSession;
         this.#cleanupObservers = cleanupObservers;
-        this.#onBtpSessionClosed = () => this.emitClosed();
-        btpSession.closed.on(this.#onBtpSessionClosed);
+        this.#onBtpSessionClosed = () => {
+            if (this.#finish()) {
+                this.emitClosed();
+            }
+        };
+        btpSession.closed.once(this.#onBtpSessionClosed);
     }
 
     get connected() {
@@ -411,13 +430,10 @@ export class ProxyBleChannel extends BleChannel<Bytes> {
         }
     }
 
+    /** @throws {BleDisconnectedError} once the peripheral, the BTP session or the channel has ended */
     async send(data: Bytes) {
         if (!this.#connected) {
-            logger.debug(`Cannot send data - not connected to ${this.#peripheralAddress}`);
-            return;
-        }
-        if (this.#btpSession === undefined) {
-            throw new BtpFlowError(`Cannot send data, no BTP session initialized`);
+            throw new BleDisconnectedError(`Cannot send data, not connected to ${this.#peripheralAddress}`);
         }
         await this.#btpSession.sendMatterMessage(data);
     }
@@ -427,14 +443,26 @@ export class ProxyBleChannel extends BleChannel<Bytes> {
     }
 
     async close() {
+        if (!this.#finish()) {
+            return;
+        }
+        this.#btpSession.closed.off(this.#onBtpSessionClosed);
+        await this.#btpSession.close();
+        this.emitClosed();
+    }
+
+    /** Ends the channel once, whether {@link close} or the BTP session ends it; false if it already ended. */
+    #finish() {
+        if (this.#closing) {
+            return false;
+        }
+        this.#closing = true;
         this.#connected = false;
         this.#cleanupObservers();
         this.#terminateIterator();
         for (const listener of this.#closeListeners) {
             listener();
         }
-        this.#btpSession.closed.off(this.#onBtpSessionClosed);
-        await this.#btpSession.close();
-        this.emitClosed();
+        return true;
     }
 }

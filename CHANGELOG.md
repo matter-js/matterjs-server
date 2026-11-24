@@ -6,6 +6,10 @@ This page shows a detailed overview of the changes between versions without the 
 	Placeholder for the next version (at the beginning of the line):
 	## **WORK IN PROGRESS**
 -->
+## **WORK IN PROGRESS**
+
+- Fix: With the BLE proxy, the Bluetooth connection to a device is now closed once commissioning ends, instead of staying open until the device or the proxy drops it
+- Fix: With the BLE proxy, commissioning notices a lost Bluetooth connection right away instead of waiting for a timeout
 
 ## **WORK IN PROGRESS**
 
