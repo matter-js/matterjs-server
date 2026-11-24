@@ -140,7 +140,7 @@ The server sends commands requesting BLE operations. Each command has a unique `
 
 ### Responses (Client -> Server)
 
-The client sends exactly one response for each command, using the same `id`.
+The client sends exactly one response for each command, using the same `id`. The server gives up on a command after 60 seconds and ignores a later response, so a client must answer every command, including `connect`, within that time. A `connect` that succeeds after the server gave up leaves a connection the server never learns about.
 
 **Success response:**
 ```json

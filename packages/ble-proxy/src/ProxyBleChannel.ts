@@ -125,7 +125,7 @@ function releasePeripheral(connection: BleProxyConnection, connectionHandle: num
 }
 
 /**
- * ConnectionlessTransport implementation that opens BLE channels through the proxy WebSocket.
+ * Transport implementation that opens BLE channels through the proxy WebSocket.
  * Replaces NobleBleCentralInterface from @matter/nodejs-ble.
  */
 export class ProxyBleCentralInterface implements Transport {
@@ -145,13 +145,19 @@ export class ProxyBleCentralInterface implements Transport {
      * An abort during the open disconnects the peripheral, including one the proxy connects after the abort.
      *
      * @throws {NetworkError} when the interface is closed, also while the open is in progress
+     * @throws {BleDisconnectedError} when the peripheral or its proxy client is lost during the open
+     * @throws {BleError} when no proxy client owns the peripheral, it lacks the Matter characteristics, a proxy command
+     *     fails or the BTP handshake response does not arrive in time
+     * @throws {BtpProtocolError} when the peripheral answers with an unsupported BTP version
+     * @throws {InternalError} when the address is not a BLE address or no data listener is installed
+     * @throws the abort reason when `options.abort` fires
      */
     async openChannel(address: ServerAddress, options?: Transport.OpenChannelOptions): Promise<ProxyBleChannel> {
-        this.#lifetime.signal.throwIfAborted();
         const abort =
             options?.abort === undefined
                 ? this.#lifetime.signal
                 : AbortSignal.any([this.#lifetime.signal, options.abort]);
+        abort.throwIfAborted();
         if (!ServerAddress.isBle(address)) {
             throw new InternalError(`Unsupported address type for BLE channel.`);
         }
@@ -173,7 +179,6 @@ export class ProxyBleCentralInterface implements Transport {
 
         logger.debug(`Connecting to peripheral ${peripheralAddress} (rssi=${rssi ?? "n/a"}) via proxy`);
 
-        abort.throwIfAborted();
         const connecting = connection.sendCommand(BleProxyCommand.Connect, { address: peripheralAddress });
         let connected: Awaited<typeof connecting>;
         try {
@@ -270,7 +275,7 @@ function asLinkError(error: unknown, peripheralAddress: string) {
  *    └───────────── close / peripheral lost / session end ─────────────▶ closed
  * ```
  *
- * Each state is a new object, and an async step changes the state only from the object it started with (see
+ * Each state except `closed` is a new object, and an async step changes the state only from the object it started with (see
  * `#transition`), so a step that resumes after the channel closed cannot reopen it. Sends wait for `done` while
  * `retrying`.
  */

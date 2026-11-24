@@ -386,3 +386,32 @@ async def test_connect_disconnects_when_the_mtu_lookup_fails(monkeypatch):
 
     assert stub.disconnected
     assert proxy._connections == {}
+
+
+async def test_request_mtu_off_bluez_reports_at_least_the_minimum_att_mtu():
+    proxy, ws = _proxy()
+    _mtu_connection(proxy, mtu_size=0, char_sizes=None, backend_id="esphome")
+
+    assert await _request_mtu(proxy, ws) == 23
+
+
+async def test_connect_reports_the_mtu_lookup_error_when_the_cleanup_disconnect_fails(monkeypatch):
+    class _BrokenClient(_StubBleakClient):
+        backend_id = _BLUEZ
+
+        @property
+        def mtu_size(self) -> int:
+            raise RuntimeError("mtu lookup failed")
+
+        async def connect(self) -> None:
+            return None
+
+        async def disconnect(self) -> None:
+            raise RuntimeError("disconnect failed")
+
+    proxy, _ws = _proxy()
+    stub = _BrokenClient()
+    monkeypatch.setattr("bleak.BleakClient", lambda *_args, **_kwargs: stub)
+
+    with pytest.raises(RuntimeError, match="mtu lookup failed"):
+        await proxy._handle_connect(6, {"address": "AA:BB:CC:DD:EE:FF"})

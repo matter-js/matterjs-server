@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Seconds } from "@matter/main";
+import { InternalError, Seconds } from "@matter/main";
 import { createServer } from "node:http";
 import { WebSocket, WebSocketServer } from "ws";
 import {
@@ -108,6 +108,21 @@ describe("BleProxyConnection", function () {
         expect(got.opcode).to.equal(BinaryFrameOpcode.Notification);
         expect(got.connectionHandle).to.equal(5);
         expect(Array.from(got.payload)).to.deep.equal([1, 2, 3]);
+    });
+
+    it("keeps delivering binary frames after an observer threw", async () => {
+        connection.binaryFrameReceived.once(() => {
+            throw new InternalError("observer failure");
+        });
+        testClient.sendBinaryFrame(BinaryFrameOpcode.Notification, 5, new Uint8Array([1]));
+        await new Promise<void>(resolve => setTimeout(resolve, 50));
+
+        const received = new Promise<number>(resolve => {
+            connection.binaryFrameReceived.once(frame => resolve(frame.connectionHandle));
+        });
+        testClient.sendBinaryFrame(BinaryFrameOpcode.Notification, 6, new Uint8Array([2]));
+
+        expect(await received).to.equal(6);
     });
 
     it("stays torn down when a hello arrives after the handshake timeout fired", async () => {
