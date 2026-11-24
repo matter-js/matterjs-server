@@ -85,6 +85,16 @@ export class TestSite {
         return device;
     }
 
+    /** Closes `device` and starts it again from its storage with the endpoints `addEndpoints` creates. */
+    async restartDevice<E>(device: ServerNode, addEndpoints: (device: ServerNode) => Promise<E>) {
+        await MockTime.resolve(device.close(), { macrotasks: true });
+        this.#nodes.delete(device);
+        const restarted = await this.#addNode({ id: device.id });
+        const endpoints = await addEndpoints(restarted);
+        await MockTime.resolve(restarted.start(), { macrotasks: true });
+        return { device: restarted, endpoints };
+    }
+
     async commission(controller: ServerNode, device: ServerNode) {
         const { passcode, discriminator } = device.state.commissioning;
         await this.pairing(controller, device, () =>

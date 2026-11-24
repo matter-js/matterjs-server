@@ -16,6 +16,8 @@ import {
 } from "@matter/main";
 import { OnOff } from "@matter/main/clusters";
 import { Endpoint } from "@matter/node";
+import { BooleanStateServer } from "@matter/node/behaviors/boolean-state";
+import { OnOffServer } from "@matter/node/behaviors/on-off";
 import { OnOffLightDevice } from "@matter/node/devices/on-off-light";
 import { FabricAuthority, FabricManager, SustainedSubscription } from "@matter/protocol";
 import { AttributeDataCache } from "../src/controller/AttributeDataCache.js";
@@ -403,7 +405,7 @@ describe("restored node cache", () => {
         const availableWhenAdded = commandHandler.getNodeDetails(nodeId).available;
         await awaitConnected(onlyPeer(controller));
         await settle();
-        return { view, availableWhenAdded, device };
+        return { view, availableWhenAdded, controller, device, nodeId };
     }
 
     it("never serves a freshly commissioned node as unavailable, and sends it once more after its first report", async () => {
@@ -435,6 +437,22 @@ describe("restored node cache", () => {
         }
 
         expect(registered.some(paths => paths.includes(`2/${OnOff.id}/0`))).equals(true);
+    });
+
+    it("drops the attributes of a feature the device no longer has after it reconnects", async () => {
+        const { view, controller, device, nodeId } = await commissionThroughHandler();
+        const onTimePath = `1/${OnOff.id}/${OnOff.attributes.onTime.id}`;
+        expect(handler?.getNodeDetails(nodeId).attributes).have.property(onTimePath);
+        view.nodeUpdates.length = 0;
+
+        await site.restartDevice(device, restarted =>
+            restarted.add(OnOffLightDevice.with(BooleanStateServer, OnOffServer), { id: "light" }),
+        );
+        await awaitConnected(onlyPeer(controller));
+        await settle();
+
+        expect(handler?.getNodeDetails(nodeId).attributes).not.have.property(onTimePath);
+        expect(view.nodeUpdates.length).greaterThan(0);
     });
 
     it("does not send a freshly commissioned node again when its rebuild produces no new snapshot", async () => {
