@@ -11,6 +11,10 @@ This page shows a detailed overview of the changes between versions without the 
 - Fix: With the BLE proxy, the Bluetooth connection to a device is now closed once commissioning ends, instead of staying open until the device or the proxy drops it
 - Fix: With the BLE proxy, commissioning notices a lost Bluetooth connection right away instead of waiting for a timeout
 
+## **WORK IN PROGRESS**
+
+- Fix: Ensure that node data are updated when global attribute (like features) change
+
 ## 1.6.0 (2026-11-14)
 
 - Important (Fix): Uploading an OTA firmware file requires `--enable-test-net-dcl`, because the OTA provider only serves local images to a node while test images are allowed. Without it, `initiate_ota_upload` fails instead of storing an image that no node can download
