@@ -92,6 +92,7 @@ class _StubBleakClient:
     """Records the GATT calls the handlers make, standing in for BleakClient."""
 
     is_connected = True
+    services: Any = None
 
     def __init__(self) -> None:
         self.start_notify_uuids: list[str] = []
@@ -237,3 +238,87 @@ async def test_start_scan_after_stop_scan_starts_a_fresh_scan():
     await proxy._handle_start_scan(3, dict(args))
 
     assert (scan_source.starts, scan_source.stops) == (2, 1)
+
+
+class _StubChar:
+    def __init__(self, max_write_without_response_size: int) -> None:
+        self.max_write_without_response_size = max_write_without_response_size
+
+
+class _StubService:
+    def __init__(self, *sizes: int) -> None:
+        self.characteristics = [_StubChar(size) for size in sizes]
+
+
+def _mtu_connection(
+    proxy: MatterBleProxy, *, mtu_size: int | None, char_sizes: tuple[int, ...] | None
+) -> _StubBleakClient:
+    _conn, client = _connection(proxy, 1)
+    if mtu_size is not None:
+        client.mtu_size = mtu_size  # type: ignore[attr-defined]
+    if char_sizes is not None:
+        client.services = [_StubService(*char_sizes)]
+    return client
+
+
+async def test_request_mtu_derives_att_mtu_from_characteristic_write_size_when_mtu_size_is_default():
+    proxy, ws = _proxy()
+    _mtu_connection(proxy, mtu_size=23, char_sizes=(20, 244))
+
+    await proxy._handle_request_mtu(5, {"connection_handle": 1})
+
+    assert ws.sent == [{"id": 5, "success": True, "result": {"mtu": 247}}]
+
+
+async def test_request_mtu_falls_back_to_23_without_any_mtu_information():
+    """Characterization: the fallback the handler had before the write-size lookup."""
+    proxy, ws = _proxy()
+    _mtu_connection(proxy, mtu_size=None, char_sizes=None)
+
+    await proxy._handle_request_mtu(5, {"connection_handle": 1})
+
+    assert ws.sent == [{"id": 5, "success": True, "result": {"mtu": 23}}]
+
+
+async def test_request_mtu_prefers_backend_mtu_size_over_cached_characteristic_sizes():
+    proxy, ws = _proxy()
+    _mtu_connection(proxy, mtu_size=185, char_sizes=(244,))
+
+    await proxy._handle_request_mtu(5, {"connection_handle": 1})
+
+    assert ws.sent == [{"id": 5, "success": True, "result": {"mtu": 185}}]
+
+
+async def test_connect_reports_att_mtu_derived_from_characteristic_write_size(monkeypatch):
+    proxy, ws = _proxy()
+    stub = _StubBleakClient()
+    stub.mtu_size = 23  # type: ignore[attr-defined]
+    stub.services = [_StubService(244)]
+
+    async def _connect() -> None:
+        return None
+
+    stub.connect = _connect  # type: ignore[attr-defined]
+    monkeypatch.setattr("bleak.BleakClient", lambda *_args, **_kwargs: stub)
+
+    await proxy._handle_connect(6, {"address": "AA:BB:CC:DD:EE:FF"})
+
+    assert ws.sent[0]["result"]["mtu"] == 247
+
+
+async def test_request_mtu_falls_back_to_23_when_service_discovery_has_not_completed():
+    from bleak.exc import BleakError
+
+    class _UndiscoveredClient(_StubBleakClient):
+        mtu_size = 23
+
+        @property
+        def services(self) -> Any:
+            raise BleakError("Service Discovery has not been performed yet")
+
+    proxy, ws = _proxy()
+    proxy._connections[1] = ConnectionState(_UndiscoveredClient(), 1)  # type: ignore[arg-type]
+
+    await proxy._handle_request_mtu(5, {"connection_handle": 1})
+
+    assert ws.sent == [{"id": 5, "success": True, "result": {"mtu": 23}}]

@@ -253,7 +253,7 @@ Connect to a BLE peripheral by address.
 | Field               | Type    | Description                                |
 |---------------------|---------|--------------------------------------------|
 | `connection_handle` | integer | Client-assigned handle for this connection |
-| `mtu`               | integer | Negotiated ATT MTU size                    |
+| `mtu`               | integer | Negotiated ATT MTU size; the server derives the BTP segment size from it, so report 23 when unknown, never more than the link carries |
 
 The `connection_handle` is assigned by the client and must be unique across all active
 connections. It is used in all subsequent commands and binary frames for this connection.
