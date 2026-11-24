@@ -42,6 +42,7 @@ import {
     getThreadRole,
     getThreadRoleDescription,
     LEAF_EDGE_LENGTH_PENALTY,
+    linkCountToMass,
     lqiToEdgeLength,
     mergeDiagnosticEdges,
     shouldHideExternalDevice,
@@ -497,7 +498,7 @@ export class ThreadGraph extends BaseNetworkGraph {
 
         const graphEdges: NetworkGraphEdge[] = [];
 
-        // Spring lengths are applied after the loop: the leaf penalty needs every node's
+        // Spring lengths and node masses are applied after the loop: both need every node's
         // final link count.
         const pairSprings = new Array<{
             edges: NetworkGraphEdge[];
@@ -647,6 +648,9 @@ export class ThreadGraph extends BaseNetworkGraph {
                 }
             }
 
+            // One spring per pair; a hidden pair keeps its spring so hidden nodes stay beside their neighbours
+            const springEdge = edgesInPair.find(e => e.visEdge.hidden !== true) ?? edgesInPair[0];
+
             // Save base state and collect edges for the dataset
             for (const e of edgesInPair) {
                 const isHidden = e.visEdge.hidden ?? false;
@@ -654,6 +658,7 @@ export class ThreadGraph extends BaseNetworkGraph {
                 if (isHidden) {
                     hiddenReason = e.filterHidden ? "filter" : "dedup";
                 }
+                e.visEdge.physics = e === springEdge;
 
                 this._edgeBaseState.set(e.visEdge.id, {
                     hiddenReason,
@@ -672,6 +677,9 @@ export class ThreadGraph extends BaseNetworkGraph {
             for (const edge of spring.edges) {
                 edge.length = length;
             }
+        }
+        for (const node of graphNodes) {
+            node.mass = linkCountToMass(linkCounts.get(String(node.id)) ?? 0);
         }
 
         // --- Update vis.js datasets ---

@@ -10,6 +10,7 @@ This page shows a detailed overview of the changes between versions without the 
 ## **WORK IN PROGRESS**
 
 - Fix: Ensure that node data are updated when global attribute (like features) change
+- Fix: The Thread network graph spreads densely meshed routers apart again instead of drawing them on top of each other
 
 ## 1.6.0 (2026-11-14)
 
