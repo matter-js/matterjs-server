@@ -9,7 +9,7 @@ This page shows a detailed overview of the changes between versions without the 
 
 ## **WORK IN PROGRESS**
 
-- Fix: A device that changed its features while it was briefly offline is shown with its new set of attributes after it reconnects, instead of with the attributes it no longer has
+- Fix: Ensure that node data are updated when global attribute (like features) change
 
 ## 1.6.0 (2026-11-14)
 
