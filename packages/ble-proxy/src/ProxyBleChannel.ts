@@ -372,10 +372,9 @@ export class ProxyBleChannel extends BleChannel<Bytes> {
         this.#btpSession = btpSession;
         this.#cleanupObservers = cleanupObservers;
         this.#onBtpSessionClosed = () => {
-            this.#connected = false;
-            this.#cleanupObservers();
-            this.#terminateIterator();
-            this.emitClosed();
+            if (this.#finish()) {
+                this.emitClosed();
+            }
         };
         btpSession.closed.once(this.#onBtpSessionClosed);
     }
@@ -444,8 +443,18 @@ export class ProxyBleChannel extends BleChannel<Bytes> {
     }
 
     async close() {
-        if (this.#closing) {
+        if (!this.#finish()) {
             return;
+        }
+        this.#btpSession.closed.off(this.#onBtpSessionClosed);
+        await this.#btpSession.close();
+        this.emitClosed();
+    }
+
+    /** Ends the channel once, whether {@link close} or the BTP session ends it; false if it already ended. */
+    #finish() {
+        if (this.#closing) {
+            return false;
         }
         this.#closing = true;
         this.#connected = false;
@@ -454,8 +463,6 @@ export class ProxyBleChannel extends BleChannel<Bytes> {
         for (const listener of this.#closeListeners) {
             listener();
         }
-        this.#btpSession.closed.off(this.#onBtpSessionClosed);
-        await this.#btpSession.close();
-        this.emitClosed();
+        return true;
     }
 }

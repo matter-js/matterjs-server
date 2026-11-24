@@ -486,20 +486,22 @@ describe("BLE Proxy Integration", function () {
                     type: "ble",
                     peripheralAddress: mockDevice.address,
                 })) as ProxyBleChannel;
+                let closeNotifications = 0;
+                channel.onClose(() => closeNotifications++);
                 // The mock device never answers, so a BTP timeout closes the session
                 await channel.send(Bytes.fromHex("0102"));
                 await MockTime.advance(MatterBle.BTP_CONN_IDLE_TIMEOUT);
 
                 expect(channel.isClosed).to.be.true;
                 expect(channel.connected).to.be.false;
+                expect(closeNotifications).to.equal(1);
                 await expect(channel.send(Bytes.fromHex("0102"))).rejectedWith(BleDisconnectedError);
                 await waitFor(() => sentDisconnects().length > 0);
 
-                let closeNotifications = 0;
-                channel.onClose(() => closeNotifications++);
                 testClient.sendEvent("disconnected", { connection_handle: 9 });
+                await channel.close();
                 await settle();
-                expect(closeNotifications).to.equal(0);
+                expect(closeNotifications).to.equal(1);
             } finally {
                 MockTime.disable();
             }
