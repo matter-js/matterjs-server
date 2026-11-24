@@ -357,7 +357,6 @@ export class ProxyBleCentralInterface implements Transport {
 export class ProxyBleChannel extends BleChannel<Bytes> {
     #connected = true;
     #closing = false;
-    #sessionLost = false;
     readonly #peripheralAddress: string;
     readonly #btpSession: BtpSessionHandler;
     readonly #cleanupObservers: () => void;
@@ -373,20 +372,16 @@ export class ProxyBleChannel extends BleChannel<Bytes> {
         this.#btpSession = btpSession;
         this.#cleanupObservers = cleanupObservers;
         this.#onBtpSessionClosed = () => {
-            this.#sessionLost = true;
+            this.#connected = false;
             this.#cleanupObservers();
             this.#terminateIterator();
             this.emitClosed();
         };
-        btpSession.closed.on(this.#onBtpSessionClosed);
+        btpSession.closed.once(this.#onBtpSessionClosed);
     }
 
     get connected() {
         return this.#connected;
-    }
-
-    get #usable() {
-        return this.#connected && !this.#sessionLost;
     }
 
     markDisconnected() {
@@ -438,7 +433,7 @@ export class ProxyBleChannel extends BleChannel<Bytes> {
 
     /** @throws {BleDisconnectedError} once the peripheral, the BTP session or the channel has ended */
     async send(data: Bytes) {
-        if (!this.#usable) {
+        if (!this.#connected) {
             throw new BleDisconnectedError(`Cannot send data, not connected to ${this.#peripheralAddress}`);
         }
         await this.#btpSession.sendMatterMessage(data);

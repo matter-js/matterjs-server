@@ -491,6 +491,7 @@ describe("BLE Proxy Integration", function () {
                 await MockTime.advance(MatterBle.BTP_CONN_IDLE_TIMEOUT);
 
                 expect(channel.isClosed).to.be.true;
+                expect(channel.connected).to.be.false;
                 await expect(channel.send(Bytes.fromHex("0102"))).rejectedWith(BleDisconnectedError);
                 await waitFor(() => sentDisconnects().length > 0);
 
