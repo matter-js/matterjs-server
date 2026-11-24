@@ -13,7 +13,7 @@ This page shows a detailed overview of the changes between versions without the 
 - Fix: With the BLE proxy, commissioning notices a lost Bluetooth connection right away instead of waiting for a timeout
 - Fix: With the BLE proxy Python client (`matter-ble-proxy`) on Linux with BlueZ 5.62 or newer, commissioning sends Bluetooth packets as large as the connection allows instead of always 20 bytes. This needs the updated `matter-ble-proxy` package on the proxy side
 - Fix: With the BLE proxy, when a device does not answer large Bluetooth packets, commissioning continues on the same connection with the smallest packet size, as it already does without the proxy
-- Fix: With the BLE proxy, a commissioning attempt that is cancelled while it connects over Bluetooth now closes that Bluetooth connection, and stopping the server closes the open ones
+- Fix: With the BLE proxy, a commissioning attempt that is cancelled while it connects over Bluetooth now closes that Bluetooth connection, and stopping the server closes the open ones and the ones still being opened
 - Fix: With the BLE proxy, a proxy command that gets no answer now fails after 60 seconds instead of waiting forever
 - Fix: With the BLE proxy, a failed Bluetooth connection no longer cancels commissioning attempts over the network that run at the same time
 

@@ -496,7 +496,14 @@ class MatterBleProxy:
             )
             return
 
-        mtu = _att_mtu(client)
+        try:
+            mtu = _att_mtu(client)
+        except Exception:
+            try:
+                await client.disconnect()
+            except Exception:
+                _LOGGER.debug("Error disconnecting %s after the MTU lookup failed", address, exc_info=True)
+            raise
         self._connections[handle] = ConnectionState(client, handle)
 
         await self._send_success(cmd_id, {"connection_handle": handle, "mtu": mtu})

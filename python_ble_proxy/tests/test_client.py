@@ -5,6 +5,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 import warnings
 
+import pytest
+
 from matter_ble_proxy.client import BleDeviceResolver, BleScanSource, ConnectionState, MatterBleProxy
 from matter_ble_proxy.protocol import (
     BINARY_FRAME_HEADER,
@@ -358,3 +360,29 @@ async def test_request_mtu_on_bluez_falls_back_to_23_when_service_discovery_has_
     proxy._connections[1] = ConnectionState(_UndiscoveredClient(), 1)  # type: ignore[arg-type]
 
     assert await _request_mtu(proxy, ws) == 23
+
+
+async def test_connect_disconnects_when_the_mtu_lookup_fails(monkeypatch):
+    class _BrokenMtuClient(_StubBleakClient):
+        backend_id = _BLUEZ
+        disconnected = False
+
+        @property
+        def mtu_size(self) -> int:
+            raise RuntimeError("mtu lookup failed")
+
+        async def connect(self) -> None:
+            return None
+
+        async def disconnect(self) -> None:
+            self.disconnected = True
+
+    proxy, _ws = _proxy()
+    stub = _BrokenMtuClient()
+    monkeypatch.setattr("bleak.BleakClient", lambda *_args, **_kwargs: stub)
+
+    with pytest.raises(RuntimeError):
+        await proxy._handle_connect(6, {"address": "AA:BB:CC:DD:EE:FF"})
+
+    assert stub.disconnected
+    assert proxy._connections == {}
