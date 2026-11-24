@@ -41,6 +41,7 @@ concurrency:
 
 jobs:
     cert:
+        name: cert (${{ (inputs.device || 'chip-local') == 'chip-local' && 'chip-bins' || inputs.device }})
         # chip-cert-bins is published for linux/arm64 only.
         runs-on: ${{ inputs.device == 'matterjs' && 'ubuntu-latest' || 'ubuntu-24.04-arm' }}
         timeout-minutes: 90
