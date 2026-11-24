@@ -16,7 +16,14 @@ import {
     Time,
     type Transport,
 } from "@matter/main";
-import { BleChannel, BleError, BtpCodec, BtpFlowError, BtpSessionHandler, MatterBle } from "@matter/main/protocol";
+import {
+    BleChannel,
+    BleDisconnectedError,
+    BleError,
+    BtpCodec,
+    BtpSessionHandler,
+    MatterBle,
+} from "@matter/main/protocol";
 import type { BleProxyHandler } from "./BleProxyHandler.js";
 import { BinaryFrameOpcode, BleProxyCommand, BleProxyEvent } from "./BleProxyProtocol.js";
 import type { ProxyBleScanner } from "./ProxyBleScanner.js";
@@ -349,6 +356,8 @@ export class ProxyBleCentralInterface implements Transport {
  */
 export class ProxyBleChannel extends BleChannel<Bytes> {
     #connected = true;
+    #closing = false;
+    #sessionLost = false;
     readonly #peripheralAddress: string;
     readonly #btpSession: BtpSessionHandler;
     readonly #cleanupObservers: () => void;
@@ -363,12 +372,21 @@ export class ProxyBleChannel extends BleChannel<Bytes> {
         this.#peripheralAddress = peripheralAddress;
         this.#btpSession = btpSession;
         this.#cleanupObservers = cleanupObservers;
-        this.#onBtpSessionClosed = () => this.emitClosed();
+        this.#onBtpSessionClosed = () => {
+            this.#sessionLost = true;
+            this.#cleanupObservers();
+            this.#terminateIterator();
+            this.emitClosed();
+        };
         btpSession.closed.on(this.#onBtpSessionClosed);
     }
 
     get connected() {
         return this.#connected;
+    }
+
+    get #usable() {
+        return this.#connected && !this.#sessionLost;
     }
 
     markDisconnected() {
@@ -418,13 +436,10 @@ export class ProxyBleChannel extends BleChannel<Bytes> {
         }
     }
 
+    /** @throws {BleDisconnectedError} once the peripheral, the BTP session or the channel has ended */
     async send(data: Bytes) {
-        if (!this.#connected) {
-            logger.debug(`Cannot send data - not connected to ${this.#peripheralAddress}`);
-            return;
-        }
-        if (this.#btpSession === undefined) {
-            throw new BtpFlowError(`Cannot send data, no BTP session initialized`);
+        if (!this.#usable) {
+            throw new BleDisconnectedError(`Cannot send data, not connected to ${this.#peripheralAddress}`);
         }
         await this.#btpSession.sendMatterMessage(data);
     }
@@ -434,6 +449,10 @@ export class ProxyBleChannel extends BleChannel<Bytes> {
     }
 
     async close() {
+        if (this.#closing) {
+            return;
+        }
+        this.#closing = true;
         this.#connected = false;
         this.#cleanupObservers();
         this.#terminateIterator();
