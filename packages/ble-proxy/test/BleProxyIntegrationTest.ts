@@ -16,7 +16,7 @@ import { BleProxyClientDisconnectedError } from "../src/BleProxyConnection.js";
 import { BleProxyHandler } from "../src/BleProxyHandler.js";
 import { BinaryFrameOpcode, BleProxyCommand } from "../src/BleProxyProtocol.js";
 import { ProxyBle } from "../src/ProxyBle.js";
-import type { ProxyBleCentralInterface, ProxyBleChannel } from "../src/ProxyBleChannel.js";
+import type { ProxyBleCentralInterface } from "../src/ProxyBleChannel.js";
 import { BleProxyTestClient } from "./BleProxyTestClient.js";
 import { MockBleDevice } from "./MockBleDevice.js";
 
@@ -239,14 +239,14 @@ describe("BLE Proxy Integration", function () {
             await discoverDevice(proxyBle, mockDevice);
             wireBtpFlow(mockDevice);
 
-            const central = proxyBle.centralInterface as ProxyBleCentralInterface;
+            const central = proxyBle.centralInterface;
             // matter.js installs an onData listener before opening channels - mimic that here.
             central.onData(() => {});
 
-            const channel = (await central.openChannel({
+            const channel = await central.openChannel({
                 type: "ble",
                 peripheralAddress: mockDevice.address,
-            })) as ProxyBleChannel;
+            });
 
             expect(channel.connected).to.be.true;
             expect(channel.name).to.equal(`ble-proxy://${mockDevice.address}`);
@@ -289,13 +289,13 @@ describe("BLE Proxy Integration", function () {
                 return {};
             });
 
-            const central = proxyBle.centralInterface as ProxyBleCentralInterface;
+            const central = proxyBle.centralInterface;
             central.onData(() => {});
 
-            const channel = (await central.openChannel({
+            const channel = await central.openChannel({
                 type: "ble",
                 peripheralAddress: mockDevice.address,
-            })) as ProxyBleChannel;
+            });
 
             expect(channel.connected).to.be.true;
             await channel.close();
@@ -307,7 +307,7 @@ describe("BLE Proxy Integration", function () {
 
             await discoverDevice(proxyBle, mockDevice);
 
-            const central = proxyBle.centralInterface as ProxyBleCentralInterface;
+            const central = proxyBle.centralInterface;
             // Note: no central.onData() call here - this should fail fast.
             try {
                 await central.openChannel({ type: "ble", peripheralAddress: mockDevice.address });
@@ -333,7 +333,7 @@ describe("BLE Proxy Integration", function () {
             const disconnectPromise = testClient.waitForCommand("disconnect", 3000);
             testClient.onCommand(BleProxyCommand.Disconnect, async () => ({}));
 
-            const central = proxyBle.centralInterface as ProxyBleCentralInterface;
+            const central = proxyBle.centralInterface;
             central.onData(() => {});
 
             try {
@@ -363,7 +363,7 @@ describe("BLE Proxy Integration", function () {
             testClient.onCommand(BleProxyCommand.WriteAndSubscribe, () => new Promise<void>(() => {}));
             testClient.onCommand(BleProxyCommand.Disconnect, async () => ({}));
 
-            const central = proxyBle.centralInterface as ProxyBleCentralInterface;
+            const central = proxyBle.centralInterface;
             central.onData(() => {});
 
             // MockTime is disabled by default in this package; enable it only around the timed-out phase so
@@ -395,13 +395,13 @@ describe("BLE Proxy Integration", function () {
             await discoverDevice(proxyBle, mockDevice);
             wireBtpFlow(mockDevice);
 
-            const central = proxyBle.centralInterface as ProxyBleCentralInterface;
+            const central = proxyBle.centralInterface;
             central.onData(() => {});
 
-            const channel = (await central.openChannel({
+            const channel = await central.openChannel({
                 type: "ble",
                 peripheralAddress: mockDevice.address,
-            })) as ProxyBleChannel;
+            });
             expect(channel.connected).to.be.true;
 
             // Owning proxy client drops entirely — the channel must tear down with it.
@@ -418,12 +418,12 @@ describe("BLE Proxy Integration", function () {
             wireBtpFlow(mockDevice, connectionHandle);
             testClient.onCommand(BleProxyCommand.Disconnect, async () => ({}));
 
-            const central = proxyBle.centralInterface as ProxyBleCentralInterface;
+            const central = proxyBle.centralInterface;
             central.onData(() => {});
-            return (await central.openChannel({
+            return await central.openChannel({
                 type: "ble",
                 peripheralAddress: mockDevice.address,
-            })) as ProxyBleChannel;
+            });
         };
 
         const sentDisconnects = () => testClient.receivedCommands.filter(c => c.command === "disconnect");
@@ -479,18 +479,16 @@ describe("BLE Proxy Integration", function () {
             // ATT MTU 23 gives the minimum segment size, where a timeout closes the session instead of renegotiating
             wireBtpFlow(mockDevice, 9, 23);
             testClient.onCommand(BleProxyCommand.Disconnect, async () => ({}));
-            const central = proxyBle.centralInterface as ProxyBleCentralInterface;
+            const central = proxyBle.centralInterface;
             central.onData(() => {});
 
             // MockTime only around the channel's lifetime: discovery above relies on real timers
             MockTime.enable();
             try {
-                const channel = (await central.openChannel({
+                const channel = await central.openChannel({
                     type: "ble",
                     peripheralAddress: mockDevice.address,
-                })) as ProxyBleChannel;
-                let closeNotifications = 0;
-                channel.onClose(() => closeNotifications++);
+                });
                 // The mock device never answers, so a BTP timeout closes the session
                 await channel.send(Bytes.fromHex("0102"));
                 await MockTime.advance(MatterBle.BTP_CONN_IDLE_TIMEOUT);
@@ -522,13 +520,13 @@ describe("BLE Proxy Integration", function () {
             await discoverDevice(proxyBle, mockDevice);
             wireBtpFlow(mockDevice, connectionHandle);
             testClient.onCommand(BleProxyCommand.Disconnect, async () => ({}));
-            const central = proxyBle.centralInterface as ProxyBleCentralInterface;
+            const central = proxyBle.centralInterface;
             central.onData(() => {});
             return async () =>
-                (await central.openChannel({
+                await central.openChannel({
                     type: "ble",
                     peripheralAddress: mockDevice.address,
-                })) as ProxyBleChannel;
+                });
         };
 
         it("retries with the minimum segment size and resends when the peer stalls after the handshake", async () => {
@@ -618,7 +616,7 @@ describe("BLE Proxy Integration", function () {
                 characteristics: mockDevice.characteristics,
             }));
             testClient.onCommand(BleProxyCommand.Disconnect, async () => ({}));
-            const central = proxyBle.centralInterface as ProxyBleCentralInterface;
+            const central = proxyBle.centralInterface;
             central.onData(() => {});
             return { central, mockDevice };
         };
@@ -713,7 +711,7 @@ describe("BLE Proxy Integration", function () {
                 return new Promise<void>(() => {});
             });
             testClient.onCommand(BleProxyCommand.Disconnect, async () => ({}));
-            const central = proxyBle.centralInterface as ProxyBleCentralInterface;
+            const central = proxyBle.centralInterface;
             central.onData(() => {});
 
             await expect(central.openChannel({ type: "ble", peripheralAddress: mockDevice.address })).rejectedWith(

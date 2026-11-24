@@ -6,7 +6,7 @@
 
 import {
     Abort,
-    type Bytes,
+    Bytes,
     type Channel,
     ChannelType,
     createPromise,
@@ -136,7 +136,7 @@ export class ProxyBleCentralInterface implements Transport {
     }
 
     /** An abort during the open disconnects the peripheral, including one the proxy connects after the abort. */
-    async openChannel(address: ServerAddress, options?: Transport.OpenChannelOptions): Promise<Channel<Bytes>> {
+    async openChannel(address: ServerAddress, options?: Transport.OpenChannelOptions): Promise<ProxyBleChannel> {
         const abort = options?.abort;
         if (this.#closed) {
             throw new NetworkError("Network interface is closed");
@@ -299,7 +299,7 @@ export class ProxyBleChannel extends BleChannel<Bytes> {
         this.#onMatterMessage = onMatterMessage;
         link.connection.binaryFrameReceived.on(this.#onBinaryFrame);
         link.connection.eventReceived.on(this.#onEvent);
-        link.connection.closed.on(this.#onOwnerClosed);
+        link.connection.closed.once(this.#onOwnerClosed);
     }
 
     readonly #onBinaryFrame = (frame: BinaryFrame) => {
@@ -397,7 +397,7 @@ export class ProxyBleChannel extends BleChannel<Bytes> {
             const writeAndSubscribe = connection.sendCommand(BleProxyCommand.WriteAndSubscribe, {
                 connection_handle: connectionHandle,
                 write_uuid: c1Uuid,
-                write_value: Buffer.from(request as ArrayBuffer).toString("base64"),
+                write_value: Buffer.from(Bytes.of(request)).toString("base64"),
                 write_response: true,
                 subscribe_uuid: c2Uuid,
             });
@@ -414,8 +414,7 @@ export class ProxyBleChannel extends BleChannel<Bytes> {
         const session = await BtpSessionHandler.createAsCentral(
             handshakeResponse,
             async (data: Bytes) => {
-                const bytes = data instanceof Uint8Array ? data : new Uint8Array(data as ArrayBuffer);
-                connection.sendBinaryFrame(BinaryFrameOpcode.WriteData, connectionHandle, bytes);
+                connection.sendBinaryFrame(BinaryFrameOpcode.WriteData, connectionHandle, Bytes.of(data));
             },
             async () => this.#disconnectPeripheral(),
             async (data: Bytes) => {
