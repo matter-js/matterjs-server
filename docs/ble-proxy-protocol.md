@@ -507,6 +507,10 @@ Unsubscribe from notifications on a characteristic.
 | `characteristic_not_found` | Specified characteristic UUID not found         |
 | `not_subscribed`           | Not currently subscribed to this characteristic |
 
+When the peripheral stops answering right after the BTP handshake, the server unsubscribes from C2
+and then sends a second `write_and_subscribe` with a new handshake request on the same
+`connection_handle`. The client must enable C2 notifications again and forward them as before.
+
 ---
 
 ### request_mtu

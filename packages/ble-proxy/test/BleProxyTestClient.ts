@@ -13,9 +13,11 @@
 import { InternalError } from "@matter/main";
 import { WebSocket } from "ws";
 import {
+    type BinaryFrame,
     BLE_PROXY_PROTOCOL_VERSION,
     type BleProxyCommandName,
     type CommandMessage,
+    decodeBinaryFrame,
     encodeBinaryFrame,
 } from "../src/BleProxyProtocol.js";
 
@@ -26,6 +28,7 @@ export class BleProxyTestClient {
     #commandHandlers = new Map<BleProxyCommandName, CommandHandler>();
     #commandErrors = new Map<BleProxyCommandName, { error: string; message: string }>();
     #receivedCommands: CommandMessage[] = [];
+    readonly #receivedBinaryFrames = new Array<BinaryFrame>();
     #commandWaiters: Array<{ command: string; resolve: (msg: CommandMessage) => void }> = [];
 
     async connect(url: string): Promise<void> {
@@ -41,6 +44,9 @@ export class BleProxyTestClient {
 
             ws.on("message", (data, isBinary) => {
                 if (isBinary) {
+                    if (data instanceof Buffer) {
+                        this.#receivedBinaryFrames.push(decodeBinaryFrame(new Uint8Array(data)));
+                    }
                     return;
                 }
 
@@ -115,6 +121,11 @@ export class BleProxyTestClient {
 
     get receivedCommands(): CommandMessage[] {
         return [...this.#receivedCommands];
+    }
+
+    /** Binary frames the server sent, in arrival order. */
+    get receivedBinaryFrames(): BinaryFrame[] {
+        return [...this.#receivedBinaryFrames];
     }
 
     close(): void {

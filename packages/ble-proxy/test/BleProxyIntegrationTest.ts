@@ -381,6 +381,7 @@ describe("BLE Proxy Integration", function () {
                 if (!outcome.ok) {
                     expect(outcome.err.message).to.include("BTP handshake response not received");
                 }
+                await testClient.waitForCommand("disconnect", 1000);
             } finally {
                 MockTime.disable();
             }
@@ -474,7 +475,8 @@ describe("BLE Proxy Integration", function () {
             const proxyBle = new ProxyBle(handler);
             const mockDevice = new MockBleDevice({ discriminator: 7600, vendorId: 0xfff1, productId: 0x8000 });
             await discoverDevice(proxyBle, mockDevice);
-            wireBtpFlow(mockDevice, 9);
+            // ATT MTU 23 gives the minimum segment size, where a timeout closes the session instead of renegotiating
+            wireBtpFlow(mockDevice, 9, 23);
             testClient.onCommand(BleProxyCommand.Disconnect, async () => ({}));
             const central = proxyBle.centralInterface as ProxyBleCentralInterface;
             central.onData(() => {});
@@ -505,6 +507,122 @@ describe("BLE Proxy Integration", function () {
             } finally {
                 MockTime.disable();
             }
+        });
+
+        const handshakeRequests = () => testClient.receivedCommands.filter(c => c.command === "write_and_subscribe");
+        const requestedSegmentSize = (command: { args?: Record<string, unknown> }) =>
+            Buffer.from(String(command.args?.write_value), "base64").readUInt16LE(6);
+
+        // Prepares a channel with 244-byte segments to a device that never answers, so the first send stalls.
+        // Discovery runs here on real timers; the returned function opens the channel.
+        const prepareStallingChannel = async (discriminator: number, connectionHandle: number) => {
+            const proxyBle = new ProxyBle(handler);
+            const mockDevice = new MockBleDevice({ discriminator, vendorId: 0xfff1, productId: 0x8000 });
+            await discoverDevice(proxyBle, mockDevice);
+            wireBtpFlow(mockDevice, connectionHandle);
+            testClient.onCommand(BleProxyCommand.Disconnect, async () => ({}));
+            const central = proxyBle.centralInterface as ProxyBleCentralInterface;
+            central.onData(() => {});
+            return async () =>
+                (await central.openChannel({
+                    type: "ble",
+                    peripheralAddress: mockDevice.address,
+                })) as ProxyBleChannel;
+        };
+
+        it("retries with the minimum segment size and resends when the peer stalls after the handshake", async () => {
+            testClient.onCommand(BleProxyCommand.UnsubscribeCharacteristic, async () => ({}));
+            const open = await prepareStallingChannel(7700, 10);
+            MockTime.enable();
+            try {
+                const channel = await open();
+                await channel.send(new Uint8Array(100).fill(0xab));
+                await waitFor(() => testClient.receivedBinaryFrames.length > 0);
+                const framesBeforeStall = testClient.receivedBinaryFrames.length;
+
+                await MockTime.advance(Seconds(16));
+                await waitFor(() => handshakeRequests().length === 2);
+                await waitFor(() => testClient.receivedBinaryFrames.length > framesBeforeStall);
+
+                const [first, retry] = handshakeRequests();
+                expect(requestedSegmentSize(first)).to.equal(244);
+                expect(requestedSegmentSize(retry)).to.equal(MatterBle.MINIMUM_ATT_MTU);
+                const commands = testClient.receivedCommands.map(c => c.command);
+                expect(commands).to.include("unsubscribe_characteristic");
+                expect(commands.indexOf("unsubscribe_characteristic")).to.be.lessThan(
+                    commands.lastIndexOf("write_and_subscribe"),
+                );
+                const resent = testClient.receivedBinaryFrames.slice(framesBeforeStall);
+                expect(resent.every(frame => frame.payload.length <= MatterBle.MINIMUM_ATT_MTU)).to.be.true;
+                expect(resent.some(frame => frame.payload.includes(0xab))).to.be.true;
+                expect(channel.isClosed).to.be.false;
+            } finally {
+                MockTime.disable();
+            }
+        });
+
+        it("closes the channel when the retry with the minimum segment size fails", async () => {
+            testClient.onCommandError(BleProxyCommand.UnsubscribeCharacteristic, "not_subscribed", "Not subscribed");
+            const open = await prepareStallingChannel(7800, 11);
+            MockTime.enable();
+            try {
+                const channel = await open();
+                await channel.send(new Uint8Array(100).fill(0xab));
+
+                await MockTime.advance(Seconds(16));
+                await waitFor(() => channel.isClosed);
+
+                await expect(channel.send(Bytes.fromHex("0102"))).rejectedWith(BleDisconnectedError);
+                await waitFor(() => sentDisconnects().length > 0);
+                expect(testClient.receivedCommands.map(c => c.command)).to.include("unsubscribe_characteristic");
+                expect(handshakeRequests().length).to.equal(1);
+            } finally {
+                MockTime.disable();
+            }
+        });
+
+        it("ends a running retry and waiting sends at once when the channel closes", async () => {
+            testClient.onCommand(BleProxyCommand.UnsubscribeCharacteristic, () => new Promise<void>(() => {}));
+            const open = await prepareStallingChannel(7850, 13);
+            MockTime.enable();
+            try {
+                const channel = await open();
+                await channel.send(new Uint8Array(100).fill(0xab));
+                await MockTime.advance(Seconds(16));
+                await testClient.waitForCommand("unsubscribe_characteristic", 1000);
+
+                const waitingSend = channel.send(Bytes.fromHex("0102"));
+                await channel.close();
+
+                await expect(waitingSend).rejectedWith(BleDisconnectedError);
+                await waitFor(() => sentDisconnects().length > 0);
+                await settle();
+                expect(sentDisconnects().length).to.equal(1);
+            } finally {
+                MockTime.disable();
+            }
+        });
+
+        it("fails the open right away when the proxy loses the peripheral during the handshake", async () => {
+            const proxyBle = new ProxyBle(handler);
+            const mockDevice = new MockBleDevice({ discriminator: 7900, vendorId: 0xfff1, productId: 0x8000 });
+            await discoverDevice(proxyBle, mockDevice);
+            testClient.onCommand(BleProxyCommand.Connect, async () => ({ connection_handle: 12, mtu: 247 }));
+            testClient.onCommand(BleProxyCommand.DiscoverServices, async () => ({ services: mockDevice.services }));
+            testClient.onCommand(BleProxyCommand.DiscoverCharacteristics, async () => ({
+                characteristics: mockDevice.characteristics,
+            }));
+            testClient.onCommand(BleProxyCommand.WriteAndSubscribe, () => {
+                testClient.sendEvent("disconnected", { connection_handle: 12 });
+                return new Promise<void>(() => {});
+            });
+            testClient.onCommand(BleProxyCommand.Disconnect, async () => ({}));
+            const central = proxyBle.centralInterface as ProxyBleCentralInterface;
+            central.onData(() => {});
+
+            await expect(central.openChannel({ type: "ble", peripheralAddress: mockDevice.address })).rejectedWith(
+                BleDisconnectedError,
+            );
         });
 
         it("does not send a disconnect after the proxy reported the peripheral as disconnected", async () => {

@@ -10,6 +10,7 @@ This page shows a detailed overview of the changes between versions without the 
 
 - Fix: With the BLE proxy, the Bluetooth connection to a device is now closed once commissioning ends, instead of staying open until the device or the proxy drops it
 - Fix: With the BLE proxy, commissioning notices a lost Bluetooth connection right away instead of waiting for a timeout
+- Fix: With the BLE proxy, when a device does not answer large Bluetooth packets, commissioning continues on the same connection with the smallest packet size, as it already does without the proxy
 
 ## **WORK IN PROGRESS**
 
