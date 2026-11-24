@@ -8,7 +8,7 @@ This page shows a detailed overview of the changes between versions without the 
 -->
 ## **WORK IN PROGRESS**
 
-- Fix: Aqara occupant location reports a target as the tracking packet (dynamic points, micro-motion points and packed tracking state) instead of a Z coordinate, velocity and signal-to-noise ratio. In the edge region, 1 means the cell is not monitored and 0 means it is monitored
+- Breaking: Aqara occupant location targets report `dynPnts`, `mmsPnts` and `trackingState` (dynamic points, micro-motion points and tracker diagnostics) instead of `targetZCoordinate`, `targetVelocity` and `targetSignalToNoiseRatio`, which did not match what current firmware sends. Firmware 1.1.8.2 reports a grid index, an activity value and a fall flag in these fields. The posture value `Undefined` is renamed to `Unknown`, and the new value `SuspectedFall` is added
 
 ## 1.6.0 (2026-11-14)
 

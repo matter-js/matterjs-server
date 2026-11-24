@@ -171,7 +171,7 @@ class AqaraOccupantLocationCluster(Cluster):
                         ClusterObjectFieldDescriptor(Label="trackingState", Tag=5, Type=uint),
                         ClusterObjectFieldDescriptor(Label="targetType", Tag=6, Type=AqaraOccupantLocationCluster.Enums.TargetTypeEnum),
                         ClusterObjectFieldDescriptor(Label="targetPosture", Tag=7, Type=AqaraOccupantLocationCluster.Enums.PostureEnum),
-                        ClusterObjectFieldDescriptor(Label="targetZoneID", Tag=8, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="targetZoneID", Tag=8, Type=typing.Optional[uint]),
                     ])
 
             targetID: uint = 0
@@ -182,7 +182,7 @@ class AqaraOccupantLocationCluster(Cluster):
             trackingState: uint = 0
             targetType: AqaraOccupantLocationCluster.Enums.TargetTypeEnum = 0
             targetPosture: AqaraOccupantLocationCluster.Enums.PostureEnum = 0
-            targetZoneID: uint = 0
+            targetZoneID: typing.Optional[uint] = None
 
     class Commands:
         @dataclass

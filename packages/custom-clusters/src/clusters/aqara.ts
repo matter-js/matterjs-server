@@ -427,9 +427,8 @@ class AqaraTargetLocationInfoStruct {
     targetPosture!: number;
 
     /** Zone that contains the target. 0 is the global zone: the target is in no configured zone. */
-    @constraint("0 to 8")
-    @field(0x8, uint8, mandatory)
-    targetZoneId!: number;
+    @field(0x8, uint8)
+    targetZoneId?: number;
 }
 
 class AqaraLocationEvent {

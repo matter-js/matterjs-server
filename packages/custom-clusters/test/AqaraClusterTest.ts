@@ -142,6 +142,11 @@ describe("Aqara ambient sensing clusters", () => {
             "targetPosture",
             "targetZoneId",
         ]);
+        const mandatoryFields = (target?.operationalBase?.children ?? [])
+            .filter(field => field instanceof ValueModel && field.mandatory)
+            .map(field => field.name);
+        expect(mandatoryFields).to.not.include("targetZoneId");
+        expect(mandatoryFields).to.include.members(["dynPnts", "mmsPnts", "trackingState"]);
 
         expect([...location.commands].filter(command => command.isRequest).map(command => command.name)).to.deep.equal([
             "subscribeLocationData",

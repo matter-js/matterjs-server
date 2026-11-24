@@ -267,7 +267,7 @@ def test_aqara_ambient_sensing_clusters():
     assert target.descriptor.GetFieldByLabel("dynPnts").Type is int
     assert target.descriptor.GetFieldByLabel("mmsPnts").Type is int
     assert target.descriptor.GetFieldByLabel("trackingState").Type is uint
-    assert target.descriptor.GetFieldByLabel("targetZoneID").Type is uint
+    assert target.descriptor.GetFieldByLabel("targetZoneID").Type == (uint | None)
     event = location.Events.Location(
         location=[
             target(
@@ -280,13 +280,26 @@ def test_aqara_ambient_sensing_clusters():
                 targetType=location.Enums.TargetTypeEnum.kUnknown,
                 targetPosture=location.Enums.PostureEnum.kUnknown,
                 targetZoneID=uint(0),
-            )
+            ),
+            target(
+                targetID=uint(1),
+                targetXCoordinate=10,
+                targetYCoordinate=20,
+                dynPnts=0,
+                mmsPnts=3,
+                trackingState=uint(0),
+                targetType=location.Enums.TargetTypeEnum.kUnknown,
+                targetPosture=location.Enums.PostureEnum.kSuspectedFall,
+            ),
         ]
     )
     decoded_event = location.Events.Location.FromTLV(event.ToTLV())
     assert decoded_event.location[0].targetXCoordinate == -5
     assert decoded_event.location[0].dynPnts == 40
     assert decoded_event.location[0].trackingState == 11
+    assert decoded_event.location[0].targetZoneID == 0
+    assert decoded_event.location[1].targetZoneID is None
+    assert decoded_event.location[1].targetPosture == location.Enums.PostureEnum.kSuspectedFall
 
 
 def test_signed_custom_cluster_attributes():
