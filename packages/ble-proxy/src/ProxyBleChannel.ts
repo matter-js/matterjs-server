@@ -212,6 +212,12 @@ export class ProxyBleCentralInterface implements Transport {
             // race as step 5); frames seen before the session exists are buffered, then flushed below.
             const onMatterMessageListener = this.#onMatterMessageListener;
             const channelRef: { channel?: ProxyBleChannel } = {};
+            // Separate from channel.connected: close() clears that before the BTP session asks for the disconnect.
+            let peripheralLinked = true;
+            const peripheralLost = () => {
+                peripheralLinked = false;
+                channelRef.channel?.markDisconnected();
+            };
             const sessionRef: { session?: BtpSessionHandler } = {};
             const earlyFrames = new Array<Uint8Array>();
 
@@ -246,16 +252,17 @@ export class ProxyBleCentralInterface implements Transport {
                 },
                 // Disconnect callback
                 async () => {
-                    if (!channelRef.channel?.connected) return;
+                    if (!peripheralLinked) return;
                     logger.debug(`Disconnecting from ${peripheralAddress} via proxy`);
-                    try {
-                        await connection.sendCommand(BleProxyCommand.Disconnect, { connection_handle });
-                    } catch (error) {
-                        logger.debug(
-                            `Peripheral ${peripheralAddress}: Error sending Disconnect to proxy client`,
-                            error,
+                    // Not awaited: the proxy replies only after the BLE disconnect, and PASE close waits for this
+                    connection
+                        .sendCommand(BleProxyCommand.Disconnect, { connection_handle })
+                        .catch(error =>
+                            logger.debug(
+                                `Peripheral ${peripheralAddress}: Error sending Disconnect to proxy client`,
+                                error,
+                            ),
                         );
-                    }
                 },
                 // Matter message callback
                 async (data: Bytes) => {
@@ -281,7 +288,7 @@ export class ProxyBleCentralInterface implements Transport {
                     data.connection_handle === connection_handle
                 ) {
                     logger.info(`Peripheral ${peripheralAddress} disconnected unexpectedly`);
-                    channelRef.channel?.markDisconnected();
+                    peripheralLost();
                     channelRef.channel
                         ?.close()
                         .catch(error => logger.debug(`Peripheral ${peripheralAddress}: Error closing channel`, error));
@@ -292,7 +299,7 @@ export class ProxyBleCentralInterface implements Transport {
             // The Disconnected event covers one peripheral; this covers the whole owning client vanishing.
             const ownerClosedObserver = () => {
                 logger.info(`Owning proxy client for ${peripheralAddress} disconnected`);
-                channelRef.channel?.markDisconnected();
+                peripheralLost();
                 channelRef.channel
                     ?.close()
                     .catch(error => logger.debug(`Peripheral ${peripheralAddress}: Error closing channel`, error));

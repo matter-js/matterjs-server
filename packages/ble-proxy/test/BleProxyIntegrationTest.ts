@@ -407,5 +407,58 @@ describe("BLE Proxy Integration", function () {
 
             expect(channel.connected).to.be.false;
         });
+
+        const openConnectedChannel = async (discriminator: number, connectionHandle: number) => {
+            const proxyBle = new ProxyBle(handler);
+            const mockDevice = new MockBleDevice({ discriminator, vendorId: 0xfff1, productId: 0x8000 });
+            await discoverDevice(proxyBle, mockDevice);
+            wireBtpFlow(mockDevice, connectionHandle);
+            testClient.onCommand(BleProxyCommand.Disconnect, async () => ({}));
+
+            const central = proxyBle.centralInterface as ProxyBleCentralInterface;
+            central.onData(() => {});
+            return (await central.openChannel({
+                type: "ble",
+                peripheralAddress: mockDevice.address,
+            })) as ProxyBleChannel;
+        };
+
+        const sentDisconnects = () => testClient.receivedCommands.filter(c => c.command === "disconnect");
+        // Disconnect is sent without waiting for its reply, so give a wrongly sent one time to arrive
+        const settle = () => new Promise<void>(resolve => setTimeout(resolve, 100));
+
+        it("disconnects the peripheral once when a connected channel is closed", async () => {
+            const channel = await openConnectedChannel(7100, 4);
+
+            await channel.close();
+            await channel.close();
+            await waitFor(() => sentDisconnects().length > 0);
+            await settle();
+
+            const disconnects = sentDisconnects();
+            expect(disconnects.length).to.equal(1);
+            expect((disconnects[0].args as { connection_handle: number }).connection_handle).to.equal(4);
+        });
+
+        it("closes without waiting for the proxy to finish the disconnect", async () => {
+            const channel = await openConnectedChannel(7300, 6);
+            testClient.onCommand(BleProxyCommand.Disconnect, () => new Promise<void>(() => {}));
+
+            await channel.close();
+
+            await testClient.waitForCommand("disconnect", 1000);
+        });
+
+        it("does not send a disconnect after the proxy reported the peripheral as disconnected", async () => {
+            const channel = await openConnectedChannel(7200, 5);
+
+            testClient.sendEvent("disconnected", { connection_handle: 5 });
+            await waitFor(() => !channel.connected);
+
+            await channel.close();
+            await settle();
+
+            expect(sentDisconnects().length).to.equal(0);
+        });
     });
 });
