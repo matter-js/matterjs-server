@@ -41,14 +41,12 @@ import {
     getThreadExtendedAddressHex,
     getThreadRole,
     getThreadRoleDescription,
-    LEAF_EDGE_LENGTH_PENALTY,
-    linkCountToMass,
-    lqiToEdgeLength,
     mergeDiagnosticEdges,
     shouldHideExternalDevice,
     signalLevelToColor,
     stripMdnsHostname,
 } from "./network-utils.js";
+import { applyThreadSprings, springCountToMass, type ThreadSpringPair } from "./thread-springs.js";
 
 declare global {
     interface HTMLElementTagNameMap {
@@ -498,15 +496,7 @@ export class ThreadGraph extends BaseNetworkGraph {
 
         const graphEdges: NetworkGraphEdge[] = [];
 
-        // Spring lengths and node masses are applied after the loop: both need every node's
-        // final link count.
-        const pairSprings = new Array<{
-            edges: NetworkGraphEdge[];
-            nodeA: string;
-            nodeB: string;
-            baseLength: number;
-        }>();
-        const linkCounts = new Map<string, number>();
+        const springPairs = new Array<ThreadSpringPair>();
 
         for (const pair of this._edgePairs.values()) {
             // Collect both directional edges for this pair
@@ -626,30 +616,13 @@ export class ThreadGraph extends BaseNetworkGraph {
                 }
             }
 
-            if (edgesInPair.some(e => e.visEdge.hidden !== true)) {
-                // Count every visible link, LQI or not: excluding LQI-less links would
-                // make their peers look like leaves.
-                linkCounts.set(pair.nodeA, (linkCounts.get(pair.nodeA) ?? 0) + 1);
-                linkCounts.set(pair.nodeB, (linkCounts.get(pair.nodeB) ?? 0) + 1);
-
-                const liveLqis = new Array<number>();
-                for (const e of edgesInPair) {
-                    if (e.conn.signalLevel === "none" || e.conn.lqi === null) continue;
-                    liveLqis.push(e.conn.lqi);
-                }
-                if (liveLqis.length > 0) {
-                    const avgLqi = liveLqis.reduce((sum, lqi) => sum + lqi, 0) / liveLqis.length;
-                    pairSprings.push({
-                        edges: edgesInPair.map(e => e.visEdge),
-                        nodeA: pair.nodeA,
-                        nodeB: pair.nodeB,
-                        baseLength: lqiToEdgeLength(avgLqi),
-                    });
-                }
-            }
-
-            // One spring per pair; a hidden pair keeps its spring so hidden nodes stay beside their neighbours
-            const springEdge = edgesInPair.find(e => e.visEdge.hidden !== true) ?? edgesInPair[0];
+            const liveLqis = edgesInPair.filter(e => e.conn.signalLevel !== "none").map(e => e.conn.lqi);
+            springPairs.push({
+                nodeA: pair.nodeA,
+                nodeB: pair.nodeB,
+                edges: edgesInPair.map(e => e.visEdge),
+                avgLqi: liveLqis.length > 0 ? liveLqis.reduce((sum, lqi) => sum + lqi, 0) / liveLqis.length : undefined,
+            });
 
             // Save base state and collect edges for the dataset
             for (const e of edgesInPair) {
@@ -658,7 +631,6 @@ export class ThreadGraph extends BaseNetworkGraph {
                 if (isHidden) {
                     hiddenReason = e.filterHidden ? "filter" : "dedup";
                 }
-                e.visEdge.physics = e === springEdge;
 
                 this._edgeBaseState.set(e.visEdge.id, {
                     hiddenReason,
@@ -671,15 +643,9 @@ export class ThreadGraph extends BaseNetworkGraph {
             }
         }
 
-        for (const spring of pairSprings) {
-            const isLeafLink = linkCounts.get(spring.nodeA) === 1 || linkCounts.get(spring.nodeB) === 1;
-            const length = spring.baseLength + (isLeafLink ? LEAF_EDGE_LENGTH_PENALTY : 0);
-            for (const edge of spring.edges) {
-                edge.length = length;
-            }
-        }
+        const masses = applyThreadSprings(springPairs);
         for (const node of graphNodes) {
-            node.mass = linkCountToMass(linkCounts.get(String(node.id)) ?? 0);
+            node.mass = masses.get(String(node.id)) ?? springCountToMass(0);
         }
 
         // --- Update vis.js datasets ---

@@ -86,29 +86,6 @@ export function signalLevelToColor(level: SignalLevel): string {
     }
 }
 
-/** Spring length per LQI stage, index = LQI 0..3 (OpenThread reports 0-3). */
-const LQI_EDGE_LENGTHS = [340, 270, 190, 100];
-
-/** Extra spring length for an edge on a node with a single link, pushing leaves outward. */
-export const LEAF_EDGE_LENGTH_PENALTY = 70;
-
-/**
- * vis.js node mass for a Thread node with the given number of visible links. barnesHut repulsion scales with the
- * product of both masses, so a densely meshed router core spreads out instead of collapsing under its many springs.
- */
-export function linkCountToMass(linkCount: number): number {
-    return 1 + linkCount / 2;
-}
-
-/** Map an averaged LQI to a physics spring length, interpolating between stages. */
-export function lqiToEdgeLength(avgLqi: number): number {
-    const clamped = Math.min(LQI_EDGE_LENGTHS.length - 1, Math.max(0, avgLqi));
-    const lower = Math.floor(clamped);
-    const upper = Math.ceil(clamped);
-    if (lower === upper) return LQI_EDGE_LENGTHS[lower];
-    return LQI_EDGE_LENGTHS[lower] + (LQI_EDGE_LENGTHS[upper] - LQI_EDGE_LENGTHS[lower]) * (clamped - lower);
-}
-
 /** RSSI (dBm) and spring-length bounds for the Wi-Fi star layout. */
 const RSSI_EDGE_LENGTH_BOUNDS = { strongRssi: -50, weakRssi: -90, strongLength: 90, weakLength: 260 };
 
