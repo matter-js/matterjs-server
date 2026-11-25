@@ -8,8 +8,12 @@ This page shows a detailed overview of the changes between versions without the 
 -->
 ## **WORK IN PROGRESS**
 
+- Enhancement: Update matter.js to the latest 0.18.1 nightly
+    - When a device stops sending the rest of an update, the server sets up a new subscription instead of keeping incomplete device data
+    - Device events that arrive before the device's data was read are no longer lost
 - Adjustment: `@matter-server/ble-proxy` library: a `ProxyBleChannel` is created with `ProxyBleChannel.open()` (the constructor is private), and `markDisconnected()` is removed. Failures of the proxy connection are reported as `BleProxyClientDisconnectedError` and `BleProxyCommandTimeoutError`, and `BleProxyCommandError` is now a `BleError`
 - Fix: Ensure that node data are updated when global attribute (like features) change
+- Fix: The Thread network graph spreads densely meshed routers apart again instead of drawing them on top of each other
 - Fix: With the BLE proxy, the Bluetooth connection to a device is now closed once commissioning ends, instead of staying open until the device or the proxy drops it
 - Fix: With the BLE proxy, commissioning notices a lost Bluetooth connection right away instead of waiting for a timeout
 - Fix: With the BLE proxy Python client (`matter-ble-proxy`) on Linux with BlueZ 5.62 or newer, commissioning sends Bluetooth packets as large as the connection allows instead of always 20 bytes. This needs the updated `matter-ble-proxy` package on the proxy side
