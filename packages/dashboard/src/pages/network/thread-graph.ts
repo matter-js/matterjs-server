@@ -46,7 +46,7 @@ import {
     signalLevelToColor,
     stripMdnsHostname,
 } from "./network-utils.js";
-import { applyThreadSprings, springCountToMass, type ThreadSpringPair } from "./thread-springs.js";
+import { applyThreadSprings, DEFAULT_NODE_MASS, type ThreadSpringPair } from "./thread-springs.js";
 
 declare global {
     interface HTMLElementTagNameMap {
@@ -645,7 +645,7 @@ export class ThreadGraph extends BaseNetworkGraph {
 
         const masses = applyThreadSprings(springPairs);
         for (const node of graphNodes) {
-            node.mass = masses.get(String(node.id)) ?? springCountToMass(0);
+            node.mass = masses.get(String(node.id)) ?? DEFAULT_NODE_MASS;
         }
 
         // --- Update vis.js datasets ---

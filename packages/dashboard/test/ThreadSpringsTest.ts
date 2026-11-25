@@ -6,9 +6,10 @@
 
 import {
     applyThreadSprings,
+    DEFAULT_NODE_MASS,
     LEAF_EDGE_LENGTH_PENALTY,
     lqiToEdgeLength,
-    springCountToMass,
+    meshLinkCountToMass,
     type ThreadSpringEdge,
     type ThreadSpringPair,
 } from "../src/pages/network/thread-springs.js";
@@ -21,10 +22,11 @@ function lengthOf(pairs: ThreadSpringPair[], nodeA: string, nodeB: string): numb
     return pairs.find(p => p.nodeA === nodeA && p.nodeB === nodeB)?.edges[0].length;
 }
 
-describe("springCountToMass", () => {
-    it("keeps mass 1 without springs and grows with the spring count", () => {
-        expect(springCountToMass(0)).to.equal(1);
-        expect(springCountToMass(4)).to.equal(3);
+describe("meshLinkCountToMass", () => {
+    it("keeps mass 1 for a sparse mesh and grows with each further mesh link", () => {
+        expect(meshLinkCountToMass(0)).to.equal(1);
+        expect(meshLinkCountToMass(4)).to.equal(1);
+        expect(meshLinkCountToMass(6)).to.equal(2);
     });
 });
 
@@ -45,16 +47,22 @@ describe("applyThreadSprings", () => {
         expect(masses.size).to.equal(0);
     });
 
-    it("sets mass from the live pairs of a node", () => {
+    it("sets mass from live mesh links only, not from leaf links or dead pairs, on either side of the pair", () => {
+        const routers = ["r1", "r2", "r3", "r4", "r5", "r6"];
         const masses = applyThreadSprings([
-            pair("hub", "r1", 3),
-            pair("hub", "r2", 2),
-            pair("hub", "r3", 1),
-            pair("hub", "gone", undefined),
+            ...routers.map(r => pair("hubA", r, 3)),
+            ...routers.map(r => pair(r, "hubB", 3)),
+            ...routers.map((r, i) => pair(r, routers[(i + 1) % routers.length], 3)),
+            pair("hubA", "leaf1", 3),
+            pair("leaf2", "hubB", 3),
+            pair("hubA", "deadOnly", undefined),
+            pair("deadOnly", "hubB", undefined),
         ]);
 
-        expect(masses.get("hub")).to.equal(springCountToMass(3));
-        expect(masses.has("gone")).to.equal(false);
+        expect(masses.get("hubA")).to.equal(meshLinkCountToMass(6));
+        expect(masses.get("hubB")).to.equal(meshLinkCountToMass(6));
+        expect(masses.get("leaf1")).to.equal(DEFAULT_NODE_MASS);
+        expect(masses.has("deadOnly")).to.equal(false);
     });
 
     it("adds the leaf penalty on the edge of a node with one spring, on either side of the pair", () => {
