@@ -6,7 +6,7 @@ This page shows a detailed overview of the changes between versions without the 
 	Placeholder for the next version (at the beginning of the line):
 	## **WORK IN PROGRESS**
 -->
-## **WORK IN PROGRESS**
+## 1.6.1 (2026-11-25)
 
 - Enhancement: Update matter.js to 0.18.1 and the bundled DCL data to 2026.11.24
     - When a device stops sending the rest of an update, the server sets up a new subscription instead of keeping incomplete device data
