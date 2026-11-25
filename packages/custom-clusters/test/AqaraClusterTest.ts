@@ -123,7 +123,7 @@ describe("Aqara ambient sensing clusters", () => {
         ]);
     });
 
-    it("reports a target as coordinates, velocity, type and posture", () => {
+    it("reports a target as coordinates, point counts, tracking state, type and posture", () => {
         const location = cluster(0x115ffc0c);
         expect(location.revision).to.equal(2);
         const event = [...location.events].find(item => item.id === 0x00);
@@ -135,13 +135,18 @@ describe("Aqara ambient sensing clusters", () => {
             "targetId",
             "targetXCoordinate",
             "targetYCoordinate",
-            "targetZCoordinate",
-            "targetVelocity",
-            "targetSignalToNoiseRatio",
+            "dynPnts",
+            "mmsPnts",
+            "trackingState",
             "targetType",
             "targetPosture",
             "targetZoneId",
         ]);
+        const mandatoryFields = (target?.operationalBase?.children ?? [])
+            .filter(field => field instanceof ValueModel && field.mandatory)
+            .map(field => field.name);
+        expect(mandatoryFields).to.not.include("targetZoneId");
+        expect(mandatoryFields).to.include.members(["dynPnts", "mmsPnts", "trackingState"]);
 
         expect([...location.commands].filter(command => command.isRequest).map(command => command.name)).to.deep.equal([
             "subscribeLocationData",
