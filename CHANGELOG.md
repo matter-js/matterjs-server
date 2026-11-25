@@ -11,6 +11,9 @@ This page shows a detailed overview of the changes between versions without the 
 
 - Fix: Ensure that node data are updated when global attribute (like features) change
 - Fix: The Thread network graph spreads densely meshed routers apart again instead of drawing them on top of each other
+- Enhancement: Update matter.js to the latest 0.18.1 nightly
+    - When a device stops sending the rest of an update, the server sets up a new subscription instead of keeping incomplete device data
+    - Device events that arrive before the device's data was read are no longer lost
 
 ## 1.6.0 (2026-11-14)
 

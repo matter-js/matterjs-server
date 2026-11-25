@@ -72,7 +72,7 @@ describe("WebRtcCallbackBridge", () => {
         node = await createTestNode();
         cameraEndpoint = node.parts.get("camera-controller");
         recorded = [];
-        await cameraEndpoint!.act(agent => {
+        await cameraEndpoint!.act(async agent => {
             bridge = attachWebRtcCallbackBridge(agent.get(WebRtcTransportRequestorServer).events, data => {
                 recorded.push(data);
             });
@@ -85,9 +85,9 @@ describe("WebRtcCallbackBridge", () => {
 
     it("offer emit translates to WebRtcCallbackData with offer payload", async () => {
         const session = makeSession();
-        await cameraEndpoint!.act(agent => {
+        await cameraEndpoint!.act(async agent => {
             const server = agent.get(WebRtcTransportRequestorServer);
-            server.upsertSession(session);
+            await server.upsertSession(session);
             server.events.offer.emit(session, {
                 webRtcSessionId: session.id,
                 sdp: "v=0\nm=video",
@@ -113,9 +113,9 @@ describe("WebRtcCallbackBridge", () => {
 
     it("answer emit translates to WebRtcCallbackData with answer payload", async () => {
         const session = makeSession();
-        await cameraEndpoint!.act(agent => {
+        await cameraEndpoint!.act(async agent => {
             const server = agent.get(WebRtcTransportRequestorServer);
-            server.upsertSession(session);
+            await server.upsertSession(session);
             server.events.answer.emit(session, "answer-sdp");
         });
 
@@ -136,9 +136,9 @@ describe("WebRtcCallbackBridge", () => {
         const NARROWED = ["v=0", "m=video 9 UDP/TLS/RTP/SAVPF 96", "a=sendonly", ""].join("\r\n");
 
         async function answer(session: WebRtcSession): Promise<unknown> {
-            await cameraEndpoint!.act(agent => {
+            await cameraEndpoint!.act(async agent => {
                 const server = agent.get(WebRtcTransportRequestorServer);
-                server.upsertSession(session);
+                await server.upsertSession(session);
                 server.events.answer.emit(session, CAMERA_ANSWER);
             });
             const event = recorded.at(-1);
@@ -217,9 +217,9 @@ describe("WebRtcCallbackBridge", () => {
         it("forgets the offer when the peer ends the session", async () => {
             const session = makeSession();
             bridge.offerSent(session, OFFER);
-            await cameraEndpoint!.act(agent => {
+            await cameraEndpoint!.act(async agent => {
                 const server = agent.get(WebRtcTransportRequestorServer);
-                server.upsertSession(session);
+                await server.upsertSession(session);
                 server.events.end.emit(session, WebRtcTransportDefinitions.WebRtcEndReason.UserHangup);
             });
 
@@ -241,9 +241,9 @@ describe("WebRtcCallbackBridge", () => {
             { candidate: "candidate:1 1 udp 2113937151 1.2.3.4 54321 typ host", sdpMid: "0", sdpmLineIndex: 0 },
             { candidate: "candidate:2 1 udp 2113937151 5.6.7.8 12345 typ host", sdpMid: null, sdpmLineIndex: null },
         ];
-        await cameraEndpoint!.act(agent => {
+        await cameraEndpoint!.act(async agent => {
             const server = agent.get(WebRtcTransportRequestorServer);
-            server.upsertSession(session);
+            await server.upsertSession(session);
             server.events.iceCandidates.emit(session, candidates);
         });
 
@@ -265,9 +265,9 @@ describe("WebRtcCallbackBridge", () => {
 
     it("end emit translates to WebRtcCallbackData with reason", async () => {
         const session = makeSession();
-        await cameraEndpoint!.act(agent => {
+        await cameraEndpoint!.act(async agent => {
             const server = agent.get(WebRtcTransportRequestorServer);
-            server.upsertSession(session);
+            await server.upsertSession(session);
             server.events.end.emit(session, WebRtcTransportDefinitions.WebRtcEndReason.UserHangup);
         });
 
@@ -288,9 +288,9 @@ describe("WebRtcCallbackBridge", () => {
             { candidate: "candidate:1 1 udp 2113937151 1.2.3.4 54321 typ host", sdpMid: "0", sdpmLineIndex: 0 },
             { candidate: "candidate:2 1 udp 2113937151 5.6.7.8 12345 typ host", sdpMid: null, sdpmLineIndex: null },
         ];
-        await cameraEndpoint!.act(agent => {
+        await cameraEndpoint!.act(async agent => {
             const server = agent.get(WebRtcTransportRequestorServer);
-            server.upsertSession(session);
+            await server.upsertSession(session);
             server.events.iceCandidates.emit(session, candidates);
         });
 
@@ -313,9 +313,9 @@ describe("WebRtcCallbackBridge", () => {
             peerEndpointId: EndpointNumber(7),
             fabricIndex: FabricIndex(2),
         });
-        await cameraEndpoint!.act(agent => {
+        await cameraEndpoint!.act(async agent => {
             const server = agent.get(WebRtcTransportRequestorServer);
-            server.upsertSession(session);
+            await server.upsertSession(session);
             server.events.answer.emit(session, "sdp");
         });
 

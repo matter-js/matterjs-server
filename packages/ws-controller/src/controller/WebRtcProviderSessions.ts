@@ -54,8 +54,8 @@ export interface WebRtcProviderNodes {
 /** The parts of matter.js's `WebRtcTransportRequestorServer` used inside {@link WebRtcRequestor.act}. */
 export interface WebRtcRequestorSessions {
     readonly state: { readonly currentSessions: readonly WebRtcSession[] };
-    upsertSession(session: WebRtcSession): void;
-    removeSession(key: WebRtcSessionKey): void;
+    upsertSession(session: WebRtcSession): Promise<void>;
+    removeSession(key: WebRtcSessionKey): Promise<void>;
 }
 
 /** This server's WebRTC Transport Requestor endpoint. */
@@ -64,7 +64,8 @@ export interface WebRtcRequestor {
     endpointId(): EndpointNumber;
     /** The requestor's `CurrentSessions`, read without a transaction. */
     sessions(): readonly Readonly<WebRtcProviderSessionKey>[];
-    act(work: (requestor: WebRtcRequestorSessions) => void): Promise<void>;
+    /** Runs `work` in one transaction of the requestor endpoint; `work` must await every session write it starts. */
+    act(work: (requestor: WebRtcRequestorSessions) => Promise<void>): Promise<void>;
 }
 
 export interface WebRtcProviderSessionsOptions {
@@ -161,7 +162,7 @@ export class WebRtcProviderSessions {
     /** Forgets the node and drops the requestor's sessions with it. */
     async nodeRemoved(nodeId: NodeId): Promise<void> {
         this.#watch.nodeRemoved(nodeId);
-        await this.#requestor.act(requestor => {
+        await this.#requestor.act(async requestor => {
             // Plain keys first: each removal replaces the state array, which invalidates its entries.
             const removed = requestor.state.currentSessions
                 .filter(session => session.peerNodeId === nodeId && session.fabricIndex === this.#fabricIndex)
@@ -172,7 +173,7 @@ export class WebRtcProviderSessions {
                     peerEndpointId,
                 }));
             for (const key of removed) {
-                requestor.removeSession(key);
+                await requestor.removeSession(key);
                 this.#callbacks?.sessionEnded(key);
             }
         });
@@ -211,14 +212,14 @@ export class WebRtcProviderSessions {
             tracks: webRtcSessionId =>
                 trackedSessionOf(this.#requestor.sessions(), key(webRtcSessionId), endpointId) !== undefined,
             upsertSession: (session, options) =>
-                this.#requestor.act(requestor => {
+                this.#requestor.act(async requestor => {
                     if (
                         options?.onlyIfAbsent &&
                         requestor.state.currentSessions.some(tracked => sameWebRtcSession(tracked, session))
                     ) {
                         return;
                     }
-                    requestor.upsertSession(session);
+                    await requestor.upsertSession(session);
                 }),
         };
 
@@ -248,7 +249,7 @@ export class WebRtcProviderSessions {
             peerNodeId: nodeId,
             peerEndpointId: endpointId,
         };
-        await this.#requestor.act(requestor => {
+        await this.#requestor.act(async requestor => {
             const tracked = trackedSessionOf(requestor.state.currentSessions, key, endpointId);
             if (tracked === undefined) {
                 logger.debug(
@@ -256,7 +257,7 @@ export class WebRtcProviderSessions {
                 );
                 return;
             }
-            requestor.removeSession(tracked);
+            await requestor.removeSession(key);
         });
         this.#callbacks?.sessionEnded(key);
     }
