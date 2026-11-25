@@ -24,6 +24,7 @@ import asyncio
 import base64
 import logging
 from typing import TYPE_CHECKING, Any
+import warnings
 
 import aiohttp
 
@@ -54,6 +55,37 @@ _LOGGER = logging.getLogger(__name__)
 # Trailing 24 hex chars of the Bluetooth SIG Base UUID. A 128-bit UUID whose
 # tail matches this is just a wrapped 16-bit (or 32-bit) standard UUID.
 _BASE_UUID_TAIL = "00001000800000805f9b34fb"
+
+
+_DEFAULT_ATT_MTU = 23
+_ATT_HEADER_SIZE = 3
+
+
+def _att_mtu(client: BleakClient) -> int:
+    """Best known ATT MTU of the link, 23 if the backend cannot tell.
+
+    BlueZ reports a fixed 23 from `mtu_size` (with a warning) unless a private
+    bleak call ran. For BlueZ the largest characteristic write size plus the
+    ATT header is used instead; BlueZ 5.62 and newer derive it from the link.
+    """
+    from bleak.backends import BleakBackend
+    from bleak.exc import BleakError
+
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", message="Using default MTU value")
+        mtu = getattr(client, "mtu_size", _DEFAULT_ATT_MTU)
+    if getattr(client, "backend_id", None) != BleakBackend.BLUEZ_DBUS:
+        return max(_DEFAULT_ATT_MTU, mtu)
+    try:
+        services = client.services
+    except BleakError:
+        return _DEFAULT_ATT_MTU
+    sizes = [
+        char.max_write_without_response_size + _ATT_HEADER_SIZE
+        for service in services or ()
+        for char in service.characteristics
+    ]
+    return max([_DEFAULT_ATT_MTU, mtu, *sizes])
 
 
 def _normalize_uuid(uuid: str) -> str:
@@ -464,10 +496,16 @@ class MatterBleProxy:
             )
             return
 
-        conn = ConnectionState(client, handle)
-        self._connections[handle] = conn
+        try:
+            mtu = _att_mtu(client)
+        except Exception:
+            try:
+                await client.disconnect()
+            except Exception:
+                _LOGGER.debug("Error disconnecting %s after the MTU lookup failed", address, exc_info=True)
+            raise
+        self._connections[handle] = ConnectionState(client, handle)
 
-        mtu = getattr(client, "mtu_size", 23)
         await self._send_success(cmd_id, {"connection_handle": handle, "mtu": mtu})
 
     async def _handle_disconnect(self, cmd_id: int, args: dict[str, Any]) -> None:
@@ -664,8 +702,7 @@ class MatterBleProxy:
             await self._send_not_connected(cmd_id, args["connection_handle"])
             return
         # Bleak does not expose an explicit MTU request — return the current MTU.
-        mtu = getattr(conn.client, "mtu_size", 23)
-        await self._send_success(cmd_id, {"mtu": mtu})
+        await self._send_success(cmd_id, {"mtu": _att_mtu(conn.client)})
 
     # ─── Binary frame handling ──────────────────────────────────────────────
 

@@ -9,13 +9,14 @@
  * Tests the full flow: BleProxyHandler <-> BleProxyTestClient with mock data.
  */
 
-import { Bytes, InternalError, Seconds } from "@matter/main";
-import { BleDisconnectedError, MatterBle } from "@matter/main/protocol";
+import { Bytes, InternalError, NetworkError, Seconds } from "@matter/main";
+import { BleDisconnectedError, BtpCodec, MatterBle } from "@matter/main/protocol";
 import { createServer } from "node:http";
+import { BleProxyClientDisconnectedError } from "../src/BleProxyConnection.js";
 import { BleProxyHandler } from "../src/BleProxyHandler.js";
-import { BinaryFrameOpcode, BleProxyCommand } from "../src/BleProxyProtocol.js";
+import { BinaryFrameOpcode, BleProxyCommand, BleProxyErrorCode } from "../src/BleProxyProtocol.js";
 import { ProxyBle } from "../src/ProxyBle.js";
-import type { ProxyBleCentralInterface, ProxyBleChannel } from "../src/ProxyBleChannel.js";
+import type { ProxyBleCentralInterface } from "../src/ProxyBleChannel.js";
 import { BleProxyTestClient } from "./BleProxyTestClient.js";
 import { MockBleDevice } from "./MockBleDevice.js";
 
@@ -238,14 +239,14 @@ describe("BLE Proxy Integration", function () {
             await discoverDevice(proxyBle, mockDevice);
             wireBtpFlow(mockDevice);
 
-            const central = proxyBle.centralInterface as ProxyBleCentralInterface;
+            const central = proxyBle.centralInterface;
             // matter.js installs an onData listener before opening channels - mimic that here.
             central.onData(() => {});
 
-            const channel = (await central.openChannel({
+            const channel = await central.openChannel({
                 type: "ble",
                 peripheralAddress: mockDevice.address,
-            })) as ProxyBleChannel;
+            });
 
             expect(channel.connected).to.be.true;
             expect(channel.name).to.equal(`ble-proxy://${mockDevice.address}`);
@@ -288,13 +289,13 @@ describe("BLE Proxy Integration", function () {
                 return {};
             });
 
-            const central = proxyBle.centralInterface as ProxyBleCentralInterface;
+            const central = proxyBle.centralInterface;
             central.onData(() => {});
 
-            const channel = (await central.openChannel({
+            const channel = await central.openChannel({
                 type: "ble",
                 peripheralAddress: mockDevice.address,
-            })) as ProxyBleChannel;
+            });
 
             expect(channel.connected).to.be.true;
             await channel.close();
@@ -306,7 +307,7 @@ describe("BLE Proxy Integration", function () {
 
             await discoverDevice(proxyBle, mockDevice);
 
-            const central = proxyBle.centralInterface as ProxyBleCentralInterface;
+            const central = proxyBle.centralInterface;
             // Note: no central.onData() call here - this should fail fast.
             try {
                 await central.openChannel({ type: "ble", peripheralAddress: mockDevice.address });
@@ -332,7 +333,7 @@ describe("BLE Proxy Integration", function () {
             const disconnectPromise = testClient.waitForCommand("disconnect", 3000);
             testClient.onCommand(BleProxyCommand.Disconnect, async () => ({}));
 
-            const central = proxyBle.centralInterface as ProxyBleCentralInterface;
+            const central = proxyBle.centralInterface;
             central.onData(() => {});
 
             try {
@@ -362,7 +363,7 @@ describe("BLE Proxy Integration", function () {
             testClient.onCommand(BleProxyCommand.WriteAndSubscribe, () => new Promise<void>(() => {}));
             testClient.onCommand(BleProxyCommand.Disconnect, async () => ({}));
 
-            const central = proxyBle.centralInterface as ProxyBleCentralInterface;
+            const central = proxyBle.centralInterface;
             central.onData(() => {});
 
             // MockTime is disabled by default in this package; enable it only around the timed-out phase so
@@ -381,6 +382,7 @@ describe("BLE Proxy Integration", function () {
                 if (!outcome.ok) {
                     expect(outcome.err.message).to.include("BTP handshake response not received");
                 }
+                await testClient.waitForCommand("disconnect", 1000);
             } finally {
                 MockTime.disable();
             }
@@ -393,13 +395,13 @@ describe("BLE Proxy Integration", function () {
             await discoverDevice(proxyBle, mockDevice);
             wireBtpFlow(mockDevice);
 
-            const central = proxyBle.centralInterface as ProxyBleCentralInterface;
+            const central = proxyBle.centralInterface;
             central.onData(() => {});
 
-            const channel = (await central.openChannel({
+            const channel = await central.openChannel({
                 type: "ble",
                 peripheralAddress: mockDevice.address,
-            })) as ProxyBleChannel;
+            });
             expect(channel.connected).to.be.true;
 
             // Owning proxy client drops entirely — the channel must tear down with it.
@@ -416,12 +418,12 @@ describe("BLE Proxy Integration", function () {
             wireBtpFlow(mockDevice, connectionHandle);
             testClient.onCommand(BleProxyCommand.Disconnect, async () => ({}));
 
-            const central = proxyBle.centralInterface as ProxyBleCentralInterface;
+            const central = proxyBle.centralInterface;
             central.onData(() => {});
-            return (await central.openChannel({
+            return await central.openChannel({
                 type: "ble",
                 peripheralAddress: mockDevice.address,
-            })) as ProxyBleChannel;
+            });
         };
 
         const sentDisconnects = () => testClient.receivedCommands.filter(c => c.command === "disconnect");
@@ -474,18 +476,19 @@ describe("BLE Proxy Integration", function () {
             const proxyBle = new ProxyBle(handler);
             const mockDevice = new MockBleDevice({ discriminator: 7600, vendorId: 0xfff1, productId: 0x8000 });
             await discoverDevice(proxyBle, mockDevice);
-            wireBtpFlow(mockDevice, 9);
+            // ATT MTU 23 gives the minimum segment size, where a timeout closes the session instead of renegotiating
+            wireBtpFlow(mockDevice, 9, 23);
             testClient.onCommand(BleProxyCommand.Disconnect, async () => ({}));
-            const central = proxyBle.centralInterface as ProxyBleCentralInterface;
+            const central = proxyBle.centralInterface;
             central.onData(() => {});
 
             // MockTime only around the channel's lifetime: discovery above relies on real timers
             MockTime.enable();
             try {
-                const channel = (await central.openChannel({
+                const channel = await central.openChannel({
                     type: "ble",
                     peripheralAddress: mockDevice.address,
-                })) as ProxyBleChannel;
+                });
                 let closeNotifications = 0;
                 channel.onClose(() => closeNotifications++);
                 // The mock device never answers, so a BTP timeout closes the session
@@ -507,6 +510,445 @@ describe("BLE Proxy Integration", function () {
             }
         });
 
+        const handshakeRequests = () => testClient.receivedCommands.filter(c => c.command === "write_and_subscribe");
+        const requestedSegmentSize = (command: { args?: Record<string, unknown> }) =>
+            Buffer.from(String(command.args?.write_value), "base64").readUInt16LE(6);
+
+        // Prepares a channel with 244-byte segments to a device that never answers, so the first send stalls.
+        // Discovery runs here on real timers; the returned function opens the channel.
+        const prepareStallingChannel = async (
+            discriminator: number,
+            connectionHandle: number,
+            onData: (data: Bytes) => void = () => {},
+        ) => {
+            const proxyBle = new ProxyBle(handler);
+            const mockDevice = new MockBleDevice({ discriminator, vendorId: 0xfff1, productId: 0x8000 });
+            await discoverDevice(proxyBle, mockDevice);
+            wireBtpFlow(mockDevice, connectionHandle);
+            testClient.onCommand(BleProxyCommand.Disconnect, async () => ({}));
+            const central = proxyBle.centralInterface;
+            central.onData((_channel, data) => onData(data));
+            return async () =>
+                await central.openChannel({
+                    type: "ble",
+                    peripheralAddress: mockDevice.address,
+                });
+        };
+
+        it("retries with the minimum segment size and resends when the peer stalls after the handshake", async () => {
+            testClient.onCommand(BleProxyCommand.UnsubscribeCharacteristic, async () => ({}));
+            const open = await prepareStallingChannel(7700, 10);
+            MockTime.enable();
+            try {
+                const channel = await open();
+                await channel.send(new Uint8Array(10).fill(0xab));
+                await waitFor(() => testClient.receivedBinaryFrames.length > 0);
+                const framesBeforeStall = testClient.receivedBinaryFrames.length;
+
+                await MockTime.advance(Seconds(16));
+                const sentDuringRetry = channel.send(new Uint8Array(10).fill(0xcd)).then(
+                    () => "sent",
+                    (error: unknown) => error,
+                );
+                await waitFor(() => handshakeRequests().length === 2);
+                await waitFor(() =>
+                    testClient.receivedBinaryFrames
+                        .slice(framesBeforeStall)
+                        .some(frame => frame.payload.includes(0xcd)),
+                );
+
+                const [first, retry] = handshakeRequests();
+                expect(requestedSegmentSize(first)).to.equal(244);
+                expect(requestedSegmentSize(retry)).to.equal(MatterBle.MINIMUM_ATT_MTU);
+                const commands = testClient.receivedCommands.map(c => c.command);
+                expect(commands).to.include("unsubscribe_characteristic");
+                expect(commands.indexOf("unsubscribe_characteristic")).to.be.lessThan(
+                    commands.lastIndexOf("write_and_subscribe"),
+                );
+                const resent = testClient.receivedBinaryFrames.slice(framesBeforeStall);
+                expect(resent.every(frame => frame.payload.length <= MatterBle.MINIMUM_ATT_MTU)).to.be.true;
+                const replayed = resent.findIndex(frame => frame.payload.includes(0xab));
+                expect(replayed).to.be.at.least(0);
+                expect(replayed).to.be.lessThan(resent.findIndex(frame => frame.payload.includes(0xcd)));
+                expect(await sentDuringRetry).to.equal("sent");
+                expect(channel.isClosed).to.be.false;
+            } finally {
+                MockTime.disable();
+            }
+        });
+
+        it("closes the channel when the retry with the minimum segment size fails", async () => {
+            testClient.onCommandError(BleProxyCommand.UnsubscribeCharacteristic, "not_subscribed", "Not subscribed");
+            const open = await prepareStallingChannel(7800, 11);
+            MockTime.enable();
+            try {
+                const channel = await open();
+                await channel.send(new Uint8Array(100).fill(0xab));
+
+                await MockTime.advance(Seconds(16));
+                await waitFor(() => channel.isClosed);
+
+                await expect(channel.send(Bytes.fromHex("0102"))).rejectedWith(BleDisconnectedError);
+                await waitFor(() => sentDisconnects().length > 0);
+                expect(testClient.receivedCommands.map(c => c.command)).to.include("unsubscribe_characteristic");
+                expect(handshakeRequests().length).to.equal(1);
+            } finally {
+                MockTime.disable();
+            }
+        });
+
+        it("ends a running retry and waiting sends at once when the channel closes", async () => {
+            testClient.onCommand(BleProxyCommand.UnsubscribeCharacteristic, () => new Promise<void>(() => {}));
+            const open = await prepareStallingChannel(7850, 13);
+            MockTime.enable();
+            try {
+                const channel = await open();
+                await channel.send(new Uint8Array(100).fill(0xab));
+                await MockTime.advance(Seconds(16));
+                await testClient.waitForCommand("unsubscribe_characteristic", 1000);
+
+                const waitingSend = channel.send(Bytes.fromHex("0102"));
+                await channel.close();
+
+                await expect(waitingSend).rejectedWith(BleDisconnectedError);
+                await waitFor(() => sentDisconnects().length > 0);
+                await settle();
+                expect(sentDisconnects().length).to.equal(1);
+            } finally {
+                MockTime.disable();
+            }
+        });
+
+        // Discovers a device and answers Connect; the remaining commands are up to the test.
+        const prepareOpen = async (discriminator: number, connectionHandle: number) => {
+            const proxyBle = new ProxyBle(handler);
+            const mockDevice = new MockBleDevice({ discriminator, vendorId: 0xfff1, productId: 0x8000 });
+            await discoverDevice(proxyBle, mockDevice);
+            testClient.onCommand(BleProxyCommand.Connect, async () => ({
+                connection_handle: connectionHandle,
+                mtu: 247,
+            }));
+            testClient.onCommand(BleProxyCommand.DiscoverServices, async () => ({ services: mockDevice.services }));
+            testClient.onCommand(BleProxyCommand.DiscoverCharacteristics, async () => ({
+                characteristics: mockDevice.characteristics,
+            }));
+            testClient.onCommand(BleProxyCommand.Disconnect, async () => ({}));
+            const central = proxyBle.centralInterface;
+            central.onData(() => {});
+            return { central, mockDevice };
+        };
+
+        const abortedOpen = (central: ProxyBleCentralInterface, peripheralAddress: string, abort: AbortController) =>
+            central.openChannel({ type: "ble", peripheralAddress }, { abort: abort.signal }).then(
+                () => expect.fail("open should not resolve"),
+                (error: unknown) => error,
+            );
+
+        it("disconnects when the open is aborted during the BTP handshake", async () => {
+            const { central, mockDevice } = await prepareOpen(8000, 14);
+            testClient.onCommand(BleProxyCommand.WriteAndSubscribe, () => new Promise<void>(() => {}));
+            const abort = new AbortController();
+
+            const outcome = abortedOpen(central, mockDevice.address, abort);
+            await testClient.waitForCommand("write_and_subscribe", 1000);
+            abort.abort(new InternalError("aborted by test"));
+
+            expect(await outcome).to.be.instanceOf(InternalError);
+            await waitFor(() => sentDisconnects().length > 0);
+            await settle();
+            expect(sentDisconnects().length).to.equal(1);
+        });
+
+        it("disconnects when the open is aborted during service discovery", async () => {
+            const { central, mockDevice } = await prepareOpen(8100, 15);
+            testClient.onCommand(BleProxyCommand.DiscoverServices, () => new Promise<void>(() => {}));
+            const abort = new AbortController();
+
+            const outcome = abortedOpen(central, mockDevice.address, abort);
+            await testClient.waitForCommand("discover_services", 1000);
+            abort.abort(new InternalError("aborted by test"));
+
+            expect(await outcome).to.be.instanceOf(InternalError);
+            await waitFor(() => sentDisconnects().length > 0);
+        });
+
+        it("disconnects a peripheral the proxy connects after the open was aborted", async () => {
+            const { central, mockDevice } = await prepareOpen(8200, 16);
+            let finishConnect = () => {};
+            testClient.onCommand(
+                BleProxyCommand.Connect,
+                () =>
+                    new Promise(resolve => {
+                        finishConnect = () => resolve({ connection_handle: 16, mtu: 247 });
+                    }),
+            );
+            const abort = new AbortController();
+
+            const outcome = abortedOpen(central, mockDevice.address, abort);
+            await testClient.waitForCommand("connect", 1000);
+            abort.abort(new InternalError("aborted by test"));
+            expect(await outcome).to.be.instanceOf(InternalError);
+            finishConnect();
+
+            const disconnect = await testClient.waitForCommand("disconnect", 1000);
+            expect((disconnect.args as { connection_handle: number }).connection_handle).to.equal(16);
+        });
+
+        it("reports a vanished proxy client with a typed disconnect error", async () => {
+            const { central, mockDevice } = await prepareOpen(8300, 17);
+            testClient.onCommand(BleProxyCommand.WriteAndSubscribe, () => new Promise<void>(() => {}));
+            const connection = handler.getOwner(mockDevice.address);
+            if (connection === undefined) {
+                throw new InternalError("No proxy client owns the test device");
+            }
+
+            const opening = central.openChannel({ type: "ble", peripheralAddress: mockDevice.address });
+            await testClient.waitForCommand("write_and_subscribe", 1000);
+            testClient.close();
+
+            await expect(opening).rejectedWith(BleDisconnectedError);
+            await waitFor(() => !connection.connected);
+            expect(() => connection.sendBinaryFrame(BinaryFrameOpcode.WriteData, 17, new Uint8Array(1))).to.throw(
+                BleProxyClientDisconnectedError,
+            );
+            await expect(connection.sendCommand(BleProxyCommand.Disconnect, { connection_handle: 17 })).rejectedWith(
+                BleProxyClientDisconnectedError,
+            );
+        });
+
+        /** One complete BTP data packet from the peripheral; its first packet after the handshake has number 1. */
+        const btpMessage = (sequenceNumber: number, message: Bytes) =>
+            Bytes.of(
+                BtpCodec.encodeBtpPacket({
+                    header: {
+                        isHandshakeRequest: false,
+                        hasManagementOpcode: false,
+                        hasAckNumber: false,
+                        isBeginningSegment: true,
+                        isContinuingSegment: false,
+                        isEndingSegment: true,
+                    },
+                    payload: { sequenceNumber, messageLength: Bytes.of(message).length, segmentPayload: message },
+                }),
+            );
+
+        // Like prepareOpen, with the handshake answered and the Matter messages the channel delivers collected.
+        const prepareDelivery = async (discriminator: number, connectionHandle: number) => {
+            const prepared = await prepareOpen(discriminator, connectionHandle);
+            const delivered = new Array<Uint8Array>();
+            prepared.central.onData((_channel, data) => delivered.push(Bytes.of(data)));
+            return { ...prepared, delivered };
+        };
+
+        it("delivers data that arrives between the handshake response and the WriteAndSubscribe reply", async () => {
+            const { central, mockDevice, delivered } = await prepareDelivery(8400, 18);
+            testClient.onCommand(BleProxyCommand.WriteAndSubscribe, async () => {
+                testClient.sendBinaryFrame(
+                    BinaryFrameOpcode.Notification,
+                    18,
+                    mockDevice.generateBtpHandshakeResponse(),
+                );
+                testClient.sendBinaryFrame(BinaryFrameOpcode.Notification, 18, btpMessage(1, Bytes.fromHex("c0ffee")));
+                return {};
+            });
+
+            await central.openChannel({ type: "ble", peripheralAddress: mockDevice.address });
+
+            await waitFor(() => delivered.length === 1);
+            expect(Bytes.toHex(delivered[0])).to.equal("c0ffee");
+        });
+
+        it("fails the open when a delivered message closes the channel before the open completes", async () => {
+            const { central, mockDevice } = await prepareOpen(9900, 34);
+            central.onData(channel => {
+                channel.close().catch(() => {});
+            });
+            testClient.onCommand(BleProxyCommand.WriteAndSubscribe, async () => {
+                testClient.sendBinaryFrame(
+                    BinaryFrameOpcode.Notification,
+                    34,
+                    mockDevice.generateBtpHandshakeResponse(),
+                );
+                testClient.sendBinaryFrame(BinaryFrameOpcode.Notification, 34, btpMessage(1, Bytes.fromHex("c0ffee")));
+                return {};
+            });
+
+            await expect(central.openChannel({ type: "ble", peripheralAddress: mockDevice.address })).rejectedWith(
+                BleDisconnectedError,
+            );
+        });
+
+        it("ignores data frames that arrive before the handshake response", async () => {
+            const { central, mockDevice, delivered } = await prepareDelivery(8500, 19);
+            testClient.onCommand(BleProxyCommand.WriteAndSubscribe, async () => {
+                testClient.sendBinaryFrame(BinaryFrameOpcode.Notification, 19, btpMessage(1, Bytes.fromHex("0bad")));
+                testClient.sendBinaryFrame(
+                    BinaryFrameOpcode.Notification,
+                    19,
+                    mockDevice.generateBtpHandshakeResponse(),
+                );
+                return {};
+            });
+
+            await central.openChannel({ type: "ble", peripheralAddress: mockDevice.address });
+            await settle();
+
+            expect(delivered.length).to.equal(0);
+        });
+
+        it("ignores frames and disconnect events for another connection handle", async () => {
+            const { central, mockDevice, delivered } = await prepareDelivery(8600, 20);
+            testClient.onCommand(BleProxyCommand.WriteAndSubscribe, async () => {
+                testClient.sendBinaryFrame(
+                    BinaryFrameOpcode.Notification,
+                    20,
+                    mockDevice.generateBtpHandshakeResponse(),
+                );
+                return {};
+            });
+            const channel = await central.openChannel({ type: "ble", peripheralAddress: mockDevice.address });
+
+            testClient.sendBinaryFrame(BinaryFrameOpcode.Notification, 21, btpMessage(1, Bytes.fromHex("0bad")));
+            testClient.sendEvent("disconnected", { connection_handle: 21 });
+            testClient.sendBinaryFrame(BinaryFrameOpcode.Notification, 20, btpMessage(1, Bytes.fromHex("600d")));
+
+            await waitFor(() => delivered.length === 1);
+            expect(Bytes.toHex(delivered[0])).to.equal("600d");
+            expect(channel.connected).to.be.true;
+        });
+
+        it("still disconnects when a close listener throws", async () => {
+            const channel = await openConnectedChannel(9300, 28);
+            channel.onClose(() => {
+                throw new InternalError("listener failure");
+            });
+
+            await channel.close();
+
+            expect(channel.isClosed).to.be.true;
+            await waitFor(() => sentDisconnects().length === 1);
+        });
+
+        it("ends the message iterator when the channel closes", async () => {
+            const channel = await openConnectedChannel(8700, 22);
+            const iterator = channel[Symbol.asyncIterator]();
+            const next = iterator.next();
+
+            await channel.close();
+
+            expect((await next).done).to.be.true;
+        });
+
+        it("reports a lost peripheral when a command fails after the proxy reported the loss", async () => {
+            const { central, mockDevice } = await prepareOpen(8800, 23);
+            testClient.onCommand(BleProxyCommand.WriteAndSubscribe, async () => {
+                testClient.sendBinaryFrame(
+                    BinaryFrameOpcode.Notification,
+                    23,
+                    mockDevice.generateBtpHandshakeResponse(),
+                );
+                testClient.sendEvent("disconnected", { connection_handle: 23 });
+                await settle();
+                throw new InternalError("subscribe failed");
+            });
+
+            const error = await central.openChannel({ type: "ble", peripheralAddress: mockDevice.address }).then(
+                () => expect.fail("open should not resolve"),
+                (error: unknown) => error,
+            );
+
+            expect(error).to.be.instanceOf(BleDisconnectedError);
+            expect(error).to.have.property("cause").that.is.instanceOf(Error);
+        });
+
+        it("reports a not_connected reply during discovery as a lost peripheral", async () => {
+            const { central, mockDevice } = await prepareOpen(8900, 24);
+            testClient.onCommandError(BleProxyCommand.DiscoverServices, BleProxyErrorCode.NotConnected, "gone");
+
+            await expect(central.openChannel({ type: "ble", peripheralAddress: mockDevice.address })).rejectedWith(
+                BleDisconnectedError,
+            );
+        });
+
+        it("does not connect when the open was aborted before it started", async () => {
+            const { central, mockDevice } = await prepareOpen(9000, 25);
+            const abort = new AbortController();
+            abort.abort(new InternalError("aborted by test"));
+
+            const outcome = await abortedOpen(central, mockDevice.address, abort);
+
+            expect(outcome).to.be.instanceOf(InternalError);
+            await settle();
+            expect(testClient.receivedCommands.map(c => c.command)).to.not.include("connect");
+        });
+
+        it("closes its open channels when the central interface closes", async () => {
+            const { central, mockDevice } = await prepareOpen(9100, 26);
+            testClient.onCommand(BleProxyCommand.WriteAndSubscribe, async () => {
+                testClient.sendBinaryFrame(
+                    BinaryFrameOpcode.Notification,
+                    26,
+                    mockDevice.generateBtpHandshakeResponse(),
+                );
+                return {};
+            });
+            const channel = await central.openChannel({ type: "ble", peripheralAddress: mockDevice.address });
+
+            await central.close();
+
+            expect(channel.isClosed).to.be.true;
+            await waitFor(() => sentDisconnects().length === 1);
+        });
+
+        it("stops a retry the channel was closed during when the unsubscribe answers late", async () => {
+            let answerUnsubscribe = () => {};
+            testClient.onCommand(
+                BleProxyCommand.UnsubscribeCharacteristic,
+                () =>
+                    new Promise<void>(resolve => {
+                        answerUnsubscribe = resolve;
+                    }),
+            );
+            const open = await prepareStallingChannel(9200, 27);
+            MockTime.enable();
+            try {
+                const channel = await open();
+                await channel.send(new Uint8Array(100).fill(0xab));
+                await MockTime.advance(Seconds(16));
+                await testClient.waitForCommand("unsubscribe_characteristic", 1000);
+
+                await channel.close();
+                answerUnsubscribe();
+                await settle();
+
+                expect(handshakeRequests().length).to.equal(1);
+            } finally {
+                MockTime.disable();
+            }
+        });
+
+        it("fails the open right away when the proxy loses the peripheral during the handshake", async () => {
+            const proxyBle = new ProxyBle(handler);
+            const mockDevice = new MockBleDevice({ discriminator: 7900, vendorId: 0xfff1, productId: 0x8000 });
+            await discoverDevice(proxyBle, mockDevice);
+            testClient.onCommand(BleProxyCommand.Connect, async () => ({ connection_handle: 12, mtu: 247 }));
+            testClient.onCommand(BleProxyCommand.DiscoverServices, async () => ({ services: mockDevice.services }));
+            testClient.onCommand(BleProxyCommand.DiscoverCharacteristics, async () => ({
+                characteristics: mockDevice.characteristics,
+            }));
+            testClient.onCommand(BleProxyCommand.WriteAndSubscribe, () => {
+                testClient.sendEvent("disconnected", { connection_handle: 12 });
+                return new Promise<void>(() => {});
+            });
+            testClient.onCommand(BleProxyCommand.Disconnect, async () => ({}));
+            const central = proxyBle.centralInterface;
+            central.onData(() => {});
+
+            await expect(central.openChannel({ type: "ble", peripheralAddress: mockDevice.address })).rejectedWith(
+                BleDisconnectedError,
+            );
+        });
+
         it("does not send a disconnect after the proxy reported the peripheral as disconnected", async () => {
             const channel = await openConnectedChannel(7200, 5);
 
@@ -517,6 +959,217 @@ describe("BLE Proxy Integration", function () {
             await settle();
 
             expect(sentDisconnects().length).to.equal(0);
+        });
+
+        /** Answers WriteAndSubscribe with the handshake response at once, but replies only when the test says so. */
+        const holdWriteAndSubscribeReply = (connectionHandle: number) => {
+            const reply = { send: () => {} };
+            testClient.onCommand(BleProxyCommand.WriteAndSubscribe, () => {
+                testClient.sendBinaryFrame(
+                    BinaryFrameOpcode.Notification,
+                    connectionHandle,
+                    new MockBleDevice({
+                        discriminator: 1,
+                        vendorId: 0xfff1,
+                        productId: 0x8000,
+                    }).generateBtpHandshakeResponse(),
+                );
+                return new Promise<void>(resolve => {
+                    reply.send = resolve;
+                });
+            });
+            return reply;
+        };
+
+        it("leaves no BTP session running when the open is aborted before the WriteAndSubscribe reply", async () => {
+            const { central, mockDevice } = await prepareOpen(9400, 29);
+            const reply = holdWriteAndSubscribeReply(29);
+            const abort = new AbortController();
+            MockTime.enable();
+            try {
+                const outcome = abortedOpen(central, mockDevice.address, abort);
+                await testClient.waitForCommand("write_and_subscribe", 1000);
+                await settle();
+                abort.abort(new InternalError("aborted by test"));
+                expect(await outcome).to.be.instanceOf(InternalError);
+
+                reply.send();
+                await settle();
+                await MockTime.advance(Seconds(16));
+                await settle();
+
+                expect(testClient.receivedBinaryFrames.length).to.equal(0);
+                expect(sentDisconnects().length).to.equal(1);
+            } finally {
+                MockTime.disable();
+            }
+        });
+
+        it("stays closed when it closes between the retry handshake response and the WriteAndSubscribe reply", async () => {
+            testClient.onCommand(BleProxyCommand.UnsubscribeCharacteristic, async () => ({}));
+            const open = await prepareStallingChannel(9500, 30);
+            MockTime.enable();
+            try {
+                const channel = await open();
+                const reply = holdWriteAndSubscribeReply(30);
+                let closeNotifications = 0;
+                channel.onClose(() => closeNotifications++);
+                await channel.send(new Uint8Array(10).fill(0xab));
+                await MockTime.advance(Seconds(16));
+                await waitFor(() => handshakeRequests().length === 2);
+                await settle();
+                const framesAtClose = testClient.receivedBinaryFrames.length;
+
+                await channel.close();
+                reply.send();
+                await settle();
+                await MockTime.advance(Seconds(16));
+                await settle();
+
+                expect(channel.connected).to.be.false;
+                expect(closeNotifications).to.equal(1);
+                expect(testClient.receivedBinaryFrames.length).to.equal(framesAtClose);
+                expect(sentDisconnects().length).to.equal(1);
+            } finally {
+                MockTime.disable();
+            }
+        });
+
+        it("closes the channel once when the retried BTP session gets no acknowledgement", async () => {
+            testClient.onCommand(BleProxyCommand.UnsubscribeCharacteristic, async () => ({}));
+            const open = await prepareStallingChannel(9600, 31);
+            MockTime.enable();
+            try {
+                const channel = await open();
+                let closeNotifications = 0;
+                channel.onClose(() => closeNotifications++);
+                await channel.send(new Uint8Array(10).fill(0xab));
+                await MockTime.advance(Seconds(16));
+                await waitFor(() => handshakeRequests().length === 2);
+                await settle();
+
+                await MockTime.advance(Seconds(16));
+                await waitFor(() => channel.isClosed);
+                await settle();
+
+                expect(closeNotifications).to.equal(1);
+                expect(channel.connected).to.be.false;
+                await expect(channel.send(Bytes.fromHex("0102"))).rejectedWith(BleDisconnectedError);
+                expect(sentDisconnects().length).to.equal(1);
+            } finally {
+                MockTime.disable();
+            }
+        });
+
+        it("writes nothing after the channel closed", async () => {
+            const open = await prepareStallingChannel(9800, 33);
+            MockTime.enable();
+            try {
+                const channel = await open();
+
+                await channel.close();
+                await MockTime.advance(Seconds(16));
+                await settle();
+
+                expect(testClient.receivedBinaryFrames.length).to.equal(0);
+            } finally {
+                MockTime.disable();
+            }
+        });
+
+        it("fails the open right away when the peripheral is lost before the WriteAndSubscribe reply", async () => {
+            const { central, mockDevice } = await prepareOpen(9950, 35);
+            holdWriteAndSubscribeReply(35);
+            const opening = central.openChannel({ type: "ble", peripheralAddress: mockDevice.address });
+            await testClient.waitForCommand("write_and_subscribe", 1000);
+            await settle();
+
+            testClient.sendEvent("disconnected", { connection_handle: 35 });
+
+            await expect(opening).rejectedWith(BleDisconnectedError);
+        });
+
+        it("closes every channel of a lost proxy client when a closed observer throws", async () => {
+            const first = await openConnectedChannel(9960, 36);
+            const second = await openConnectedChannel(9970, 37);
+            first.closed.once(() => {
+                throw new InternalError("observer failure");
+            });
+            second.closed.once(() => {
+                throw new InternalError("observer failure");
+            });
+
+            testClient.close();
+
+            await waitFor(() => first.isClosed && second.isClosed);
+        });
+
+        it("reports a not_connected reply to the handshake as a lost peripheral", async () => {
+            const { central, mockDevice } = await prepareOpen(9990, 39);
+            testClient.onCommandError(BleProxyCommand.WriteAndSubscribe, BleProxyErrorCode.NotConnected, "gone");
+
+            await expect(central.openChannel({ type: "ble", peripheralAddress: mockDevice.address })).rejectedWith(
+                BleDisconnectedError,
+            );
+        });
+
+        it("drops frames of the stalled session that arrive before the retry handshake", async () => {
+            const delivered = new Array<Uint8Array>();
+            testClient.onCommand(BleProxyCommand.UnsubscribeCharacteristic, async () => {
+                testClient.sendBinaryFrame(BinaryFrameOpcode.Notification, 38, btpMessage(1, Bytes.fromHex("5a1e")));
+                return {};
+            });
+            const open = await prepareStallingChannel(9980, 38, data => delivered.push(Bytes.of(data)));
+            MockTime.enable();
+            try {
+                const channel = await open();
+                await channel.send(new Uint8Array(10).fill(0xab));
+                await MockTime.advance(Seconds(16));
+                await waitFor(() => handshakeRequests().length === 2);
+                await settle();
+
+                expect(delivered.length).to.equal(0);
+                expect(channel.isClosed).to.be.false;
+            } finally {
+                MockTime.disable();
+            }
+        });
+
+        it("stops observing the proxy connection once closed", async () => {
+            const { central, mockDevice } = await prepareOpen(9995, 40);
+            testClient.onCommand(BleProxyCommand.WriteAndSubscribe, async () => {
+                testClient.sendBinaryFrame(
+                    BinaryFrameOpcode.Notification,
+                    40,
+                    mockDevice.generateBtpHandshakeResponse(),
+                );
+                return {};
+            });
+            const channel = await central.openChannel({ type: "ble", peripheralAddress: mockDevice.address });
+            const connection = handler.getOwner(mockDevice.address);
+            if (connection === undefined) {
+                throw new InternalError("No proxy client owns the test device");
+            }
+            expect(connection.binaryFrameReceived.isObserved).to.be.true;
+
+            await channel.close();
+
+            expect(connection.binaryFrameReceived.isObserved).to.be.false;
+        });
+
+        it("aborts an open in progress when the central interface closes", async () => {
+            const { central, mockDevice } = await prepareOpen(9700, 32);
+            testClient.onCommand(BleProxyCommand.WriteAndSubscribe, () => new Promise<void>(() => {}));
+            const opening = central.openChannel({ type: "ble", peripheralAddress: mockDevice.address }).then(
+                () => expect.fail("open should not resolve"),
+                (error: unknown) => error,
+            );
+            await testClient.waitForCommand("write_and_subscribe", 1000);
+
+            await central.close();
+
+            expect(await opening).to.be.instanceOf(NetworkError);
+            await waitFor(() => sentDisconnects().length === 1);
         });
     });
 });
