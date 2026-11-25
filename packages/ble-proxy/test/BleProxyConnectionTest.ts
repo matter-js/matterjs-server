@@ -4,10 +4,14 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Seconds } from "@matter/main";
+import { InternalError, Seconds } from "@matter/main";
 import { createServer } from "node:http";
 import { WebSocket, WebSocketServer } from "ws";
-import { BleProxyConnection } from "../src/BleProxyConnection.js";
+import {
+    BleProxyClientDisconnectedError,
+    BleProxyCommandTimeoutError,
+    BleProxyConnection,
+} from "../src/BleProxyConnection.js";
 import { BLE_PROXY_PROTOCOL_VERSION, BinaryFrameOpcode, BleProxyCommand } from "../src/BleProxyProtocol.js";
 import { BleProxyTestClient } from "./BleProxyTestClient.js";
 
@@ -106,6 +110,21 @@ describe("BleProxyConnection", function () {
         expect(Array.from(got.payload)).to.deep.equal([1, 2, 3]);
     });
 
+    it("keeps delivering binary frames after an observer threw", async () => {
+        connection.binaryFrameReceived.once(() => {
+            throw new InternalError("observer failure");
+        });
+        testClient.sendBinaryFrame(BinaryFrameOpcode.Notification, 5, new Uint8Array([1]));
+        await new Promise<void>(resolve => setTimeout(resolve, 50));
+
+        const received = new Promise<number>(resolve => {
+            connection.binaryFrameReceived.once(frame => resolve(frame.connectionHandle));
+        });
+        testClient.sendBinaryFrame(BinaryFrameOpcode.Notification, 6, new Uint8Array([2]));
+
+        expect(await received).to.equal(6);
+    });
+
     it("stays torn down when a hello arrives after the handshake timeout fired", async () => {
         const latePort = TEST_PORT + 1;
         const lateHttpServer = createServer();
@@ -166,11 +185,20 @@ describe("BleProxyConnection", function () {
         testClient.close();
 
         await closedEmitted;
+        await expect(pending).rejectedWith(BleProxyClientDisconnectedError, "disconnected");
+    });
+
+    it("rejects a command the client never answers after the command timeout", async () => {
+        testClient.onCommand(BleProxyCommand.StopScan, async () => new Promise(() => {}));
+
+        MockTime.enable();
         try {
-            await pending;
-            expect.fail("Should have rejected");
-        } catch (err) {
-            expect((err as Error).message).to.include("disconnected");
+            const pending = connection.sendCommand(BleProxyCommand.StopScan);
+            await MockTime.advance(Seconds(61));
+
+            await expect(pending).rejectedWith(BleProxyCommandTimeoutError);
+        } finally {
+            MockTime.disable();
         }
     });
 });
