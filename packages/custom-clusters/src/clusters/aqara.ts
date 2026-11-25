@@ -266,7 +266,8 @@ const PostureEnum = enumeration("PostureEnum", "enum8", {
     Stand: 0x02,
     Lie: 0x03,
     Fall: 0x04,
-    Undefined: 0xfe,
+    SuspectedFall: 0x05,
+    Unknown: 0xfe,
     Invalid: 0xff,
 });
 
@@ -402,14 +403,21 @@ class AqaraTargetLocationInfoStruct {
     @field(0x2, int16, mandatory)
     targetYCoordinate!: number;
 
+    /**
+     * Dynamic point-cloud points for this target in the current frame, 0 to 10000. Above 0 for any noticeable
+     * movement, including movement in place, and larger for larger movement; 0 means only micro-motion, so the target
+     * is still.
+     */
     @field(0x3, int16, mandatory)
-    targetZCoordinate!: number;
+    dynPnts!: number;
 
+    /** Micro-motion point-cloud points for this target in the current frame, 0 to 10000. */
     @field(0x4, int16, mandatory)
-    targetVelocity!: number;
+    mmsPnts!: number;
 
+    /** Tracker diagnostics; not a presence or motion signal. */
     @field(0x5, uint16, mandatory)
-    targetSignalToNoiseRatio!: number;
+    trackingState!: number;
 
     @field(0x6, TargetTypeEnum, mandatory)
     targetType!: number;
@@ -417,6 +425,7 @@ class AqaraTargetLocationInfoStruct {
     @field(0x7, PostureEnum, mandatory)
     targetPosture!: number;
 
+    /** Zone that contains the target. 0 is the global zone: the target is in no configured zone. */
     @field(0x8, uint8)
     targetZoneId?: number;
 }
@@ -498,7 +507,7 @@ export class AqaraAmbientSensingConfigurationCluster {
     @attribute(0x0013, octstr, writable, manage, nullable)
     interferenceRegionBitmask?: Bytes | null;
 
-    /** Manually marked edge cells. Null means none; a null write clears the marking. */
+    /** Manually marked edge cells. 1 means that cell is not monitored; 0 means it is. Null means none; a null write clears the marking. */
     @constraint("40")
     @attribute(0x0014, octstr, writable, manage, nullable)
     edgeRegionBitmask?: Bytes | null;
@@ -512,8 +521,8 @@ export class AqaraAmbientSensingConfigurationCluster {
     interferenceSourceRecognitionReportingTimeout?: number;
 
     /**
-     * Seconds allowed for one AI space background learning attempt after {@link enableAiSpaceBackgroundLearning}.
-     * The client waits at least this long for {@link aiSpaceBackgroundLearningComplete}.
+     * Length of one AI space background learning run, in seconds. 20 means the run lasts 20 seconds.
+     * The client waits at least this long after {@link enableAiSpaceBackgroundLearning} for {@link aiSpaceBackgroundLearningComplete}.
      */
     @constraint("min 1")
     @attribute(0x0016, uint16)
