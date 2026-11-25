@@ -8,7 +8,7 @@ This page shows a detailed overview of the changes between versions without the 
 -->
 ## **WORK IN PROGRESS**
 
-- Enhancement: Update matter.js to the latest 0.18.1 nightly
+- Enhancement: Update matter.js to 0.18.1 and the bundled DCL data to 2026.11.24
     - When a device stops sending the rest of an update, the server sets up a new subscription instead of keeping incomplete device data
     - Device events that arrive before the device's data was read are no longer lost
 - Adjustment: Aqara occupant location targets report `dynPnts`, `mmsPnts` and `trackingState` (dynamic points, micro-motion points and tracker diagnostics) instead of `targetZCoordinate`, `targetVelocity` and `targetSignalToNoiseRatio`, which did not match what current firmware sends. Firmware 1.1.8.2 reports a grid index, an activity value and a fall flag in these fields. The posture value `Undefined` is renamed to `Unknown`, and the new value `SuspectedFall` is added
