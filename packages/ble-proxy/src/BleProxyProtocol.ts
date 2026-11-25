@@ -9,6 +9,9 @@
  * See docs/ble-proxy-protocol.md for the full specification.
  */
 
+import { UnexpectedDataError } from "@matter/main";
+import { BleError } from "@matter/main/protocol";
+
 // ─── Protocol Version ────────────────────────────────────────────────────────
 
 export const BLE_PROXY_PROTOCOL_VERSION = 1;
@@ -254,7 +257,7 @@ export const BleProxyErrorCode = {
 export type BleProxyErrorCodeValue = (typeof BleProxyErrorCode)[keyof typeof BleProxyErrorCode];
 
 /** A command the client answered with `success: false`, carrying the protocol error code. */
-export class BleProxyCommandError extends Error {
+export class BleProxyCommandError extends BleError {
     constructor(
         readonly code: string,
         readonly detail: string,
@@ -305,7 +308,9 @@ export function encodeBinaryFrame(opcode: number, connectionHandle: number, payl
 
 export function decodeBinaryFrame(data: Uint8Array): BinaryFrame {
     if (data.length < BINARY_FRAME_HEADER_SIZE) {
-        throw new Error(`Binary frame too short: ${data.length} bytes, minimum ${BINARY_FRAME_HEADER_SIZE}`);
+        throw new UnexpectedDataError(
+            `Binary frame too short: ${data.length} bytes, minimum ${BINARY_FRAME_HEADER_SIZE}`,
+        );
     }
     return {
         opcode: data[0],

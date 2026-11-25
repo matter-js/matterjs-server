@@ -4,11 +4,15 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import { UnexpectedDataError } from "@matter/main";
+import { BleError } from "@matter/main/protocol";
 import {
     BinaryFrameOpcode,
     BLE_PROXY_PROTOCOL_VERSION,
     decodeBinaryFrame,
     encodeBinaryFrame,
+    BleProxyCommandError,
+    BleProxyErrorCode,
 } from "../src/BleProxyProtocol.js";
 
 describe("BleProxyProtocol", () => {
@@ -88,8 +92,14 @@ describe("BleProxyProtocol", () => {
             expect(decoded.connectionHandle).to.equal(0);
         });
 
+        it("reports a command error as a BLE error carrying its code", () => {
+            const error = new BleProxyCommandError(BleProxyErrorCode.NotConnected, "gone");
+            expect(error).to.be.instanceOf(BleError);
+            expect(error.code).to.equal("not_connected");
+        });
+
         it("should throw on frame too short", () => {
-            expect(() => decodeBinaryFrame(new Uint8Array(2))).to.throw("Binary frame too short");
+            expect(() => decodeBinaryFrame(new Uint8Array(2))).to.throw(UnexpectedDataError, "Binary frame too short");
             expect(() => decodeBinaryFrame(new Uint8Array(1))).to.throw("Binary frame too short");
             expect(() => decodeBinaryFrame(new Uint8Array(0))).to.throw("Binary frame too short");
         });

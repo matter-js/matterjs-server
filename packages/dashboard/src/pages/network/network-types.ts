@@ -45,6 +45,8 @@ export interface NetworkGraphNode {
     group?: "connected" | "disconnected";
     /** Whether the node should be hidden */
     hidden?: boolean;
+    /** vis.js physics mass */
+    mass?: number;
 }
 
 /**
@@ -66,6 +68,8 @@ export interface NetworkGraphEdge {
     hidden?: boolean;
     /** vis.js per-edge spring length; overrides the global physics springLength */
     length?: number;
+    /** Whether this edge acts as a vis.js spring; vis.js ignores `hidden` for physics */
+    physics?: boolean;
     /** vis.js arrow configuration: shorthand string ("to", "from", "") or
      * object form for explicit head sizing on dashed edges. */
     arrows?: string | { to?: { enabled: boolean; scaleFactor: number } };
