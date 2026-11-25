@@ -8,7 +8,7 @@ This page shows a detailed overview of the changes between versions without the 
 -->
 ## **WORK IN PROGRESS**
 
-- Enhancement: Update matter.js to the latest 0.18.1 nightly
+- Enhancement: Update matter.js to 0.18.1 and the bundled DCL data to 2026.11.24
     - When a device stops sending the rest of an update, the server sets up a new subscription instead of keeping incomplete device data
     - Device events that arrive before the device's data was read are no longer lost
 - Adjustment: `@matter-server/ble-proxy` library: a `ProxyBleChannel` is created with `ProxyBleChannel.open()` (the constructor is private), and `markDisconnected()` is removed. Failures of the proxy connection are reported as `BleProxyClientDisconnectedError` and `BleProxyCommandTimeoutError`, and `BleProxyCommandError` is now a `BleError`
