@@ -111,6 +111,8 @@ echo nf_conntrack | sudo tee /etc/modules-load.d/matter-conntrack.conf
 - Docker on Linux with firewalld (Fedora/RHEL default) or ufw (Ubuntu, when enabled): the Docker **host**.
 - Home Assistant OS: Configured correctly out of the box. Only worry if you have added a custom firewall layer (e.g. VM with hypervisor firewall).
 
+If you can, better decide to **NOT** filter any Matter related traffic (or UDP traffic in general) in your home network because this prevents all sort of strange issues.
+
 **DO NOT** filter Matter UDP traffic by destination port. The controller binds an ephemeral port, and device source ports also vary.
 
 **DO NOT** pin firewall rules to UDP/5540. While 5540 is the IANA-assigned Matter port and is commonly used, the Matter specification does not require devices to use a single predetermined well-known port. A Matter node may listen on a different UDP port and advertise that port through its mDNS/DNS-SD service records. Controllers are expected to use the advertised port rather than assuming 5540.
