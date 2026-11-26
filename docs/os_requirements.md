@@ -90,18 +90,18 @@ If a stateful firewall sits on the path between the Matter Server and the Thread
 
 The kernel only applies the stream timeout to a UDP flow that is still active more than 2 seconds after it was first seen. A short exchange (e.g. a resubscribe that completes in about a second) stays on the plain UDP timeout, `nf_conntrack_udp_timeout` (30 s by default), and is not marked `[ASSURED]`. Raising only the stream timeout therefore does not cover these flows.
 
-**DO** check both `nf_conntrack_udp_timeout` and `nf_conntrack_udp_timeout_stream` and raise them to at least `1800` (we recommend `3600`) on every kernel that filters Matter traffic:
+**DO** check both `nf_conntrack_udp_timeout` and `nf_conntrack_udp_timeout_stream` and raise them to at least `3700` (we recommend `90000` because some ICD LIT devices report back once a day as minimum) on every kernel that filters Matter traffic:
 
 ```sh
 # Skip if no stateful firewall is in the path. Otherwise:
 sysctl net.netfilter.nf_conntrack_udp_timeout net.netfilter.nf_conntrack_udp_timeout_stream 2>/dev/null
 # Absent / "unknown key" → conntrack module not loaded → nothing to do.
-# Present and < 1800 → raise them:
-sudo sysctl -w net.netfilter.nf_conntrack_udp_timeout=3600 net.netfilter.nf_conntrack_udp_timeout_stream=3600
-printf '%s\n' 'net.netfilter.nf_conntrack_udp_timeout = 3600' 'net.netfilter.nf_conntrack_udp_timeout_stream = 3600' | sudo tee /etc/sysctl.d/99-matter.conf
+# Present and < 90000 → raise them:
+sudo sysctl -w net.netfilter.nf_conntrack_udp_timeout=90000 net.netfilter.nf_conntrack_udp_timeout_stream=90000
+printf '%s\n' 'net.netfilter.nf_conntrack_udp_timeout = 90000' 'net.netfilter.nf_conntrack_udp_timeout_stream = 90000' | sudo tee /etc/sysctl.d/99-matter.conf
 # The keys only exist once nf_conntrack is loaded. Load it early at boot so the file above applies:
 echo nf_conntrack | sudo tee /etc/modules-load.d/matter-conntrack.conf
-# Present and ≥ 1800 → done.
+# Present and ≥ 90000 → done.
 ```
 
 **DO** apply this on the kernel that actually filters the packets:
