@@ -235,11 +235,11 @@ This is different from Thread Border Routers which use serial device paths (e.g.
 
 Matter.js uses its own native storage format but supports migration from Python Matter Server.
 
-On startup, legacy Python storage files are read and migrated when needed:
+On startup, the server migrates these Python Matter Server files and renames them to `*.migrated` once all their data is migrated:
 
 - `chip.json` - Chip configuration (fabric credentials)
-- `{fabricId}.json` - Node data and vendor info
+- `<long-number>.json` - Node data and vendor info
 
-`{fabricId}.json` is updated when nodes are added or removed, so you can switch back to the Python Matter Server with the same storage path.
+The server does not write changes back into these files. To switch back to the Python Matter Server, restore the backup from before the migration.
 
 See the [migration guide](migration.md) for backups, the first start, switching back, and troubleshooting.

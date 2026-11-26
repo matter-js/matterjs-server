@@ -36,6 +36,10 @@ const CERTIFICATES_CONTEXT = "certificates";
 const ROOT_CERT_KEY = "rootCertBytes";
 const FABRICS_CONTEXT = "fabrics";
 const NODES_CONTEXT = "nodes";
+/** Where matter.js before 0.16, and LegacyDataInjector up to 1.5.0, kept the controller CA. */
+const PRE_0_16_CREDENTIALS_CONTEXT = "credentials";
+/** Prefix matter.js `ClientNodeStores` gives peer IDs; it continues numbering after the highest one in storage. */
+const PEER_ID_PREFIX = "peer";
 
 const SKIPPED_MIGRATION =
     "The Python Matter Server data is not migrated. To migrate it, restore the backup from before the first migration attempt, or start with a storage directory that holds only the Python Matter Server data files.";
@@ -155,7 +159,18 @@ export namespace LegacyDataInjector {
         fabricData: LegacyFabricConfigData,
     ) {
         if (!Bytes.areEqual(credentialData.rootCertBytes, fabricData.rootCert)) {
-            logger.warn(`The legacy CA does not match the root certificate of the legacy fabric. ${SKIPPED_MIGRATION}`);
+            logger.warn(
+                "The controller CA in the Python Matter Server data does not issue its fabric, so the data is not migrated.",
+            );
+            return false;
+        }
+
+        const pre016Credentials = storage.createContext(PRE_0_16_CREDENTIALS_CONTEXT);
+        if (
+            (await pre016Credentials.has(ROOT_CERT_KEY)) &&
+            !Bytes.areEqual(await pre016Credentials.get<Bytes>(ROOT_CERT_KEY), credentialData.rootCertBytes)
+        ) {
+            logger.warn(`Storage holds controller data of matter.js before 0.16. ${SKIPPED_MIGRATION}`);
             return false;
         }
 
@@ -254,236 +269,143 @@ export namespace LegacyDataInjector {
         return builder.build(tempFabric.fabricIndex);
     }
 
+    /**
+     * Write every legacy node that has no peer on the legacy fabric yet into the peer storage of the controller
+     * node, in the layout matter.js restores peers from. Must run before the controller node is created, so
+     * matter.js allocates later peer IDs after the ones written here.
+     *
+     * A node counts as a peer once its peer address is stored. The address is written after all attribute data of
+     * the node, so a node whose writes failed is written again on the next start.
+     *
+     * @returns the IDs of the nodes written by this call, and of the nodes that could not be written
+     */
     export async function injectNodeData(
-        baseStorage: StorageManager,
-        nodeData?: LegacyServerFile,
-        fabricIndex?: number,
-    ) {
-        const nodesListStorage = baseStorage.createContext(NODES_CONTEXT);
-
-        const hasCommissionedNodes = await nodesListStorage.has("commissionedNodes");
-
-        if (nodeData === undefined) {
-            if (!hasCommissionedNodes) {
-                await nodesListStorage.set("commissionedNodes", []);
-            }
-            return false;
-        }
-
-        if (typeof fabricIndex !== "number" || fabricIndex < 1 || fabricIndex > 254) {
-            fabricIndex = undefined;
-        }
-
-        if (!fabricIndex || hasCommissionedNodes || (await nodesListStorage.contexts()).length) {
-            // It seems we already did a migration or at least a start, so we cannot optimize and need to recheck all
-            // nodes to catch added or removed ones
-            return injectAsFullInjection(baseStorage, nodesListStorage, nodeData);
-        }
-
-        return injectAsDirectInjection(baseStorage, nodesListStorage, nodeData, FabricIndex(fabricIndex));
-    }
-
-    async function injectAsFullInjection(
-        baseStorage: StorageManager,
-        nodesListStorage: StorageContext,
-        nodeData: LegacyServerFile,
-    ) {
-        const commissionedNodes = new Array<[NodeId, any]>();
-        let injectedNodes = 0;
-        const writes = new Array<MaybePromise<void>>();
-
-        for (const [nodeId, nodeDetails] of Object.entries(nodeData.nodes)) {
-            const nodeStorage = baseStorage.createContext(`node-${nodeId}`);
-            if (nodeId !== nodeDetails.node_id.toString()) {
-                logger.warn(`Node ID mismatch in node data: ${nodeId} != ${nodeDetails.node_id}`);
-            }
-            commissionedNodes.push([NodeId(BigInt(nodeId)), {}]);
-            let newNode = true;
-            const attributes = Object.entries(nodeDetails.attributes);
-            if (attributes.length === 0) {
-                continue;
-            }
-            logger.info(`Injecting node ${nodeId} into storage`);
-            let currentEndpointId: string | undefined;
-            let currentClusterId: string | undefined;
-            let endpointStorage: StorageContext | undefined;
-            let clusterStorage: StorageContext | undefined;
-            for (const [attributeKey, value] of attributes) {
-                const [endpointId, clusterId, attributeId] = attributeKey.split("/");
-                if (currentEndpointId !== endpointId) {
-                    endpointStorage = nodeStorage.createContext(endpointId);
-                    currentEndpointId = endpointId;
-                    currentClusterId = undefined;
-                }
-                if (currentClusterId !== clusterId) {
-                    clusterStorage = endpointStorage!.createContext(clusterId);
-                    currentClusterId = clusterId;
-                    if (newNode) {
-                        if (await clusterStorage.has("__version__")) {
-                            logger.info(`Node ${nodeId} already exists. Skipping injection.`);
-                            break;
-                        }
-                        newNode = false;
-                        injectedNodes++;
-                    }
-                    writes.push(clusterStorage.set("__version__", 1));
-                }
-
-                const clusterModel = ClusterMap[clusterId];
-                const model = clusterModel?.attributes?.[attributeId];
-                if (clusterModel === undefined || model === undefined) {
-                    if (attributeId === FEATUREMAP_ID) {
-                        logger.debug(
-                            `Node ${nodeId}: Attribute ${attributeKey}, unknown featuremap converted to empty featuremap`,
-                        );
-                        writes.push(clusterStorage!.set(attributeId, { value: {} } as SupportedStorageTypes));
-                    } else if (isPrimitiveType(value) || (Array.isArray(value) && value.every(isPrimitiveType))) {
-                        logger.debug(
-                            `Node ${nodeId}: Attribute ${attributeKey}, unknown primary type converted generically`,
-                            value,
-                        );
-                        writes.push(clusterStorage!.set(attributeId, { value } as SupportedStorageTypes));
-                    } else {
-                        logger.debug(
-                            `Node ${nodeId}: Attribute ${attributeKey}, not found in and unclear value. Skipping injection.`,
-                            value,
-                        );
-                    }
-                } else {
-                    const convertedValue =
-                        isObject(value) && ("TLVValue" in value || "Reason" in value)
-                            ? undefined
-                            : convertWebSocketTagBasedToMatter(value, model, clusterModel.model);
-                    if (convertedValue !== undefined) {
-                        writes.push(
-                            clusterStorage!.set(attributeId, { value: convertedValue } as SupportedStorageTypes),
-                        );
-                    } else {
-                        logger.debug(`Attribute ${attributeKey} could not be converted. Skipping injection.`);
-                    }
-                }
-            }
-        }
-        if (writes.length) {
-            logger.info(`... wait for all ${writes.length} records to be written ... be patient!`);
-            await Promise.allSettled(writes);
-        }
-
-        if (injectedNodes > 0) {
-            const knownNodes = await nodesListStorage.get<[bigint | number, any][]>("commissionedNodes", []);
-            for (const [nodeId] of commissionedNodes) {
-                if (!knownNodes.find(([knownNodeId]) => knownNodeId === nodeId)) {
-                    knownNodes.push([nodeId, {}]);
-                }
-            }
-            await nodesListStorage.set("commissionedNodes", knownNodes);
-        }
-
-        return injectedNodes > 0;
-    }
-
-    async function injectAsDirectInjection(
-        baseStorage: StorageManager,
-        nodesStorage: StorageContext,
+        storage: StorageManager,
         nodeData: LegacyServerFile,
         fabricIndex: FabricIndex,
     ) {
-        const commissionedNodes = new Array<[NodeId, any]>();
-        let injectedNodes = 0;
+        const nodesStorage = storage.createContext(NODES_CONTEXT);
+        const knownNodeIds = new Set<NodeId>();
+        let lastPeerNumber = 0;
+        for (const peerId of await nodesStorage.contexts()) {
+            if (peerId.startsWith(PEER_ID_PREFIX)) {
+                const peerNumber = Number.parseInt(peerId.slice(PEER_ID_PREFIX.length));
+                if (Number.isFinite(peerNumber) && peerNumber > lastPeerNumber) {
+                    lastPeerNumber = peerNumber;
+                }
+            }
+            const commissioning = commissioningContextOf(nodesStorage.createContext(peerId));
+            if (await commissioning.has("peerAddress")) {
+                const address = PeerAddress(await commissioning.get<PeerAddress>("peerAddress"));
+                if (address.fabricIndex === fabricIndex) {
+                    knownNodeIds.add(address.nodeId);
+                }
+            }
+        }
+
+        const injected = new Array<NodeId>();
+        const failed = new Array<NodeId>();
+        for (const [nodeIdText, nodeDetails] of Object.entries(nodeData.nodes)) {
+            const nodeId = NodeId(BigInt(nodeIdText));
+            if (knownNodeIds.has(nodeId)) {
+                continue;
+            }
+            const peerId = `${PEER_ID_PREFIX}${++lastPeerNumber}`;
+            if (await injectNode(nodesStorage.createContext(peerId), nodeId, nodeDetails, fabricIndex)) {
+                logger.info(`Injected legacy node ${nodeId} into peer storage as ${peerId}`);
+                injected.push(nodeId);
+            } else {
+                failed.push(nodeId);
+            }
+        }
+        return { injected, failed };
+    }
+
+    function commissioningContextOf(peerStorage: StorageContext) {
+        return peerStorage.createContext("endpoints").createContext("0").createContext("commissioning");
+    }
+
+    /** @returns false when a write failed; the peer storage is then cleared again */
+    async function injectNode(
+        peerStorage: StorageContext,
+        nodeId: NodeId,
+        nodeDetails: LegacyNodeData,
+        fabricIndex: FabricIndex,
+    ) {
+        if (nodeId !== NodeId(BigInt(nodeDetails.node_id))) {
+            logger.warn(`Node ID mismatch in node data: ${nodeId} != ${nodeDetails.node_id}`);
+        }
+        const endpointsStorage = peerStorage.createContext("endpoints");
         const writes = new Array<MaybePromise<void>>();
-
-        let peerCounter = 1;
-        for (const [nodeId, nodeDetails] of Object.entries(nodeData.nodes)) {
-            const peerId = `peer${peerCounter++}`;
-            const legacyNodeStorage = baseStorage.createContext(`node-${nodeId}`);
-            const peerStorage = nodesStorage.createContext(peerId).createContext("endpoints");
-            if (nodeId !== nodeDetails.node_id.toString()) {
-                logger.warn(`Node ID mismatch in node data: ${nodeId} != ${nodeDetails.node_id}`);
+        let currentEndpointId: string | undefined;
+        let currentClusterId: string | undefined;
+        let endpointStorage: StorageContext | undefined;
+        let clusterStorage: StorageContext | undefined;
+        for (const [attributeKey, value] of Object.entries(nodeDetails.attributes)) {
+            const [endpointId, clusterId, attributeId] = attributeKey.split("/");
+            if (currentEndpointId !== endpointId) {
+                endpointStorage = endpointsStorage.createContext(endpointId);
+                currentEndpointId = endpointId;
+                currentClusterId = undefined;
             }
-            commissionedNodes.push([NodeId(BigInt(nodeId)), {}]);
-            let newNode = true;
-            logger.info(`Injecting node ${nodeId} directly into peer storage as ${peerId}`);
-            // Define the peer address for this peer
-            writes.push(
-                peerStorage
-                    .createContext("0")
-                    .createContext("commissioning")
-                    .set("peerAddress", PeerAddress({ fabricIndex, nodeId: NodeId(BigInt(nodeId)) })),
-            );
-            writes.push(peerStorage.createContext("0").createContext("commissioning").set("discoveredAt", Time.nowMs));
-            let currentEndpointId: string | undefined;
-            let currentClusterId: string | undefined;
-            let endpointStorage: StorageContext | undefined;
-            let clusterStorage: StorageContext | undefined;
-            for (const [attributeKey, value] of Object.entries(nodeDetails.attributes)) {
-                const [endpointId, clusterId, attributeId] = attributeKey.split("/");
-                if (currentEndpointId !== endpointId) {
-                    endpointStorage = peerStorage.createContext(endpointId);
-                    currentEndpointId = endpointId;
-                    currentClusterId = undefined;
-                }
-                if (currentClusterId !== clusterId) {
-                    clusterStorage = endpointStorage!.createContext(clusterId);
-                    currentClusterId = clusterId;
-                    if (newNode) {
-                        // Write marker that this node is migrated, so would be skipped for full migration approach
-                        writes.push(
-                            legacyNodeStorage.createContext(endpointId).createContext(clusterId).set("__version__", 1),
-                        );
-                        newNode = false;
-                        injectedNodes++;
-                    }
-                    writes.push(clusterStorage.set("__version__", 1));
-                }
+            if (currentClusterId !== clusterId) {
+                clusterStorage = endpointStorage!.createContext(clusterId);
+                currentClusterId = clusterId;
+                writes.push(clusterStorage.set("__version__", 1));
+            }
 
-                const clusterModel = ClusterMap[clusterId];
-                const model = clusterModel?.attributes?.[attributeId];
-                if (clusterModel === undefined || model === undefined) {
-                    if (attributeId === FEATUREMAP_ID) {
-                        logger.debug(
-                            `Node ${nodeId}: Attribute ${attributeKey}, unknown featuremap converted to empty featuremap`,
-                        );
-                        writes.push(clusterStorage!.set(attributeId, {} as SupportedStorageTypes));
-                    } else if (isPrimitiveType(value) || (Array.isArray(value) && value.every(isPrimitiveType))) {
-                        logger.debug(
-                            `Node ${nodeId}: Attribute ${attributeKey}, unknown primary type converted generically`,
-                            value,
-                        );
-                        writes.push(clusterStorage!.set(attributeId, value as SupportedStorageTypes));
-                    } else {
-                        logger.debug(
-                            `Node ${nodeId}: Attribute ${attributeKey}, not found in and unclear value. Skipping injection.`,
-                            value,
-                        );
-                    }
+            const clusterModel = ClusterMap[clusterId];
+            const model = clusterModel?.attributes?.[attributeId];
+            if (clusterModel === undefined || model === undefined) {
+                if (attributeId === FEATUREMAP_ID) {
+                    logger.debug(
+                        `Node ${nodeId}: Attribute ${attributeKey}, unknown featuremap converted to empty featuremap`,
+                    );
+                    writes.push(clusterStorage!.set(attributeId, {} as SupportedStorageTypes));
+                } else if (isPrimitiveType(value) || (Array.isArray(value) && value.every(isPrimitiveType))) {
+                    logger.debug(
+                        `Node ${nodeId}: Attribute ${attributeKey}, unknown primary type converted generically`,
+                        value,
+                    );
+                    writes.push(clusterStorage!.set(attributeId, value as SupportedStorageTypes));
                 } else {
-                    const convertedValue =
-                        isObject(value) && ("TLVValue" in value || "Reason" in value)
-                            ? undefined
-                            : convertWebSocketTagBasedToMatter(value, model, clusterModel.model);
-                    if (convertedValue !== undefined) {
-                        writes.push(clusterStorage!.set(attributeId, convertedValue as SupportedStorageTypes));
-                    } else {
-                        logger.debug(`Attribute ${attributeKey} could not be converted. Skipping injection.`);
-                    }
+                    logger.debug(
+                        `Node ${nodeId}: Attribute ${attributeKey}, not found in and unclear value. Skipping injection.`,
+                        value,
+                    );
+                }
+            } else {
+                const convertedValue =
+                    isObject(value) && ("TLVValue" in value || "Reason" in value)
+                        ? undefined
+                        : convertWebSocketTagBasedToMatter(value, model, clusterModel.model);
+                if (convertedValue !== undefined) {
+                    writes.push(clusterStorage!.set(attributeId, convertedValue as SupportedStorageTypes));
+                } else {
+                    logger.debug(`Attribute ${attributeKey} could not be converted. Skipping injection.`);
                 }
             }
         }
-        if (writes.length) {
-            logger.info(`... wait for all ${writes.length} records to be written ... be patient!`);
-            await Promise.allSettled(writes);
+
+        const failure = (await Promise.allSettled(writes)).find(result => result.status === "rejected");
+        if (failure !== undefined) {
+            logger.warn(`Could not write legacy node ${nodeId}; the next start tries again:`, failure.reason);
+            await peerStorage.clearAll();
+            return false;
         }
 
-        if (injectedNodes > 0) {
-            const knownNodes = await nodesStorage.get<[bigint | number, any][]>("commissionedNodes", []);
-            for (const [nodeId] of commissionedNodes) {
-                if (!knownNodes.find(([knownNodeId]) => knownNodeId === nodeId)) {
-                    knownNodes.push([nodeId, {}]);
-                }
-            }
-            await nodesStorage.set("commissionedNodes", knownNodes);
+        const commissionedAt = new Date(nodeDetails.date_commissioned).getTime();
+        try {
+            await commissioningContextOf(peerStorage).set({
+                discoveredAt: Time.nowMs,
+                ...(Number.isFinite(commissionedAt) ? { commissionedAt } : {}),
+                peerAddress: PeerAddress({ fabricIndex, nodeId }),
+            });
+        } catch (error) {
+            logger.warn(`Could not write legacy node ${nodeId}; the next start tries again:`, error);
+            await peerStorage.clearAll();
+            return false;
         }
-
-        return injectedNodes > 0;
+        return true;
     }
 }
