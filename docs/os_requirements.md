@@ -111,7 +111,7 @@ echo nf_conntrack | sudo tee /etc/modules-load.d/matter-conntrack.conf
 - Docker on Linux with firewalld (Fedora/RHEL default) or ufw (Ubuntu, when enabled): the Docker **host**.
 - Home Assistant OS: Configured correctly out of the box. Only worry if you have added a custom firewall layer (e.g. VM with hypervisor firewall).
 
-If you can, better decide to **NOT** filter any Matter related traffic (or UDP traffic in general) in your home network because this prevents all sort of strange issues.
+Consider carefully if filtering UDP traffic in your home network, especially when Matter or Thread is used, is really required.
 
 **DO NOT** filter Matter UDP traffic by destination port. The controller binds an ephemeral port, and device source ports also vary.
 
