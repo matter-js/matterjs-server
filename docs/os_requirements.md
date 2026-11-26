@@ -96,12 +96,12 @@ The kernel only applies the stream timeout to a UDP flow that is still active mo
 # Skip if no stateful firewall is in the path. Otherwise:
 sysctl net.netfilter.nf_conntrack_udp_timeout net.netfilter.nf_conntrack_udp_timeout_stream 2>/dev/null
 # Absent / "unknown key" → conntrack module not loaded → nothing to do.
-# Present and < 90000 → raise them:
-sudo sysctl -w net.netfilter.nf_conntrack_udp_timeout=90000 net.netfilter.nf_conntrack_udp_timeout_stream=90000
-printf '%s\n' 'net.netfilter.nf_conntrack_udp_timeout = 90000' 'net.netfilter.nf_conntrack_udp_timeout_stream = 90000' | sudo tee /etc/sysctl.d/99-matter.conf
+# Present and < 3700 → raise them:
+sudo sysctl -w net.netfilter.nf_conntrack_udp_timeout=3700 net.netfilter.nf_conntrack_udp_timeout_stream=3700
+printf '%s\n' 'net.netfilter.nf_conntrack_udp_timeout = 3700' 'net.netfilter.nf_conntrack_udp_timeout_stream = 3700' | sudo tee /etc/sysctl.d/99-matter.conf
 # The keys only exist once nf_conntrack is loaded. Load it early at boot so the file above applies:
 echo nf_conntrack | sudo tee /etc/modules-load.d/matter-conntrack.conf
-# Present and ≥ 90000 → done.
+# Present and ≥ 3700 → done.
 ```
 
 **DO** apply this on the kernel that actually filters the packets:
