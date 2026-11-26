@@ -90,7 +90,7 @@ If a stateful firewall sits on the path between the Matter Server and the Thread
 
 The kernel only applies the stream timeout to a UDP flow that is still active more than 2 seconds after it was first seen. A short exchange (e.g. a resubscribe that completes in about a second) stays on the plain UDP timeout, `nf_conntrack_udp_timeout` (30 s by default), and is not marked `[ASSURED]`. Raising only the stream timeout therefore does not cover these flows.
 
-**DO** check both `nf_conntrack_udp_timeout` and `nf_conntrack_udp_timeout_stream` and raise them to at least `3700` (when using devices with enabled ICD-LIT battery-saving mode check their limits and incresse the valu to a bit higher than the maximum timeframe, e.g. `90000` aka 25h for a reporting interval of 24h) on every kernel that filters Matter traffic:
+**DO** check both `nf_conntrack_udp_timeout` and `nf_conntrack_udp_timeout_stream` and raise them to at least `3700` (which is "a bit more than 1h"; when using devices with enabled ICD-LIT battery-saving mode check their idle intervals and increase the value to be "a bit higher than the maximum interval", e.g. `90000` aka 25h for an interval of 24h) on every kernel that filters Matter traffic:
 
 ```sh
 # Skip if no stateful firewall is in the path. Otherwise:
