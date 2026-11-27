@@ -65,6 +65,7 @@ jobs:
               run: npm run test
 
     cert:
+        name: cert (${{ matrix.device == 'chip-local' && 'chip-bins' || matrix.device }})
         if: github.repository == 'matter-js/matterjs-server' && contains(github.event.pull_request.labels.*.name, 'automated-npm-release')
         needs: [check-and-lint]
         strategy:

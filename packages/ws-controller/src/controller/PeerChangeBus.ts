@@ -17,12 +17,15 @@ import {
     ObserverGroup,
     ServerNode,
 } from "@matter/main";
-import { AttributeId, ClusterId, EndpointNumber, EventId, EventNumber } from "@matter/main/types";
+import { AttributeId, ClusterId, EndpointNumber, EventId, EventNumber, Global } from "@matter/main/types";
 import { ChangeNotificationService } from "@matter/node";
 import { nodeIdOf } from "../util/nodeIdOf.js";
 import { deviceTimestampOfChange } from "./eventTimestamps.js";
 
 const logger = Logger.get("PeerChangeBus");
+
+/** `cluster.attributes` leaves the global attributes out; matter.js keeps them in {@link Global.attributes}. */
+const GLOBAL_ATTRIBUTES: Record<string, { id: AttributeId } | undefined> = { ...Global.attributes };
 
 export type AttributeChange = {
     path: { endpointId: EndpointNumber; clusterId: ClusterId; attributeId: AttributeId };
@@ -245,7 +248,7 @@ export class PeerChangeBus {
         if (!isNaN(numeric)) {
             return AttributeId(numeric);
         }
-        return attributes[property]?.id;
+        return attributes[property]?.id ?? GLOBAL_ATTRIBUTES[property]?.id;
     }
 
     #emitEvent(nodeId: NodeId, change: ChangeNotificationService.EventOccurrence) {

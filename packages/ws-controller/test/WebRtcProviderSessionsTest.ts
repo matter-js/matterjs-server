@@ -88,12 +88,12 @@ function fixture(): Fixture {
                 return f.requestor;
             },
         },
-        upsertSession: session => {
+        upsertSession: async session => {
             const index = f.requestor.findIndex(tracked => sameKey(tracked, session));
             if (index === -1) f.requestor.push(session);
             else f.requestor[index] = session;
         },
-        removeSession: key => {
+        removeSession: async key => {
             f.requestor = f.requestor.filter(tracked => !sameKey(tracked, key));
         },
     };

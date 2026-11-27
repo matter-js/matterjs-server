@@ -7,10 +7,12 @@
 import { Seconds } from "@matter/general";
 import { ClientNode, ClusterBehavior, NetworkClient, NodeId, ObserverGroup, ServerNode, Timestamp } from "@matter/main";
 import { BooleanState, OnOff } from "@matter/main/clusters";
-import { Matter } from "@matter/main/model";
+import { FeatureMap, Matter } from "@matter/main/model";
 import { EndpointNumber, EventNumber } from "@matter/main/types";
 import { ChangeNotificationService } from "@matter/node";
+import { BooleanStateServer } from "@matter/node/behaviors/boolean-state";
 import { OnOffServer } from "@matter/node/behaviors/on-off";
+import { OnOffLightDevice } from "@matter/node/devices/on-off-light";
 import { SustainedSubscription } from "@matter/protocol";
 import { AttributeChange, EventChange, PeerChangeBus } from "../src/controller/PeerChangeBus.js";
 import { applyAutoSubscribe, PeerSettingsRepairMarker, repairRestoredPeers } from "../src/controller/restoredPeers.js";
@@ -109,6 +111,32 @@ describe("PeerChangeBus", () => {
         expect(change.path.endpointId).equals(light.number);
         expect(change.path.attributeId).equals(OnOff.attributes.onOff.id);
         expect(change.value).equals(true);
+    });
+
+    it("reports a FeatureMap change, which matter.js keeps out of the cluster's attribute map", async () => {
+        await site.commission(controller, device);
+        await awaitSubscribed();
+        attributes.length = 0;
+
+        const observers = new ObserverGroup();
+        const reported = new Promise<AttributeChange>(resolve => {
+            observers.on(bus.events.attributeChanged, (_nodeId, change) => {
+                if (change.path.clusterId === OnOff.id && change.path.attributeId === FeatureMap.id) {
+                    resolve(change);
+                }
+            });
+        });
+        try {
+            // OnOffLightDevice defaults to OnOff with the Lighting feature; plain OnOffServer has none.
+            const { endpoints } = await site.restartDevice(device, restarted =>
+                restarted.add(OnOffLightDevice.with(BooleanStateServer, OnOffServer), { id: "light" }),
+            );
+            const change = await MockTime.resolve(reported, { macrotasks: true });
+            expect(change.path.endpointId).equals(endpoints.number);
+            expect(change.value).deep.equals({ lighting: false, deadFrontBehavior: false, offOnly: false });
+        } finally {
+            observers.close();
+        }
     });
 
     it("ignores changes on the controller's own endpoints", async () => {

@@ -88,16 +88,20 @@ This applies only to the TBR's forwarding/router role. It does **not** affect co
 
 If a stateful firewall sits on the path between the Matter Server and the Thread Border Router (host firewall, VM hypervisor firewall, container host firewall), the Linux conntrack default for UDP streams (120 s) drops reports from battery-powered (sleepy) Matter devices, whose report intervals are several minutes long.
 
-**DO** check `nf_conntrack_udp_timeout_stream` and raise it to at least `1800` (we recommend `3600`) on every kernel that filters Matter traffic:
+The kernel only applies the stream timeout to a UDP flow that is still active more than 2 seconds after it was first seen. A short exchange (e.g. a resubscribe that completes in about a second) stays on the plain UDP timeout, `nf_conntrack_udp_timeout` (30 s by default), and is not marked `[ASSURED]`. Raising only the stream timeout therefore does not cover these flows.
+
+**DO** check both `nf_conntrack_udp_timeout` and `nf_conntrack_udp_timeout_stream` and raise them to at least `3700` (which is "a bit more than 1h"; when using devices with enabled ICD-LIT battery-saving mode check their idle intervals and increase the value to be "a bit higher than the maximum interval", e.g. `90000` aka 25h for an interval of 24h) on every kernel that filters Matter traffic:
 
 ```sh
 # Skip if no stateful firewall is in the path. Otherwise:
-sysctl net.netfilter.nf_conntrack_udp_timeout_stream 2>/dev/null
+sysctl net.netfilter.nf_conntrack_udp_timeout net.netfilter.nf_conntrack_udp_timeout_stream 2>/dev/null
 # Absent / "unknown key" → conntrack module not loaded → nothing to do.
-# Present and < 1800 → raise it:
-sudo sysctl -w net.netfilter.nf_conntrack_udp_timeout_stream=3600
-echo 'net.netfilter.nf_conntrack_udp_timeout_stream = 3600' | sudo tee /etc/sysctl.d/99-matter.conf
-# Present and ≥ 1800 → done.
+# Present and < 3700 → raise them:
+sudo sysctl -w net.netfilter.nf_conntrack_udp_timeout=3700 net.netfilter.nf_conntrack_udp_timeout_stream=3700
+printf '%s\n' 'net.netfilter.nf_conntrack_udp_timeout = 3700' 'net.netfilter.nf_conntrack_udp_timeout_stream = 3700' | sudo tee /etc/sysctl.d/99-matter.conf
+# The keys only exist once nf_conntrack is loaded. Load it early at boot so the file above applies:
+echo nf_conntrack | sudo tee /etc/modules-load.d/matter-conntrack.conf
+# Present and ≥ 3700 → done.
 ```
 
 **DO** apply this on the kernel that actually filters the packets:
@@ -106,6 +110,8 @@ echo 'net.netfilter.nf_conntrack_udp_timeout_stream = 3600' | sudo tee /etc/sysc
 - VM with hypervisor firewall (e.g. Proxmox per-VM firewall, vSphere DFW): the **hypervisor** kernel. Setting it inside the guest has no effect.
 - Docker on Linux with firewalld (Fedora/RHEL default) or ufw (Ubuntu, when enabled): the Docker **host**.
 - Home Assistant OS: Configured correctly out of the box. Only worry if you have added a custom firewall layer (e.g. VM with hypervisor firewall).
+
+Consider carefully if filtering UDP traffic in your home network, especially when Matter or Thread is used, is really required.
 
 **DO NOT** filter Matter UDP traffic by destination port. The controller binds an ephemeral port, and device source ports also vary.
 

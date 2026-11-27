@@ -6,6 +6,24 @@ This page shows a detailed overview of the changes between versions without the 
 	Placeholder for the next version (at the beginning of the line):
 	## **WORK IN PROGRESS**
 -->
+## 1.6.1 (2026-11-25)
+
+- Enhancement: Update matter.js to 0.18.1 and the bundled DCL data to 2026.11.24
+    - When a device stops sending the rest of an update, the server sets up a new subscription instead of keeping incomplete device data
+    - Device events that arrive before the device's data was read are no longer lost
+- Adjustment: Aqara occupant location targets report `dynPnts`, `mmsPnts` and `trackingState` (dynamic points, micro-motion points and tracker diagnostics) instead of `targetZCoordinate`, `targetVelocity` and `targetSignalToNoiseRatio`, which did not match what current firmware sends. Firmware 1.1.8.2 reports a grid index, an activity value and a fall flag in these fields. The posture value `Undefined` is renamed to `Unknown`, and the new value `SuspectedFall` is added
+- Adjustment: `@matter-server/ble-proxy` library: a `ProxyBleChannel` is created with `ProxyBleChannel.open()` (the constructor is private), and `markDisconnected()` is removed. Failures of the proxy connection are reported as `BleProxyClientDisconnectedError` and `BleProxyCommandTimeoutError`, and `BleProxyCommandError` is now a `BleError`
+- Fix: Ensure that node data are updated when global attribute (like features) change
+- Fix: The Thread network graph spreads densely meshed routers apart again instead of drawing them on top of each other
+- Fix: With the BLE proxy, the Bluetooth connection to a device is now closed once commissioning ends, instead of staying open until the device or the proxy drops it
+- Fix: With the BLE proxy, commissioning notices a lost Bluetooth connection right away instead of waiting for a timeout
+- Fix: With the BLE proxy Python client (`matter-ble-proxy`) on Linux with BlueZ 5.62 or newer, commissioning sends Bluetooth packets as large as the connection allows instead of always 20 bytes. This needs the updated `matter-ble-proxy` package on the proxy side
+- Fix: With the BLE proxy, when a device does not answer large Bluetooth packets, commissioning continues on the same connection with the smallest packet size, as it already does without the proxy
+- Fix: With the BLE proxy, a commissioning attempt that is cancelled while it connects over Bluetooth now closes that Bluetooth connection, and stopping the server closes the open ones and the ones still being opened
+- Fix: With the BLE proxy, a proxy command that gets no answer now fails after 60 seconds instead of waiting forever
+- Fix: With the BLE proxy, a failed Bluetooth connection no longer cancels commissioning attempts over the network that run at the same time
+- Fix: The example Noble BLE proxy client applies the `connect` timeout to connecting and service discovery together, and disconnects a device that connects only after the timeout
+
 ## 1.6.0 (2026-11-14)
 
 - Important (Fix): Uploading an OTA firmware file requires `--enable-test-net-dcl`, because the OTA provider only serves local images to a node while test images are allowed. Without it, `initiate_ota_upload` fails instead of storing an image that no node can download
@@ -36,11 +54,11 @@ This page shows a detailed overview of the changes between versions without the 
 - Enhancement: With the test-net DCL option enabled, a device that does not report the vendor or product id its Certification Declaration is checked against is commissioned and a notice is logged. Without the option, the refusal names the failed checks and points to the option when it would accept the device
 - Enhancement: The Docker image is about 250 MB smaller. Installing `matter-server` from npm no longer installs the packages the dashboard only needs to build its web bundle
 - Enhancement: (@luukvisser) The Docker image carries the standard OCI labels (version, source commit, source repository, license and more), so update checkers and `docker image inspect` can see which release an image is
+- Adjustment: `write_attribute` to a specific endpoint without `timed_request_timeout_ms` sends a value outside the attribute's constraints (range, length, allowed values, list size) to the device, which decides, and reports the device's status, as timed and wildcard writes already did. Before, the server refused such a value before sending it
 - Fix: `update_node` fails with `UpdateError` when the device cannot take the update, for example because it already runs this or a newer version, instead of with an unknown error
 - Fix: After a firmware update fails, checking the node for updates asks the update provider again instead of returning the update found before
 - Fix: Event timestamps use the device time that matter.js resolves from each report, in node events and in read results, also for events the server could not resolve before
 - Fix: A device that fails an attestation check the test-net DCL option does not cover is refused with the names of the failed checks, instead of only the hint to enable that option, which would not have helped
-- Adjustment: `write_attribute` to a specific endpoint without `timed_request_timeout_ms` sends a value outside the attribute's constraints (range, length, allowed values, list size) to the device, which decides, and reports the device's status, as timed and wildcard writes already did. Before, the server refused such a value before sending it
 - Fix: `write_attribute` refuses an entry of another fabric in a fabric-scoped list such as the ACL or Binding before anything is sent, with CONSTRAINT_ERROR, or `InvalidArguments` for a wildcard endpoint or a group. Before, a timed, wildcard or group write stored such an entry on the node as an entry of the server's fabric. A FabricIndex of 0 or null, the default of the CHIP Python cluster classes, counts as the server's fabric
 - Fix: The server pings the clients of its WebSocket API every 30 seconds, so proxies and remote access relays no longer close idle connections; a client that stops answering is disconnected
 - Fix: The dashboard reconnects once on its own when the connection drops, and shows the "Connection lost" page only when that attempt fails

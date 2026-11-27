@@ -140,7 +140,7 @@ The server sends commands requesting BLE operations. Each command has a unique `
 
 ### Responses (Client -> Server)
 
-The client sends exactly one response for each command, using the same `id`.
+The client sends exactly one response for each command, using the same `id`. The server gives up on a command after 60 seconds and ignores a later response, so a client must answer every command, including `connect`, within that time. A `connect` that succeeds after the server gave up leaves a connection the server never learns about.
 
 **Success response:**
 ```json
@@ -253,7 +253,7 @@ Connect to a BLE peripheral by address.
 | Field               | Type    | Description                                |
 |---------------------|---------|--------------------------------------------|
 | `connection_handle` | integer | Client-assigned handle for this connection |
-| `mtu`               | integer | Negotiated ATT MTU size                    |
+| `mtu`               | integer | Negotiated ATT MTU size; the server derives the BTP segment size from it, so report 23 when unknown, never more than the link carries |
 
 The `connection_handle` is assigned by the client and must be unique across all active
 connections. It is used in all subsequent commands and binary frames for this connection.
@@ -506,6 +506,11 @@ Unsubscribe from notifications on a characteristic.
 | `not_connected`            | No active connection with this handle           |
 | `characteristic_not_found` | Specified characteristic UUID not found         |
 | `not_subscribed`           | Not currently subscribed to this characteristic |
+
+When the peripheral stops answering right after a BTP handshake with a segment size above the
+20-byte minimum, the server unsubscribes from C2 and then sends a second `write_and_subscribe` with a
+new handshake request for the minimum on the same `connection_handle`. This happens at most once per
+connection. The client must enable C2 notifications again and forward them as before.
 
 ---
 
