@@ -107,6 +107,7 @@ export class NodeDetails extends LitElement {
         // than "Live View", since no video is actually streamed.
         const isAudioOnly = supportsAudioOnlyLiveView(this.node, this.endpoint);
         const badge = icdBadge(this.node.attributes, this.node.available);
+        const firmwareVersion = this._formatSoftwareVersion();
 
         return html`
             <md-list>
@@ -151,6 +152,13 @@ export class NodeDetails extends LitElement {
                     </div>
                     <div slot="supporting-text"><span class="left">Is bridge: </span>${this.node.is_bridge}</div>
                     <div slot="supporting-text"><span class="left">Serialnumber: </span>${this.node.serialNumber}</div>
+                    ${
+                        firmwareVersion
+                            ? html`<div slot="supporting-text">
+                                  <span class="left">Firmware version: </span>${firmwareVersion}
+                              </div>`
+                            : nothing
+                    }
                     ${
                         this.node.matter_version
                             ? html`<div slot="supporting-text">
@@ -303,12 +311,14 @@ export class NodeDetails extends LitElement {
         }
     }
 
-    /** "1.5 (1234)" from SoftwareVersionString (0/40/10) + SoftwareVersion (0/40/9); manufacturers mix these up, so show both. */
-    private _formatSoftwareVersion(): string {
+    /** "1.5 (1234)" from SoftwareVersionString (0/40/10) + SoftwareVersion (0/40/9); undefined when neither is available. */
+    private _formatSoftwareVersion(): string | undefined {
         const versionString = this.node?.attributes["0/40/10"];
         const versionNumber = this.node?.attributes["0/40/9"];
-        const str = typeof versionString === "string" && versionString !== "" ? versionString : "unknown";
-        return typeof versionNumber === "number" ? `${str} (${versionNumber})` : str;
+        const str = typeof versionString === "string" && versionString !== "" ? versionString : undefined;
+        const num = typeof versionNumber === "number" ? versionNumber : undefined;
+        if (str !== undefined && num !== undefined) return `${str} (${num})`;
+        return str ?? (num !== undefined ? `${num}` : undefined);
     }
 
     private async _searchUpdate() {
@@ -346,7 +356,7 @@ export class NodeDetails extends LitElement {
                             : nothing
                     }
                     <p>
-                        Current version: <b>${this._formatSoftwareVersion()}</b><br />
+                        Current version: <b>${this._formatSoftwareVersion() ?? "unknown"}</b><br />
                         Do you want to update this node to version
                         <b>${nodeUpdate.software_version_string} (${nodeUpdate.software_version})</b>?
                     </p>
